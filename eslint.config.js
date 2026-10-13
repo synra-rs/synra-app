@@ -41,4 +41,20 @@ export default tseslint.config(
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
     },
   },
+  {
+    // ★ Tests, where two things are deliberately unlike production.
+    files: ['src/**/*.test.ts'],
+    rules: {
+      // A WebView bridge can reject with the *error object* rather than with an `Error`, and one of the client's paths
+      // is exactly that. The rule's advice is right for code that throws; here rejecting with a non-`Error` is the
+      // case under test, and wrapping it in an `Error` would test a different one.
+      '@typescript-eslint/prefer-promise-reject-errors': 'off',
+      // A fake bridge's method arguments are usually unused, and a signature with `_command` for every one of them is
+      // noise in a file whose subject is the calls rather than the parameters.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
 )

@@ -168,9 +168,71 @@ async function checkTypeOnlyImports(): Promise<void> {
   }
 }
 
+/**
+ * 4. Every command name this repository calls exists in the kernel's own list.
+ *
+ * ★ The drift this catches is the most expensive one to find by hand. The command surface is defined in Rust
+ * (`synra-ipc`'s `commands!` macro), and a TypeScript name that no longer matches — a rename on one side, a typo on the
+ * other — fails at *runtime* with "command not found" from the WebView bridge, which names neither file.
+ *
+ * Reading the Rust source rather than keeping a list here is the same decision the dispatcher's error type made: one
+ * list, two readers. The alternative is a copy that agrees on the day it is written.
+ */
+async function checkCommandNames(): Promise<void> {
+  const rust = join(here, '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
+  let rustText: string
+  try {
+    rustText = await readFile(rust, 'utf8')
+  } catch {
+    notes.push('command-names: the kernel checkout is not beside this one, so the names were not compared')
+    return
+  }
+
+  // The macro's arms are `"name" => Domain, Interface, Shape, mutating;`. The name is the first quoted string on the
+  // line, which is what the macro itself reads.
+  const declared = new Set<string>()
+  for (const line of rustText.split('\n')) {
+    const match = /^\s*"([a-z][a-z0-9_]*)"\s*=>/.exec(line)
+    if (match?.[1] !== undefined) declared.add(match[1])
+  }
+
+  if (declared.size === 0) {
+    failures.push({
+      check: 'command-names',
+      detail: `no command names were found in ${relative(here, rust)} — the macro's shape may have changed`,
+    })
+    return
+  }
+
+  // Every string this repository passes as a command. The names appear as the first argument of `call` and in the
+  // method table below, and both are `'name'` literals.
+  const called = new Set<string>()
+  for (const file of await sources(join(here, 'src'))) {
+    const text = await readFile(file, 'utf8')
+    for (const match of text.matchAll(/\b(?:call|invoke)\(\s*'([a-z][a-z0-9_]*)'/g)) {
+      if (match[1] !== undefined) called.add(match[1])
+    }
+  }
+
+  for (const name of called) {
+    if (!declared.has(name)) {
+      failures.push({
+        check: 'command-names',
+        detail: `\`${name}\` is called here and is not one of the kernel's ${String(declared.size)} commands`,
+      })
+    }
+  }
+
+  notes.push(
+    `command-names: ${String(declared.size)} declared by the kernel, ` +
+      `${String(called.size)} called here, ${String([...called].filter((name) => declared.has(name)).length)} agree`,
+  )
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
+await checkCommandNames()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
