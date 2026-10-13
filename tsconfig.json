@@ -1,0 +1,31 @@
+{
+  "extends": "@vue/tsconfig/tsconfig.dom.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./src/*"],
+      // The two packages from the sibling client-library checkout are reached by `overrides: link:` in
+      // `pnpm-workspace.yaml`, which puts a symlink in `node_modules` rather than a copy. TypeScript follows the link
+      // for a *module* import but needs to be told where the types are, and telling it here rather than relying on the
+      // package's own `exports` map is what keeps this repository's build independent of how that package is
+      // published.
+      "@synra/client": ["../synra-js/packages/client/src/index.ts"],
+      "@synra/protocol": ["../synra-js/packages/protocol/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "scripts/**/*.ts", "vite.config.ts", "vitest.config.ts"]
+}

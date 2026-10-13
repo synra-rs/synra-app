@@ -1,0 +1,30 @@
+# This repository is one package, and the client library it is built against lives in a sibling checkout.
+#
+# ★ The client library is reached by `overrides: link:` and **not** by a `packages:` glob.
+#
+# The first version of this file listed `../synra-js/packages/*` as workspace members, and the two repositories then
+# held each other's packages: this one depended on the library's, the library's depended on this one's, and pnpm
+# resolved that by nesting a `node_modules` inside a `node_modules` inside a `node_modules` — indefinitely. The
+# immediate symptom is that any recursive command over this directory never finishes; the cause is that a recursive
+# *dependency* was expressed as a recursive *directory*.
+#
+# An override says the one thing that is true: when something asks for `@synra/client`, resolve it to this directory.
+packages:
+  - "."
+
+# Local development against the sibling checkout. `link:` points at the directory holding the `package.json` rather than
+# at a source file, and the path is relative to *this* file rather than to the shell's working directory.
+#
+# In CI the two are versioned dependencies; this file is what makes a change to a protocol type visible here in the same
+# edit.
+overrides:
+  '@synra/client': link:../synra-js/packages/client
+  '@synra/protocol': link:../synra-js/packages/protocol
+
+# `esbuild` ships a native binary built by a postinstall script, and `vitest` does not run without it. pnpm 10 refuses
+# to run a dependency's install scripts unless it is named here, which is a supply-chain default worth keeping.
+onlyBuiltDependencies:
+  - esbuild
+
+allowBuilds:
+  esbuild: set this to true or false
