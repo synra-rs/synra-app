@@ -23,8 +23,8 @@ overrides:
 
 # `esbuild` ships a native binary built by a postinstall script, and `vitest` does not run without it. pnpm 10 refuses
 # to run a dependency's install scripts unless it is named here, which is a supply-chain default worth keeping.
-onlyBuiltDependencies:
-  - esbuild
-
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - pinia
