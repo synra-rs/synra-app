@@ -14,8 +14,8 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
   },
   // The Tauri shell serves the built assets over its own protocol, so the paths are relative to the document rather
   // than to a server root.
@@ -25,6 +25,6 @@ export default defineConfig({
     // A source map in a release build is the whole interface in readable form, and the interface is not a secret — but
     // it doubles the bundle the user downloads, so it is off.
     sourcemap: false,
-    target: 'es2022',
-  },
+    target: 'es2022'
+  }
 })

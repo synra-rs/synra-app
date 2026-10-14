@@ -48,8 +48,8 @@ function deviceUpdated(seq: number, deviceId = 'dev_a'): SequencedKernelEvent {
       online: true,
       paired: true,
       blocked: false,
-      lastSeenMs: seq,
-    },
+      lastSeenMs: seq
+    }
   }
 }
 
@@ -58,7 +58,7 @@ describe('routing an event to its handler', () => {
     const { refresh } = refresher()
     const dispatcher = new EventDispatcher(refresh)
     const seen: KernelEvent[] = []
-    dispatcher.on('deviceCardUpdated', (event) => seen.push(event))
+    dispatcher.on('deviceCardUpdated', event => seen.push(event))
 
     expect(dispatcher.accept(deviceUpdated(1))).toEqual({ kind: 'applied' })
     expect(seen).toHaveLength(1)
@@ -127,7 +127,9 @@ describe('routing an event to its handler', () => {
     const dispatcher = new EventDispatcher(refresh)
     const off = dispatcher.on('logLine', vi.fn())
     off()
-    expect(() => { off(); }).not.toThrow()
+    expect(() => {
+      off()
+    }).not.toThrow()
   })
 })
 
@@ -233,7 +235,7 @@ describe('an event this build does not know', () => {
       seq: 1,
       at: 1,
       type: 'notice',
-      payload: { message: 'hello', params: {} },
+      payload: { message: 'hello', params: {} }
     }
     expect(dispatcher.accept(fromANewerKernel)).toEqual({ kind: 'stale', reason: 'unknown' })
     expect(reasons()).toEqual(['unknown'])
@@ -250,7 +252,7 @@ describe('an event this build does not know', () => {
         seq,
         at: seq,
         type: 'notice',
-        payload: { message: 'hello', params: {} },
+        payload: { message: 'hello', params: {} }
       })
     }
     expect(dispatcher.unknownEvents).toBe(5)
@@ -270,7 +272,7 @@ describe('an event this build does not know', () => {
       seq: 1,
       at: 1,
       type: 'notice',
-      payload: { message: 'hello', params: {} },
+      payload: { message: 'hello', params: {} }
     })
     dispatcher.snapshotTaken()
     expect(dispatcher.accept(logLine(2))).toEqual({ kind: 'applied' })
@@ -313,11 +315,11 @@ describe('a run of events in every order', () => {
     const { refresh } = refresher()
     const dispatcher = new EventDispatcher(refresh)
     const applied: number[] = []
-    dispatcher.on('logLine', (event) => applied.push(event.payload.line.length))
+    dispatcher.on('logLine', event => applied.push(event.payload.line.length))
 
     // A stream with a gap, a repeat, and a backwards jump.
     const sequences = [1, 2, 2, 5, 4, 6, 6, 7]
-    const decisions = sequences.map((seq) => dispatcher.accept(logLine(seq)).kind)
+    const decisions = sequences.map(seq => dispatcher.accept(logLine(seq)).kind)
 
     // The `2` is a repeat and the `4` is *behind* the sequence: neither advances it, so both are ignored. The `5` jumps
     // and is the one gap, so it asks for a snapshot — and the snapshot request *advances* the sequence to five, which

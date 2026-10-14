@@ -1,8 +1,8 @@
 {
   "name": "synra-app",
-  "private": true,
-  "version": "0.1.0",
   "type": "module",
+  "version": "0.1.0",
+  "private": true,
   "description": "The Synra application: the Tauri shell and the host interface",
   "scripts": {
     "dev": "vite",

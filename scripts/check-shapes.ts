@@ -20,6 +20,7 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const here = fileURLToPath(new URL('..', import.meta.url))
@@ -41,15 +42,18 @@ async function sources(directory: string): Promise<string[]> {
     let entries
     try {
       entries = await readdir(current, { withFileTypes: true })
-    } catch {
+    }
+    catch {
       return
     }
     for (const entry of entries) {
       const path = join(current, entry.name)
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === 'dist') continue
+        if (entry.name === 'node_modules' || entry.name === 'dist')
+          continue
         await walk(path)
-      } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.vue')) {
+      }
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.vue')) {
         out.push(path)
       }
     }
@@ -84,15 +88,17 @@ async function checkInjection(): Promise<void> {
     let shellExists = false
     try {
       shellExists = (await stat(join(here, 'src-tauri'))).isDirectory()
-    } catch {
+    }
+    catch {
       shellExists = false
     }
     if (shellExists) {
       failures.push({
         check: 'injection',
-        detail: 'src-tauri exists but no file asserts `satisfies SynraClient`',
+        detail: 'src-tauri exists but no file asserts `satisfies SynraClient`'
       })
-    } else {
+    }
+    else {
       notes.push('injection: no shell yet, so there is nothing to inject with')
     }
   }
@@ -110,13 +116,13 @@ async function checkSingleDeclarations(): Promise<void> {
       const text = await readFile(file, 'utf8')
       // A *declaration* rather than a mention: `interface SynraError {` and `type SynraError =` are the two shapes a
       // second definition takes.
-      const declares =
-        new RegExp(`\\b(interface|type|class|enum)\\s+${name}\\b`).test(text) ||
-        new RegExp(`\\bdeclare\\s+(const|class)\\s+${name}\\b`).test(text)
+      const declares
+        = new RegExp(`\\b(interface|type|class|enum)\\s+${name}\\b`).test(text)
+          || new RegExp(`\\bdeclare\\s+(const|class)\\s+${name}\\b`).test(text)
       if (declares) {
         failures.push({
           check: 'single-declaration',
-          detail: `${relative(here, file)} declares ${name}, which the client library defines once`,
+          detail: `${relative(here, file)} declares ${name}, which the client library defines once`
         })
       }
     }
@@ -127,14 +133,16 @@ async function checkSingleDeclarations(): Promise<void> {
   let libraryDeclares = false
   for (const file of await sources(clientTypes)) {
     const text = await readFile(file, 'utf8')
-    if (/\b(interface|type)\s+SynraError\b/.test(text)) libraryDeclares = true
+    if (/\b(?:interface|type)\s+SynraError\b/.test(text))
+      libraryDeclares = true
   }
   if (libraryDeclares) {
     notes.push('single-declaration: the client library declares `SynraError`')
-  } else {
+  }
+  else {
     notes.push(
-      'single-declaration: `SynraError` was not found in the client library — it may have been renamed, and this ' +
-        'check would then be looking for the wrong name',
+      'single-declaration: `SynraError` was not found in the client library — it may have been renamed, and this '
+      + 'check would then be looking for the wrong name'
     )
   }
 }
@@ -151,7 +159,8 @@ async function checkTypeOnlyImports(): Promise<void> {
     const text = await readFile(file, 'utf8')
     const lines = text.split('\n')
     for (const [index, line] of lines.entries()) {
-      if (!line.includes("from '@synra/client'")) continue
+      if (!line.includes('from \'@synra/client\''))
+        continue
       // `import type` is the allowed form. A bare `import` is not, and `import { type X }` is a value import that
       // happens to be all types — which `verbatimModuleSyntax` refuses, and which this check refuses for the same
       // reason: the emitted JavaScript would import a package with no entry.
@@ -161,7 +170,7 @@ async function checkTypeOnlyImports(): Promise<void> {
         const at = (index + 1).toString()
         failures.push({
           check: 'type-only-import',
-          detail: `${relative(here, file)}:${at} imports a value from the type-only package @synra/client`,
+          detail: `${relative(here, file)}:${at} imports a value from the type-only package @synra/client`
         })
       }
     }
@@ -183,7 +192,8 @@ async function checkCommandNames(): Promise<void> {
   let rustText: string
   try {
     rustText = await readFile(rust, 'utf8')
-  } catch {
+  }
+  catch {
     notes.push('command-names: the kernel checkout is not beside this one, so the names were not compared')
     return
   }
@@ -193,13 +203,14 @@ async function checkCommandNames(): Promise<void> {
   const declared = new Set<string>()
   for (const line of rustText.split('\n')) {
     const match = /^\s*"([a-z][a-z0-9_]*)"\s*=>/.exec(line)
-    if (match?.[1] !== undefined) declared.add(match[1])
+    if (match?.[1] !== undefined)
+      declared.add(match[1])
   }
 
   if (declared.size === 0) {
     failures.push({
       check: 'command-names',
-      detail: `no command names were found in ${relative(here, rust)} — the macro's shape may have changed`,
+      detail: `no command names were found in ${relative(here, rust)} — the macro's shape may have changed`
     })
     return
   }
@@ -210,7 +221,8 @@ async function checkCommandNames(): Promise<void> {
   for (const file of await sources(join(here, 'src'))) {
     const text = await readFile(file, 'utf8')
     for (const match of text.matchAll(/\b(?:call|invoke)\(\s*'([a-z][a-z0-9_]*)'/g)) {
-      if (match[1] !== undefined) called.add(match[1])
+      if (match[1] !== undefined)
+        called.add(match[1])
     }
   }
 
@@ -218,14 +230,14 @@ async function checkCommandNames(): Promise<void> {
     if (!declared.has(name)) {
       failures.push({
         check: 'command-names',
-        detail: `\`${name}\` is called here and is not one of the kernel's ${String(declared.size)} commands`,
+        detail: `\`${name}\` is called here and is not one of the kernel's ${String(declared.size)} commands`
       })
     }
   }
 
   notes.push(
-    `command-names: ${String(declared.size)} declared by the kernel, ` +
-      `${String(called.size)} called here, ${String([...called].filter((name) => declared.has(name)).length)} agree`,
+    `command-names: ${String(declared.size)} declared by the kernel, `
+    + `${String(called.size)} called here, ${String([...called].filter(name => declared.has(name)).length)} agree`
   )
 }
 

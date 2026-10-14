@@ -26,8 +26,8 @@
  * predates the kernel it is talking to, which must re-read rather than crash.
  */
 
-import { SequenceTracker, isDelta } from '@synra/protocol'
 import type { KernelEvent, SequencedKernelEvent } from '@synra/protocol'
+import { isDelta, SequenceTracker } from '@synra/protocol'
 
 /**
  * What the dispatcher decided about one event.
@@ -35,10 +35,10 @@ import type { KernelEvent, SequencedKernelEvent } from '@synra/protocol'
  * Returned rather than acted on, so a test asserts the decision and the caller decides what to do about it — a
  * `refreshSnapshot` has to ask the kernel for one, which is I/O.
  */
-export type Verdict =
-  | { readonly kind: 'applied' }
-  | { readonly kind: 'ignored' }
-  | { readonly kind: 'stale'; readonly reason: 'gap' | 'unknown' }
+export type Verdict
+  = | { readonly kind: 'applied' }
+    | { readonly kind: 'ignored' }
+    | { readonly kind: 'stale', readonly reason: 'gap' | 'unknown' }
 
 /**
  * What happens when the interface needs a fresh picture.
@@ -83,7 +83,7 @@ export class EventDispatcher {
    */
   on<T extends KernelEvent['type']>(
     type: T,
-    handler: Handler<Extract<KernelEvent, { type: T }>>,
+    handler: Handler<Extract<KernelEvent, { type: T }>>
   ): () => void {
     const existing = this.#handlers.get(type) ?? []
     // The cast is the price of one map instead of one field per kind. The key is the discriminant of the value, so a
@@ -93,10 +93,13 @@ export class EventDispatcher {
 
     return () => {
       const current = this.#handlers.get(type)
-      if (!current) return
+      if (!current)
+        return
       const at = current.indexOf(handler as Handler<never>)
-      if (at >= 0) current.splice(at, 1)
-      if (current.length === 0) this.#handlers.delete(type)
+      if (at >= 0)
+        current.splice(at, 1)
+      if (current.length === 0)
+        this.#handlers.delete(type)
     }
   }
 
@@ -184,7 +187,7 @@ export class EventDispatcher {
   }
 
   /** What a diagnostic report wants to know. */
-  report(): { last?: number; gaps: number; unknown: number; stale: boolean } {
+  report(): { last?: number, gaps: number, unknown: number, stale: boolean } {
     const base = this.#tracker.report()
     return { ...base, unknown: this.#unknown, stale: this.isStale }
   }

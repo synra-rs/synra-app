@@ -53,7 +53,7 @@ export interface IpcError {
  */
 export interface Bridge {
   /** Calls a kernel command. */
-  invoke(command: string, args?: Readonly<Record<string, unknown>>): Promise<unknown>
+  invoke: (command: string, args?: Readonly<Record<string, unknown>>) => Promise<unknown>
   /**
    * Subscribes to kernel events.
    *
@@ -61,13 +61,13 @@ export interface Bridge {
    * registers a listener asynchronously — a WebView bridge cannot answer synchronously. A caller that ignored the
    * promise would leak a listener per call.
    */
-  listen(event: string, handler: (payload: unknown) => void): Promise<() => void>
+  listen: (event: string, handler: (payload: unknown) => void) => Promise<() => void>
 }
 
 /** What a call produced: a value, or the kernel's refusal. */
-export type CallResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: IpcError }
+export type CallResult<T>
+  = | { readonly ok: true, readonly value: T }
+    | { readonly ok: false, readonly error: IpcError }
 
 /**
  * Whether a value is an `IpcError`.
@@ -82,12 +82,13 @@ export type CallResult<T> =
  * still an error; one missing any of the three is one this interface cannot render or classify.
  */
 export function isIpcError(value: unknown): value is IpcError {
-  if (typeof value !== 'object' || value === null) return false
+  if (typeof value !== 'object' || value === null)
+    return false
   const candidate = value as Record<string, unknown>
   return (
-    typeof candidate['code'] === 'string' &&
-    typeof candidate['message'] === 'string' &&
-    typeof candidate['retryable'] === 'boolean'
+    typeof candidate.code === 'string'
+    && typeof candidate.message === 'string'
+    && typeof candidate.retryable === 'boolean'
   )
 }
 
@@ -119,26 +120,29 @@ export class KernelClient {
    */
   async call<T>(
     command: string,
-    args?: Readonly<Record<string, unknown>>,
+    args?: Readonly<Record<string, unknown>>
   ): Promise<CallResult<T>> {
     let raw: unknown
     try {
       raw = await this.#bridge.invoke(command, args)
-    } catch (thrown) {
+    }
+    catch (thrown) {
       // ★ A rejection rather than a resolved `IpcError`. Tauri turns a command that *panicked* into a rejection and a
       // command that *returned* an error into a value, and the interface has to handle both — because the difference
       // is not something the user can see and not something the interface should show them.
       //
       // A rejection that is already an error is passed through, since some bridges reject with the error rather than
       // resolving with it, and re-wrapping it would lose the code.
-      if (isIpcError(thrown)) return { ok: false, error: thrown }
+      if (isIpcError(thrown))
+        return { ok: false, error: thrown }
       return { ok: false, error: bridgeFailure(thrown) }
     }
 
     // The host's convention: a command returning a value *is* the success, and its refusal is a value that looks like
     // an error. Checking the shape rather than a wrapper means a command whose return type is itself an object with a
     // `code` field is still handled correctly — because the check needs all three fields.
-    if (isIpcError(raw)) return { ok: false, error: raw }
+    if (isIpcError(raw))
+      return { ok: false, error: raw }
     return { ok: true, value: raw as T }
   }
 
@@ -153,7 +157,7 @@ export class KernelClient {
    */
   async subscribe(
     event: string,
-    handler: (payload: unknown) => void,
+    handler: (payload: unknown) => void
   ): Promise<() => void> {
     return await this.#bridge.listen(event, handler)
   }
@@ -179,7 +183,7 @@ function bridgeFailure(thrown: unknown): IpcError {
     params: { detail },
     // Retryable: a bridge rejection is a transport-shaped failure, and the kernel's own `internal` is retryable. The
     // alternative is an interface that gives up on a transient fault.
-    retryable: true,
+    retryable: true
   }
 }
 

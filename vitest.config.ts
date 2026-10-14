@@ -24,12 +24,12 @@ export default defineConfig({
       // durable fix is for the package to gain a runtime entry for the values and keep the types type-only; until
       // then this alias is the one place that knows.
       '@synra/protocol': fileURLToPath(
-        new URL('../synra-js/packages/protocol/src/index.ts', import.meta.url),
-      ),
-    },
+        new URL('../synra-js/packages/protocol/src/index.ts', import.meta.url)
+      )
+    }
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
-  },
+    include: ['src/**/*.test.ts']
+  }
 })

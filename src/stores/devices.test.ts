@@ -5,12 +5,12 @@
  *
  * Nothing about *policy*. There is no "should this device connect" here, because the store does not decide that — the
  * kernel does, and a test that asserted a rule would be a second copy of the rule. What is asserted is what the store
- * *records*: that a snapshot replaces, that an event updates one card, and that a device the kernel stopped mentioning
+ * records*: that a snapshot replaces, that an event updates one card, and that a device the kernel stopped mentioning
  * stops being mentioned.
  */
 
-import { createPinia, setActivePinia } from 'pinia'
 import type { DeviceCard, DevicesSnapshot } from '@synra/protocol'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useDevicesStore } from './devices'
@@ -25,7 +25,7 @@ function card(deviceId: string, overrides: Partial<DeviceCard> = {}): DeviceCard
     paired: true,
     blocked: false,
     lastSeenMs: 1_000,
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -37,10 +37,10 @@ function snapshot(devices: DeviceCard[], scanning?: DevicesSnapshot['scanning'])
       displayName: 'This machine',
       platform: 'linux',
       kernelVersion: '0.1.0',
-      nameIsDefault: false,
+      nameIsDefault: false
     },
     devices,
-    ...(scanning === undefined ? {} : { scanning }),
+    ...(scanning === undefined ? {} : { scanning })
   }
 }
 
@@ -58,7 +58,7 @@ describe('recording a snapshot', () => {
     expect(store.cards).toHaveLength(2)
 
     store.applySnapshot(snapshot([card('dev_a')]))
-    expect(store.cards.map((each) => each.deviceId)).toEqual(['dev_a'])
+    expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a'])
   })
 
   it('records the identity, so a screen needs one call rather than two', () => {
@@ -73,7 +73,7 @@ describe('recording a snapshot', () => {
     // answer lives, and the day they disagree the interface shows "scanning" with a stale percentage.
     const store = useDevicesStore()
     store.applySnapshot(
-      snapshot([], { scanId: 'scan_1', elapsedMs: 500, totalMs: 3_000, found: 2 }),
+      snapshot([], { scanId: 'scan_1', elapsedMs: 500, totalMs: 3_000, found: 2 })
     )
     expect(store.scanning).toBe(true)
     expect(store.scan?.found).toBe(2)
@@ -114,12 +114,12 @@ describe('applying one event', () => {
 
     store.apply({
       type: 'deviceCardUpdated',
-      payload: card('dev_b', { displayName: 'Renamed', online: false }),
+      payload: card('dev_b', { displayName: 'Renamed', online: false })
     })
 
     expect(store.get('dev_b')?.displayName).toBe('Renamed')
     expect(store.get('dev_b')?.online).toBe(false)
-    expect(store.cards.map((each) => each.deviceId)).toEqual(['dev_a', 'dev_b', 'dev_c'])
+    expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a', 'dev_b', 'dev_c'])
     expect(store.get('dev_a')?.displayName).toBe('Device dev_a')
   })
 
@@ -127,7 +127,7 @@ describe('applying one event', () => {
     const store = useDevicesStore()
     store.applySnapshot(snapshot([card('dev_a'), card('dev_b')]))
     expect(store.apply({ type: 'deviceRemoved', payload: { deviceId: 'dev_a' } })).toBe(true)
-    expect(store.cards.map((each) => each.deviceId)).toEqual(['dev_b'])
+    expect(store.cards.map(each => each.deviceId)).toEqual(['dev_b'])
     expect(store.get('dev_a')).toBeUndefined()
   })
 
@@ -139,8 +139,8 @@ describe('applying one event', () => {
     expect(
       store.apply({
         type: 'scanUpdated',
-        payload: { scanId: 'scan_1', elapsedMs: 100, totalMs: 3_000, found: 1 },
-      }),
+        payload: { scanId: 'scan_1', elapsedMs: 100, totalMs: 3_000, found: 1 }
+      })
     ).toBe(true)
     expect(store.scanning).toBe(true)
     expect(store.scan?.found).toBe(1)
@@ -150,7 +150,7 @@ describe('applying one event', () => {
     // So a caller wiring the dispatcher can tell a routed event from an unhandled one without a second lookup.
     const store = useDevicesStore()
     expect(
-      store.apply({ type: 'transferUpdated', payload: transferSnapshot('t1') }),
+      store.apply({ type: 'transferUpdated', payload: transferSnapshot('t1') })
     ).toBe(false)
   })
 })
@@ -189,7 +189,7 @@ describe('a transfer on a device', () => {
     const store = useDevicesStore()
     store.applySnapshot(snapshot([card('dev_a')]))
     store.setTransfer('dev_unknown', { transferId: 't1', direction: 'send', progress: 0.5 })
-    expect(store.cards.map((each) => each.deviceId)).toEqual(['dev_a'])
+    expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a'])
   })
 })
 
@@ -208,15 +208,15 @@ describe('the lists a screen renders', () => {
         card('dev_paired_online', { paired: true, online: true }),
         card('dev_paired_offline', { paired: true, online: false }),
         card('dev_unpaired_online', { paired: false, online: true }),
-        card('dev_unpaired_offline', { paired: false, online: false }),
-      ]),
+        card('dev_unpaired_offline', { paired: false, online: false })
+      ])
     )
 
-    expect(store.paired.map((each) => each.deviceId)).toEqual([
+    expect(store.paired.map(each => each.deviceId)).toEqual([
       'dev_paired_online',
-      'dev_paired_offline',
+      'dev_paired_offline'
     ])
-    expect(store.online.map((each) => each.deviceId)).toEqual(['dev_paired_online'])
+    expect(store.online.map(each => each.deviceId)).toEqual(['dev_paired_online'])
   })
 
   it('is empty before the first snapshot rather than undefined', () => {
@@ -244,6 +244,6 @@ function transferSnapshot(transferId: string) {
     totalBytes: 2,
     blocksDone: 1,
     blocksTotal: 2,
-    startedAtMs: 1,
+    startedAtMs: 1
   }
 }

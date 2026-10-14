@@ -9,10 +9,10 @@
  */
 
 import type { ErrorCode } from '@synra/protocol'
-import { describe, expect, it, vi } from 'vitest'
-
-import { KernelClient, isIpcError, shouldOfferRetry } from './client'
 import type { Bridge, IpcError } from './client'
+
+import { describe, expect, it, vi } from 'vitest'
+import { isIpcError, KernelClient, shouldOfferRetry } from './client'
 
 /** A bridge that records its calls and answers with what a test queued. */
 function bridge(answer: unknown = { ok: true }): {
@@ -33,8 +33,8 @@ function bridge(answer: unknown = { ok: true }): {
       listen: (event, handler) => {
         listeners.set(event, handler)
         return Promise.resolve(() => listeners.delete(event))
-      },
-    },
+      }
+    }
   }
 }
 
@@ -62,7 +62,7 @@ describe('calling a command', () => {
         seen.push(args)
         return Promise.resolve(null)
       },
-      listen: () => Promise.resolve(() => undefined),
+      listen: () => Promise.resolve(() => undefined)
     }
 
     await new KernelClient(seam).call('devices_connect', { deviceId: 'dev_a' })
@@ -77,7 +77,8 @@ describe('calling a command', () => {
 
     const result = await client.call('devices_connect')
     expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected a failure')
+    if (result.ok)
+      throw new Error('expected a failure')
     expect(result.error.code).toBe('device_offline')
     expect(result.error.retryable).toBe(true)
   })
@@ -87,18 +88,19 @@ describe('calling a command', () => {
     // each call is one where a missed `catch` is a blank panel.
     const seam: Bridge = {
       invoke: () => Promise.reject(new Error('the bridge fell over')),
-      listen: () => Promise.resolve(() => undefined),
+      listen: () => Promise.resolve(() => undefined)
     }
     const client = new KernelClient(seam)
 
     const result = await client.call('devices_snapshot')
     expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected a failure')
+    if (result.ok)
+      throw new Error('expected a failure')
     // The kernel's `internal`, which its own documentation says is retryable.
     expect(result.error.code).toBe('internal')
     expect(result.error.retryable).toBe(true)
     // And the detail is carried, so a diagnostic report can say what the bridge said.
-    expect(result.error.params?.['detail']).toContain('the bridge fell over')
+    expect(result.error.params?.detail).toContain('the bridge fell over')
   })
 
   it('passes through a rejection that is already an error', async () => {
@@ -106,13 +108,14 @@ describe('calling a command', () => {
     // code with `internal` — losing the one field the caller branches on.
     const seam: Bridge = {
       invoke: () => Promise.reject(ipcError('capability_denied', false)),
-      listen: () => Promise.resolve(() => undefined),
+      listen: () => Promise.resolve(() => undefined)
     }
     const client = new KernelClient(seam)
 
     const result = await client.call('plugins_enable')
     expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected a failure')
+    if (result.ok)
+      throw new Error('expected a failure')
     expect(result.error.code).toBe('capability_denied')
     expect(result.error.retryable).toBe(false)
   })
@@ -159,8 +162,8 @@ describe('whether a value is an error', () => {
         params: { field: 'name' },
         details: 'the name was empty',
         retryable: false,
-        actions: ['openSettings'],
-      }),
+        actions: ['openSettings']
+      })
     ).toBe(true)
   })
 })
@@ -179,12 +182,13 @@ describe('whether to offer a retry', () => {
     // cannot distinguish from a permanent one.
     const seam: Bridge = {
       invoke: () => Promise.reject(new Error('transient')),
-      listen: () => Promise.resolve(() => undefined),
+      listen: () => Promise.resolve(() => undefined)
     }
     return new KernelClient(seam)
       .call('identity_get')
       .then((result) => {
-        if (result.ok) throw new Error('expected a failure')
+        if (result.ok)
+          throw new Error('expected a failure')
         expect(shouldOfferRetry(result.error)).toBe(true)
       })
   })
@@ -206,7 +210,7 @@ describe('subscribing to an event', () => {
     const { bridge: seam, listeners } = bridge()
     const client = new KernelClient(seam)
     const seen: unknown[] = []
-    await client.subscribe('kernel-event', (payload) => seen.push(payload))
+    await client.subscribe('kernel-event', payload => seen.push(payload))
 
     listeners.get('kernel-event')?.({ seq: 1 })
     expect(seen).toEqual([{ seq: 1 }])

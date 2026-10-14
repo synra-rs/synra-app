@@ -24,7 +24,7 @@ import type {
   IdentitySnapshot,
   KernelEvent,
   ScanState,
-  TransferSummary,
+  TransferSummary
 } from '@synra/protocol'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -64,7 +64,7 @@ export const useDevicesStore = defineStore('devices', () => {
    * `computed` over the list would rebuild the whole index whenever one card changed, and the pairing path reads it
    * per request.
    */
-  const byId = computed(() => new Map(cards.value.map((card) => [card.deviceId, card])))
+  const byId = computed(() => new Map(cards.value.map(card => [card.deviceId, card])))
 
   /** Records a whole snapshot, which is what the interface asks for after a gap. */
   function applySnapshot(snapshot: DevicesSnapshot): void {
@@ -80,7 +80,7 @@ export const useDevicesStore = defineStore('devices', () => {
 
   /** Records one device, adding it when it is new. */
   function upsert(card: DeviceCard): void {
-    const at = cards.value.findIndex((existing) => existing.deviceId === card.deviceId)
+    const at = cards.value.findIndex(existing => existing.deviceId === card.deviceId)
     if (at >= 0) {
       const next = cards.value.slice()
       next[at] = card
@@ -92,12 +92,12 @@ export const useDevicesStore = defineStore('devices', () => {
 
   /** Records that a device is gone. */
   function remove(deviceId: string): void {
-    cards.value = cards.value.filter((card) => card.deviceId !== deviceId)
+    cards.value = cards.value.filter(card => card.deviceId !== deviceId)
   }
 
   /** Records a transfer's progress on the device it belongs to. */
   function setTransfer(deviceId: string, transfer: TransferSummary | undefined): void {
-    const at = cards.value.findIndex((card) => card.deviceId === deviceId)
+    const at = cards.value.findIndex(card => card.deviceId === deviceId)
     if (at < 0) {
       // A transfer for a device the list does not have is one the interface has not been told about yet. Dropping it
       // rather than inventing a card: a card with no name or platform would render as a blank row, and the snapshot
@@ -106,16 +106,17 @@ export const useDevicesStore = defineStore('devices', () => {
     }
     const next = cards.value.slice()
     const existing = next[at]
-    if (!existing) return
+    if (!existing)
+      return
     next[at] = transfer === undefined ? withoutTransfer(existing) : { ...existing, transfer }
     cards.value = next
   }
 
   /** The devices the user has paired with. */
-  const paired = computed(() => cards.value.filter((card) => card.paired))
+  const paired = computed(() => cards.value.filter(card => card.paired))
 
   /** The paired devices that are reachable now. */
-  const online = computed(() => cards.value.filter((card) => card.paired && card.online))
+  const online = computed(() => cards.value.filter(card => card.paired && card.online))
 
   /** A device by id. */
   function get(deviceId: string): DeviceCard | undefined {
@@ -158,7 +159,7 @@ export const useDevicesStore = defineStore('devices', () => {
     remove,
     setTransfer,
     get,
-    apply,
+    apply
   }
 })
 

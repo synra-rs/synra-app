@@ -1,3 +1,5 @@
+minimumReleaseAgeExcludePrune: true
+
 # This repository is one package, and the client library it is built against lives in a sibling checkout.
 #
 # ★ The client library is reached by `overrides: link:` and **not** by a `packages:` glob.
@@ -9,8 +11,14 @@
 # *dependency* was expressed as a recursive *directory*.
 #
 # An override says the one thing that is true: when something asks for `@synra/client`, resolve it to this directory.
+minimumReleaseAgeExclude:
+  - pinia
+
+trustPolicy: no-downgrade
+shellEmulator: true
+
 packages:
-  - "."
+  - .
 
 # Local development against the sibling checkout. `link:` points at the directory holding the `package.json` rather than
 # at a source file, and the path is relative to *this* file rather than to the shell's working directory.
@@ -25,6 +33,3 @@ overrides:
 # to run a dependency's install scripts unless it is named here, which is a supply-chain default worth keeping.
 allowBuilds:
   esbuild: true
-
-minimumReleaseAgeExclude:
-  - pinia
