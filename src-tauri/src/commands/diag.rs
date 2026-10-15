@@ -31,6 +31,54 @@ pub struct DiagExportResult {
     pub excluded: Vec<String>,
 }
 
+
+/// What the loaded plugin set knows about each installed plugin.
+///
+/// # ★ Why the store cannot answer this
+///
+/// Because the `plugins` table records `health`, not versions or liveness: it is what the kernel *observed*, written at
+/// install time and updated on a health change. "Is it loaded right now" is a fact about this process, and "what version"
+/// is a fact about the manifest the loader read — both live in the set, and neither is in the database.
+///
+/// # Why the lock is taken once
+///
+/// The set is shared with every plugin call in flight, so a guard taken per row is a guard that blocks a running plugin
+/// for as long as this loop takes. One lock, one pass, released before the bundle is assembled.
+#[derive(Default)]
+struct LoadedPlugin {
+    /// The version the loader read, or empty when the set does not have it.
+    version: String,
+    /// Whether it is loaded right now.
+    active: bool,
+    /// Whether the ring has refused anything for it.
+    had_refusals: bool,
+}
+
+/// Reads the set once for every installed plugin.
+///
+/// A shell with no engine answers "not loaded, no version, nothing refused" for all of them — which is true of a shell
+/// that has no engine, and not a fallback.
+fn loaded_plugins(state: &AppState, installed: &[synra_store::records::PluginRow]) -> Vec<LoadedPlugin> {
+    let Ok(set) = state.plugin_set() else {
+        return installed.iter().map(|_| LoadedPlugin::default()).collect();
+    };
+    let set = set.lock();
+    installed
+        .iter()
+        .map(|row| {
+            let Ok(id) = synra_protocol::PluginId::parse(&row.plugin_id) else {
+                return LoadedPlugin::default();
+            };
+            LoadedPlugin {
+                version: set.version(&id).unwrap_or_default().to_owned(),
+                active: set.contains(&id),
+                // ★ The one that used to be a hard-coded `false`.
+                had_refusals: !set.refusals_for(&id).is_empty(),
+            }
+        })
+        .collect()
+}
+
 /// Assembles a diagnostic bundle and writes it.
 ///
 /// # Errors
@@ -48,27 +96,41 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
         (db.paired_devices().map_err(internal)?, db.plugins().map_err(internal)?)
     };
 
-    // ★ The plan is built with only the sections this shell can actually fill, and the omissions are stated.
+    // ★ The plan is built with the sections this shell can fill, and the ones it cannot are stated as omissions.
     //
-    // There is no audit sink and no log ring behind `AppState` today, so claiming either would mean writing a section
-    // that is empty — and an empty audit trail reads as "nothing happened", which is a claim, not an absence.
+    // ★ Three of the four plugin fields used to be constants — `version: String::new()`, `active: false`,
+    // `had_refusals: false` — and that was not an omission, it was **four claims**. `had_refusals: false` is the one
+    // that matters: it tells a maintainer that nothing this plugin tried was ever refused, in the document a user sends
+    // when they are asking why something did not work. A refusal is usually the answer.
+    //
+    // All three are readable now. The set knows what this process managed to load and which version; its ring knows
+    // whether anything was refused.
+    let loaded = loaded_plugins(state, &plugins);
     let mut sources = BundleSources {
         environment: Some(environment()),
         config: Some(configuration(state)),
         devices: Some(
             devices
                 .iter()
-                .map(|row| DeviceRecord { device_id: row.device_id.clone(), paired: true, online: false })
+                .map(|row| DeviceRecord {
+                    device_id: row.device_id.clone(),
+                    paired: true,
+                    // ★ Asked rather than assumed. Every device here is paired by construction — this is the paired table —
+                    // but "paired" and "reachable" are different, and a bundle that reported every peer online would send
+                    // a maintainer looking for a network fault that is not there.
+                    online: row.is_usable(),
+                })
                 .collect(),
         ),
         plugins: Some(
             plugins
                 .iter()
-                .map(|row| PluginRecord {
+                .zip(loaded)
+                .map(|(row, state)| PluginRecord {
                     plugin_id: row.plugin_id.clone(),
-                    version: String::new(),
-                    active: false,
-                    had_refusals: false,
+                    version: state.version,
+                    active: state.active,
+                    had_refusals: state.had_refusals,
                 })
                 .collect(),
         ),

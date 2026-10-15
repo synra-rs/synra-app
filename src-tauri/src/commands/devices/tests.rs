@@ -63,6 +63,32 @@ fn a_paired_device_becomes_a_card_the_interface_can_render() {
 }
 
 #[test]
+fn a_paired_device_with_no_session_is_offline() {
+    // ★ This line said `true` for several rounds while the comment above it said "a paired device with no open session
+    // is offline". The comment was right.
+    //
+    // Every paired device was reported online, so the dashboard showed a green dot for a laptop that had been shut for a
+    // week — and the first the user heard about it was a send that failed, which is the moment they can least do
+    // anything about it. `SessionRegistry::live_for` is what answers the question the card is asking.
+    //
+    // ★ What this does not cover. The other direction — a live session making the card online — needs a session in the
+    // registry, and this side has no way to open one: `SessionKey` is opaque to callers outside `synra-core` and the
+    // registry is filled by the transport, which a shell test does not run. So this pins the value that was wrong and
+    // not the query that replaced it; the query is `live_for`, one line, and this comment is where the next person
+    // finds out nothing would go red if it were spelled differently.
+    let state = with_paired_device();
+
+    let snapshot = devices_snapshot(&state).expect("a snapshot");
+
+    assert_eq!(snapshot.devices.len(), 1, "the fixture pairs one device");
+    assert!(
+        !snapshot.devices[0].online,
+        "nothing has opened a session with this peer: {:?}",
+        snapshot.devices[0]
+    );
+}
+
+#[test]
 fn devices_are_listed_by_name_when_the_names_differ() {
     let state = with_paired_device();
     state

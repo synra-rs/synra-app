@@ -128,6 +128,49 @@ fn asking_for_the_audit_trail_puts_an_empty_one_in_rather_than_pretending_it_ran
 }
 
 #[test]
+fn the_plugin_section_reports_what_the_set_knows_rather_than_a_constant() {
+    // ★ The three fields that used to be constants.
+    //
+    // `had_refusals: false`, `active: false` and `version: String::new()` were written into every bundle, and the first
+    // of them is a **claim**: it tells a maintainer nothing was ever refused, in the document a user sends when they are
+    // asking why something did not work.
+    //
+    // ★ What this covers and what it does not. The fixture has no plugin engine, so the set answers "not loaded, no
+    // version, nothing refused" for every installed plugin — which is the truth about a shell with no engine. So this
+    // asserts the *wiring* in one direction: a bundle made here says `active: false` because nothing is loaded, not
+    // because the field is a literal. It cannot tell the two apart, and that seam is recorded where the read happens
+    // (`loaded_plugins`), for the same reason the audit one is: producing a loaded plugin needs a guest that calls a host
+    // function, and there is no toolchain for that in this repository.
+    let root = testing::Root::fresh("diag-plugins");
+    let state = testing::state_in(&root);
+    // Installed so the section has a row to describe; a bundle with no plugins in it would make the assertions vacuous.
+    state
+        .db()
+        .insert_plugin(
+            "@acme/notes",
+            true,
+            false,
+            "installed",
+            testing::FIXED_NOW_MS,
+            testing::FIXED_NOW_MS,
+        )
+        .expect("a plugin row");
+
+    let result = diag_export(&state, &options()).expect("exports");
+    let file = bundle(&result);
+    let plugins = file.get("plugins").and_then(Value::as_array).expect("a plugin section");
+
+    // The fixture installs plugins, and each one is reported — rather than the section being empty, which would make the
+    // assertions below vacuous.
+    assert_eq!(plugins.len(), 1, "the fixture installs one plugin: {file}");
+    for plugin in plugins {
+        assert_eq!(plugin.get("active").and_then(Value::as_bool), Some(false));
+        assert_eq!(plugin.get("hadRefusals").and_then(Value::as_bool), Some(false));
+        assert!(plugin.get("version").is_some(), "the key is present even when the value is empty");
+    }
+}
+
+#[test]
 fn asking_for_the_debug_log_carries_the_section_too() {
     // ★ The other half of the consent switch.
     //

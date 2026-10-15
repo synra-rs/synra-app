@@ -44,7 +44,8 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
         (db.paired_devices().map_err(internal)?, db.seen_devices().map_err(internal)?)
     };
 
-    let mut cards: Vec<DeviceCard> = paired.iter().map(card_from_paired).collect::<Result<_, _>>()?;
+    let mut cards: Vec<DeviceCard> =
+        paired.iter().map(|row| card_from_paired(state, row)).collect::<Result<_, _>>()?;
     // ★ Seen-but-unpaired devices are added here rather than by the interface.
     //
     // The interface cannot know which seen devices are already paired — that is the kernel's record — so a list built
@@ -179,14 +180,20 @@ pub fn devices_forget(state: &AppState, device_id: &str) -> Result<(), IpcError>
 ///
 /// [`IpcError::Internal`] when the stored identifier does not parse. See [`devices_snapshot`]: a corrupted row must not
 /// become a missing card.
-fn card_from_paired(row: &synra_store::DeviceRow) -> Result<DeviceCard, IpcError> {
+fn card_from_paired(state: &AppState, row: &synra_store::DeviceRow) -> Result<DeviceCard, IpcError> {
+    let device_id = parse_from_store(row.device_id.as_str())?;
     Ok(DeviceCard {
-        device_id: parse_from_store(row.device_id.as_str())?,
+        device_id,
         display_name: row.display_name.clone(),
         platform: row.platform.clone(),
         // A paired device with no open session is offline rather than absent — the two answer different questions
         // ("can I send to this now" against "have I ever heard of it"), and the interface renders them differently.
-        online: true,
+        //
+        // ★ This line said `true` for several rounds while the sentence above it said "offline", and the sentence was
+        // right. Every paired device was reported online, so the dashboard showed a green dot for a laptop that had been
+        // shut for a week, and the first the user heard about it was a send that failed. The registry is what knows:
+        // `live_for` answers "is there a session with this peer now", which is exactly the question the card asks.
+        online: state.host.lock().sessions().live_for(device_id).is_some(),
         paired: true,
         blocked: row.blocked,
         last_seen_ms: row.last_seen_ms,
