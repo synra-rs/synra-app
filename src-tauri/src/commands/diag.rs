@@ -77,13 +77,22 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
 
     // ★ The optional sections are given a source only when the user asked for them.
     //
-    // ★ The log is real now, and the audit trail still is not — and the two are given different answers because they are
-    // different situations. The shell starts its own log (`AppState::start_logging`), so `log_lines` is read from the
-    // file the shell is writing. There is still no audit sink, so `audit` stays an empty list: an empty audit trail says
-    // "nothing was recorded", which is true, where a *missing* section says the same thing in a way a reader cannot
-    // distinguish from "this bundle was made by a version that never had one".
+    // ★ The log is real, and so is the audit trail now — but the two are read from different places, because they are
+    // written by different things. The shell starts its own log (`AppState::start_logging`), so `log_lines` comes from the
+    // file the shell is writing. The audit trail comes from the plugin set's ring, which every plugin instance drains into
+    // after each authorised call.
+    //
+    // ★ This said "there is still no audit sink" for several rounds after that stopped being true. An empty list was
+    // honest when nothing wrote one; it is a false answer now, because a bundle that says it carries the audit trail and
+    // carries none tells a user their plugins did nothing.
     if options.include_audit {
-        sources.audit = Some(Vec::new());
+        // No engine means no instances, so no calls were authorised and an empty trail is the truth rather than a
+        // fallback. A refusal here would be worse: the section is still legitimately empty.
+        let recorded = state
+            .plugin_set()
+            .map(|set| set.lock().audit())
+            .unwrap_or_default();
+        sources.audit = Some(recorded);
     }
     if options.include_debug_logs || options.log_lines.is_some() {
         // `verbose` is true because the user asking for debug logs has asked for the debug lines; the quiet filter would

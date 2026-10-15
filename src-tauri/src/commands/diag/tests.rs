@@ -85,10 +85,21 @@ fn a_default_bundle_leaves_out_the_audit_trail_and_the_log() {
 
 #[test]
 fn asking_for_the_audit_trail_puts_an_empty_one_in_rather_than_pretending_it_ran() {
-    // ★ The choice, stated.
+    // ★ The choice, stated: the section is present rather than omitted.
     //
-    // There is no audit sink behind this shell, so the honest answer is "included and empty" — which the consent screen
-    // can show — rather than omitting the section, which reads as "nothing happened".
+    // A missing section and an empty one read the same on a screen, and the first is indistinguishable from "this bundle
+    // came from a version that never had one". So the section is always there when it was asked for.
+    //
+    // ★ What this test does **not** cover, said plainly rather than implied.
+    //
+    // It cannot tell a section wired to the plugin set's ring from one still stubbed to `Some(Vec::new())` — both are
+    // empty here, because this fixture has no plugin engine, so no instance ran and no call was authorised. Catching that
+    // needs an audit entry, and an entry is produced when a **guest makes a host call**: the scripted backend never
+    // enters a guest, so no fixture in this repository can produce one. The same missing toolchain (`wasm32-wasip2`)
+    // that leaves `synra-plugin-host`'s two guest tests `#[ignore]`d leaves this seam unguarded.
+    //
+    // The binding is a one-line read of `state.plugin_set()`, and this comment is where the next person finds out that
+    // nothing would go red if it were removed.
     let root = testing::Root::fresh("diag-audit");
     let state = testing::state_in(&root);
 
@@ -98,11 +109,20 @@ fn asking_for_the_audit_trail_puts_an_empty_one_in_rather_than_pretending_it_ran
     assert_eq!(
         file.get("auditTrail").and_then(Value::as_array).map(Vec::len),
         Some(0),
-        "present, and empty"
+        "present, and empty because nothing has run"
     );
     assert!(
         result.included.iter().any(|section| section == "audit-trail"),
         "and listed as included: {:?}",
+        result.included
+    );
+
+    // And absent when it was not asked for, which is the half this test *can* check.
+    let result = diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: false, ..options() })
+        .expect("exports");
+    assert!(
+        !result.included.iter().any(|section| section == "audit-trail"),
+        "not asked for, so not in the bundle: {:?}",
         result.included
     );
 }
