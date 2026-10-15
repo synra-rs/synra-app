@@ -48,12 +48,22 @@ import type {
 import type {
   DeviceId,
   ErrorCode,
+  Platform,
   PluginId,
   SynraError,
   TransferId
 } from '@synra/protocol'
 
 import type { Bridge, IpcError } from './client'
+
+/**
+ * The host shapes a plugin can be told about.
+ *
+ * ★ Derived rather than restated. `EnvNamespace.hostKind()` inlines `'desktop' | 'mobile'` and there is no named type
+ * for it anywhere, so writing the union out again here would create a second copy that could drift from the contract
+ * the plugin is compiled against. `ReturnType` reads the one that exists.
+ */
+type HostKind = ReturnType<EnvNamespace['hostKind']>
 
 /**
  * What the host can actually do right now, and what it cannot.
@@ -140,6 +150,22 @@ export interface InjectionContext {
   readonly darkMode: boolean
   /** The SDK version the plugin was built against. */
   readonly sdkVersion: string
+  /**
+   * The operating system the host is running on.
+   *
+   * ★ This is a field rather than a constant, and it was a constant. `platform()` returned the literal `'windows'`, so
+   * on macOS, Linux, Android and iOS the injected interface told the plugin it was on Windows — a plugin that branched
+   * on it took the Windows path everywhere. A wrong answer is worse than a refused one here, because a refusal is
+   * visible and a plausible wrong answer is not.
+   *
+   * It belongs to the same group as `locale` and `darkMode`: facts the host already knows, which a plugin asks for
+   * without a round trip. It was simply missing from that group.
+   */
+  readonly platform: Platform
+  /** The host shape: a desktop install or a mobile one. */
+  readonly hostKind: HostKind
+  /** The host application's version, not the SDK's. */
+  readonly appVersion: string
 }
 
 /**
@@ -159,11 +185,14 @@ export function createInjection(context: InjectionContext): SynraClient {
   let requestCounter = 0
 
   const env: EnvNamespace = {
-    hostKind: () => 'desktop',
-    platform: () => 'windows',
+    // ★ These three read the context rather than naming a value. They used to be the literals `'desktop'`, `'windows'`
+    // and `'0.1.0'`, which is a claim about the machine the plugin happens to be running on — and `'windows'` was wrong
+    // on every other platform.
+    hostKind: () => context.hostKind,
+    platform: () => context.platform,
     locale: () => context.locale,
     darkMode: () => context.darkMode,
-    appVersion: () => '0.1.0',
+    appVersion: () => context.appVersion,
     sdkVersion: () => context.sdkVersion,
     // ★ Platform, not grant. A capability can be granted on a platform that cannot do it, and the interface has to
     // say a different thing in each case — so this answers only about the platform and `can` only about the grant.

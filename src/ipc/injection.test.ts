@@ -32,6 +32,12 @@ function context(overrides: Partial<InjectionContext> = {}): InjectionContext {
     locale: 'zh-CN',
     darkMode: false,
     sdkVersion: '0.1.0',
+    // ★ The platform is a parameter now rather than a constant, so every test names the machine it is testing on.
+    // The default is deliberately *not* `'windows'`: that is the value the facade used to return for every platform,
+    // and a default of `'windows'` would let the tests keep passing if it ever went back to being hardcoded.
+    platform: 'linux',
+    hostKind: 'desktop',
+    appVersion: '0.1.0',
     ...overrides
   }
 }
@@ -129,6 +135,44 @@ describe('what the host advertises and what it does', () => {
     expect([...synra.device.supported].sort()).toEqual(
       FEATURES.filter(feature => synra.env.hostSupports(feature)).sort()
     )
+  })
+})
+
+describe('what the host says about itself', () => {
+  // ★ These four used to be literals — `'desktop'`, `'windows'`, `'0.1.0'` — returned for every machine, so the
+  // interface told a plugin on Linux, macOS, Android and iOS that it was running on Windows. A plugin that branched on
+  // `platform()` took the Windows path everywhere, and nothing failed, because a plausible wrong answer is
+  // indistinguishable from a right one at the call site.
+  //
+  // The test that would have caught it is this one: ask on two different platforms and require two different answers.
+  // A single assertion against `'windows'` would have passed happily on the one machine CI ran on.
+  it('reports the platform it was given, not a hardcoded one', () => {
+    const onLinux = createInjection(context({ platform: 'linux' }))
+    const onMac = createInjection(context({ platform: 'macos' }))
+    const onAndroid = createInjection(context({ platform: 'android' }))
+
+    expect(onLinux.env.platform()).toBe('linux')
+    expect(onMac.env.platform()).toBe('macos')
+    expect(onAndroid.env.platform()).toBe('android')
+    // ★ And they differ, which is the part that makes the three assertions above a test rather than a transcription of
+    // the implementation. A facade that ignored the context and returned one value would fail here.
+    expect(new Set([onLinux.env.platform(), onMac.env.platform(), onAndroid.env.platform()]).size).toBe(3)
+  })
+
+  it('reports the host kind and the app version it was given', () => {
+    const synra = createInjection(context({ hostKind: 'mobile', appVersion: '9.9.9' }))
+
+    expect(synra.env.hostKind()).toBe('mobile')
+    expect(synra.env.appVersion()).toBe('9.9.9')
+  })
+
+  it('keeps the host kind and the SDK version apart', () => {
+    // Two different versions, and the point is that neither is the other: a plugin asking for the SDK version must not
+    // be told the application's, which is what a single hardcoded string would have done.
+    const synra = createInjection(context({ appVersion: '9.9.9', sdkVersion: '1.2.3' }))
+
+    expect(synra.env.appVersion()).toBe('9.9.9')
+    expect(synra.env.sdkVersion()).toBe('1.2.3')
   })
 })
 
