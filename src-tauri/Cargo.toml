@@ -56,7 +56,10 @@ default = [ "tauri-shell" ]
 #
 # 这不是为了省时间：Tauri 的构建是最容易失败的一个（WebView2 的安装、NDK、系统库），把它放进测试的依赖路径里，
 # 一个环境问题就会让整套逻辑测试跑不起来，而失败的却是逻辑。逻辑不该为平台的缺失买单。
-tauri-shell = [ "dep:tauri" ]
+tauri-shell = [
+  "dep:tauri",
+  "dep:tauri-build"
+]
 
 [dependencies]
 synra-core = { path = "../../synra-rust-core/crates/synra-core" }
@@ -82,6 +85,17 @@ tokio = { version = "1", features = [
 tauri = { version = "2", optional = true, features = [] }
 
 [build-dependencies]
+
+# ★ `tauri-build` is optional, and it has to be.
+#
+# `tauri-build::build()` calls `tauri_build::is_dev()`, which reads `DEP_TAURI_DEV` — a variable the **`tauri` crate's**
+# own build script emits, because `tauri` declares `links = "Tauri"`. So `tauri-build` panics with "missing `cargo:dev`
+# instruction" whenever `tauri` is out of the dependency graph, which is exactly what `--no-default-features` does.
+#
+# That is worth writing down because it looks like an optionality mistake when you meet it: it reads as a version
+# mismatch ("please update tauri to latest") and it is not — `tauri` is already 2.11.6. The dependency is real and the
+# gating is the only correct arrangement.
+tauri-build = { version = "2", optional = true, features = [ ] }
 
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
