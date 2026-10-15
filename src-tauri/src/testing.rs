@@ -30,6 +30,19 @@ impl Drop for Root {
     }
 }
 
+impl Root {
+    /// A directory named after what is being tested.
+    ///
+    /// # Panics
+    ///
+    /// In tests only, when the directory cannot be made — which is worth failing on, since the test that asked for it
+    /// was about to depend on it.
+    #[must_use]
+    pub fn fresh(label: &str) -> Self {
+        root(label)
+    }
+}
+
 /// A state over an in-memory database, with no plugin host.
 ///
 /// The fast path: no files, no cleanup, no filesystem permissions. Most command tests only care that a command maps an
@@ -87,8 +100,7 @@ pub fn state_in(root: &Root) -> AppState {
 ///
 /// Named rather than random so that a directory found on disk after a crashed run says which test it belongs to — which
 /// is the difference between a five-second answer and a guessing game.
-fn root(label: &str) -> Root {
-    let unique = std::time::SystemTime::now()
+fn root(label: &str) -> Root {    let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
     let path = scratch().join(format!("synra-app-{label}-{unique}"));

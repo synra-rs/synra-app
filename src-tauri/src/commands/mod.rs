@@ -13,10 +13,12 @@
 //! difference between a user looking for a pairing problem and a user filing a bug, so no command is allowed to answer
 //! with the wrong one to be convenient.
 
+pub mod config;
 pub mod devices;
 pub mod identity;
 pub mod plugins;
 
+pub use config::{config_get, config_set};
 pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
 pub use identity::{identity_get, identity_set_display_name};
 pub use plugins::{plugins_disable, plugins_enable, plugins_list};
