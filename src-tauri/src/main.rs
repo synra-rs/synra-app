@@ -41,9 +41,10 @@ use tauri::Manager;
 #[allow(clippy::needless_pass_by_value)]
 mod wrappers {
     use synra_ipc::{
-        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IpcError, PluginSnapshot,
-        ScanOptions,
+        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IntentDecisionDto,
+        IntentSnapshot, IntentSourceDto, IpcError, PluginSnapshot, ScanOptions,
     };
+    use synra_protocol::IntentId;
 
     use super::{AppState, commands, DiagExportResult};
 
@@ -105,11 +106,47 @@ mod wrappers {
         commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
     }
 
+    // ★ The four that had no implementation until the orchestration moved out of the daemon binary.
+    //
+    // The reason recorded against them used to be "needs the intent board behind AppState", which was false: the board
+    // was already in the state. What was missing was roughly 250 lines of routing that only a binary could reach.
+    #[tauri::command]
+    pub fn intent_dispatch(
+        state: tauri::State<'_, AppState>,
+        source: IntentSourceDto,
+    ) -> Result<IntentId, IpcError> {
+        commands::intent::intent_dispatch(&state, &source)
+    }
+
+    #[tauri::command]
+    pub fn intent_snapshot(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+    ) -> Result<IntentSnapshot, IpcError> {
+        commands::intent::intent_snapshot(&state, intent_id)
+    }
+
+    #[tauri::command]
+    pub fn intent_decide(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+        decision: IntentDecisionDto,
+    ) -> Result<(), IpcError> {
+        commands::intent::intent_decide(&state, intent_id, &decision)
+    }
+
+    #[tauri::command]
+    pub fn intent_cancel(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+    ) -> Result<(), IpcError> {
+        commands::intent::intent_cancel(&state, intent_id)
+    }
+
     #[tauri::command]
     pub fn config_get(state: tauri::State<'_, AppState>) -> Result<ConfigSnapshot, IpcError> {
         commands::config::config_get(&state)
     }
-
     #[tauri::command]
     pub fn config_set(state: tauri::State<'_, AppState>, patch: ConfigPatch) -> Result<(), IpcError> {
         commands::config::config_set(&state, &patch)
@@ -138,8 +175,8 @@ mod wrappers {
 
 use wrappers::{
     config_get, config_set, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, diag_export,
-    diag_logs_tail, identity_get, identity_set_display_name, plugins_consent_respond, plugins_disable, plugins_enable,
-    plugins_list,
+    diag_logs_tail, identity_get, identity_set_display_name, intent_cancel, intent_decide, intent_dispatch,
+    intent_snapshot, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list,
 };
 
 fn main() -> std::process::ExitCode {
@@ -180,6 +217,10 @@ fn run() -> Result<(), String> {
             plugins_enable,
             plugins_disable,
             plugins_consent_respond,
+            intent_dispatch,
+            intent_snapshot,
+            intent_decide,
+            intent_cancel,
             config_get,
             config_set,
             diag_export,

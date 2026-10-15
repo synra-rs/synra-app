@@ -52,6 +52,11 @@ const REGISTERED = [
   'plugins_enable',
   'plugins_disable',
   'plugins_consent_respond',
+  // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
+  'intent_dispatch',
+  'intent_snapshot',
+  'intent_decide',
+  'intent_cancel',
   'config_get',
   'config_set',
   'diag_export',
@@ -69,18 +74,10 @@ const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   pairing_request: 'needs the pairing desk wired to a Tauri command',
   pairing_respond: 'needs the pairing desk wired to a Tauri command',
   pairing_cancel: 'needs the pairing desk wired to a Tauri command',
-  // ★ The board is already behind `AppState` (`state.rs:57`), so the reason these used to carry —
-  // "needs the intent board behind AppState" — was wrong, and wrong in the direction that costs work: a reader
-  // checks, sees the board is there, and concludes the command is nearly done.
-  //
-  // What is actually missing is the orchestration. Matching, settling, choosing, confirming and running a plugin's
-  // action all live in `synra-daemon/src/runtime/intent.rs` — **inside a binary** — so a second host cannot reuse
-  // them and would have to duplicate roughly 250 lines. Moving them into a library is the prerequisite, and it is a
-  // refactor rather than a wiring job.
-  intent_dispatch: 'the orchestration lives in the daemon binary, so it must move into a library first',
-  intent_snapshot: 'the orchestration lives in the daemon binary, so it must move into a library first',
-  intent_decide: 'the orchestration lives in the daemon binary, so it must move into a library first',
-  intent_cancel: 'the orchestration lives in the daemon binary, so it must move into a library first',
+  // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the
+  // intent board behind AppState", which was false — the board was already in the state. What was missing was the
+  // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
+  // `synra_core::dispatch::orchestrate` now, and the shell's commands are the thin layer that turns DTOs into calls.
   // Transfers are implemented in the kernel but never started from the UI.
   transfer_send_file: 'the kernel sends, but no UI starts a transfer',
   transfer_send_text: 'the kernel sends, but no UI starts a transfer',

@@ -17,6 +17,7 @@ pub mod config;
 pub mod devices;
 pub mod diag;
 pub mod identity;
+pub mod intent;
 pub mod plugins;
 
 pub use config::{config_get, config_set};
