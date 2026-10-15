@@ -74,6 +74,23 @@ pub struct AppState {
     pub bundles_written: AtomicU64,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
+
+    /// The log subscription, when it could be started.
+    ///
+    /// # ★ Why the shell holds it rather than the daemon
+    ///
+    /// Because they are two processes with two logs. The daemon writes the kernel's log and answers `synra logs`; the
+    /// shell writes its own, and until this field existed the shell had none — so `diag_export` reported the debug-log
+    /// section as an **empty list** rather than as an absence, and the comment beside it said so: "there is no log ring
+    /// behind `AppState` today".
+    ///
+    /// It is held rather than leaked because dropping it is what flushes the file: a guard that went out of scope
+    /// immediately would close the log on the first line, and one that was leaked would never flush the last.
+    ///
+    /// `None` when the file could not be opened. The shell still runs — a window that refuses to open because it cannot
+    /// write a diagnostic file trades the user's work for its record — and `diag_export` says the section is missing
+    /// instead of claiming there was nothing to log.
+    pub log: Option<synra_observe::logging::LogGuard>,
 }
 
 impl AppState {
@@ -105,7 +122,28 @@ impl AppState {
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
             started_at_ms: now_ms,
+            log: None,
         })
+    }
+
+    /// Starts the shell's own log, in the directory `Paths` keeps logs in.
+    ///
+    /// # Why this is separate from [`AppState::new`]
+    ///
+    /// Because `tracing` allows one subscriber per **process**, and `AppState::new` is called by tests as well as by the
+    /// window. A constructor that installed a global subscriber would make every test in a binary race for it, and the
+    /// tests would then depend on which one ran first. The window calls this; a test does not.
+    ///
+    /// # Errors
+    ///
+    /// A message naming what stopped it. The caller decides whether to continue: the shell does, because a window that
+    /// will not open is a worse outcome than a diagnostic file that is not there.
+    pub fn start_logging(&mut self) -> Result<(), String> {
+        let config = synra_observe::logging::LogConfig::in_directory(self.paths.log_dir())
+            .with_level(synra_observe::logging::LogLevel::Info);
+        let guard = synra_observe::logging::init(&config).map_err(|error| error.to_string())?;
+        self.log = Some(guard);
+        Ok(())
     }
 
     /// An identifier for a new scan, unique within this process.

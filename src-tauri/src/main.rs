@@ -213,7 +213,15 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     let state = AppState::new(db, paths, platform, now_ms())
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
-    Ok(with_plugins_or_refuse(state))
+    let mut state = with_plugins_or_refuse(state);
+    // ★ The shell's own log, started before anything else can go wrong — and its failure is reported rather than fatal.
+    // A window that refuses to open because it cannot write a diagnostic file trades the user's actual work for its
+    // record, and `diag_export` says the section is absent instead of claiming there was nothing to log.
+    if let Err(error) = state.start_logging() {
+        eprintln!("synra-app: logging is not running: {error}");
+    }
+
+    Ok(state)
 }
 
 /// The plugin set when an engine starts, and a shell without one when it does not.

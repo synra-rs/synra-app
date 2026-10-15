@@ -77,14 +77,21 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
 
     // ★ The optional sections are given a source only when the user asked for them.
     //
-    // There is no audit sink and no log ring behind `AppState` today, so the value is an empty list — which is the honest
-    // one. An empty audit trail says "nothing was recorded", where omitting the section says the same thing in a way a
-    // reader cannot distinguish from "this bundle was made by a version that never had one".
+    // ★ The log is real now, and the audit trail still is not — and the two are given different answers because they are
+    // different situations. The shell starts its own log (`AppState::start_logging`), so `log_lines` is read from the
+    // file the shell is writing. There is still no audit sink, so `audit` stays an empty list: an empty audit trail says
+    // "nothing was recorded", which is true, where a *missing* section says the same thing in a way a reader cannot
+    // distinguish from "this bundle was made by a version that never had one".
     if options.include_audit {
         sources.audit = Some(Vec::new());
     }
     if options.include_debug_logs || options.log_lines.is_some() {
-        sources.log_lines = Some(Vec::new());
+        // `verbose` is true because the user asking for debug logs has asked for the debug lines; the quiet filter would
+        // hide exactly what they requested, and the bundle would carry an empty section that looked deliberate.
+        let wanted = options.log_lines.map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
+        sources.log_lines = Some(
+            synra_observe::logging::tail(&state.paths.log_dir(), wanted, true, None).lines,
+        );
     }
 
     let mut plan = BundlePlan::plan(sources, state.started_at_ms, destination(state, state.next_bundle_id()));

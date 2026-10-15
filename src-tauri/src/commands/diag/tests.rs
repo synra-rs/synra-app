@@ -129,6 +129,73 @@ fn asking_for_the_debug_log_carries_the_section_too() {
 }
 
 #[test]
+fn the_debug_log_section_carries_the_lines_the_shell_wrote() {
+    // ★ The assertion the test above cannot make, and the reason this one exists.
+    //
+    // `asking_for_the_debug_log_carries_the_section_too` checks that the section is *listed*. It passed for as long as the
+    // source was `Some(Vec::new())` — an included section holding nothing, which is the shape a half-built feature takes:
+    // the consent screen agrees with the file about a section that has no contents in it. A user who shares that bundle
+    // believes they have sent their log.
+    //
+    // So this test writes a real log where the shell keeps it and requires the lines to come back out of the file.
+    let root = testing::Root::fresh("diag-debug-lines");
+    let state = testing::state_in(&root);
+
+    let log_dir = state.paths.log_dir();
+    std::fs::create_dir_all(&log_dir).expect("the log directory");
+    std::fs::write(
+        log_dir.join("synra.log"),
+        "2026-01-01T00:00:00Z INFO the shell started\n\
+         2026-01-01T00:00:01Z DEBUG something only a debug log has\n",
+    )
+    .expect("a log");
+
+    let result = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions {
+            include_debug_logs: true,
+            log_lines: Some(50),
+            ..options()
+        },
+    )
+    .expect("exports");
+
+    let file = bundle(&result);
+    let text = serde_json::to_string(&file).expect("the bundle renders");
+    assert!(
+        text.contains("the shell started"),
+        "the log the shell wrote is not in the bundle it produced: {text}"
+    );
+    // ★ And the debug line too, because the user asked for debug logs. A quiet filter here would hide exactly what was
+    // requested, and the bundle would carry a section that looked deliberate and was empty.
+    assert!(
+        text.contains("something only a debug log has"),
+        "the debug lines were filtered out of the debug-log section: {text}"
+    );
+}
+
+#[test]
+fn the_debug_log_section_is_empty_rather_than_absent_when_there_is_no_log() {
+    // The first run of a fresh installation. The distinction is the one the audit-trail comment draws: an included and
+    // empty section says "nothing was recorded", where an absent one is indistinguishable from a version that never had
+    // the feature. Both are honest here, and the user consented to the section, so it is included.
+    let root = testing::Root::fresh("diag-no-log");
+    let state = testing::state_in(&root);
+
+    let result = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions { include_debug_logs: true, ..options() },
+    )
+    .expect("exports");
+
+    assert!(
+        result.included.iter().any(|section| section == "debug-logs"),
+        "a section the user asked for is listed even when it has nothing in it: {:?}",
+        result.included
+    );
+}
+
+#[test]
 fn the_exclusions_are_about_what_can_never_be_included_not_about_what_was_declined() {
     // ★ What `excluded` actually means, pinned because it is easy to assume otherwise.
     //
