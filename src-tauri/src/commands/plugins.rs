@@ -308,10 +308,10 @@ pub fn plugins_audit(
     // Taken from the end: `audit_for` answers oldest first, and a caller asking for `limit` lines wants the tail.
     let take = usize::try_from(limit).unwrap_or(usize::MAX);
     let start = entries.len().saturating_sub(take);
-    Ok(entries[start..]
-        .iter()
-        .map(entry_card)
-        .collect())
+    // ★ `get` rather than indexing: `start` is `len - take`, which cannot exceed the length, but an index expression is a
+    // panic waiting for the day that reasoning stops holding — and this workspace denies `indexing_slicing` so the compiler
+    // asks for the safer spelling.
+    Ok(entries.get(start..).unwrap_or_default().iter().map(entry_card).collect())
 }
 
 /// One recorded call, as the interface shows it.

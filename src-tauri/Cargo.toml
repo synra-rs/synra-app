@@ -63,6 +63,9 @@ tauri-shell = [
 
 [dependencies]
 synra-core = { path = "../../synra-rust-core/crates/synra-core" }
+# The HTTP client `network-fetch` needs. A host-side crate on purpose: putting it in the kernel would drag a TLS stack into
+# a crate that is cross-compiled for Android — see the crate's own `Cargo.toml`.
+synra-fetch = { path = "../../synra-rust-core/crates/synra-fetch" }
 synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
 synra-protocol = { path = "../../synra-rust-core/crates/synra-protocol" }
 synra-capability = { path = "../../synra-rust-core/crates/synra-capability" }

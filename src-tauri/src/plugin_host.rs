@@ -38,13 +38,24 @@ pub struct DesktopHost {
     /// clipboard, shows notifications and simulates a key chord — each of them behind the guard, so a malformed URL is
     /// refused before anything is launched.
     platform: synra_platform::CommandPlatform,
+    /// One fetcher per plugin, and the hosts it was built for.
+    ///
+    /// ★ Why a cache rather than one client per call: a client holds the plugin's **in-flight count**, so a client built per
+    /// call would start from zero every time and `max_concurrent` would never refuse anything. The host list is stored
+    /// beside it because the guard is built from the plugin's grants — and a user who withdraws a host must not keep
+    /// reaching it through a cached client, so a changed list rebuilds the client.
+    fetch_clients: Mutex<std::collections::HashMap<PluginId, (Vec<String>, Arc<synra_fetch::Client>)>>,
 }
 
 impl DesktopHost {
     /// A host over the shell's own state.
     #[must_use]
     pub fn new(db: Arc<Mutex<SynraDb>>) -> Self {
-        Self { db, platform: synra_platform::CommandPlatform::default() }
+        Self {
+            db,
+            platform: synra_platform::CommandPlatform::default(),
+            fetch_clients: Mutex::new(std::collections::HashMap::new()),
+        }
     }
 
     /// The capabilities the user granted this plugin, as the database records them.
@@ -58,6 +69,77 @@ impl DesktopHost {
             .map(|row| row.capability)
             .collect()
     }
+}
+
+/// The fetcher for one plugin, built or rebuilt from what the user has granted it.
+///
+/// # Errors
+///
+/// [`CallError`] with `capabilityDenied` when the plugin holds no `network:fetch:<host>` grant at all — a different answer
+/// from "that host is not one of them", and the one a plugin author needs when nothing works.
+fn fetcher_for(host: &DesktopHost, plugin: &PluginId) -> Result<Arc<synra_fetch::Client>, CallError> {
+    let hosts = granted_hosts(host, plugin);
+
+    // ★ An empty list is refused rather than treated as "any host".
+    //
+    // `network:fetch:*` is how the **gate** spells the family and a plugin can hold it, but a guard built from it would
+    // have to mean "every host on the internet" — exactly the capability an SSRF guard exists to make deliberate. So a grant
+    // with no host in it reaches nothing.
+    if hosts.is_empty() {
+        return Err(CallError::new(
+            CallError::CAPABILITY_DENIED,
+            format!("`{plugin}` holds no `network:fetch:<host>` grant, so there is nowhere it may fetch from"),
+        ));
+    }
+
+    // ★ The lock is taken twice rather than held across the client's construction: building a client is not work that needs
+    // the map, and holding it would make every plugin's fetch wait behind whichever one arrived first. Two callers arriving
+    // together may each build a client and the later insert wins — which splits the in-flight count between them for as long
+    // as the loser lives, a weaker limit rather than a wrong one.
+    {
+        let clients = host.fetch_clients.lock();
+        if let Some((built_for, client)) = clients.get(plugin)
+            && *built_for == hosts
+        {
+            return Ok(Arc::clone(client));
+        }
+    }
+
+    let client = Arc::new(synra_fetch::Client::new(
+        synra_core::network::NetworkGuard::for_hosts(&hosts),
+        synra_fetch::Limits::default(),
+    ));
+    host.fetch_clients.lock().insert(plugin.clone(), (hosts, Arc::clone(&client)));
+    Ok(client)
+}
+
+/// The hosts a plugin was granted for fetching.
+///
+/// `network:fetch:api.github.com` names a host; `network:fetch:api.github.com:POST` names a host **and a method**, and the
+/// method is not this host's to enforce — the client sends whatever the plugin asked for, and the guard decides *where*. A
+/// capability that is not `network:fetch:` prefixed, or whose host segment is empty or the literal `*`, contributes nothing.
+fn granted_hosts(host: &DesktopHost, plugin: &PluginId) -> Vec<String> {
+    let mut hosts: Vec<String> = host.granted(plugin).iter().filter_map(|capability| host_of(capability)).collect();
+    hosts.sort();
+    hosts.dedup();
+    hosts
+}
+
+/// The host a `network:fetch:` capability names, when it names one.
+///
+/// # Why `*` is not a host
+///
+/// Because it is how the **gate** spells the family: the generated table answers `network:fetch:*` for the whole group, and a
+/// guard that read it as a hostname would be a guard for a machine literally called `*`. A grant that names no host therefore
+/// grants no host, which is the fail-closed reading.
+#[must_use]
+fn host_of(capability: &str) -> Option<String> {
+    let rest = capability.strip_prefix("network:fetch:")?;
+    let host = rest.split(':').next().unwrap_or_default();
+    if host.is_empty() || host == "*" {
+        return None;
+    }
+    Some(host.to_owned())
 }
 
 /// The refusal for everything this shell does not implement.
@@ -273,9 +355,21 @@ impl Host for DesktopHost {
         Err(not_implemented("secrets"))
     }
 
-    fn fetch(&self, _p: &PluginId, _request_json: &str) -> Result<String, CallError> {
-        // No HTTP client exists anywhere in this workspace, which is a fact rather than an omission here.
-        Err(not_implemented("network access"))
+    fn fetch(&self, plugin: &PluginId, request_json: &str) -> Result<String, CallError> {
+        let request: synra_fetch::Request = serde_json::from_str(request_json).map_err(|error| {
+            CallError::new(CallError::BAD_ARGUMENT, format!("the request is not readable: {error}"))
+        })?;
+
+        let client = fetcher_for(self, plugin)?;
+        let response = client.fetch(&request).map_err(|refusal| {
+            // The guard's codes are the contract's own and travel as they are: `hostNotAllowed` is what a plugin branches on
+            // to try somewhere else, and `responseTooLarge` to ask for less.
+            CallError::new(refusal.code.as_str(), refusal.message)
+        })?;
+
+        serde_json::to_string(&response).map_err(|error| {
+            CallError::new(CallError::HOST_FAILED, format!("the answer could not be written: {error}"))
+        })
     }
 
     fn transfer_send(&self, _p: &PluginId, _k: &str, _t: &str, _m: &str) -> Result<String, CallError> {
@@ -307,7 +401,7 @@ mod tests {
     use synra_plugin_host::host_calls::Host as _;
     use synra_protocol::ids::PluginId;
 
-    use super::DesktopHost;
+    use super::{DesktopHost, fetcher_for, host_of};
 
     /// A plugin identifier, spelled the way the protocol spells it.
     fn id(name: &str) -> PluginId {
@@ -328,6 +422,60 @@ mod tests {
                 .expect("a plugin row");
         }
         DesktopHost::new(std::sync::Arc::clone(&state.db))
+    }
+
+    #[test]
+    fn a_capability_names_a_host_or_it_names_nothing() {
+        // The parsing rule on its own, because the tests below depend on it being the fail-closed reading.
+        assert_eq!(host_of("network:fetch:api.github.com").as_deref(), Some("api.github.com"));
+        // A method qualifier is not part of the host: the guard decides *where*, and the method travels as sent.
+        assert_eq!(host_of("network:fetch:api.github.com:POST").as_deref(), Some("api.github.com"));
+
+        // ★ `*` is the family spelling the **gate** uses, not a hostname — reading it as one builds a guard for a machine
+        // called `*`, and reading it as "anything" is the capability an SSRF guard exists to make deliberate.
+        assert_eq!(host_of("network:fetch:*"), None);
+        assert_eq!(host_of("network:fetch:"), None);
+        assert_eq!(host_of("network:fetch"), None);
+        assert_eq!(host_of("fs:read:/data/**"), None);
+    }
+
+    #[test]
+    fn a_plugin_with_no_host_grant_is_told_which_spelling_it_needs() {
+        // Nothing granted: `capabilityDenied`, because the answer is "ask the user" rather than "that host is not one of
+        // them" — and a plugin author can act on the first.
+        let host = host_with(&[]);
+        let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no grant");
+
+        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED);
+        assert!(refused.message.contains("network:fetch:"), "and it says what to ask for: {}", refused.message);
+    }
+
+    #[test]
+    fn a_family_grant_with_a_star_is_not_a_grant_to_reach_everything() {
+        // ★ The whole point of the guard, at the shell: `network:fetch:*` passes the **gate** — it is the family — and it
+        // must not become "every host on the internet".
+        let host = host_with(&[("network:fetch:*", true)]);
+        let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no host named");
+
+        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused}");
+    }
+
+    #[test]
+    fn a_granted_host_gives_a_client_and_withdrawing_it_takes_the_client_away() {
+        // ★ The test the cache needs: a client built for a grant must not outlive the grant. If the cache were keyed on the
+        // plugin alone, the call after the withdrawal would hand back the earlier client — and a user who withdrew a host
+        // would keep reaching it.
+        let host = host_with(&[("network:fetch:api.github.com", true)]);
+        assert!(fetcher_for(&host, &id("@acme/notes")).is_ok(), "granted");
+        assert!(fetcher_for(&host, &id("@acme/notes")).is_ok(), "and again");
+
+        host.db
+            .lock()
+            .record_grants("@acme/notes", &[("network:fetch:api.github.com".to_owned(), false)], 2, "d2")
+            .expect("the withdrawal is recorded");
+        let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("withdrawn");
+
+        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused}");
     }
 
     #[test]
@@ -357,8 +505,6 @@ mod tests {
         host.storage_delete(&plugin, "k").expect("removes");
         assert_eq!(host.storage_used(&plugin).expect("measures"), 0);
     }
-
-    use synra_plugin_host::host_calls::Host as _;
 
     fn host_with(grants: &[(&str, bool)]) -> DesktopHost {
         let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
@@ -442,7 +588,6 @@ mod tests {
         for refusal in [
             host.event_emit(&plugin, "x", "{}"),
             host.device_send(&plugin, "d", "x", "{}"),
-            host.fetch(&plugin, "{}").map(|_| ()),
             host.action_list(&plugin).map(|_| ()),
         ] {
             let error = refusal.expect_err("this shell does not implement it");
@@ -460,5 +605,11 @@ mod tests {
         host.storage_set(&plugin, "k", "v").expect("writes");
         assert_eq!(host.storage_get(&plugin, "k").expect("reads").as_deref(), Some("v"));
         assert_eq!(host.storage_used(&plugin).expect("measures"), 1);
+
+        // ★ And network is not in that list either. Asserted positively the same way: the refusal below is a **capability**
+        // answer rather than a "this shell cannot" one, which is the difference this test exists to protect — and it is
+        // reachable without a network, because the guard refuses before anything is sent.
+        let refused = host.fetch(&plugin, r#"{"url":"https://api.github.com/"}"#).expect_err("no grant");
+        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused:?}");
     }
 }

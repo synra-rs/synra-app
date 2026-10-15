@@ -33,7 +33,7 @@ use crate::state::AppState;
 ///
 /// One line, and that is why the library carries the contract's own codes: a host that had to map a bespoke enum would
 /// be inventing the vocabulary back.
-fn as_ipc(error: RouteError) -> IpcError {
+fn as_ipc(error: &RouteError) -> IpcError {
     IpcError::unknown(error.code).with_params(serde_json::json!({ "reason": error.message }))
 }
 
@@ -147,7 +147,7 @@ pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<Int
     let plugins = plugins(state)?;
     let item = item_for(state, source)?;
     let routed = orchestrate::dispatch(plugins, &state.board, &item, synra_store::sqlite::now_ms())
-        .map_err(as_ipc)?;
+        .map_err(|error| as_ipc(&error))?;
     Ok(routed.intent_id)
 }
 
@@ -158,7 +158,7 @@ pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<Int
 /// [`IpcError`] when the identifier is not one, or names an intent this shell never raised.
 #[allow(clippy::result_large_err)]
 pub fn intent_snapshot(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, IpcError> {
-    let view = orchestrate::snapshot(&state.board, &intent_id.to_string()).map_err(as_ipc)?;
+    let view = orchestrate::snapshot(&state.board, &intent_id.to_string()).map_err(|error| as_ipc(&error))?;
     Ok(IntentSnapshot {
         intent_id: view.intent_id,
         state: view.state.to_owned(),
@@ -209,7 +209,7 @@ pub fn intent_decide(
             synra_store::sqlite::now_ms(),
         )
         .map(|_| ())
-        .map_err(as_ipc),
+        .map_err(|error| as_ipc(&error)),
         // The device the kernel settled on, which is this one: the shell has no peers it can dispatch to.
         IntentDecisionDto::AcceptDefault => orchestrate::decide(
             plugins,
@@ -221,14 +221,14 @@ pub fn intent_decide(
             synra_store::sqlite::now_ms(),
         )
         .map(|_| ())
-        .map_err(as_ipc),
+        .map_err(|error| as_ipc(&error)),
         // A refusal is the same move as a cancellation and is recorded the same way, with the user's own reason when
         // they gave one.
         IntentDecisionDto::Decline { reason } => {
             let why = reason.as_deref().unwrap_or("the user declined");
             // The local device is named because a cancellation of a **dispatched** intent has to say who it is from, and
             // an intent raised here records no origin. See `cannot_send`.
-            refuse_if_remote(orchestrate::cancel(&state.board, local, &id, why).map_err(as_ipc)?)
+            refuse_if_remote(&orchestrate::cancel(&state.board, local, &id, why).map_err(|error| as_ipc(&error))?)
         }
         // ★ `IntentDecisionDto` is `#[non_exhaustive]`, so a decision added later lands here rather than failing to
         // compile. It is refused rather than treated as a decline: an interface newer than this build is asking for
@@ -250,7 +250,7 @@ pub fn intent_decide(
 /// So it is refused, and the refusal names the missing half. What has already happened locally is not undone — the intent
 /// *is* cancelled here — and the sentence says so, because a refusal that reads as "nothing happened" would send the user
 /// looking for an intent that is already gone.
-fn refuse_if_remote(change: orchestrate::StateChange) -> Result<(), IpcError> {
+fn refuse_if_remote(change: &orchestrate::StateChange) -> Result<(), IpcError> {
     match &change.outbound {
         None => Ok(()),
         Some(outbound) => Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
@@ -273,8 +273,8 @@ fn refuse_if_remote(change: orchestrate::StateChange) -> Result<(), IpcError> {
 pub fn intent_cancel(state: &AppState, intent_id: IntentId) -> Result<(), IpcError> {
     let local = state.identity.lock().device_id;
     refuse_if_remote(
-        orchestrate::cancel(&state.board, local, &intent_id.to_string(), "the user cancelled it")
-            .map_err(as_ipc)?,
+        &orchestrate::cancel(&state.board, local, &intent_id.to_string(), "the user cancelled it")
+            .map_err(|error| as_ipc(&error))?,
     )
 }
 
