@@ -106,6 +106,16 @@ mod wrappers {
         commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
     }
 
+    // ★ The audit trail, which had no writer until a plugin instance was given a session.
+    #[tauri::command]
+    pub fn plugins_audit(
+        state: tauri::State<'_, AppState>,
+        plugin_id: synra_protocol::PluginId,
+        limit: u32,
+    ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
+        commands::plugins::plugins_audit(&state, &plugin_id, limit)
+    }
+
     // ★ The four that had no implementation until the orchestration moved out of the daemon binary.
     //
     // The reason recorded against them used to be "needs the intent board behind AppState", which was false: the board
@@ -176,7 +186,7 @@ mod wrappers {
 use wrappers::{
     config_get, config_set, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, diag_export,
     diag_logs_tail, identity_get, identity_set_display_name, intent_cancel, intent_decide, intent_dispatch,
-    intent_snapshot, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list,
+    intent_snapshot, plugins_audit, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list,
 };
 
 fn main() -> std::process::ExitCode {
@@ -217,6 +227,7 @@ fn run() -> Result<(), String> {
             plugins_enable,
             plugins_disable,
             plugins_consent_respond,
+            plugins_audit,
             intent_dispatch,
             intent_snapshot,
             intent_decide,

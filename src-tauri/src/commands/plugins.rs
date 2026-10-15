@@ -18,7 +18,7 @@
 //! needs to see: they will go looking for the setting to remove it, and if it is not on the screen they will file a bug
 //! about it having vanished.
 
-use synra_ipc::{IpcError, PluginSnapshot};
+use synra_ipc::{AuditEntryDto, IpcError, PluginSnapshot};
 use synra_plugin_api::{Manifest, manifest_digest};
 use synra_protocol::PluginId;
 
@@ -277,9 +277,69 @@ fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
     })
 }
 
+/// What a plugin tried to do, most recent last.
+///
+/// # ★ Why this command was waiting, and why it no longer is
+///
+/// The list carried it with the reason *"the audit ring has no production writer yet"*. That was true when it was
+/// written: `AuditRing` was bounded, tested and queryable, and **nothing wrote to it** — the kernel's own
+/// `record_action` had no host that constructs a kernel, and every plugin instance ran with no session, so no call was
+/// ever authorised and none was ever recorded.
+///
+/// The writer exists now: a `PluginSet` installs a session on every instance it creates, drains what the session
+/// recorded into its ring, and `audit_for` reads it back. So this is a read of a real trail rather than of an empty one.
+///
+/// # Why the last `limit` rather than the first
+///
+/// Because a settings screen shows what a plugin has been doing **lately**, and the interesting end of a trail is the
+/// recent one. `limit` of zero returns nothing, which is what a caller asking for nothing gets.
+///
+/// # Errors
+///
+/// [`IpcError`] when this build has no plugin engine, which is a different answer from "this plugin has done nothing".
+#[allow(clippy::result_large_err)]
+pub fn plugins_audit(
+    state: &AppState,
+    plugin_id: &PluginId,
+    limit: u32,
+) -> Result<Vec<AuditEntryDto>, IpcError> {
+    let set = state.plugin_set()?;
+    let entries = set.lock().audit_for(plugin_id);
+    // Taken from the end: `audit_for` answers oldest first, and a caller asking for `limit` lines wants the tail.
+    let take = usize::try_from(limit).unwrap_or(usize::MAX);
+    let start = entries.len().saturating_sub(take);
+    Ok(entries[start..]
+        .iter()
+        .map(entry_card)
+        .collect())
+}
+
+/// One recorded call, as the interface shows it.
+///
+/// ★ The DTO has a `trace_id` and the record does not.
+///
+/// `AuditEntry` carries when, who, against which capability and how it ended — and no trace, because the ring is
+/// written by the session that made the call and the session is not given one. So this is always `None`, and it is
+/// `None` because there is nothing to put there rather than because the lookup failed. Recorded here rather than
+/// invented, and it is a gap in the *record*, not in this mapping.
+fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
+    AuditEntryDto {
+        at_ms: entry.at_ms,
+        capability: entry.capability.to_string(),
+        allowed: entry.outcome.was_allowed(),
+        // The outcome's stable name, for a refusal only. An allowed call has no reason to give, and a sentence written
+        // here would be the shell describing the kernel's own decision.
+        reason: entry.outcome.is_refusal().then(|| entry.outcome.as_str().to_owned()),
+        elapsed_ms: entry.elapsed_ms,
+        // See the note above: the record has no trace.
+        trace_id: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{plugins_consent_respond, plugins_list};
+    use super::{entry_card, plugins_audit, plugins_consent_respond, plugins_list};
+    use synra_protocol::PluginId;
     use crate::testing;
 
     const ID: &str = "@synra-plugin/chat";
@@ -320,6 +380,57 @@ mod tests {
             .into_iter()
             .map(|row| (row.capability, row.granted))
             .collect()
+    }
+
+    #[test]
+    fn an_audit_entry_is_mapped_from_the_record_rather_than_re_derived() {
+        // ★ What this command is responsible for.
+        //
+        // The ring's own read and write are tested where they live: `synra-observe` bounds and queries it, and
+        // `synra-core` drains a session's record into it. What is left here is the mapping, and the mapping is where a
+        // wrong answer would look right — an allowed call reported with a reason, or a refusal reported as allowed.
+        let allowed = entry_card(&synra_observe::audit::AuditEntry::new(
+            1_700_000_000_000,
+            PluginId::parse(ID).expect("a plugin id"),
+            synra_capability::Capability::parse("log:info").expect("a capability"),
+            synra_observe::audit::AuditOutcome::Allowed,
+            Some(7),
+        ));
+        assert_eq!(allowed.capability, "log:info");
+        assert!(allowed.allowed);
+        assert_eq!(allowed.elapsed_ms, Some(7));
+        // ★ An allowed call has no reason to give. A sentence here would be the shell describing the kernel's
+        // own decision, and it would read as a complaint about a call that worked.
+        assert_eq!(allowed.reason, None);
+
+        let denied = entry_card(&synra_observe::audit::AuditEntry::new(
+            1_700_000_000_001,
+            PluginId::parse(ID).expect("a plugin id"),
+            synra_capability::Capability::parse("device:list").expect("a capability"),
+            synra_observe::audit::AuditOutcome::Denied,
+            None,
+        ));
+        assert!(!denied.allowed);
+        // The outcome's stable name, which the interface translates — not a sentence written here.
+        assert_eq!(denied.reason.as_deref(), Some("denied"));
+        // And always `None`: the record carries no trace, which is a gap in the *record* rather than in this mapping.
+        assert_eq!(denied.trace_id, None);
+    }
+
+    #[test]
+    fn without_an_engine_the_audit_command_says_so_rather_than_answering_with_nothing() {
+        // ★ The rule every command in this module shares: it either answers or says why it cannot.
+        //
+        // "This plugin has done nothing" and "this build cannot run plugins, so there is no trail to read" look the same
+        // on a screen — an empty list — and a user acts on them differently. The fixture has no engine, so this is the
+        // case that can be asserted here; the empty-but-real trail is covered by the mapping test above, which drives an
+        // entry through `entry_card` rather than through a ring this fixture cannot fill.
+        let state = crate::testing::state();
+
+        let refused = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10)
+            .expect_err("this fixture has no engine");
+
+        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
     }
 
     #[test]

@@ -52,6 +52,8 @@ const REGISTERED = [
   'plugins_enable',
   'plugins_disable',
   'plugins_consent_respond',
+  // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
+  'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
   'intent_snapshot',
@@ -94,7 +96,6 @@ const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_update: 'no updater exists',
   plugins_sync_plan: 'the sync planner has no shell caller',
   plugins_sync_run: 'the sync runner has no shell caller',
-  plugins_audit: 'the audit ring has no production writer yet',
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel does not exist at all.
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
