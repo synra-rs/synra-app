@@ -72,20 +72,33 @@ const REGISTERED = [
  * the wait is different in each group and a reader deserves to know which.
  */
 const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
-  // Pairing needs a user prompt and a live link — the desk exists, the command surface does not.
-  pairing_request: 'needs the pairing desk wired to a Tauri command',
-  pairing_respond: 'needs the pairing desk wired to a Tauri command',
-  pairing_cancel: 'needs the pairing desk wired to a Tauri command',
+  // ★ These three groups used to say the shell was one wiring job away, and it is not.
+  //
+  // Pairing said "needs the pairing desk wired to a Tauri command" — but there is **no desk in this shell at all**
+  // (nothing here names `PairingDesk` outside a test name), and a desk with no link would have nothing to raise a prompt
+  // over. Transfers said "the kernel sends, but no UI starts a transfer", which describes the *daemon*: this shell has no
+  // transport, no `synra-transfer` or `synra-net` dependency, and its own plugin host answers `transfer-send` with
+  // `notImplemented`. Sync moves bytes over links, so it needs the same missing half.
+  //
+  // What is missing is the shell's **network half** — the `DiscoveryService` and `TransportRegistry` that doc 05 §2.1 puts
+  // inside the desktop app's in-process kernel. A `.vue` file is not the remaining work, and a reason that says it is
+  // sends the next person to the wrong file.
+  pairing_request: 'the shell has no pairing desk and no link to raise a prompt over',
+  pairing_respond: 'the shell has no pairing desk and no link to answer on',
+  pairing_cancel: 'the shell has no pairing desk and no link to cancel',
   // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the
   // intent board behind AppState", which was false — the board was already in the state. What was missing was the
   // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
   // `synra_core::dispatch::orchestrate` now, and the shell's commands are the thin layer that turns DTOs into calls.
-  // Transfers are implemented in the kernel but never started from the UI.
-  transfer_send_file: 'the kernel sends, but no UI starts a transfer',
-  transfer_send_text: 'the kernel sends, but no UI starts a transfer',
-  transfer_cancel: 'the kernel sends, but no UI starts a transfer',
-  transfer_list: 'the kernel sends, but no UI starts a transfer',
+  // Transfers are implemented in the kernel but this shell has nothing to send them over.
+  transfer_send_file: 'the shell has no transport to send one over',
+  transfer_send_text: 'the shell has no transport to send one over',
+  transfer_cancel: 'the shell has no transport, so nothing is in flight to cancel',
+  transfer_list: 'the shell has no transport, so there is no transfer to list',
   // Connecting and disconnecting are deliberately absent — the kernel dials, the UI does not.
+  //
+  // ★ "The kernel dials" is still true of the daemon and not of this shell, which never dials anything. The reason stands
+  // as an intent — the UI is not where a dial belongs — but it is not a claim that dialling happens here.
   devices_connect: 'deliberately absent: the kernel dials, the UI does not',
   devices_disconnect: 'deliberately absent: the kernel dials, the UI does not',
   // The plugin lifecycle beyond enable/disable is not built.
@@ -94,8 +107,10 @@ const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_uninstall: 'no uninstaller is wired',
   plugins_check_update: 'no update checker exists',
   plugins_update: 'no updater exists',
-  plugins_sync_plan: 'the sync planner has no shell caller',
-  plugins_sync_run: 'the sync runner has no shell caller',
+  // ★ These two are also waiting on the missing network half, not just on a caller. Sync moves bytes over links, so with
+  // no transport in this shell a planner would plan a transfer that could not happen.
+  plugins_sync_plan: 'the shell has no transport, and no caller for the planner either',
+  plugins_sync_run: 'the shell has no transport, and no caller for the runner either',
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel does not exist at all.
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
