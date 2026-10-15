@@ -129,6 +129,48 @@ fn asking_for_the_debug_log_carries_the_section_too() {
 }
 
 #[test]
+fn the_log_tail_reads_the_shells_own_log_including_the_debug_lines() {
+    // ★ The command was unbuildable before the shell had a log, and this is the test that says it now reads one.
+    //
+    // Two things are asserted and they are different: that the lines come back at all, and that the **debug** ones do.
+    // A quiet filter would return only the `INFO` line, and a caller would conclude the log had nothing useful in it —
+    // which is the opposite of why they ran a diagnostics command.
+    let root = testing::Root::fresh("diag-log-tail");
+    let state = testing::state_in(&root);
+
+    let log_dir = state.paths.log_dir();
+    std::fs::create_dir_all(&log_dir).expect("the log directory");
+    std::fs::write(
+        log_dir.join("synra.log"),
+        "2026-01-01T00:00:00Z INFO first\n\
+         2026-01-01T00:00:01Z INFO second\n\
+         2026-01-01T00:00:02Z DEBUG third\n",
+    )
+    .expect("a log");
+
+    let all = super::diag_logs_tail(&state, None).expect("reads");
+    assert_eq!(all.len(), 3, "every line, debug included: {all:?}");
+    assert!(all.iter().any(|line| line.contains("third")), "the debug line is missing: {all:?}");
+
+    // The count is honoured, and the tail is the newest end — a user asking for the last line wants the last line, not
+    // the first.
+    let last = super::diag_logs_tail(&state, Some(1)).expect("reads");
+    assert_eq!(last.len(), 1);
+    assert!(last[0].contains("third"), "{last:?}");
+}
+
+#[test]
+fn the_log_tail_is_empty_rather_than_an_error_when_nothing_has_been_written() {
+    // A fresh installation has not logged anything yet. Reporting that as a failure would make a working install look
+    // broken the first time a user opened diagnostics.
+    let root = testing::Root::fresh("diag-log-tail-empty");
+    let state = testing::state_in(&root);
+
+    let lines = super::diag_logs_tail(&state, None).expect("an absent log is not a failure");
+    assert!(lines.is_empty(), "{lines:?}");
+}
+
+#[test]
 fn the_debug_log_section_carries_the_lines_the_shell_wrote() {
     // ★ The assertion the test above cannot make, and the reason this one exists.
     //

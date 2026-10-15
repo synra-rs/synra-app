@@ -116,11 +116,23 @@ mod wrappers {
     ) -> Result<DiagExportResult, IpcError> {
         commands::diag::diag_export(&state, &options)
     }
+
+    /// The tail of the shell's own log.
+    ///
+    /// `lines: Option<u32>` rather than an options struct, because there is one option. A struct for a single count
+    /// would be an IPC type that has to be mirrored in the TypeScript contract for no shape of its own.
+    #[tauri::command]
+    pub fn diag_logs_tail(
+        state: tauri::State<'_, AppState>,
+        lines: Option<u32>,
+    ) -> Result<Vec<String>, IpcError> {
+        commands::diag::diag_logs_tail(&state, lines)
+    }
 }
 
 use wrappers::{
     config_get, config_set, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, diag_export,
-    identity_get, identity_set_display_name, plugins_disable, plugins_enable, plugins_list,
+    diag_logs_tail, identity_get, identity_set_display_name, plugins_disable, plugins_enable, plugins_list,
 };
 
 fn main() -> std::process::ExitCode {
@@ -163,6 +175,7 @@ fn run() -> Result<(), String> {
             config_get,
             config_set,
             diag_export,
+            diag_logs_tail,
         ])
         .run(tauri::generate_context!())
         .map_err(|error| format!("the window could not be opened: {error}"))

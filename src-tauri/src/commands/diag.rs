@@ -181,6 +181,34 @@ fn destination(state: &AppState, bundle_id: u64) -> std::path::PathBuf {
         .join(format!("bundle-{}-{bundle_id}.json", state.started_at_ms))
 }
 
+/// Reads the tail of the shell's own log.
+///
+/// # ★ Why this exists now and not before
+///
+/// Because there was nothing to read. Until the shell started its own log (`AppState::start_logging`), this command would
+/// have read a path no code created — the same shape as the daemon's `synra logs`, which answered "no lines" for as long
+/// as nothing wrote the file. Implementing it earlier would have shipped a command whose every answer was an empty list,
+/// and an empty list is a claim: it says "nothing was logged" when the truth was "nothing is logging".
+///
+/// # Why it is not the same command as `logs`
+///
+/// `Request::Logs` in the control protocol is the **kernel's** log, read by the CLI from another process. This is the
+/// **shell's** log, read in-process. They are two files because they are two processes, and a command that conflated
+/// them would show a user the wrong one with no way to tell.
+///
+/// # Errors
+///
+/// [`IpcError::Internal`] only when the directory cannot be read at all. A missing log is not an error: a fresh
+/// installation has not written one yet, and reporting that as a failure would make a working install look broken on its
+/// first run.
+pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String>, IpcError> {
+    let wanted = lines.map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
+    // ★ `verbose = true`, because this is a diagnostics command and the whole reason a user runs it is to see the detail
+    // a quiet filter hides. It is also what `diag_export` does with the same file, so the two agree about what the log
+    // contains — a pair of commands reading one file with different filters is how a user comes to distrust both.
+    Ok(synra_observe::logging::tail(&state.paths.log_dir(), wanted, true, None).lines)
+}
+
 /// The one place a database or filesystem failure becomes an `IpcError`.
 fn internal(error: impl std::fmt::Display) -> IpcError {
     IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({ "reason": error.to_string() }))

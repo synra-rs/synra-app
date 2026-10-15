@@ -53,7 +53,8 @@ const REGISTERED = [
   'plugins_disable',
   'config_get',
   'config_set',
-  'diag_export'
+  'diag_export',
+  'diag_logs_tail'
 ] as const
 
 /**
@@ -95,9 +96,17 @@ const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
   plugin_ui_ready: 'the plugin UI origin and its token injection do not exist',
   // Logs and metrics have no sink behind AppState yet.
-  diag_metrics: 'no metrics sink is behind AppState',
-  diag_logs_tail: 'no log ring is behind AppState'
+  diag_metrics: 'no metrics sink is behind AppState'
 }
+
+/**
+ * ★ What moved off this list, and why it is worth a note.
+ *
+ * `diag_logs_tail` was here with the reason "no log ring is behind AppState". That was true, and it was the *only* thing
+ * standing in the way: the command itself is a few lines over a reader that already existed. The shell now starts its own
+ * log, so the reason expired and the command moved up — which is what these reasons are for. A list of unbuilt things
+ * with no reason attached rots into a list nobody can act on.
+ */
 
 /** The command names the contract declares, read from `command.rs`. */
 function declaredInContract(): string[] {
