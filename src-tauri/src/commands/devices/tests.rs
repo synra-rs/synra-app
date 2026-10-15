@@ -221,25 +221,39 @@ fn a_paired_device_keeps_its_address() {
 }
 
 #[test]
-fn a_scan_answers_with_an_identifier_and_appears_in_the_next_snapshot() {
+fn an_active_scan_is_refused_rather_than_reported_as_running() {
+    // ★ The command that used to fill a progress bar for a scan nobody performed.
+    //
+    // It answered with an identifier and a state carrying `elapsed_ms: 0, found: 0` that **nothing ever updated**, so the
+    // interface drew a bar that could never move. "Found nothing" is true; "is scanning" was not, and the module's rule
+    // is that a command answers or says why it cannot.
+    //
+    // The shell has no listening port to announce, and there is no control request asking the daemon — which does scan
+    // continuously — for an on-demand burst. Both halves are named in the refusal, because a user who cannot scan needs
+    // to know whether the feature is missing or their network is.
     let state = testing::state();
-    let scan_id = devices_scan_start(&state, &ScanOptions::default()).expect("a scan");
 
-    let snapshot = devices_snapshot(&state).expect("a snapshot");
-    let scanning = snapshot.scanning.expect("the scan is in the snapshot");
-    assert_eq!(scanning.scan_id, scan_id);
-    assert_eq!(scanning.total_ms, SCAN_CEILING_MS, "no timeout asked for means the ceiling");
-    assert_eq!(scanning.found, 0, "nothing has answered yet");
+    let refused = devices_scan_start(&state, &ScanOptions::default()).expect_err("this shell cannot scan");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    let reason = refused.params.get("reason").and_then(serde_json::Value::as_str).unwrap_or_default();
+    assert!(reason.contains("daemon"), "the refusal names where discovery lives: {reason}");
+    // And nothing was left in the snapshot claiming a scan is under way.
+    assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
 }
 
 #[test]
-fn a_longer_scan_is_clamped_rather_than_refused() {
-    // ★ A caller asking for an hour is a slider that ran to its end, not an attacker. Refusing would surface a maximum
-    // the user cannot see and cannot discover.
+fn a_long_scan_request_is_refused_for_the_same_reason_as_a_short_one() {
+    // The clamp used to be the interesting part — a caller asking for an hour got the ceiling. There is nothing left to
+    // clamp, and the point of asserting it is that a *longer* request is not treated differently: the refusal is about
+    // the scan not existing, not about the timeout.
     let state = testing::state();
     let asked = SCAN_CEILING_MS * 10;
-    devices_scan_start(&state, &ScanOptions { timeout_ms: Some(asked), ..ScanOptions::default() }).expect("a scan");
-    assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning.expect("a scan").total_ms, SCAN_CEILING_MS);
+
+    let refused = devices_scan_start(&state, &ScanOptions { timeout_ms: Some(asked), ..ScanOptions::default() })
+        .expect_err("this shell cannot scan");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
 }
 
 #[test]
@@ -254,10 +268,20 @@ fn a_cached_only_scan_finishes_immediately_rather_than_showing_a_bar_that_cannot
     assert_eq!(scanning.total_ms, 0, "there is nothing to wait for");
 }
 
+
+/// The only scan this shell can start.
+///
+/// ★ These tests are about cancelling and about identifiers, not about scanning, so they set up with the scan
+/// that exists. An active scan is refused for the reason `devices_scan_start` gives; using one here would make three
+/// tests about cancellation into tests about a refusal.
+fn cached() -> ScanOptions {
+    ScanOptions { cached_only: true, ..ScanOptions::default() }
+}
+
 #[test]
 fn a_cancelled_scan_is_gone_from_the_next_snapshot() {
     let state = testing::state();
-    let scan_id = devices_scan_start(&state, &ScanOptions::default()).expect("a scan");
+    let scan_id = devices_scan_start(&state, &cached()).expect("a scan");
     devices_scan_cancel(&state, &scan_id).expect("cancels");
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
 }
@@ -265,7 +289,7 @@ fn a_cancelled_scan_is_gone_from_the_next_snapshot() {
 #[test]
 fn cancelling_a_scan_that_is_not_running_says_so_and_names_what_is() {
     let state = testing::state();
-    let running = devices_scan_start(&state, &ScanOptions::default()).expect("a scan");
+    let running = devices_scan_start(&state, &cached()).expect("a scan");
 
     let error = devices_scan_cancel(&state, "scan-999").expect_err("the wrong scan");
     assert_eq!(error.code, ErrorCode::InvalidArgument);
@@ -287,9 +311,9 @@ fn two_scans_in_a_row_get_different_identifiers() {
     // The identifier is a counter, and the only reason it is not a random value is that it has to be readable in a
     // log. A counter that repeats would make the log line ambiguous, which defeats that reason.
     let state = testing::state();
-    let first = devices_scan_start(&state, &ScanOptions::default()).expect("a scan");
+    let first = devices_scan_start(&state, &cached()).expect("a scan");
     devices_scan_cancel(&state, &first).expect("cancels");
-    let second = devices_scan_start(&state, &ScanOptions::default()).expect("a scan");
+    let second = devices_scan_start(&state, &cached()).expect("a scan");
     assert_ne!(first, second);
 }
 

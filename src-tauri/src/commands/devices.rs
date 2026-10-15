@@ -94,29 +94,52 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
 
 /// Starts a scan and answers with its identifier.
 ///
+/// # ★ Only the cached scan can be honoured, and this command used to claim otherwise
+///
+/// A scan that is not `cached_only` is refused, and the reason is worth writing down because the code that this replaced
+/// argued the opposite and was wrong.
+///
+/// It said: *"a shell with no sockets is a normal configuration rather than a failure, so the scan is recorded anyway
+/// and reports zero found — which is a true answer, not a stub."* The second half is where it goes wrong. "Found
+/// nothing" is true; **"is scanning" is not**. The state was written once with `elapsed_ms: 0, found: 0` and updated by
+/// nothing, so the interface drew a progress bar that could never move and a count that could never rise. That is an
+/// invented answer, and this module\u2019s own rule is that a command answers or says why it cannot.
+///
+/// # Why the shell cannot scan at all
+///
+/// `synra_core::DiscoveryService` is in the library and the shell could bind one — but it would have to announce a port,
+/// and the shell serves nothing on one. Discovery belongs to the process that accepts connections, which is the daemon,
+/// and it is already running there: the daemon's worker lives for the process's lifetime and writes what it hears into
+/// the same `devices_seen` table this shell reads. So the list is current without this command doing anything.
+///
+/// What is missing is the *on-demand burst* — asking the daemon to query now rather than wait for its next interval —
+/// and there is no control request for it. Until one exists, "scan now" has no path, and a bar that fills for nothing is
+/// worse than a refusal that says so.
+///
 /// # Errors
 ///
-/// [`IpcError::Internal`] when the scan cannot be recorded. A shell with no sockets is a normal configuration rather
-/// than a failure, so the scan is recorded anyway and reports zero found — which is a true answer, not a stub.
+/// [`IpcError`] when an active scan was asked for. A `cached_only` scan is answered, because reading what is already
+/// known needs no sockets and is exactly what the shell can do.
 pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String, IpcError> {
-    let total_ms = match opts.timeout_ms {
-        // ★ Clamped, not refused.
-        //
-        // A caller asking for an hour is a caller whose slider ran to its end, not an attacker. Refusing would surface a
-        // maximum the user cannot see and cannot discover.
-        Some(asked) => asked.min(SCAN_CEILING_MS),
-        None => SCAN_CEILING_MS,
-    };
+    if !opts.cached_only {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
+            serde_json::json!({
+                "reason": "this shell cannot scan: discovery belongs to the daemon, which is already \
+                    discovering and writing what it hears into the same device list. What is missing is a \
+                    control request asking it for an on-demand scan. Ask for a cached scan to see \
+                    what is already known.",
+            }),
+        ));
+    }
     // ★ `cached_only` finishes immediately, with nothing to wait for.
     //
     // A "show me what I already know" scan uses no sockets, so giving it a running state with a deadline would show a
-    // progress bar that cannot progress — which is worse than an honest finished one.
+    // progress bar that cannot progress. Zero is what a finished scan looks like, and it is true here.
     let scan_id = state.next_scan_id();
-    let mut scanning = state.scanning.lock();
-    *scanning = Some(ScanState {
+    *state.scanning.lock() = Some(ScanState {
         scan_id: scan_id.clone(),
         elapsed_ms: 0,
-        total_ms: if opts.cached_only { 0 } else { total_ms },
+        total_ms: 0,
         found: 0,
     });
     Ok(scan_id)
