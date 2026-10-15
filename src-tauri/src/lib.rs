@@ -47,6 +47,7 @@
 )]
 
 pub mod commands;
+pub mod plugin_host;
 pub mod state;
 
 #[cfg(test)]

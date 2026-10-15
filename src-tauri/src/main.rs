@@ -258,7 +258,19 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
     let kind = synra_plugin_host::BackendKind::default_for(synra_plugin_host::HostKind::Desktop);
     match synra_plugin_host::engine::WasmtimeBackend::new(kind) {
         Ok(engine) => {
-            let set = synra_core::dispatch::PluginSet::new(synra_plugin_host::Backend::new(Arc::new(engine)));
+            // ★ The host, which this shell had never supplied.
+            //
+            // `PluginSet::new` took an engine alone when this line was written and takes a host as well now. The second
+            // argument is not a detail: an instance with no session refuses every host call, which is what made the
+            // capability gate inert, and requiring the host is what made that state unrepresentable.
+            //
+            // The cost was that this line stopped compiling, and nothing said so — the check being run was
+            // `cargo test --lib`, and this code is in the binary.
+            let host = Arc::new(synra_app::plugin_host::DesktopHost::new(Arc::clone(&state.db)));
+            let set = synra_core::dispatch::PluginSet::new(
+                synra_plugin_host::Backend::new(Arc::new(engine)),
+                host,
+            );
             state.with_plugins(Arc::new(Mutex::new(set)))
         }
         Err(error) => {
