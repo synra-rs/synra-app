@@ -1,21 +1,21 @@
 //! Tests for the devices commands.
 //!
-//! # What is deliberately not tested here
+//! # Paired, and heard from but not paired
 //!
-//! The "seen but not paired" cards. Nothing in the kernel writes `devices_seen` — the table exists, the reader exists,
-//! and there is no writer — so there is no way for a test to put a row in it through the public store API, and writing
-//! one with raw SQL from here would test a state the product cannot reach. It is a real gap in the kernel and it is
-//! recorded as one rather than covered by a test that fabricates the row it asserts on.
+//! Both appear in a snapshot and both are exercised here, because the kernel writes `devices_seen` (the daemon's
+//! discovery thread) as well as `paired_devices` (the handshake). An earlier version of this file could not cover the
+//! second set at all — the table existed, the reader existed, and nothing wrote it — which is what a reader without a
+//! writer looks like from the outside.
 
 use synra_ipc::ScanOptions;
 use synra_protocol::ErrorCode;
-use synra_store::Paired;
+use synra_store::{Paired, Seen};
 
 use super::{SCAN_CEILING_MS, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
 use crate::state::AppState;
 use crate::testing;
 
-const OTHER: &str = "22222222-2222-4222-8222-222222222222";
+const OTHER: &str = "22222222-2222-4222-8222-222222222333";
 
 /// A state with one paired device in it.
 fn with_paired_device() -> AppState {
@@ -110,6 +110,88 @@ fn devices_with_the_same_name_still_come_out_in_one_order() {
     assert_eq!(snapshot.devices.len(), 2);
     assert_eq!(snapshot.devices[0].display_name, snapshot.devices[1].display_name, "with the same name");
     assert_ne!(snapshot.devices[0].device_id, snapshot.devices[1].device_id, "so the order came from the identifiers");
+}
+
+/// A sighting of a device that has never been paired, as discovery would record it.
+fn sighting(id: &str, name: &str) -> Seen {
+    Seen {
+        device_id: id.to_owned(),
+        display_name: name.to_owned(),
+        platform: "linux".to_owned(),
+        seen_at_ms: 3_000,
+        source: "192.168.1.9:5000".to_owned(),
+    }
+}
+
+#[test]
+fn a_device_that_was_only_heard_from_still_reaches_the_list() {
+    // ★ The card a user pairs from.
+    //
+    // Before the kernel wrote `devices_seen` this card could not exist, so the devices screen could only ever show
+    // devices that were already paired — and "what can I pair with?" had no answer anywhere in the product.
+    let state = testing::state();
+    state.db().record_seen_device(&sighting(OTHER, "Hallway tablet")).expect("records a sighting");
+
+    let snapshot = devices_snapshot(&state).expect("a snapshot");
+    assert_eq!(snapshot.devices.len(), 1);
+    let card = &snapshot.devices[0];
+    assert_eq!(card.display_name, "Hallway tablet");
+    assert!(!card.paired, "it has been heard from and not paired with");
+}
+
+#[test]
+fn a_device_that_is_both_paired_and_heard_from_is_listed_once() {
+    // ★ The duplicate this guards against.
+    //
+    // The two tables are separate and neither cascades into the other, so a paired device that discovery also hears will
+    // be in both. Without the de-duplication it would appear twice — once as paired, once as not — and the user would
+    // see the same machine twice with different affordances.
+    let state = with_paired_device();
+    let paired_id = devices_snapshot(&state).expect("a snapshot").devices.remove(0).device_id.to_string();
+    state.db().record_seen_device(&sighting(&paired_id, "Study PC")).expect("records a sighting");
+
+    let snapshot = devices_snapshot(&state).expect("a snapshot");
+    assert_eq!(snapshot.devices.len(), 1, "listed once");
+    assert!(snapshot.devices[0].paired, "and as paired, which is the more capable answer");
+}
+
+#[test]
+fn paired_devices_are_listed_before_the_ones_that_still_need_pairing() {
+    // ★ The first sort key.
+    //
+    // The devices a user can already send to are what the screen is for; the ones they have to pair with next are what
+    // they are shopping for. The names are chosen so that sorting by name alone would put them the other way round.
+    let state = with_paired_device();
+    state.db().record_seen_device(&sighting(OTHER, "Aardvark tablet")).expect("records a sighting");
+
+    let snapshot = devices_snapshot(&state).expect("a snapshot");
+    assert_eq!(snapshot.devices.len(), 2);
+    assert_eq!(snapshot.devices[0].display_name, "Study PC", "the paired one, despite sorting later by name");
+    assert!(snapshot.devices[0].paired);
+    assert_eq!(snapshot.devices[1].display_name, "Aardvark tablet");
+    assert!(!snapshot.devices[1].paired);
+}
+
+#[test]
+fn an_unpaired_device_is_shown_without_an_address() {
+    // ★ Why `address` is absent for these and present for paired ones.
+    //
+    // The store keeps an address for a paired device because that is where it is reachable. For a device seen once over
+    // discovery, the address in that announcement is where it *was*, which is not a promise about now — and showing it
+    // on a card that looks exactly as usable as a paired one offers the user a device they cannot reach.
+    let state = testing::state();
+    state.db().record_seen_device(&sighting(OTHER, "Hallway tablet")).expect("records a sighting");
+    assert_eq!(devices_snapshot(&state).expect("a snapshot").devices[0].address, None);
+}
+
+#[test]
+fn a_paired_device_keeps_its_address() {
+    let snapshot = devices_snapshot(&with_paired_device()).expect("a snapshot");
+    assert_eq!(
+        snapshot.devices[0].address.as_deref(),
+        Some("192.168.1.4:5000"),
+        "a paired device is reachable at a known address"
+    );
 }
 
 #[test]
