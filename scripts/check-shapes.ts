@@ -157,20 +157,37 @@ async function checkSingleDeclarations(): Promise<void> {
 async function checkTypeOnlyImports(): Promise<void> {
   for (const file of await sources(join(here, 'src'))) {
     const text = await readFile(file, 'utf8')
-    const lines = text.split('\n')
-    for (const [index, line] of lines.entries()) {
-      if (!line.includes('from \'@synra/client\''))
-        continue
-      // `import type` is the allowed form. A bare `import` is not, and `import { type X }` is a value import that
-      // happens to be all types — which `verbatimModuleSyntax` refuses, and which this check refuses for the same
-      // reason: the emitted JavaScript would import a package with no entry.
-      if (!/^\s*import\s+type\b/.test(line)) {
+    // ★ Two patterns, both anchored, and neither able to run away.
+    //
+    // It used to test each line that *ends* in `from '@synra/client'`. A type import written the way ESLint formats
+    // one — `import type {\n  A,\n  B,\n} from '@synra/client'` — puts `from` on the line holding `}`, so the test ran
+    // against `}` and reported a value import that was not one. A check that correct code cannot pass is a check people
+    // learn to ignore.
+    //
+    // The first attempt here fixed that and was worse: `[\s\S]*?` between `import` and `from` happily crossed every
+    // statement in between, so a real value import at the bottom of a file was swallowed by the type import at the top
+    // and read as one clause beginning with `type` — a guard that passes on the exact thing it exists to reject. The
+    // brace list cannot contain `}`, so `{[^}]*}` bounds the clause to the statement it started in, and the second
+    // pattern covers a default import, which has no braces to bound it.
+    const patterns = [
+      // A braced import. Group 1 is `type` when the form is the allowed one.
+      /^[ \t]*import\s+(type\s+)?\{([^}]*)\}\s*from\s*'@synra\/client'/gm,
+      // A default import — `import Foo from '@synra/client'` — which can never be the allowed form.
+      /^[ \t]*import\s+[A-Za-z_$][\w$]*\s*(?:,\s*)?from\s*'@synra\/client'/gm
+    ]
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        // `import type` is the allowed form. A bare `import` is not, and `import { type X }` is a value import that
+        // happens to be all types — which `verbatimModuleSyntax` refuses, and which this check refuses for the same
+        // reason: the emitted JavaScript would import a package with no entry.
+        if (match[1] !== undefined)
+          continue
         // `toString` rather than the number in the template: a rule in this repository refuses a number interpolated
         // into a string, because the one place it matters is a value that is not the one the author expected.
-        const at = (index + 1).toString()
+        const line = text.slice(0, match.index).split('\n').length
         failures.push({
           check: 'type-only-import',
-          detail: `${relative(here, file)}:${at} imports a value from the type-only package @synra/client`
+          detail: `${relative(here, file)}:${line.toString()} imports a value from the type-only package @synra/client`
         })
       }
     }
