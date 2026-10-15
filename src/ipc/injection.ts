@@ -432,6 +432,31 @@ export function createInjection(context: InjectionContext): SynraClient {
     self,
     isSynraError: (value: unknown): value is SynraError => isSynraErrorValue(value),
     isCode: (value: unknown, code: ErrorCode) => isSynraErrorValue(value) && value.code === code,
+    // ★ The narrowing one, and it is not a spelling of `isCode`.
+    //
+    // `isCode` answers `boolean`, so a `catch` branch using it learns nothing about the value's type — an author would
+    // have to assert the code a second time to read it. This one narrows to the literal, which is what makes
+    // `if (synra.isCapabilityDenied(e))` useful inside the branch rather than only at the test.
+    //
+    // The design document listed it (§4.1) and both of its examples use it (§5.2, §8), while the implementation had
+    // neither it nor `ready` — so an author copying the complete example got a method that does not exist. Found by
+    // compiling that example (`synra-js` guard 8), not by reading either side.
+    isCapabilityDenied: (value: unknown): value is SynraError & { code: 'capability_denied' } =>
+      isSynraErrorValue(value) && value.code === 'capability_denied',
+    /**
+     * Tells the host the page has mounted.
+     *
+     * # Why the failure is swallowed here, and only here
+     *
+     * The contract is `ready(): void` — synchronous, and the page does not wait for an answer. `plugin_ui_ready` is a
+     * real name in the kernel's command table (`Interface::Plugin`), so this is a call into the contract rather than an
+     * invented one; what it is not yet is a command *this shell registers*, and a page cannot do anything about that.
+     * Letting the rejection escape would produce an unhandled rejection in a plugin author's console, naming a command
+     * they never called and cannot fix — which is worse than the truth, that the host is not listening yet.
+     */
+    ready: (): void => {
+      void context.bridge.invoke('plugin_ui_ready').catch(() => undefined)
+    },
     // ★ From the host, not `crypto.randomUUID()`.
     //
     // The identifier goes into the kernel's de-duplication table, and the kernel needs to be able to confirm it was
