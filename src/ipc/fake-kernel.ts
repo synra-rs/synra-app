@@ -180,9 +180,19 @@ const TRANSFERS: readonly TransferSnapshot[] = []
       case 'transfer_list':
         return { transfers: TRANSFERS.map(transfer => ({ ...transfer })) }
       case 'config_get':
-        // The shape is the kernel's, and a settings page that invents its own key names is a settings page that has to
-        // be rewritten. One real key, so the round trip is exercised.
-        return { theme: 'system', autoSyncPlugins: true }
+        // ★ The kernel's own shape, not a flat bag of settings.
+        //
+        // This used to answer `{ theme: 'system', autoSyncPlugins: true }`. The kernel answers
+        // `{ values: {…}, overridden: […] }`, because the boundary carries a bag and the *screens* own their own
+        // shape — so a fake with the flat form teaches the interface to read a field that never arrives, and the
+        // failure is a settings page that renders empty with nothing in the log.
+        //
+        // The two keys are the kernel's own `ui.*` dotted paths, and `overridden` lists what the user changed rather
+        // than what the defaults happen to be.
+        return {
+          values: { 'ui.theme': 'system', 'ui.autoSyncPlugins': true },
+          overridden: ['ui.theme']
+        }
       default:
         // A refusal, in the kernel's own shape, rather than a rejection: the client checks for it and a fake that
         // rejected would teach the interface that an unknown command throws. `unsupported` because that is what this
