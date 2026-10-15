@@ -258,10 +258,50 @@ async function checkCommandNames(): Promise<void> {
   )
 }
 
+/**
+ * 5. Only the seam may reach for the test double.
+ *
+ * ★ `kernel.ts` has always said the fake is chosen "here and nowhere else", and that a component reaching for it directly
+ * "would keep working after the real bridge exists, and would keep working in the one place it must not". That rule was
+ * **documented and unenforced**, and it was already broken: `DevicesPage.vue` imported the event-channel constant from
+ * `fake-kernel.ts`, and so did the injected plugin facade. Both are production code reading a fixture.
+ *
+ * The constant now lives in `channel.ts`, which is what a shared name should have been. This is the check that keeps the
+ * next one from happening: the fake is a fixture for tests, and the only file allowed to name it is the file whose job is
+ * choosing between it and the real bridge.
+ */
+async function checkFakeIsQuarantined(): Promise<void> {
+  const root = join(here, 'src')
+  const allowed = new Set(['kernel.ts'])
+  let importers = 0
+
+  for (const file of await sources(root)) {
+    const name = relative(join(here, 'src'), file).replaceAll('\\', '/')
+    // Tests are the place a fake belongs, so they are not the thing being guarded against.
+    if (name.endsWith('.test.ts') || allowed.has(name))
+      continue
+    const text = await readFile(file, 'utf8')
+    if (/(?:from|import)\s*\(?['"][^'"]*fake-kernel['"]/.test(text)) {
+      importers += 1
+      failures.push({
+        check: 'fake-quarantine',
+        detail: `${name} imports the fake kernel; only kernel.ts may choose it`
+      })
+    }
+  }
+
+  notes.push(
+    importers === 0
+      ? 'fake-quarantine: only kernel.ts names the fake kernel'
+      : `fake-quarantine: ${String(importers)} production file(s) import the fake`
+  )
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
 await checkCommandNames()
+await checkFakeIsQuarantined()
 
 for (const note of notes) {
   console.log(`  · ${note}`)

@@ -32,14 +32,7 @@ import type {
 } from '@synra/protocol'
 
 import type { Bridge } from './client'
-
-/**
- * The channel kernel events arrive on.
- *
- * One channel for every event rather than one per kind: the sequence number is a property of the stream, and a
- * per-kind channel would have one sequence per kind, so a gap in one would look like a fresh start in the next.
- */
-export const KERNEL_EVENT_CHANNEL = 'kernel-event'
+import { KERNEL_EVENT_CHANNEL } from './channel'
 
 /** A device id that is shaped like one, so nothing here accidentally tests id parsing. */
 const SELF_ID = '01HQ0000000000000000000SELF'

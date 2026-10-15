@@ -55,6 +55,7 @@ import type {
 } from '@synra/protocol'
 
 import type { Bridge, IpcError } from './client'
+import { KERNEL_EVENT_CHANNEL } from './channel'
 
 /**
  * The host shapes a plugin can be told about.
@@ -267,7 +268,7 @@ export function createInjection(context: InjectionContext): SynraClient {
     subscribe: <T = unknown>(_pattern: string, handler: (payload: T) => void) => {
       let active = true
       void context.bridge
-        .listen('kernel-event', (payload: unknown) => {
+        .listen(KERNEL_EVENT_CHANNEL, (payload: unknown) => {
           if (active)
             handler(payload as T)
         })

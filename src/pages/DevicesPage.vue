@@ -173,7 +173,7 @@ h1 {
 import type { DevicesSnapshot } from '@synra/protocol'
 import { onMounted, onUnmounted, ref } from 'vue'
 
-import { KERNEL_EVENT_CHANNEL } from '../ipc/fake-kernel'
+import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { useDevicesStore } from '../stores/devices'
 
