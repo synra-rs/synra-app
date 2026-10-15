@@ -1,0 +1,94 @@
+[package]
+name = "synra-app"
+description = "The Tauri shell: the window, the WebView and the commands the interface calls"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+# ★ `src-tauri` 是**独立 workspace**，不是 `synra-rust-core` 的成员。
+#
+# 理由是设计文档 06 §4.1 给的判据：宿主是否只依赖内核的公开 API 且没有平台特定的重型依赖。CLI/daemon 是，
+# Tauri 应用不是 —— 它要 WebView2、要 NDK、要自己的 CI。把 Tauri 拖进内核仓库会让内核的依赖图和 CI 都背上
+# 一个与应用无关的东西，而 §4.1 的表已经明确把它判给 app 仓库。
+#
+# 代价是内核的 crate 在这里只能按路径引用：发布时换成版本号依赖，应用仓库才不需要跟着内核仓库的目录走。
+
+[workspace]
+# ★ 这个 workspace 只有一个成员：应用壳。
+#
+# 内核的 crate 通过路径引入而不是 workspace 依赖，所以内核仓库的版本改动不需要同步改这里的 `members`。
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/synra-rs/synra-app"
+authors = ["Synra contributors"]
+
+[workspace.dependencies]
+
+[lib]
+name = "synra_app"
+path = "src/lib.rs"
+# ★ 只有库，没有窗口。
+#
+# 命令的实现在这一层，`main.rs` 只是把每个函数包成一个 `#[tauri::command]`。这样切分的理由不是整洁，是可测：
+# 单元测试跑的是 lib，不需要 WebView2、不需要窗口、不需要 `tauri` 被编译进来 —— 而一个跑不起来的测试等于没有测试。
+
+[[bin]]
+name = "synra-app"
+path = "src/main.rs"
+required-features = ["tauri-shell"]
+
+[features]
+default = ["tauri-shell"]
+# ★ 外壳是可选的，这样 `cargo test --no-default-features` 不编译 Tauri。
+#
+# 这不是为了省时间：Tauri 的构建是最容易失败的一个（WebView2 的安装、NDK、系统库），把它放进测试的依赖路径里，
+# 一个环境问题就会让整套逻辑测试跑不起来，而失败的却是逻辑。逻辑不该为平台的缺失买单。
+tauri-shell = ["dep:tauri"]
+
+[dependencies]
+synra-core = { path = "../../synra-rust-core/crates/synra-core" }
+synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
+synra-protocol = { path = "../../synra-rust-core/crates/synra-protocol" }
+synra-capability = { path = "../../synra-rust-core/crates/synra-capability" }
+synra-store = { path = "../../synra-rust-core/crates/synra-store" }
+synra-observe = { path = "../../synra-rust-core/crates/synra-observe" }
+synra-platform = { path = "../../synra-rust-core/crates/synra-platform" }
+synra-plugin-api = { path = "../../synra-rust-core/crates/synra-plugin-api" }
+# The kernel holds the plugin seam but not an engine, so the shell brings one — the same split the daemon makes.
+synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", features = ["wasm-runtime"] }
+
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+
+tauri = { version = "2", optional = true, features = [] }
+
+[build-dependencies]
+
+# The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
+# quietly grow into a business rule, and the shell is the one layer with a window on it.
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+cognitive_complexity = "deny"
+wildcard_imports = "deny"
+use_self = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+needless_pass_by_value = "deny"
+significant_drop_tightening = "deny"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
