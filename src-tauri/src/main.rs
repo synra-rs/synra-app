@@ -14,10 +14,6 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 use synra_app::{commands, commands::diag::DiagExportResult, state::AppState};
-use synra_ipc::{
-    ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IpcError, PluginSnapshot,
-    ScanOptions,
-};
 use synra_store::{Paths, SynraDb};
 use tauri::Manager;
 
@@ -99,6 +95,16 @@ mod wrappers {
         commands::plugins::plugins_disable(&state, &plugin_id)
     }
 
+    /// Records the user's decision about what a plugin may do.
+    #[tauri::command]
+    pub fn plugins_consent_respond(
+        state: tauri::State<'_, AppState>,
+        plugin_id: String,
+        granted: Vec<String>,
+    ) -> Result<PluginSnapshot, IpcError> {
+        commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
+    }
+
     #[tauri::command]
     pub fn config_get(state: tauri::State<'_, AppState>) -> Result<ConfigSnapshot, IpcError> {
         commands::config::config_get(&state)
@@ -132,7 +138,8 @@ mod wrappers {
 
 use wrappers::{
     config_get, config_set, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, diag_export,
-    diag_logs_tail, identity_get, identity_set_display_name, plugins_disable, plugins_enable, plugins_list,
+    diag_logs_tail, identity_get, identity_set_display_name, plugins_consent_respond, plugins_disable, plugins_enable,
+    plugins_list,
 };
 
 fn main() -> std::process::ExitCode {
@@ -172,6 +179,7 @@ fn run() -> Result<(), String> {
             plugins_list,
             plugins_enable,
             plugins_disable,
+            plugins_consent_respond,
             config_get,
             config_set,
             diag_export,

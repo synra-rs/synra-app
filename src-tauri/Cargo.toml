@@ -75,6 +75,10 @@ synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", f
 parking_lot = "0.12"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
+# The digest a consent decision is recorded against. The same construction the plugin CLI and the registry integrity
+# check use, so a reader who recognises one recognises the other — and named rather than reached through another crate's
+# re-export, because a crate that computes a digest should say which one it computes.
+sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = [
   "rt-multi-thread",
@@ -100,6 +104,14 @@ tauri-build = { version = "2", optional = true, features = [ ] }
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
 [lints.clippy]
+# ★ Allowed once, rather than silenced at each call site.
+#
+# `IpcError` is the error type of the whole command surface: it carries the message key **and** its parameters, so the
+# interface can build a sentence in the user's own language rather than receiving one already assembled. That makes it
+# larger than the values it accompanies, which is what this lint measures — and all fourteen wrappers in `main.rs` trip
+# it for that same reason. Fourteen `allow`s would be fourteen places for a new one to hide; one here means a *new*
+# warning in this crate is visible.
+result_large_err = "allow"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"

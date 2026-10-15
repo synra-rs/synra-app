@@ -139,7 +139,7 @@ fn the_log_tail_reads_the_shells_own_log_including_the_debug_lines() {
     let state = testing::state_in(&root);
 
     let log_dir = state.paths.log_dir();
-    std::fs::create_dir_all(&log_dir).expect("the log directory");
+    std::fs::create_dir_all(log_dir).expect("the log directory");
     std::fs::write(
         log_dir.join("synra.log"),
         "2026-01-01T00:00:00Z INFO first\n\
@@ -184,7 +184,7 @@ fn the_debug_log_section_carries_the_lines_the_shell_wrote() {
     let state = testing::state_in(&root);
 
     let log_dir = state.paths.log_dir();
-    std::fs::create_dir_all(&log_dir).expect("the log directory");
+    std::fs::create_dir_all(log_dir).expect("the log directory");
     std::fs::write(
         log_dir.join("synra.log"),
         "2026-01-01T00:00:00Z INFO the shell started\n\

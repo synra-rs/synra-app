@@ -90,7 +90,7 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
         // hide exactly what they requested, and the bundle would carry an empty section that looked deliberate.
         let wanted = options.log_lines.map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
         sources.log_lines = Some(
-            synra_observe::logging::tail(&state.paths.log_dir(), wanted, true, None).lines,
+            synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines,
         );
     }
 
@@ -206,7 +206,7 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
     // ★ `verbose = true`, because this is a diagnostics command and the whole reason a user runs it is to see the detail
     // a quiet filter hides. It is also what `diag_export` does with the same file, so the two agree about what the log
     // contains — a pair of commands reading one file with different filters is how a user comes to distrust both.
-    Ok(synra_observe::logging::tail(&state.paths.log_dir(), wanted, true, None).lines)
+    Ok(synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines)
 }
 
 /// The one place a database or filesystem failure becomes an `IpcError`.

@@ -24,6 +24,90 @@ use synra_protocol::PluginId;
 
 use crate::state::{AppState, internal};
 
+/// Records the user's decision about what a plugin may do, and returns its card as it now stands.
+///
+/// # ★ Why this command is the one that was missing
+///
+/// `plugin_grants` — the table this writes — had a schema, an index, a row type, a reader, and **no writer**. The
+/// settings screen showed two empty lists, and the daemon's loader took the manifest's own declaration as the grant,
+/// because that was the only thing left to take. A plugin received exactly what it asked for, and the per-capability
+/// consent the design rests on did not exist at either end.
+///
+/// # The rule for `trusted`
+///
+/// **Every capability the manifest declares must have been granted.** A plugin that is missing one cannot do what it
+/// says it does, and a plugin in that state that ran anyway is precisely the silent degradation consent exists to
+/// prevent.
+///
+/// ★ This is stricter than the design document implies, and deliberately so. `15-plugin-sdk.md` describes the manifest
+/// declaration as `{ cap: "..." }` "supporting optionality", and `CapabilityDeclaration` has no `optional` field — only
+/// `cap` and `reason`. So there is no author statement that a plugin degrades gracefully without something, and a rule
+/// that guessed which capabilities were droppable would be inventing one. If optionality is added, this is where it
+/// belongs.
+///
+/// # Why the answer is the card rather than a bare success
+///
+/// Because the caller's next act depends on it: a plugin that became trusted is one the interface shows as ready, and
+/// one that did not needs the reason. Re-reading the list would answer the same question a moment later and about every
+/// plugin, which is a worse trade than returning the one that changed.
+///
+/// # Errors
+///
+/// * [`IpcError::NotFound`] when no plugin of that identifier is installed.
+/// * [`IpcError::Internal`] when the manifest cannot be read or a decision cannot be written.
+///
+/// A manifest that is missing or unreadable is refused rather than treated as declaring nothing: a plugin whose
+/// capabilities cannot be read is one whose consent cannot be obtained, and recording an empty decision set would look
+/// exactly like a user who declined everything.
+pub fn plugins_consent_respond(
+    state: &AppState,
+    plugin_id: &str,
+    granted: &[String],
+) -> Result<PluginSnapshot, IpcError> {
+    let id = parse(plugin_id)?;
+    let text = read_manifest_text(state, &id.to_string()).ok_or_else(|| {
+        IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id}))
+    })?;
+    let manifest: Manifest = serde_json::from_str(&text).map_err(internal)?;
+
+    let decisions: Vec<(String, bool)> = manifest
+        .capabilities
+        .iter()
+        .map(|declared| (declared.cap.clone(), granted.contains(&declared.cap)))
+        .collect();
+
+    // ★ Trusted only when nothing declared was declined.
+    let trusted = decisions.iter().all(|(_, granted)| *granted);
+
+    // The digest of the document the user is agreeing to, so a later manifest that declares more is visibly a different
+    // document from the one these rows were decided against.
+    let digest = manifest_digest(&text);
+
+    state
+        .db()
+        .record_grants(&id.to_string(), &decisions, state.started_at_ms, &digest)
+        .map_err(internal)?;
+
+    if !state.db().set_plugin_trusted(&id.to_string(), trusted, state.started_at_ms).map_err(internal)? {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id})));
+    }
+
+    let row = state
+        .db()
+        .plugins()
+        .map_err(internal)?
+        .into_iter()
+        .find(|row| row.plugin_id == id.to_string())
+        .ok_or_else(|| {
+            IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+                .with_params(serde_json::json!({"pluginId": plugin_id}))
+        })?;
+    let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
+    Ok(snapshot(state, &row, &id, loaded.as_deref()))
+}
+
 /// Every plugin this device has installed, whether or not it is running.
 ///
 /// # Errors
@@ -167,9 +251,29 @@ fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: boo
 /// Returns `None` rather than a refusal, because one unreadable manifest among twenty installed plugins must not stop the
 /// other nineteen from being listed.
 fn read_manifest(state: &AppState, plugin_id: &str) -> Option<Manifest> {
-    let path = state.paths.plugin_dir(plugin_id).join("manifest.json");
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = read_manifest_text(state, plugin_id)?;
     serde_json::from_str(&text).ok()
+}
+
+/// The manifest's bytes, exactly as they are on disk.
+///
+/// Separate from [`read_manifest`] because a consent decision is recorded against the **document** the user agreed to,
+/// and a parsed manifest cannot be hashed back to the bytes it came from — field order and whitespace are gone by then,
+/// and two files that differ only in those would hash alike.
+fn read_manifest_text(state: &AppState, plugin_id: &str) -> Option<String> {
+    let path = state.paths.plugin_dir(plugin_id).join("manifest.json");
+    std::fs::read_to_string(path).ok()
+}
+
+/// The digest a consent decision is recorded against.
+///
+/// SHA-256 of the manifest's bytes, hex. The same construction the plugin CLI uses for an artifact, so a reader who
+/// knows one recognises the other.
+fn manifest_digest(text: &str) -> String {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(text.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 /// Parses a plugin identifier the interface sent.
@@ -182,4 +286,166 @@ fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{plugins_consent_respond, plugins_list};
+    use crate::testing;
+
+    const ID: &str = "@synra-plugin/chat";
+
+    /// A manifest declaring the two capabilities the consent tests decide about.
+    ///
+    /// The shape is the one `synra-plugin-api`'s own fixture uses, because a hand-written manifest that drifted from it
+    /// would test the parser rather than this command.
+    const MANIFEST: &str = r#"{
+        "id": "@synra-plugin/chat",
+        "version": "1.0.0",
+        "title": "Chat",
+        "publisher": { "id": "synra-official" },
+        "sdk": { "min": "1.0.0" },
+        "wit": "synra:plugin@1.0.0",
+        "runtime": { "headless": { "artifact": "dist/plugin.wasm", "stateful": false } },
+        "capabilities": [{ "cap": "log:*" }, { "cap": "device:list" }]
+    }"#;
+
+    /// A state with the plugin installed on disk and in the database, awaiting consent.
+    fn installed() -> (testing::Root, crate::state::AppState) {
+        let (root, state) = testing::file_state();
+        let directory = state.paths.plugin_dir(ID);
+        std::fs::create_dir_all(&directory).expect("the plugin directory");
+        std::fs::write(directory.join("manifest.json"), MANIFEST).expect("a manifest");
+        state
+            .db()
+            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .expect("a plugin row");
+        (root, state)
+    }
+
+    fn grants(state: &crate::state::AppState) -> Vec<(String, bool)> {
+        state
+            .db()
+            .plugin_grants(ID)
+            .expect("the decisions")
+            .into_iter()
+            .map(|row| (row.capability, row.granted))
+            .collect()
+    }
+
+    #[test]
+    fn granting_every_capability_makes_the_plugin_trusted_and_records_each_decision() {
+        // ★ The act the whole table was built for, and the one nothing could perform: `plugin_grants` had a schema, an
+        // index, a row type, a reader and **no writer at all**, so the loader took the manifest's own declaration as the
+        // grant and a plugin received exactly what it asked for.
+        let (_root, state) = installed();
+
+        let card = plugins_consent_respond(
+            &state,
+            ID,
+            &["log:*".to_owned(), "device:list".to_owned()],
+        )
+        .expect("consent");
+
+        assert_ne!(card.state, "awaiting_consent", "the plugin is trusted now: {card:?}");
+        assert_eq!(card.granted, vec!["device:list".to_owned(), "log:*".to_owned()]);
+        assert!(card.denied.is_empty());
+        assert_eq!(
+            grants(&state),
+            vec![("device:list".to_owned(), true), ("log:*".to_owned(), true)],
+            "both decisions are on disk"
+        );
+    }
+
+    #[test]
+    fn declining_a_capability_leaves_the_plugin_untrusted_and_the_refusal_visible() {
+        // ★ A declined capability is recorded as a **denial**, not omitted. A plugin whose manifest declares two
+        // capabilities and whose table holds one row is one the interface cannot describe: the user would be shown a
+        // capability they never answered about, which is how they end up re-granting something they refused.
+        let (_root, state) = installed();
+
+        let card = plugins_consent_respond(&state, ID, &["log:*".to_owned()]).expect("consent");
+
+        assert_eq!(card.state, "awaiting_consent", "a declined capability means it cannot do what it claims");
+        assert_eq!(card.granted, vec!["log:*".to_owned()]);
+        assert_eq!(card.denied, vec!["device:list".to_owned()]);
+        assert_eq!(
+            grants(&state),
+            vec![("device:list".to_owned(), false), ("log:*".to_owned(), true)],
+        );
+    }
+
+    #[test]
+    fn changing_a_decision_overwrites_it_rather_than_adding_a_second_answer() {
+        // The table's primary key is `(plugin_id, capability)`, so a user who changes their mind must land on one row
+        // per capability. Two rows for one capability would make "what did the user decide" unanswerable — and the
+        // reader orders by capability, so the two would sit next to each other and look like two different facts.
+        let (_root, state) = installed();
+
+        plugins_consent_respond(&state, ID, &["log:*".to_owned()]).expect("a first answer");
+        assert_eq!(grants(&state).len(), 2);
+
+        plugins_consent_respond(&state, ID, &["log:*".to_owned(), "device:list".to_owned()])
+            .expect("a changed answer");
+
+        let decisions = grants(&state);
+        assert_eq!(decisions.len(), 2, "still one row per capability: {decisions:?}");
+        assert!(
+            decisions.iter().all(|(_, granted)| *granted),
+            "the second answer is the one that stands: {decisions:?}"
+        );
+    }
+
+    #[test]
+    fn a_plugin_whose_manifest_cannot_be_read_is_refused_rather_than_consented_to_blind() {
+        // ★ Treating an unreadable manifest as "declares nothing" would record an empty decision set, which is
+        // indistinguishable from a user who declined everything — and would mark the plugin trusted while nothing had
+        // been shown to anybody.
+        let (root, state) = testing::file_state();
+        state
+            .db()
+            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .expect("a plugin row");
+        drop(root);
+
+        let refused = plugins_consent_respond(&state, ID, &[]);
+        assert!(refused.is_err(), "a missing manifest is not a decision");
+        assert!(grants(&state).is_empty(), "and nothing was recorded");
+    }
+
+    #[test]
+    fn the_decision_is_recorded_against_the_manifest_it_was_made_about() {
+        // ★ Why `manifest_digest` is a column. A consent decision is about a *document*, and a plugin that ships an
+        // update declaring more capabilities is a different document — so the rows that predate it are visibly older
+        // than the manifest on disk. That is what makes silent capability growth detectable instead of invisible.
+        let (_root, state) = installed();
+        plugins_consent_respond(&state, ID, &["log:*".to_owned(), "device:list".to_owned()])
+            .expect("consent");
+        let before = state.db().plugin_grants(ID).expect("decisions");
+        let digest_before = before.first().expect("a row").manifest_digest.clone();
+        assert_eq!(digest_before.len(), 64, "sha256 in hex: {digest_before}");
+
+        // The same manifest decided about twice hashes the same, so an unchanged plugin does not look like a changed one.
+        plugins_consent_respond(&state, ID, &["log:*".to_owned(), "device:list".to_owned()])
+            .expect("consent again");
+        let after = state.db().plugin_grants(ID).expect("decisions");
+        assert!(
+            after.iter().all(|row| row.manifest_digest == digest_before),
+            "an unchanged manifest must not look changed: {after:?}"
+        );
+    }
+
+    #[test]
+    fn a_plugin_awaiting_consent_is_listed_and_says_so() {
+        // The list is where the user finds the plugin to answer about, so the state the consent prompt is triggered by
+        // has to be the state the list reports. Asserted through `plugins_list` rather than the consent command's own
+        // answer, because the interface reaches this one first.
+        let (_root, state) = installed();
+
+        let listed = plugins_list(&state).expect("a list");
+        let card = listed.first().expect("the installed plugin");
+        assert_eq!(card.plugin_id.as_str(), ID);
+        assert_eq!(card.state, "awaiting_consent");
+        assert!(card.granted.is_empty() && card.denied.is_empty(), "nothing has been decided yet");
+    }
 }
