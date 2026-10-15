@@ -65,6 +65,13 @@ pub struct AppState {
     /// against the one scan in flight, so uniqueness has to hold within a process and nowhere else. A random one would
     /// also be unique, but it would be unreadable in a log line, and a log line is where a user-reported scan shows up.
     pub scans_started: AtomicU64,
+
+    /// Diagnostic bundles written by this process.
+    ///
+    /// A counter rather than a clock, because a user who exports twice inside one second is the ordinary case —
+    /// they are comparing a bundle from before a change with one from after it — and a name built from the second
+    /// would silently put the second file on top of the first.
+    pub bundles_written: AtomicU64,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 }
@@ -96,6 +103,7 @@ impl AppState {
             plugins: None,
             scanning: Arc::new(Mutex::new(None)),
             scans_started: AtomicU64::new(0),
+            bundles_written: AtomicU64::new(0),
             started_at_ms: now_ms,
         })
     }
@@ -108,6 +116,16 @@ impl AppState {
     pub fn next_scan_id(&self) -> String {
         let n = self.scans_started.fetch_add(1, Ordering::Relaxed) + 1;
         format!("scan-{n}")
+    }
+
+    /// An identifier for a new diagnostic bundle, unique within this process.
+    ///
+    /// Separate from [Self::next_scan_id] rather than shared with it, because a bundle and a scan have no reason to
+    /// be numbered together and sharing one counter would make the numbering depend on how often the user happened to
+    /// scan.
+    #[must_use]
+    pub fn next_bundle_id(&self) -> u64 {
+        self.bundles_written.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// The database, locked for as long as the caller needs it.

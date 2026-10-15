@@ -15,10 +15,12 @@
 
 pub mod config;
 pub mod devices;
+pub mod diag;
 pub mod identity;
 pub mod plugins;
 
 pub use config::{config_get, config_set};
 pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
+pub use diag::diag_export;
 pub use identity::{identity_get, identity_set_display_name};
 pub use plugins::{plugins_disable, plugins_enable, plugins_list};
