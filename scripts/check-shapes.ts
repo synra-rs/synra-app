@@ -241,12 +241,10 @@ async function checkCommandNames(): Promise<void> {
   )
 }
 
-
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
 await checkCommandNames()
-
 
 for (const note of notes) {
   console.log(`  · ${note}`)
