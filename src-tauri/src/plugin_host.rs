@@ -68,6 +68,14 @@ fn not_implemented(group: &str) -> CallError {
     )
 }
 
+/// A store failure, as the plugin sees it.
+///
+/// `hostFailed` rather than something more specific, for the reason the daemon's host gives: the plugin did nothing wrong,
+/// and the code tells it not to retry the same call in a loop.
+fn failed(what: &str, error: &impl std::fmt::Display) -> CallError {
+    CallError::new(CallError::HOST_FAILED, format!("could not {what}: {error}"))
+}
+
 /// Turns a platform refusal into a code a plugin can branch on.
 ///
 /// # Why the two are distinguished
@@ -209,24 +217,48 @@ impl Host for DesktopHost {
         Err(not_implemented("device broadcasts"))
     }
 
-    fn storage_get(&self, _p: &PluginId, _k: &str) -> Result<Option<String>, CallError> {
-        Err(not_implemented("plugin storage"))
+    // ★ Storage works, and it is the same table the daemon writes to.
+    //
+    // These five refused with `notImplemented` until the store grew a `plugin_storage` table. The shell has a database and
+    // a plugin set, so there was never a reason for it to be the one host where a plugin could not remember a setting —
+    // and a plugin that behaves differently depending on which host runs it is a plugin whose author cannot test it.
+    //
+    // The quota is checked by `HostCalls` before `storage_set` is reached, against the plugin's own quota; this host
+    // reports usage only, because a ceiling is not the host's to decide.
+    fn storage_get(&self, plugin: &PluginId, key: &str) -> Result<Option<String>, CallError> {
+        self.db
+            .lock()
+            .storage_get(plugin.as_str(), key)
+            .map_err(|error| failed("read the plugin's storage", &error))
     }
 
-    fn storage_set(&self, _p: &PluginId, _k: &str, _v: &str) -> Result<(), CallError> {
-        Err(not_implemented("plugin storage"))
+    fn storage_set(&self, plugin: &PluginId, key: &str, value: &str) -> Result<(), CallError> {
+        self.db
+            .lock()
+            .storage_set(plugin.as_str(), key, value, synra_store::sqlite::now_ms())
+            .map_err(|error| failed("write the plugin's storage", &error))
     }
 
-    fn storage_delete(&self, _p: &PluginId, _k: &str) -> Result<(), CallError> {
-        Err(not_implemented("plugin storage"))
+    fn storage_delete(&self, plugin: &PluginId, key: &str) -> Result<(), CallError> {
+        self.db
+            .lock()
+            .storage_delete(plugin.as_str(), key)
+            .map_err(|error| failed("remove the plugin's storage", &error))?;
+        Ok(())
     }
 
-    fn storage_keys(&self, _p: &PluginId, _prefix: Option<&str>) -> Result<Vec<String>, CallError> {
-        Err(not_implemented("plugin storage"))
+    fn storage_keys(&self, plugin: &PluginId, prefix: Option<&str>) -> Result<Vec<String>, CallError> {
+        self.db
+            .lock()
+            .storage_keys(plugin.as_str(), prefix)
+            .map_err(|error| failed("list the plugin's storage", &error))
     }
 
-    fn storage_quota(&self, _p: &PluginId) -> Result<(u64, u64), CallError> {
-        Err(not_implemented("plugin storage"))
+    fn storage_used(&self, plugin: &PluginId) -> Result<u64, CallError> {
+        self.db
+            .lock()
+            .storage_used_bytes(plugin.as_str())
+            .map_err(|error| failed("measure the plugin's storage", &error))
     }
 
     fn secret_get(&self, _p: &PluginId, _k: &str) -> Result<Option<String>, CallError> {
@@ -277,9 +309,56 @@ mod tests {
 
     use super::DesktopHost;
 
+    /// A plugin identifier, spelled the way the protocol spells it.
     fn id(name: &str) -> PluginId {
-        PluginId::try_from(name.to_owned()).expect("a plugin id")
+        PluginId::parse(name).expect("a plugin id")
     }
+
+    fn host() -> DesktopHost {
+        let state = crate::testing::state();
+        // ★ The plugin rows have to exist: `plugin_storage` references `plugins`, so a value stored against a plugin this
+        // database has never heard of is refused by the schema. That is the cascade doing its job — and it is why the first
+        // version of this test failed with `FOREIGN KEY constraint failed`, which is a better answer than silently keeping
+        // storage for a plugin nobody installed.
+        for plugin in ["@acme/notes", "@acme/chat"] {
+            state
+                .db
+                .lock()
+                .insert_plugin(plugin, true, true, "healthy", 1, 1)
+                .expect("a plugin row");
+        }
+        DesktopHost::new(std::sync::Arc::clone(&state.db))
+    }
+
+    #[test]
+    fn a_plugin_can_store_something_in_the_shell_too() {
+        // ★ The same five functions the daemon implements, over the same table.
+        //
+        // They refused with `notImplemented` here for as long as the store had no table — and a plugin that behaves
+        // differently depending on which host runs it is one its author cannot test. The shell has a database, so there
+        // was never a reason for it to be the one host where nothing persists.
+        //
+        // The round trip, because a store that accepts a write and returns nothing is indistinguishable from one that
+        // discarded it.
+        let host = host();
+        let plugin = id("@acme/notes");
+
+        assert_eq!(host.storage_get(&plugin, "k").expect("reads"), None, "an empty store reads as absent");
+
+        host.storage_set(&plugin, "k", "kept").expect("writes");
+        assert_eq!(host.storage_get(&plugin, "k").expect("reads").as_deref(), Some("kept"));
+        assert_eq!(host.storage_used(&plugin).expect("measures"), 4, "the value's bytes");
+        assert_eq!(host.storage_keys(&plugin, None).expect("lists"), vec!["k".to_owned()]);
+
+        // And another plugin's key space is its own, which is what the pair being the primary key buys.
+        let other = id("@acme/chat");
+        assert_eq!(host.storage_get(&other, "k").expect("reads"), None);
+
+        host.storage_delete(&plugin, "k").expect("removes");
+        assert_eq!(host.storage_used(&plugin).expect("measures"), 0);
+    }
+
+    use synra_plugin_host::host_calls::Host as _;
 
     fn host_with(grants: &[(&str, bool)]) -> DesktopHost {
         let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
@@ -363,12 +442,23 @@ mod tests {
         for refusal in [
             host.event_emit(&plugin, "x", "{}"),
             host.device_send(&plugin, "d", "x", "{}"),
-            host.storage_get(&plugin, "k").map(|_| ()),
             host.fetch(&plugin, "{}").map(|_| ()),
             host.action_list(&plugin).map(|_| ()),
         ] {
             let error = refusal.expect_err("this shell does not implement it");
-            assert_eq!(error.code, "notImplemented", "{error:?}");
+            // ★ Read from the contract rather than spelled here. This assertion used to compare against the
+            // literal `"notImplemented"`, which is a string this test and the implementation could agree on while both were
+            // wrong — the shape of assertion that cannot catch the implementation spelling it wrong.
+            assert_eq!(error.code, synra_plugin_host::host_calls::CallError::NOT_IMPLEMENTED, "{error:?}");
         }
+
+        // ★ Storage is **not** in that list any more, and its absence is the point.
+        //
+        // It was the largest group in it and the shell is where a plugin is most likely to run. Asserted positively, so
+        // that removing it from the loop cannot be mistaken for removing the feature.
+        let plugin = id("@acme/notes");
+        host.storage_set(&plugin, "k", "v").expect("writes");
+        assert_eq!(host.storage_get(&plugin, "k").expect("reads").as_deref(), Some("v"));
+        assert_eq!(host.storage_used(&plugin).expect("measures"), 1);
     }
 }

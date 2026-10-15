@@ -226,7 +226,9 @@ pub fn intent_decide(
         // they gave one.
         IntentDecisionDto::Decline { reason } => {
             let why = reason.as_deref().unwrap_or("the user declined");
-            orchestrate::cancel(&state.board, &id, why).map(|_| ()).map_err(as_ipc)
+            // The local device is named because a cancellation of a **dispatched** intent has to say who it is from, and
+            // an intent raised here records no origin. See `cannot_send`.
+            refuse_if_remote(orchestrate::cancel(&state.board, local, &id, why).map_err(as_ipc)?)
         }
         // ★ `IntentDecisionDto` is `#[non_exhaustive]`, so a decision added later lands here rather than failing to
         // compile. It is refused rather than treated as a decline: an interface newer than this build is asking for
@@ -237,15 +239,43 @@ pub fn intent_decide(
     }
 }
 
+/// Refuses when a move produced a message this shell cannot send.
+///
+/// # ★ Why the shell refuses rather than dropping the envelope
+///
+/// The orchestration answers a remote target with an `Outbound` — the envelope a host must put on a link — and this shell
+/// has **no transport at all**: no listener, no dial, no `synra-transfer`. Dropping the envelope would leave the far side
+/// running work the user withdrew, or waiting for an action that was never sent, while this side reported success.
+///
+/// So it is refused, and the refusal names the missing half. What has already happened locally is not undone — the intent
+/// *is* cancelled here — and the sentence says so, because a refusal that reads as "nothing happened" would send the user
+/// looking for an intent that is already gone.
+fn refuse_if_remote(change: orchestrate::StateChange) -> Result<(), IpcError> {
+    match &change.outbound {
+        None => Ok(()),
+        Some(outbound) => Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
+            serde_json::json!({
+                "reason": format!(
+                    "{} was not told: this shell has no transport, so it cannot send the message that would stop the \
+                     work it is running. The intent is cancelled here.",
+                    outbound.to
+                ),
+            }),
+        )),
+    }
+}
+
 /// Abandons an intent.
 ///
 /// # Errors
 ///
 /// [`IpcError`] when the identifier is not one or names an intent this shell never raised.
 pub fn intent_cancel(state: &AppState, intent_id: IntentId) -> Result<(), IpcError> {
-    orchestrate::cancel(&state.board, &intent_id.to_string(), "the user cancelled it")
-        .map(|_| ())
-        .map_err(as_ipc)
+    let local = state.identity.lock().device_id;
+    refuse_if_remote(
+        orchestrate::cancel(&state.board, local, &intent_id.to_string(), "the user cancelled it")
+            .map_err(as_ipc)?,
+    )
 }
 
 #[cfg(test)]
