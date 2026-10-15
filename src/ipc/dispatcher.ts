@@ -27,7 +27,12 @@
  */
 
 import type { KernelEvent, SequencedKernelEvent } from '@synra/protocol'
-import { isDelta, SequenceTracker } from '@synra/protocol'
+
+// ★ 从本地模块导入，而不是 `@synra/protocol`。
+//   那个包是**纯类型**的（不产出 `.js`、`exports` 只给 `types`），
+//   所以从它那里导入一个**值**是类型检查通过、运行时解析不到的。
+//   实现在 `./sequence`，形状仍然来自那个包。
+import { isDelta, SequenceTracker } from './sequence'
 
 /**
  * What the dispatcher decided about one event.
