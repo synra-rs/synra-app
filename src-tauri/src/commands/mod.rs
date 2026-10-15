@@ -20,12 +20,19 @@ pub mod identity;
 pub mod intent;
 pub mod plugins;
 
-// ★ No flat re-export list, and its absence is deliberate.
+// ★ These are re-exports, not an inventory.
 //
-// There was one — `pub use plugins::{plugins_disable, plugins_enable, plugins_list}` and three more lines like it — and
-// it was **both unused and incomplete**: nothing outside this module ever wrote `commands::plugins_list`, because
-// `main.rs`'s wrappers name the full path, and the list had quietly fallen behind by seven commands
-// (`diag_logs_tail`, `plugins_consent_respond`, `plugins_audit` and the four intent commands).
+// They were removed once on the grounds that nothing used them, and that was wrong: `diag/tests.rs` calls
+// `crate::commands::config_set`. What *was* true is that the list had fallen seven commands behind — `diag_logs_tail`,
+// `plugins_consent_respond`, `plugins_audit` and the four intent commands — so a reader could take it for the full set
+// and be wrong.
 //
-// A list that nobody reads and that is missing a third of its entries is worse than no list: the next person to add a
-// command sees it, assumes it is the inventory, and adds to a claim that is already wrong.
+// **The inventory is not here.** It is `main.rs`'s `generate_handler!`, and `src/ipc/registration.test.ts` is what checks
+// that list against the 39 commands the kernel declares. This is a convenience re-export kept complete so it cannot
+// mislead, and the place to look for "what does the shell implement" is that test.
+pub use config::{config_get, config_set};
+pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
+pub use diag::{diag_export, diag_logs_tail};
+pub use identity::{identity_get, identity_set_display_name};
+pub use intent::{intent_cancel, intent_decide, intent_dispatch, intent_snapshot};
+pub use plugins::{plugins_audit, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list};
