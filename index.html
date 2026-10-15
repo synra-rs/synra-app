@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!--
+  The host interface's document.
+
+  `lang` is set because the interface is bilingual and the wrong value makes screen readers choose the wrong voice, and
+  because the first paint's text direction is decided before any script runs.
+
+  The `dark` class on `<html>` is the theme the design system reads. A page that flashes light before the script runs is
+  the single most common complaint a desktop shell gets, and a media query in CSS is the only way to avoid it — reading
+  the stored preference in JavaScript is always one frame too late.
+-->
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Synra</title>
+    <style>
+      /* Inlined so the first paint has no flash, and small enough to not be worth a request. */
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1115;
+        --panel: #171a21;
+        --border: #262b36;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --accent: #5b9dff;
+        --warn: #e0a458;
+        --bad: #e06c75;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+
+      #app {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
