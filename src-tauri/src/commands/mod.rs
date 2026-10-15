@@ -20,8 +20,12 @@ pub mod identity;
 pub mod intent;
 pub mod plugins;
 
-pub use config::{config_get, config_set};
-pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
-pub use diag::diag_export;
-pub use identity::{identity_get, identity_set_display_name};
-pub use plugins::{plugins_disable, plugins_enable, plugins_list};
+// ★ No flat re-export list, and its absence is deliberate.
+//
+// There was one — `pub use plugins::{plugins_disable, plugins_enable, plugins_list}` and three more lines like it — and
+// it was **both unused and incomplete**: nothing outside this module ever wrote `commands::plugins_list`, because
+// `main.rs`'s wrappers name the full path, and the list had quietly fallen behind by seven commands
+// (`diag_logs_tail`, `plugins_consent_respond`, `plugins_audit` and the four intent commands).
+//
+// A list that nobody reads and that is missing a third of its entries is worse than no list: the next person to add a
+// command sees it, assumes it is the inventory, and adds to a claim that is already wrong.
