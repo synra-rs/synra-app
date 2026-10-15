@@ -19,7 +19,7 @@
 //! about it having vanished.
 
 use synra_ipc::{IpcError, PluginSnapshot};
-use synra_plugin_api::Manifest;
+use synra_plugin_api::{Manifest, manifest_digest};
 use synra_protocol::PluginId;
 
 use crate::state::{AppState, internal};
@@ -263,17 +263,6 @@ fn read_manifest(state: &AppState, plugin_id: &str) -> Option<Manifest> {
 fn read_manifest_text(state: &AppState, plugin_id: &str) -> Option<String> {
     let path = state.paths.plugin_dir(plugin_id).join("manifest.json");
     std::fs::read_to_string(path).ok()
-}
-
-/// The digest a consent decision is recorded against.
-///
-/// SHA-256 of the manifest's bytes, hex. The same construction the plugin CLI uses for an artifact, so a reader who
-/// knows one recognises the other.
-fn manifest_digest(text: &str) -> String {
-    use sha2::Digest as _;
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(text.as_bytes());
-    format!("{:x}", hasher.finalize())
 }
 
 /// Parses a plugin identifier the interface sent.

@@ -75,10 +75,6 @@ synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", f
 parking_lot = "0.12"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
-# The digest a consent decision is recorded against. The same construction the plugin CLI and the registry integrity
-# check use, so a reader who recognises one recognises the other — and named rather than reached through another crate's
-# re-export, because a crate that computes a digest should say which one it computes.
-sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = [
   "rt-multi-thread",
