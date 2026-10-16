@@ -7,11 +7,15 @@
 //! second set at all — the table existed, the reader existed, and nothing wrote it — which is what a reader without a
 //! writer looks like from the outside.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::time::{Duration, Instant};
+
 use synra_ipc::{ScanOptions, ScanState};
 use synra_protocol::ErrorCode;
 use synra_store::{Paired, Seen};
 
-use super::{SCAN_CEILING_MS, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
+use super::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, scan_budget};
 use crate::state::AppState;
 use crate::testing;
 
@@ -220,40 +224,99 @@ fn a_paired_device_keeps_its_address() {
     );
 }
 
+/// A state whose shell bound the discovery sockets, on ports the operating system chose.
+///
+/// ★ Port zero rather than the well-known discovery port: binding that would collide with a kernel that happens to be
+/// running on this machine, and a test that needed it free would fail for a reason unrelated to what it asserts. The
+/// deadline is handed back because a scan publishes one, waits, and takes it down again — so watching it is the only way
+/// to see that the worker was asked at all.
+fn with_discovery() -> (AppState, Arc<AtomicI64>) {
+    let state = testing::state();
+    let discovery = crate::discovery::Discovery::start(
+        state.announcement(1),
+        0,
+        Arc::clone(&state.db),
+        state.host.clone(),
+        0,
+    )
+    .expect("the sockets are free");
+    let deadline = discovery.on_demand();
+    (state.with_discovery(discovery), deadline)
+}
+
 #[test]
-fn an_active_scan_is_refused_rather_than_reported_as_running() {
+fn an_active_scan_without_a_discovery_worker_is_refused_rather_than_reported_as_running() {
     // ★ The command that used to fill a progress bar for a scan nobody performed.
     //
     // It answered with an identifier and a state carrying `elapsed_ms: 0, found: 0` that **nothing ever updated**, so the
-    // interface drew a bar that could never move. "Found nothing" is true; "is scanning" was not, and the module's rule
+    // interface drew a bar that could never move. "Found nothing" is true; "is scanning" was not, and this module's rule
     // is that a command answers or says why it cannot.
     //
-    // The shell has no listening port to announce, and there is no control request asking the daemon — which does scan
-    // continuously — for an on-demand burst. Both halves are named in the refusal, because a user who cannot scan needs
-    // to know whether the feature is missing or their network is.
+    // This fixture is a shell with no discovery worker: the sockets are bound at start-up, and a machine with no network,
+    // a firewall and a sandbox all produce the same bind failure. That is the one case left in which a network scan is
+    // refused — the refusal names the reason, and the interface falls back to the cached read.
     let state = testing::state();
+    assert!(state.discovery.is_none(), "the fixture is a shell that could not bind the sockets");
 
-    let refused = devices_scan_start(&state, &ScanOptions::default()).expect_err("this shell cannot scan");
+    let refused = devices_scan_start(&state, &ScanOptions::default()).expect_err("this state cannot scan");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
     let reason = refused.params.get("reason").and_then(serde_json::Value::as_str).unwrap_or_default();
-    assert!(reason.contains("daemon"), "the refusal names where discovery lives: {reason}");
+    assert!(reason.contains("discovery sockets"), "the refusal names what is missing: {reason}");
     // And nothing was left in the snapshot claiming a scan is under way.
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
 }
 
 #[test]
-fn a_long_scan_request_is_refused_for_the_same_reason_as_a_short_one() {
-    // The clamp used to be the interesting part — a caller asking for an hour got the ceiling. There is nothing left to
-    // clamp, and the point of asserting it is that a *longer* request is not treated differently: the refusal is about
-    // the scan not existing, not about the timeout.
-    let state = testing::state();
-    let asked = SCAN_CEILING_MS * 10;
+fn a_scan_budget_is_the_protocols_and_not_the_callers() {
+    // A scan is a broadcast to every machine on the network, so its length is the protocol's to set. The two interesting
+    // answers are the ceiling — a caller does not get to ask for a longer broadcast — and the default, which is the
+    // window "look now" means when nobody said how long.
+    let asked = |ms: Option<u64>| scan_budget(&ScanOptions { timeout_ms: ms, ..ScanOptions::default() });
 
-    let refused = devices_scan_start(&state, &ScanOptions { timeout_ms: Some(asked), ..ScanOptions::default() })
-        .expect_err("this shell cannot scan");
+    assert_eq!(asked(None), synra_protocol::limits::SCAN_PASSIVE);
+    assert_eq!(asked(Some(10)), Duration::from_millis(10), "a shorter scan is honoured");
+    assert_eq!(asked(Some(60_000)), synra_protocol::limits::SCAN_TOTAL, "a longer one is clamped");
+    assert!(asked(Some(0)).is_zero(), "and zero is the protocol's way of saying `answer from what you know`");
+}
 
-    assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+#[test]
+fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers() {
+    // ★ The state's own meaning, asserted from outside the command: `scanning` is *the scan in progress*. That is what the
+    // interface reads to disable the button and draw the bar, so a scan that records nothing looks like a dead button, and
+    // one that never clears looks like a button that has died.
+    let (state, deadline) = with_discovery();
+    let running = AtomicBool::new(false);
+    let published = AtomicBool::new(false);
+
+    std::thread::scope(|scope| {
+        // A watcher borrowing the state, because the command blocks: a scan this short is only observable while it waits.
+        scope.spawn(|| {
+            let until = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < until {
+                if state.scanning.lock().as_ref().is_some_and(|scan| scan.total_ms == 60) {
+                    running.store(true, Ordering::Relaxed);
+                }
+                if deadline.load(Ordering::Relaxed) != 0 {
+                    published.store(true, Ordering::Relaxed);
+                }
+                if running.load(Ordering::Relaxed) && published.load(Ordering::Relaxed) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+
+        let scan_id = devices_scan_start(&state, &ScanOptions { timeout_ms: Some(60), ..ScanOptions::default() })
+            .expect("a scan with a worker behind it");
+
+        assert!(!scan_id.is_empty(), "the contract answers with an identifier");
+    });
+
+    assert!(running.load(Ordering::Relaxed), "a snapshot taken during the scan says one is in progress");
+    assert!(published.load(Ordering::Relaxed), "and the worker was asked to look now");
+    assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None, "and it is over when it answers");
+    assert_eq!(deadline.load(Ordering::Relaxed), 0, "with the deadline released, so nothing keeps broadcasting");
 }
 
 #[test]

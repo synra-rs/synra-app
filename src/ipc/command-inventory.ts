@@ -28,6 +28,10 @@ export const REGISTERED = [
   'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
+  // ★ And the fifth, which the interface had been pretending existed: `HomePage.vue`'s "received" panel called
+  // `intent_snapshot` with no identifier and read `answer.value.intents`, so the kernel was asked a question it refuses
+  // and the page reported a bridge failure. The board could list its intents all along; the contract had no name for it.
+  'intent_list',
   'intent_snapshot',
   'intent_decide',
   'intent_cancel',

@@ -57,6 +57,15 @@ pub struct AppState {
     pub board: Arc<Mutex<Board>>,
     /// The plugins this shell can ask, when it has an engine.
     pub plugins: Option<Arc<Mutex<synra_core::dispatch::PluginSet>>>,
+    /// The discovery worker, when this shell could bind the sockets.
+    ///
+    /// # Why this may be absent, and what that costs
+    ///
+    /// A machine with no network, a firewall and a sandbox all produce the same bind failure, and none of them is a reason
+    /// to lose the window — the same decision [`AppState::plugins`] makes for an engine that will not start. What it costs
+    /// is the **scan**: `devices_scan_start` refuses a network scan with the reason, and the cached read — which is what a
+    /// list of already-known devices needs — still answers. See [`crate::discovery`].
+    pub discovery: Option<crate::discovery::Discovery>,
     /// The scan in progress, if any.
     pub scanning: Arc<Mutex<Option<ScanState>>>,
     /// How many scans this process has started.
@@ -131,6 +140,7 @@ impl AppState {
             identity: Arc::new(Mutex::new(identity)),
             board: Arc::new(Mutex::new(Board::new())),
             plugins: None,
+            discovery: None,
             scanning: Arc::new(Mutex::new(None)),
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
@@ -197,6 +207,38 @@ impl AppState {
     pub fn with_plugins(mut self, plugins: Arc<Mutex<synra_core::dispatch::PluginSet>>) -> Self {
         self.plugins = Some(plugins);
         self
+    }
+
+    /// Adds the discovery worker the scan needs.
+    ///
+    /// A builder step for the same reason [`AppState::with_plugins`] is one: a shell that could not bind the discovery
+    /// sockets is a real configuration rather than a broken one, and every other command works in it.
+    #[must_use]
+    pub fn with_discovery(mut self, discovery: crate::discovery::Discovery) -> Self {
+        self.discovery = Some(discovery);
+        self
+    }
+
+    /// What this device announces to the network.
+    ///
+    /// # Why the port is an argument rather than a field
+    ///
+    /// Because it is the port a peer *connects* to, and this build has none: see [`crate::discovery`]'s header for what the
+    /// shell announces instead, and why the wire format leaves it no way to say "nowhere".
+    ///
+    /// Built from the identity rather than kept as a field, because the identity is what changes: a user who renames this
+    /// device expects the next announcement to carry the new name, and a copy taken at start-up would keep announcing the
+    /// old one until the process restarted.
+    #[must_use]
+    pub fn announcement(&self, port: u16) -> synra_protocol::discovery::DeviceAnnouncement {
+        let identity = self.identity.lock();
+        synra_core::LocalPeer::new(
+            identity.device_id,
+            identity.display_name.clone(),
+            synra_core::platform_of_os(&identity.platform),
+            crate::KERNEL_VERSION,
+        )
+        .announcement(port)
     }
 
     /// The plugin set, or a refusal that says why there is not one.

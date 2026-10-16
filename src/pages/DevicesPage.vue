@@ -9,14 +9,18 @@
         The scan is a control, so it is the component library's (R51): "you cannot press it twice" is `:disabled` and
         "it is running" is `:loading` — a hand-rolled button has to remember both, and antd announces both to a screen
         reader. The label is the command's own word in progress (R32).
+
+        ★ `scanning` is the kernel's scan **or** this page's own call being served: a real scan answers the invoke rather
+        than streaming events, so waiting for the store to say otherwise would leave the button live and unlabelled for the
+        second and a half the network is being asked.
       -->
       <AButton
         type="primary"
-        :loading="devices.scanning"
-        :disabled="devices.scanning"
+        :loading="scanning"
+        :disabled="scanning"
         @click="scan"
       >
-        {{ devices.scanning ? messages.devices.scanning : messages.devices.scan }}
+        {{ scanning ? messages.devices.scanning : messages.devices.scan }}
       </AButton>
     </div>
 
@@ -117,9 +121,9 @@
  *
  * # Why the scan is worth a button here
  *
- * The snapshot is a *picture*, and a picture of a list of devices does not show that the list is live. The scan is the
- * one action whose whole effect arrives as events, so it is the only way to exercise the path the design document cares
- * about — listen first, then apply by sequence number, and re-read on a gap.
+ * The snapshot is a *picture*, and a picture of a list of devices does not show that the list is live. The scan is the one
+ * action that asks the kernel to look, so it is the only way to exercise the path the design document cares about — listen
+ * first, then apply by sequence number, and re-read on a gap.
  *
  * ★ **And the scan takes options, which this page used not to send at all.** The call was `call('devices_scan_start')`
  * with no arguments, while the shell's wrapper declares `opts: ScanOptions` as required. Tauri deserializes a command's
@@ -129,13 +133,18 @@
  * fake kernel answered anyway because it ignored its arguments. So the arguments are typed now, and the fake requires
  * them.
  *
- * ★ **Which scan to ask for is the kernel's answer rather than this page's guess.** This shell answers only the
- * `cachedOnly` mode: discovery belongs to the daemon, which is already writing what it hears into the list this page
- * reads (`src-tauri/src/commands/devices.rs` says so, and what is missing is the shell's network half rather than a
- * request). So the page asks for the scan the button means, and when the kernel refuses that *mode* it asks for the cached
- * scan — which is not the page papering over a refusal: the kernel's own refusal tells the caller to do exactly that.
- * Against the fake kernel the first path is real: `devices_scan_start` makes the fake publish `scanUpdated` and then
- * `deviceCardUpdated`, and the dispatcher's `SequenceTracker` judges every one of them.
+ * ★ **Which scan to ask for is the kernel's answer rather than this page's guess.** The page asks for the scan the button
+ * means; the shell answers it by running its **own** discovery (`src-tauri/src/discovery.rs` — the sockets are the
+ * window's, the way [05 §2.1](../../design-docs/05-system-architecture.md) arranges a desktop host) and writes what it
+ * hears into the list this page reads. Only a window that could not bind those sockets refuses that mode, and then the
+ * page asks for the cached scan instead — which is not the page papering over a failure but the half of the refusal a
+ * caller acts on.
+ *
+ * ★ **What that costs in this page's shape.** A real scan *answers the call*; it does not stream events, because this shell
+ * publishes no kernel events yet. So the button's busy state is the page's own (`busy`, below), and the list is re-read
+ * when the call returns — the progress report under the header is exercised by the fake kernel, which does publish
+ * `scanUpdated`, and by a snapshot taken while a scan is in flight (the shell records one there; it clears it before it
+ * answers).
  *
  * # Why paired and online are two columns
  *
@@ -143,7 +152,7 @@
  * is online but unpaired is one the user has to pair first. Collapsing them into a status string loses exactly the case
  * that needs the user to act.
  */
-import type { DevicesSnapshot, ScanState, SuggestedAction } from '@synra/protocol'
+import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
@@ -163,25 +172,14 @@ const error = ref<{ code: string, message: string, actions?: readonly SuggestedA
  *
  * ★ Both flags are written out rather than left to a default, because the struct on the wire requires both: it denies
  * unknown fields and has no `serde(default)`, so a payload that omitted `includePaired` would fail in the bridge exactly
- * the way the missing `opts` did. The type is the contract's own — `@synra/protocol` generates it from `synra-ipc` — so
- * the day a flag is added this file stops compiling rather than sending a payload the kernel refuses.
- */
-/**
- * ★ **`devices_scan_start`'s options, declared here because the protocol does not export them.**
+ * the way the missing `opts` did.
  *
- * The shell's own wrapper takes `opts: ScanOptions` (see the note above `loadSnapshot`), so the shape is the kernel's
- * and not this page's invention — but `@synra/protocol`'s generated types do not carry it, and a page cannot import a
- * name that was never generated. An earlier version of this file imported it anyway, which typechecked only while
- * `vue-tsc`'s incremental cache said the project was up to date.
- *
- * When the generated types grow this DTO, delete this and import it (the same one-source rule as everything else on
- * the wire).
+ * ★ The type comes from the contract rather than from this file. `@synra/protocol`'s `ui.ts` is the hand-written mirror of
+ * `synra-ipc`'s DTOs, and importing it is what makes a field renamed in Rust fail *here*, at compile time. This page
+ * declared its own copy for one round, because the package's entry point exported the shapes the interface **reads** and
+ * not the argument it **sends** — a copy that would have gone on compiling while the kernel refused the payload. The
+ * export was added and the copy deleted; the mirror is what a caller should be holding.
  */
-interface ScanOptions {
-  readonly includePaired: boolean
-  readonly cachedOnly: boolean
-}
-
 const NETWORK_SCAN: ScanOptions = { includePaired: false, cachedOnly: false }
 
 /** The scan this shell can answer: read what the daemon has already written down, and wait for nothing. */
@@ -223,6 +221,21 @@ const scanPercent = computed(() => {
     return 0
   return Math.min(100, Math.max(0, Math.round((current.elapsedMs / current.totalMs) * 100)))
 })
+
+/**
+ * Whether a scan this page started is being served.
+ *
+ * ★ Why the page keeps its own flag rather than reading `devices.scanning` alone.
+ *
+ * That field is the **kernel's** scan, and it arrives in a snapshot — so it changes only when a snapshot is taken. A real
+ * scan answers the call rather than streaming events (this shell publishes no kernel events yet; the fake kernel does, and
+ * that is where the progress bar below is exercised), so between the click and the answer the store would say nothing and
+ * the button would stay live and unlabelled for the second and a half the network is being asked.
+ */
+const busy = ref(false)
+
+/** What the scan control shows: either scan, from the page's point of view, is "this button has been pressed". */
+const scanning = computed(() => devices.scanning || busy.value)
 
 /**
  * The call the error surface's retry repeats (R33).
@@ -269,32 +282,39 @@ async function loadSnapshot(): Promise<void> {
 /**
  * Starts the scan, in the mode this kernel can answer.
  *
- * ★ The second call is not a fallback for a failure; it is the kernel's own instruction. A shell with no discovery half
- * refuses the network scan with `unsupported` and a reason that ends "Ask for a cached scan to see what is already
- * known", and `params` is not something the interface renders (R34) — so the half of that refusal a caller acts on is the
- * code it branches by, which is what the client's header says codes are for.
+ * ★ The second call is not a fallback for a failure; it is the kernel's own instruction. A shell that could not bind the
+ * discovery sockets refuses the network scan with `unsupported` — no network, a firewall, a sandbox — and its reason says
+ * the known devices are still listed, and `params` is not something the interface renders (R34). So the half of that
+ * refusal a caller acts on is the code it branches by, which is what the client's header says codes are for.
  */
 async function scan(): Promise<void> {
   repeat.value = scan
   error.value = undefined
+  busy.value = true
 
-  const started = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
-  if (started.ok) {
-    // A scan that is really running reports itself as events, which is the path this button exists to exercise.
-    return
-  }
-  if (started.error.code !== 'unsupported') {
-    refuse(started.error)
-    return
-  }
+  try {
+    const started = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
+    if (!started.ok) {
+      if (started.error.code !== 'unsupported') {
+        refuse(started.error)
+        return
+      }
 
-  const cached = await kernel.call<string>('devices_scan_start', { opts: CACHED_SCAN })
-  if (!cached.ok) {
-    refuse(cached.error)
-    return
+      const cached = await kernel.call<string>('devices_scan_start', { opts: CACHED_SCAN })
+      if (!cached.ok) {
+        refuse(cached.error)
+        return
+      }
+    }
+
+    // ★ The list is where a scan shows itself, so it is re-read whichever mode answered the call.
+    //
+    // A real scan writes what it heard into the same table this read uses before it answers, and a cached scan reads that
+    // table — and nothing else would tell this page the table changed, because the shell publishes no kernel events yet.
+    await loadSnapshot()
   }
-  // A cached scan is over before it answers and publishes nothing — there is no event to wait for — so the list it read
-  // is what shows it happened.
-  await loadSnapshot()
+  finally {
+    busy.value = false
+  }
 }
 </script>

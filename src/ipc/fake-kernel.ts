@@ -18,7 +18,7 @@
  * `scripts/check-shapes.ts` compares every command this repository names against the kernel's own list, and a name that
  * drifts is a call that fails at runtime with "command not found" and points at neither file. A fake that invented
  * `getDevices` would pass every test and teach the interface a command the kernel does not have — so this one answers
- * the 39 names that are declared.
+ * the 40 names that are declared.
  *
  * # Why the data is in a file beside this one
  *
@@ -35,6 +35,7 @@ import {
   DEVICES,
   IDENTITY,
   INTENT,
+  INTENTS,
   PLUGINS,
   TRANSFERS
 } from './fake-kernel-fixtures'
@@ -142,6 +143,13 @@ export class FakeKernel implements Bridge {
         // the one failure mode a fake cannot catch by itself — which is why `commands.test.ts` now asserts every shape
         // here against `command.rs`.
         return PLUGINS.map(plugin => ({ ...plugin }))
+      case 'intent_list':
+        // ★ A bare array, because the contract says this command returns `Many` — the shape the home page got wrong.
+        //
+        // The page used to call `intent_snapshot` (which takes an identifier and answers about *one* intent) with no
+        // arguments and read `answer.value.intents`, an envelope no command sends. `intent_list` is the command that was
+        // missing, and this is what it answers with.
+        return INTENTS.map(intent => ({ ...intent }))
       case 'intent_snapshot':
         // `One`, and it takes an `intent_id`: the command answers about *one* intent rather than listing them.
         return { ...INTENT }

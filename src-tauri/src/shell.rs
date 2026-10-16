@@ -85,7 +85,14 @@ mod wrappers {
         commands::devices::devices_snapshot(&state)
     }
 
-    #[tauri::command]
+    /// Starts a scan.
+    ///
+    /// ★ `(async)`, and it is not a style choice: the body waits out the protocol's scan window (up to 1.2 seconds of
+    /// listening for answers), and a plain `#[tauri::command]` runs its body on the thread that received the invoke —
+    /// which is the window's. Tauri's `(async)` on a **synchronous** function puts it on the sync thread pool instead
+    /// (`sync_threadpool` in the macro's own vocabulary), so the window keeps painting while the network is asked. The
+    /// daemon makes the same move for the same reason, by running discovery on a thread of its own.
+    #[tauri::command(async)]
     pub fn devices_scan_start(state: tauri::State<'_, AppState>, opts: ScanOptions) -> Result<String, IpcError> {
         commands::devices::devices_scan_start(&state, &opts)
     }
@@ -145,6 +152,16 @@ mod wrappers {
         source: IntentSourceDto,
     ) -> Result<IntentId, IpcError> {
         commands::intent::intent_dispatch(&state, &source)
+    }
+
+    /// Every intent the board is holding, for the home page's "received" panel.
+    ///
+    /// No arguments, and that is the command's whole interface: it answers about the board rather than about one intent —
+    /// which is the distinction `intent_snapshot` **below** it draws, and the one the interface missed while it called
+    /// that command and read a list out of it.
+    #[tauri::command]
+    pub fn intent_list(state: tauri::State<'_, AppState>) -> Result<Vec<IntentSnapshot>, IpcError> {
+        commands::intent::intent_list(&state)
     }
 
     #[tauri::command]
@@ -233,6 +250,7 @@ mod wrappers {
             plugins_consent_respond,
             plugins_audit,
             intent_dispatch,
+            intent_list,
             intent_snapshot,
             intent_decide,
             intent_cancel,
@@ -345,6 +363,9 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
     let mut state = with_plugins_or_refuse(state);
+    // ★ And the half the shell never had: its own discovery. Started before the log so a bind failure is reported through
+    // the log if one is running, and its failure is not fatal — see the function.
+    state = with_discovery_or_report(state);
     // ★ The shell's own log, started before anything else can go wrong — and its failure is reported rather than fatal.
     // A window that refuses to open because it cannot write a diagnostic file trades the user's actual work for its
     // record, and `diag_export` says the section is absent instead of claiming there was nothing to log.
@@ -353,6 +374,44 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     }
 
     Ok(state)
+}
+
+/// The window's discovery worker, or a window without one.
+///
+/// # Errors
+///
+/// None, and for the same reason [`with_plugins_or_refuse`] has none: a machine with no network, a firewall and a sandbox
+/// all produce the same bind failure, and none of them is a reason to lose the window — this device simply cannot be
+/// *found*, and every other command still works.
+///
+/// ★ What it costs is the **scan**, and what that looks like to a user is worth writing down: `devices_scan_start` refuses
+/// a network scan with the reason, and the interface falls back to the cached read — the devices already known are still
+/// listed. A window that refused to open over a busy UDP port would trade the user's whole application for one button.
+fn with_discovery_or_report(state: AppState) -> AppState {
+    // ★ The announced port is the discovery port, and that is not a mistake — it is the only port this process binds. See
+    // `crate::discovery`'s header: this build has no transport, and the wire format refuses `port: 0`.
+    let announcement = state.announcement(synra_protocol::limits::DISCOVERY_PORT);
+    let started = crate::discovery::Discovery::start(
+        announcement,
+        synra_protocol::limits::DISCOVERY_PORT,
+        Arc::clone(&state.db),
+        state.host.clone(),
+        state.started_at_ms,
+    );
+
+    match started {
+        Ok(discovery) => {
+            match discovery.responder_address() {
+                Ok(address) => println!("synra: discovery is listening on {address}"),
+                Err(error) => eprintln!("synra: {error}"),
+            }
+            state.with_discovery(discovery)
+        }
+        Err(reason) => {
+            eprintln!("synra: discovery is not running: {reason}");
+            state
+        }
+    }
 }
 
 /// The plugin set when an engine starts, and a shell without one when it does not.

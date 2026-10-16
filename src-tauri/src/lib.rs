@@ -2,7 +2,7 @@
 //!
 //! # What this crate is
 //!
-//! The design document (`08-ipc-and-frontend.md` §2.2) lists thirty-eight commands. Each one needs three things: a name
+//! The design document (`08-ipc-and-frontend.md` §2.2) lists forty commands. Each one needs three things: a name
 //! the interface can call, a request the interface can send, and an answer the interface can render. Only the middle one
 //! is a business rule. The other two are Tauri plumbing.
 //!
@@ -52,6 +52,7 @@
 )]
 
 pub mod commands;
+pub mod discovery;
 pub mod plugin_host;
 pub mod state;
 

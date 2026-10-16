@@ -183,13 +183,19 @@ async function load(): Promise<void> {
   error.value = undefined
 
   const asked = await Promise.all([
-    kernel.call<{ intents: readonly IntentSnapshot[] }>('intent_snapshot'),
+    // ★ `intent_list`, not `intent_snapshot`.
+    //
+    // The panel wants the intents that have arrived, and `intent_snapshot` answers about **one** intent — it takes an
+    // identifier the page does not have, so calling it with none was a bridge rejection rendered as "The interface could
+    // not reach the kernel", and reading `answer.value.intents` was reading a field no DTO carries. `intent_list` is
+    // `Many`: the payload *is* the list, the same shape as `transfer_list` beside it.
+    kernel.call<readonly IntentSnapshot[]>('intent_list'),
     kernel.call<readonly TransferSnapshot[]>('transfer_list')
   ])
 
   const [intentAnswer, transferAnswer] = asked
   if (intentAnswer?.ok)
-    intents.value = intentAnswer.value.intents
+    intents.value = intentAnswer.value
   if (transferAnswer?.ok)
     transfers.value = transferAnswer.value
 

@@ -124,5 +124,14 @@ export const INTENT: IntentSnapshot = {
   startedAtMs: 0
 }
 
+/**
+ * What the board is holding, for the listing read.
+ *
+ * The same intent the single read answers about, because it is the same board: a fake whose list and whose single read
+ * disagreed would be teaching the interface that the two commands describe different things, which is the very mistake
+ * `HomePage.vue` made before `intent_list` existed.
+ */
+export const INTENTS: readonly IntentSnapshot[] = [INTENT]
+
 /** No transfers: an empty list is a real answer and the panel has to render it. */
 export const TRANSFERS: readonly TransferSnapshot[] = []

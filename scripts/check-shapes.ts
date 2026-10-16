@@ -314,9 +314,9 @@ async function checkFakeIsQuarantined(): Promise<void> {
  *
  * What is read is the shell's own signatures, and three things are held against them:
  *
- * * every literal call site in shipping code passes every required key, and no key the wrapper does not declare;
- * * `REQUIRED_ARGS` in the fake is exactly what the shell requires, for every command it names;
- * * every command the fake answers, and the shell refuses without an argument, is in that table.
+ * 1. every literal call site in shipping code passes every required key, and no key the wrapper does not declare;
+ * 2. `REQUIRED_ARGS` in the fake is exactly what the shell requires, for every command it names;
+ * 3. every command the fake answers, and the shell refuses without an argument, is in that table.
  *
  * The keys are camelCase because `#[tauri::command]` renames a parameter that way by default: a `scan_id` on the Rust side
  * is `scanId` over the wire. A call whose command name or arguments are not literals cannot be read here, and is counted
@@ -372,8 +372,11 @@ function splitParameters(text: string): string[] {
 function shellWrappers(source: string): Map<string, Wrapper> {
   const wrappers = new Map<string, Wrapper>()
   // `#[tauri::command]` sits immediately above each `pub fn`, and no parameter type in that file contains `) ->`, so the
-  // signature is everything between the opening parenthesis and the arrow.
-  for (const match of source.matchAll(/#\[tauri::command\]\s*pub fn\s+(\w+)\s*\(([\s\S]*?)\)\s*->/g)) {
+  // signature is everything between the opening parenthesis and the arrow. The attribute's own argument list is optional
+  // and is skipped: `#[tauri::command(async)]` is the same command with a different execution context, and a parser that
+  // only understood the bare attribute would report the command as missing — which is exactly what it did, and what the
+  // `generate_handler!` comparison below caught.
+  for (const match of source.matchAll(/#\[tauri::command(?:\([^)]*\))?\]\s*pub fn\s+(\w+)\s*\(([\s\S]*?)\)\s*->/g)) {
     const name = match[1]
     const parameters = match[2]
     if (name === undefined || parameters === undefined)
@@ -382,10 +385,12 @@ function shellWrappers(source: string): Map<string, Wrapper> {
     const declared: string[] = []
     const required: string[] = []
     for (const parameter of splitParameters(parameters)) {
-      const parsed = /^(\w+)\s*:\s*(.+)$/.exec(parameter)
-      const field = parsed?.[1]
-      const type = parsed?.[2]?.trim()
-      if (field === undefined || type === undefined)
+      // Split on the first colon rather than with a pattern: a type can hold the `::` of `tauri::State`, and an anchored
+      // pattern with a wildcard tail is the shape the linter refuses for its backtracking.
+      const colon = parameter.indexOf(':')
+      const field = colon === -1 ? '' : parameter.slice(0, colon).trim()
+      const type = colon === -1 ? '' : parameter.slice(colon + 1).trim()
+      if (!/^\w+$/.test(field) || type.length === 0)
         continue
       // `state: tauri::State<'_, AppState>` comes from the app handle rather than from the message, so it is not a key a
       // caller sends.
@@ -420,8 +425,9 @@ function literalEnd(text: string, start: number): number | undefined {
       quote = character
       continue
     }
-    if (character === '{' || character === '[' || character === '(')
+    if (character === '{' || character === '[' || character === '(') {
       depth += 1
+    }
     else if (character === '}' || character === ']' || character === ')') {
       depth -= 1
       if (depth === 0)
@@ -458,7 +464,7 @@ function topLevelKeys(literal: string): string[] {
       continue
     }
     if (depth === 1 && character === ':') {
-      const name = /([A-Za-z_$][\w$]*)\s*$/.exec(literal.slice(0, index))?.[1]
+      const name = /([a-z_$][\w$]*)\s*$/i.exec(literal.slice(0, index))?.[1]
       if (name !== undefined && !keys.includes(name))
         keys.push(name)
     }
@@ -471,7 +477,7 @@ function callSites(text: string, where: string): { readonly sites: CallSite[], r
   const sites: CallSite[] = []
   let unreadable = 0
   // The type argument of `call<T>` can hold braces and brackets but never a parenthesis, which is what bounds it here.
-  for (const match of text.matchAll(/\b(?:call|invoke)\s*(?:<[^()]*>)?\s*\(\s*'([a-z][a-z0-9_]*)'/g)) {
+  for (const match of withoutCommentLines(text).matchAll(/\b(?:call|invoke)\s*(?:<[^()]*>\s*)?\(\s*'([a-z][a-z0-9_]*)'/g)) {
     const command = match[1]
     if (command === undefined)
       continue
@@ -505,6 +511,29 @@ function callSites(text: string, where: string): { readonly sites: CallSite[], r
     sites.push({ command, keys: topLevelKeys(text.slice(index, end)), where: `${where}:${line.toString()}` })
   }
   return { sites, unreadable }
+}
+
+/**
+ * The same text with the lines that are **only** a comment blanked out, and every line's length kept.
+ *
+ * ★ A call written in prose is not a call. The first run of this check reported `pages/DevicesPage.vue:124` — a JSDoc line
+ * that quoted `call('devices_scan_start')` while explaining the bug this check exists for. Blanking whole comment lines
+ * rather than stripping comments keeps the line numbers exact, which is what makes a failure point at the right source
+ * line.
+ *
+ * What it does not handle is a call written inside a *trailing* comment on a code line. A comment like that would have to
+ * be parsed out of a string or a regex literal to be handled, and a stripper clever enough to try is one that eats real
+ * code — the trade this file already made once, in the import check above.
+ */
+function withoutCommentLines(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trimStart()
+      const comment = trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*')
+      return comment ? ' '.repeat(line.length) : line
+    })
+    .join('\n')
 }
 
 async function checkCommandArguments(): Promise<void> {

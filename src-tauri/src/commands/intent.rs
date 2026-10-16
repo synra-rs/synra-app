@@ -20,6 +20,18 @@
 //!   has a MIME, and a plugin deciding "can I handle this?" is entitled to know whether it is looking at a URI list or a
 //!   sentence. The shell sends [`TEXT_MIME`] and the mismatch is recorded rather than papered over — see
 //!   [`item_for`].
+//!
+//! # ★ The fifth command, which the interface asked for before the contract had it
+//!
+//! [`intent_list`] is here because `HomePage.vue`'s "received" panel wanted the intents in flight and **no command
+//! answered them**: the page called `intent_snapshot` with no identifier — which the bridge refuses, because the wrapper
+//! requires one, so the user read "The interface could not reach the kernel" for a command the kernel never ran — and it
+//! read `answer.value.intents`, a field no DTO has.
+//!
+//! The capability was never missing. `Board::all()` has been there since the board was written, and its own documentation
+//! says what it is for: persisting has to save what *changed*, which includes an intent that has just ended. What was
+//! missing was a **name** for it. The panel's shape is a bare array (`Many`), like `plugins_list` and `transfer_list` —
+//! not an envelope, which is the drift `src/ipc/commands.test.ts` exists to catch.
 
 use synra_core::dispatch::orchestrate::{self, RouteError};
 use synra_core::messaging::TEXT_MIME;
@@ -151,13 +163,53 @@ pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<Int
     Ok(routed.intent_id)
 }
 
+/// Every intent the board is holding, in the order they were raised.
+///
+/// # What "every" means
+///
+/// [`Board::all`], not the live ones — the kernel's own reason for `all` existing is that persisting has to save what
+/// *changed*, which includes an intent that has just ended. So a finished intent stays in the list with its state saying
+/// so, and a panel that showed only what is still running would empty itself at the moment the user wanted to see what
+/// happened.
+///
+/// # Errors
+///
+/// [`IpcError`] when the board cannot answer for one of the intents it lists. Not reachable through this function — the
+/// identifiers come from the board itself — and propagated rather than skipped, because a list that silently dropped an
+/// entry renders as "that intent never existed".
+#[allow(clippy::result_large_err)]
+pub fn intent_list(state: &AppState) -> Result<Vec<IntentSnapshot>, IpcError> {
+    // ★ The identifiers are collected and the lock released **before** any answer is built.
+    //
+    // `snapshot_of` locks the board again, and `parking_lot::Mutex` is not reentrant: holding this guard across the loop
+    // would deadlock on the first intent, which is a hang rather than a failure anyone can read.
+    let ids: Vec<IntentId> = {
+        let board = state.board.lock();
+        board.all().iter().map(|intent| intent.id).collect()
+    };
+
+    ids.into_iter().map(|id| snapshot_of(state, id)).collect()
+}
+
 /// What has become of an intent.
 ///
 /// # Errors
 ///
 /// [`IpcError`] when the identifier is not one, or names an intent this shell never raised.
-#[allow(clippy::result_large_err)]
 pub fn intent_snapshot(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, IpcError> {
+    snapshot_of(state, intent_id)
+}
+
+/// One intent, as the interface is shown it.
+///
+/// ★ Both reads go through here, and that is the point of it being a function: `intent_list` and `intent_snapshot` answer
+/// about the same thing, so a field added to the DTO cannot appear in one answer and be missing from the other.
+///
+/// # Errors
+///
+/// [`IpcError`] when the identifier names an intent this shell never raised.
+#[allow(clippy::result_large_err)]
+fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, IpcError> {
     let view = orchestrate::snapshot(&state.board, &intent_id.to_string()).map_err(|error| as_ipc(&error))?;
     Ok(IntentSnapshot {
         intent_id: view.intent_id,
@@ -342,5 +394,53 @@ mod tests {
 
         assert!(intent_snapshot(&state, unknown).is_err(), "no such intent is not an empty snapshot");
         assert!(intent_cancel(&state, unknown).is_err());
+    }
+
+    #[test]
+    fn an_empty_board_is_an_empty_list_rather_than_a_refusal() {
+        // The panel this command exists for has nothing to show on a device that has never received anything, and
+        // "nothing" is an answer. A refusal here would put an error on the home page of every fresh install.
+        let state = crate::testing::state();
+
+        assert!(intent_list(&state).expect("an empty board is an empty list").is_empty());
+    }
+
+    #[test]
+    fn the_list_and_the_single_read_describe_an_intent_the_same_way() {
+        // ★ Both commands build their answer through `snapshot_of`, and this is what says so: one mapping means a field
+        // added to the DTO cannot appear in one answer and be missing from the other.
+        let state = crate::testing::state();
+        let id = raise_an_intent(&state);
+
+        let listed = intent_list(&state).expect("the board can be read");
+        assert_eq!(listed.len(), 1, "the one intent that was raised is the one that is listed");
+        assert_eq!(listed[0], intent_snapshot(&state, id).expect("the same intent"));
+    }
+
+    /// Puts one intent on the board directly.
+    ///
+    /// `orchestrate::dispatch` is the share entry point and needs a plugin engine, which this fixture deliberately has none
+    /// of. `intent_list` reads the board, so the board is what the test writes — and `raise` is the kernel's own way to
+    /// write one, so what is listed is a real intent rather than a row shaped for the test.
+    fn raise_an_intent(state: &AppState) -> IntentId {
+        use synra_core::intent::{Choice, IntentSource};
+
+        let item = ShareItem {
+            from: state.identity.lock().device_id,
+            mime: TEXT_MIME.to_owned(),
+            text: Some("https://example.com".to_owned()),
+            transfers: Vec::new(),
+            context_id: None,
+        };
+        let (id, _trace, created) = state.board.lock().raise(
+            IntentSource::Share { item, source_app: None },
+            Choice::Automatic,
+            None,
+            None,
+            synra_store::sqlite::now_ms(),
+        );
+
+        assert!(created, "a request that was never raised before raises a new intent");
+        id
     }
 }

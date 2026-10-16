@@ -8,9 +8,9 @@
  * the failure worth catching. The test cannot see it: it compares the registry against a hand-written list in the same
  * file, so it compares two copies of one decision.
  *
- * The gap it misses is real. The registry declares thirty-nine commands; the shell's `src-tauri/src/shell.rs` registers
- * twelve. A front end calling `pairing_request` reaches a command the shell does not have — the exact sentence the
- * comment promised was covered.
+ * The gap it misses is real. The registry declares forty commands; the shell's `src-tauri/src/shell.rs` registers
+ * twenty-one, and the other nineteen are waiting with a reason in `NOT_YET_REGISTERED`. A front end calling
+ * `pairing_request` reaches a command the shell does not have — the exact sentence the comment promised was covered.
  *
  * A test inside that crate cannot read this file: it lives in a different repository. So the half about the shell is
  * checked here, where the shell is. `scripts/check-shapes.ts` already reads the sibling core checkout for the same
@@ -128,7 +128,7 @@ describe('the commands the shell registers', () => {
 
     // Stated as a number as well, so a parser that started missing entries shows up as a count change rather than as a
     // set that happens to still be consistent.
-    expect(declared.length).toBe(39)
+    expect(declared.length).toBe(40)
   })
 
   it('gives every unregistered command a reason', () => {

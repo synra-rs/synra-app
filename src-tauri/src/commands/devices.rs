@@ -14,17 +14,26 @@
 //! is exactly the failure this module's own header forbids: an answer that says something happened when nothing did. They
 //! arrive with the session commands, against a real [`Host`] API.
 
-use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions};
+use std::time::Duration;
+
+use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions, ScanState};
 use synra_protocol::DeviceId;
 
 use crate::state::{AppState, internal};
 
-/// The scan budget a request may ask for, in milliseconds.
+/// How long a scan runs, from what the caller asked for.
 ///
-/// The shell's own ceiling rather than the kernel's, because the shell is what renders a progress bar and a bar that
-/// runs for a minute is one nobody waits for. A caller asking for longer gets this and a snapshot showing the elapsed
-/// time, which is a smaller lie than a scan that never ends.
-pub const SCAN_CEILING_MS: u64 = 30_000;
+/// # Why the protocol's budgets are both the default and the ceiling
+///
+/// Because a scan is a broadcast to every machine on the network, so how long one is allowed to run is the protocol's to
+/// set and not the caller's: `SCAN_TOTAL` is the longest, and `SCAN_PASSIVE` is what "look now" means when the caller does
+/// not say how long. A caller may ask for less and nothing may ask for more — the request arrives from a local process and
+/// is unauthenticated input. (The shell used to carry its own thirty-second ceiling, from when it answered scans it had
+/// not run; the protocol's is lower, which makes the shell's a second opinion nothing consults.)
+fn scan_budget(opts: &ScanOptions) -> Duration {
+    let asked = opts.timeout_ms.map_or(synra_protocol::limits::SCAN_PASSIVE, Duration::from_millis);
+    asked.min(synra_protocol::limits::SCAN_TOTAL)
+}
 
 /// Everything the devices screen shows, in one call.
 ///
@@ -94,60 +103,68 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
 
 /// Starts a scan and answers with its identifier.
 ///
-/// # ★ Only the cached scan can be honoured, and this command used to claim otherwise
+/// # ★ This command used to say it could not scan, and that was true twice over
 ///
-/// A scan that is not `cached_only` is refused, and the reason is worth writing down because the code that this replaced
-/// argued the opposite and was wrong.
+/// The first version recorded a scan nobody performed: a state carrying `elapsed_ms: 0, found: 0` that **nothing updated**,
+/// so the interface drew a bar that could never move. The second refused outright, with a reason that named the missing
+/// half: discovery belongs to the process that accepts connections, the daemon was running one, and there was no way to ask
+/// it for a burst. "Found nothing" was true; "is scanning" was not, and a refusal was the honest answer while there was no
+/// scanner.
 ///
-/// It said: *"a shell with no sockets is a normal configuration rather than a failure, so the scan is recorded anyway
-/// and reports zero found — which is a true answer, not a stub."* The second half is where it goes wrong. "Found
-/// nothing" is true; **"is scanning" is not**. The state was written once with `elapsed_ms: 0, found: 0` and updated by
-/// nothing, so the interface drew a progress bar that could never move and a count that could never rise. That is an
-/// invented answer, and this module\u2019s own rule is that a command answers or says why it cannot.
-///
-/// # Why the shell cannot scan at all
-///
-/// `synra_core::DiscoveryService` is in the library and the shell could bind one — but it would have to announce a port,
-/// and the shell serves nothing on one. Discovery belongs to the process that accepts connections, which is the daemon,
-/// and it is already running there: the daemon's worker lives for the process's lifetime and writes what it hears into
-/// the same `devices_seen` table this shell reads. So the list is current without this command doing anything.
-///
-/// What is missing is the *on-demand burst* — asking the daemon to query now rather than wait for its next interval —
-/// and there is no control request for it. Until one exists, "scan now" has no path, and a bar that fills for nothing is
-/// worse than a refusal that says so.
+/// Now there is one, and it is this process's: [`crate::discovery`] binds the discovery sockets, runs the worker that
+/// `synra-core` already implements, and writes what it hears into **this** process's `devices_seen` — the table
+/// [`devices_snapshot`] reads. That is the design's own arrangement ([05 §2.1](../../../design-docs/05-system-architecture.md)
+/// puts `DiscoveryService` inside the desktop application), and it is also the only arrangement that shows the user
+/// anything: the daemon keeps a different data directory, so a scan it ran would write into a table this window never reads.
 ///
 /// # Errors
 ///
-/// [`IpcError`] when an active scan was asked for. A `cached_only` scan is answered, because reading what is already
-/// known needs no sockets and is exactly what the shell can do.
+/// [`IpcError::Unsupported`] when this window could not bind the discovery sockets — no network, a firewall, a sandbox —
+/// carrying the reason. The interface falls back to the cached read, which answers what is already known.
 ///
-/// # What a cached scan leaves behind
+/// # What it leaves behind
 ///
-/// Nothing: it records no scan, because `scanning` means *in progress* and this one has finished before it answers. The
-/// note at the end of the body is about the round where it did record one, and what that cost the interface.
+/// A cached scan leaves nothing: it reads, it has finished before it answers, and `scanning` means *in progress*. A network
+/// scan records `scanning` **while it runs**, with the budget it is waiting out, and clears it before answering — so a
+/// snapshot taken during the wait says a scan is under way, and the one taken after it does not.
 pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String, IpcError> {
-    if !opts.cached_only {
-        return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
-            serde_json::json!({
-                "reason": "this shell cannot scan: discovery belongs to the daemon, which is already \
-                    discovering and writing what it hears into the same device list. What is missing is a \
-                    control request asking it for an on-demand scan. Ask for a cached scan to see \
-                    what is already known.",
-            }),
-        ));
+    let scan_id = state.next_scan_id();
+
+    // A cached scan reads what is already known: no sockets, nothing to wait for, and no state to leave behind.
+    if opts.cached_only {
+        return Ok(scan_id);
     }
-    // ★ `cached_only` finishes before it answers, so it records no scan at all — and this is the half that was wrong.
-    //
-    // It used to leave `Some(ScanState { elapsed_ms: 0, total_ms: 0, found: 0 })` behind, with the argument that "zero is
-    // what a finished scan looks like". Zero *is* what a finished scan looks like; `Some` is not how the interface reads
-    // the field. `scanning` means **the scan in progress** — the store asks `scan !== undefined` — and nothing in this
-    // shell ever updates or clears it, because the shell publishes no kernel events. So the recorded scan disabled the
-    // Scan button and drew a bar that could never move, and it stayed that way until the process was restarted: the
-    // zeroed progress bar this module's header refuses, rebuilt on the one path that still existed.
-    //
-    // A scan with nothing to wait for is not a scan in progress, so the answer is the identifier alone. The contract
-    // answers with one, and it costs nothing.
-    Ok(state.next_scan_id())
+
+    // ★ `Some(0)` is the protocol's way of saying "answer from what you already know" — the same thing `cached_only` says —
+    // so nothing is published and nobody waits. The daemon reads its own `scan_ms` the same way.
+    let budget = scan_budget(opts);
+    if budget.is_zero() {
+        return Ok(scan_id);
+    }
+
+    let Some(discovery) = &state.discovery else {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(serde_json::json!({
+            "reason": "this window could not bind the discovery sockets, so it cannot look for devices: a machine with \
+                no network, a firewall and a sandbox all produce this. The devices already known are still listed — ask \
+                for a cached scan to read them.",
+        })));
+    };
+
+    *state.scanning.lock() = Some(ScanState {
+        scan_id: scan_id.clone(),
+        // Zero elapsed with the whole budget ahead: a report read from a snapshot, and this shell publishes no kernel
+        // events yet, so a bar drawn from it is at its start. The number that matters is `total_ms` — a snapshot taken
+        // mid-scan is how a caller knows the scan is real and bounded.
+        elapsed_ms: 0,
+        total_ms: u64::try_from(budget.as_millis()).unwrap_or(u64::MAX),
+        found: 0,
+    });
+    discovery.scan(budget);
+    // Cleared before the answer, because the scan this records is over. This is also the field's whole meaning: a finished
+    // scan recorded as a running one is what disabled the Scan button and drew the bar that could not move.
+    *state.scanning.lock() = None;
+
+    Ok(scan_id)
 }
 
 /// Ends a scan.

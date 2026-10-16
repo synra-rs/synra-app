@@ -96,6 +96,8 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   plugins_list: undefined,
   // The command is `One` **and takes an `intent_id`**: it answers about one intent rather than listing them.
   intent_snapshot: { intentId: '01HQ00000000000000000INTNT1' },
+  // The listing read, which is `Many`: the payload is the array rather than an envelope around it.
+  intent_list: undefined,
   transfer_list: undefined,
   config_get: undefined
 }
@@ -117,7 +119,7 @@ const MAYBE_COMMAND = 'plugins_check_update'
 const KNOWN_DIVERGENCE = 'devices_scan_start'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 39
+const DECLARED_COMMANDS = 40
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()
@@ -176,7 +178,7 @@ describe('every answer the fake gives, against the arity the kernel declares', (
   })
 
   it('parses the whole contract rather than a prefix of it', () => {
-    // The parser's own guard. `registration.test.ts` pins the declared count at 39 from the other side, and this fails
+    // The parser's own guard. `registration.test.ts` pins the declared count at 40 from the other side, and this fails
     // if the two ever disagree — which would mean one of the two readers of `command.rs` had stopped reading all of it.
     expect(arities.size).toBe(DECLARED_COMMANDS)
   })
