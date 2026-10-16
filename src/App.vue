@@ -7,42 +7,47 @@
     anywhere in the interface is the failure this line exists to prevent, so there is exactly one `:theme=` in the app.
   -->
   <ConfigProvider :theme="synraAntdTheme()">
-    <div class="grid grid-rows-[1fr_auto] screen lg:grid-cols-[15rem_1fr] md:grid-cols-[4.5rem_1fr] md:grid-rows-1">
+    <div class="grid grid-rows-[1fr_auto] screen md:grid-rows-1" :class="rail ? 'md:grid-cols-[4.5rem_1fr]' : 'md:grid-cols-[15rem_1fr]'">
       <!--
-        The navigation, in the three forms R11 gives it: an expanded sidebar at `lg` (which is also `minWidth`, R12),
-        an icon rail at `md`, and nothing at all below that — where the bottom bar takes over.
+        The navigation, in the three forms R11 gives it: an expanded sidebar at `lg` (which is also `minWidth`, R12), an
+        icon rail at `md`, and nothing at all below that — where the bottom bar takes over.
+
+        ★ **It is `a-menu`, not a hand-built list.** R51 names menus among the things the component library owns, and the
+        library's `inline` mode with `inline-collapsed` *is* the expanded/rail pair: it brings the collapsed width, the
+        icon alignment, the tooltip that names a collapsed item, and the selected-item treatment. The first version of
+        this file hand-rolled all of that, which is how the sidebar ended up as the least antd-looking part of an antd
+        application. The one thing that stays hand-built is the bottom bar below `md`: antd has no bottom navigation, and
+        three forms for three widths is a product decision rather than a component one.
+
+        ★ **Its own inline `border-inline-end` stays.** The first attempt killed it with `!border-e-0` — and the theme's
+        `blocklist` refused the build, which is the rule working exactly as designed (`!important` is banned there by
+        name: once one is allowed, the next has to be louder). antd derives that border from `colorSplit`, which the
+        adapter maps to `line`, so what is beside the shell's own `border-line` edge is a token-coloured hairline, not a
+        foreign colour. Two hairlines is a cosmetic debt worth naming, not worth a second theme object (R51).
       -->
-      <aside class="hidden flex-col gap-4 border-e border-line bg-surface px-2 py-3 md:flex lg:px-4">
-        <div class="row gap-2 ps-2">
+      <aside class="hidden min-h-0 flex-col border-e border-line bg-surface px-2 py-3 md:flex">
+        <div class="row gap-2 px-2 pb-3">
           <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
-          <span class="hidden text-lg font-semibold lg:inline">Synra</span>
+          <span v-if="!rail" class="text-lg font-semibold">Synra</span>
         </div>
 
-        <nav class="min-h-0 stack gap-1 overflow-y-auto">
-          <RouterLink
-            v-for="page in PAGES"
-            :key="page.path"
-            v-slot="{ isExactActive }"
-            :to="page.path"
-            class="relative row gap-3 rounded-control px-2 py-2 text-ink-dim focusable @hover:bg-raised lg:px-3 @hover:text-ink"
-            active-class="bg-raised text-ink"
-          >
-            <!--
-              The current page is marked twice: a bar and a colour. Colour alone is not a state (R23) — and the bar is
-              what survives a screenshot in greyscale.
-            -->
-            <span
-              class="absolute start-0 inset-y-2 w-0.5 rounded-pill bg-transparent"
-              :class="{ 'bg-primary': isExactActive }"
-              aria-hidden="true"
-            />
-            <span :class="page.icon" class="shrink-0 text-lg" aria-hidden="true" />
-            <span class="hidden min-w-0 flex-col lg:flex">
-              <span class="truncate font-medium">{{ page.label }}</span>
-              <span class="truncate text-xs">{{ page.hint }}</span>
+        <AMenu
+          class="min-h-0 flex-1 overflow-y-auto"
+          mode="inline"
+          :inline-collapsed="rail"
+          :selected-keys="[route.path]"
+          @click="navigate"
+        >
+          <AMenuItem v-for="page in PAGES" :key="page.path">
+            <template #icon>
+              <span :class="page.icon" aria-hidden="true" />
+            </template>
+            <span class="flex flex-col">
+              <span class="font-medium">{{ page.label }}</span>
+              <span v-if="!rail" class="text-xs text-ink-dim font-normal">{{ page.hint }}</span>
             </span>
-          </RouterLink>
-        </nav>
+          </AMenuItem>
+        </AMenu>
 
         <!--
           Which device this is. In the shell rather than on each page, because the question is answered the same way
@@ -50,21 +55,25 @@
           changes while you navigate (R25: this border separates two kinds of information, so it is a border worth
           having).
         -->
-        <div class="mt-auto hidden flex-col gap-0.5 border-t border-line px-2 pt-3 lg:flex">
+        <div class="mt-auto flex flex-col gap-2 border-t border-line px-2 pt-3">
           <template v-if="devices.identity">
-            <span class="truncate text-sm font-medium">{{ devices.identity.displayName }}</span>
-            <span class="truncate text-xs">{{ devices.identity.platform }}</span>
-            <span class="truncate text-xs font-mono">v{{ devices.identity.kernelVersion }}</span>
+            <div class="row gap-2">
+              <AAvatar :size="28" class="shrink-0 bg-raised text-primary">
+                <span class="i-carbon-laptop" aria-hidden="true" />
+              </AAvatar>
+              <span v-if="!rail" class="min-w-0 flex flex-col">
+                <span class="truncate text-sm font-medium">{{ devices.identity.displayName }}</span>
+                <span class="truncate text-xs text-ink-dim">{{ devices.identity.platform }}</span>
+              </span>
+            </div>
+            <span v-if="!rail" class="truncate text-xs text-ink-dim font-mono">v{{ devices.identity.kernelVersion }}</span>
           </template>
           <!--
-            A skeleton rather than the word "loading": the interface is starting up, and "loading…" is a sentence that
-            says nothing a pair of dim bars does not say faster. No animation — R29 spends a screen's one motion on
-            something that answers a question, and this shapes does not.
+            A real skeleton rather than the word "loading": the interface is starting up, and "loading…" is a sentence
+            that says nothing a pair of dim bars does not say faster. Not `active` — R29 spends a screen's one motion on
+            something that answers a question, and a shimmer answers none.
           -->
-          <template v-else>
-            <span class="h-4 w-24 rounded-pill bg-raised" aria-hidden="true" />
-            <span class="h-3 w-16 rounded-pill bg-raised" aria-hidden="true" />
-          </template>
+          <ASkeleton v-else :title="false" :paragraph="{ rows: rail ? 1 : 2 }" />
         </div>
       </aside>
 
@@ -75,8 +84,9 @@
       </main>
 
       <!--
-        The bottom bar, below `md` only. `min-h-11` is R16's 44px touch target, and the padding is the safe-area inset
-        that `viewport-fit=cover` in `index.html` makes non-zero on a phone with a gesture bar.
+        The bottom bar, below `md` only — the third form, and the one antd has no component for. `min-h-11` is R16's
+        44px touch target, and the padding is the safe-area inset that `viewport-fit=cover` in `index.html` makes
+        non-zero on a phone with a gesture bar.
       -->
       <nav class="flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
         <RouterLink
@@ -113,27 +123,59 @@
  *
  * It owns the three navigation forms, the seam between pages, and — because it is the root — the **one** place where the
  * design tokens are handed to the component library (`ConfigProvider`, R51). It owns **no colour, size or shadow of its
- * own**: the classes below are names from `@synra/theme` (`screen`, `panel`, `focusable`, `bg-raised`, `border-line`), so
- * a change to the palette is a change in one repository. There is no `<style>` block at all — R37 allows one only where
- * UnoCSS cannot express the thing, and nothing here qualifies.
+ * own**: the classes below are names from `@synra/theme` (`screen`, `floating`, `focusable`, `bg-raised`, `border-line`),
+ * so a change to the palette is a change in one repository. There is no `<style>` block at all — R37 allows one only
+ * where UnoCSS cannot express the thing, and nothing here qualifies.
+ *
+ * # Why the rail width is decided in script and not in CSS
+ *
+ * `a-menu` collapses by a **prop** (`inline-collapsed`), not by a media query, so the shell has to know which of the two
+ * forms it is in. `matchMedia` answers that once per crossing rather than on every render, and the listener is removed
+ * with the component. The breakpoint is 64rem — which is R12's `minWidth` (1024px) and `lg`, so "there is room for the
+ * expanded form" and "the window is at least the width the design promises" are the same sentence. Below `md` (48rem)
+ * the sidebar is hidden entirely and the bottom bar is the navigation, so the two answers never disagree about what is on
+ * screen.
  */
 import type { DevicesSnapshot } from '@synra/protocol'
 import { synraAntdTheme } from '@synra/theme/antd'
-import { ConfigProvider } from 'ant-design-vue'
-import { onMounted } from 'vue'
+import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, ConfigProvider } from 'ant-design-vue'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { kernel } from './kernel'
 import { PAGES } from './router'
 import { useDevicesStore } from './stores/devices'
 
+const route = useRoute()
+const router = useRouter()
 const devices = useDevicesStore()
 
+/** True in the rail form: below `lg` (64rem), which is also R12's `minWidth` floor for the expanded form. */
+const rail = ref(false)
+let query: MediaQueryList | undefined
+
+function apply(event: MediaQueryList | MediaQueryListEvent): void {
+  rail.value = !event.matches
+}
+
+function navigate(info: { key: string | number }): void {
+  router.push(String(info.key))
+}
+
 onMounted(async () => {
+  query = window.matchMedia('(min-width: 64rem)')
+  apply(query)
+  query.addEventListener('change', apply)
+
   // The snapshot is taken before anything subscribes, which is the wrong order in general and the right one *here*:
   // the interface is starting up with nothing on screen, so there is no event it can miss yet. Once a page is live the
   // dispatcher owns the ordering.
   const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
   if (answer.ok)
     devices.applySnapshot(answer.value)
+})
+
+onUnmounted(() => {
+  query?.removeEventListener('change', apply)
 })
 </script>

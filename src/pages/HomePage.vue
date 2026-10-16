@@ -11,6 +11,10 @@
       material and the glow are allowed to mean something: `floating` is the glass (R43), and `shadow-glow` appears only
       when the line is *live* (R45 — glow is a state, not a skin).
 
+      It is also the **one** piece of the interface that is deliberately not the component library's. antd has no such
+      control, and the whole point of the rule is that a screen has one memorable thing — wrapping it in a Card would
+      make it furniture. Everything around it is antd: the actions, the lists, the tags.
+
       It shows a real state, never a decorative animation (R27), and the state is written out as well as drawn, because
       colour alone is not a state (R23).
     -->
@@ -46,14 +50,9 @@
       </div>
 
       <!-- R28: an empty state is an invitation with a next step, not a sentence. -->
-      <RouterLink
-        v-if="wire.state === 'none'"
-        to="/devices"
-        class="w-fit row gap-2 border border-line-strong rounded-control px-3 py-2 text-sm text-primary-ink focusable @hover:bg-raised"
-      >
+      <AButton v-if="wire.state === 'none'" class="w-fit" @click="router.push('/devices')">
         {{ messages.home.wire.action }}
-        <span class="i-carbon-arrow-right" aria-hidden="true" />
-      </RouterLink>
+      </AButton>
     </div>
 
     <section class="stack gap-3">
@@ -61,24 +60,22 @@
         {{ messages.home.inFlight.title }}
       </h2>
 
-      <p v-if="transfers.length === 0" class="row gap-3 text-sm text-ink-dim">
-        {{ messages.home.inFlight.empty }}
-        <RouterLink to="/devices" class="text-primary-ink underline underline-offset-2 focusable">
+      <AEmpty v-if="transfers.length === 0" :description="messages.home.inFlight.empty">
+        <AButton @click="router.push('/devices')">
           {{ messages.home.inFlight.action }}
-        </RouterLink>
-      </p>
+        </AButton>
+      </AEmpty>
 
-      <ul v-else class="m-0 stack list-none gap-0 p-0">
-        <li
-          v-for="transfer in transfers"
-          :key="transfer.transferId"
-          class="row-between gap-3 border-t border-line py-3 first:border-t-0"
-        >
-          <span class="truncate text-sm">{{ transfer.peerName }}</span>
-          <span class="shrink-0 text-xs text-ink-dim">{{ transfer.state }}</span>
-          <span class="shrink-0 text-xs text-ink-dim font-mono">{{ transfer.kind }}</span>
-        </li>
-      </ul>
+      <AList v-else size="small">
+        <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
+          <div class="row-between gap-3">
+            <span class="truncate text-sm">{{ transfer.peerName }}</span>
+            <ATag class="m-0">
+              {{ transfer.state }}
+            </ATag>
+          </div>
+        </AList.Item>
+      </AList>
     </section>
 
     <section class="stack gap-3">
@@ -86,23 +83,22 @@
         {{ messages.home.received.title }}
       </h2>
 
-      <p v-if="intents.length === 0" class="row gap-3 text-sm text-ink-dim">
-        {{ messages.home.received.empty }}
-        <RouterLink to="/devices" class="text-primary-ink underline underline-offset-2 focusable">
+      <AEmpty v-if="intents.length === 0" :description="messages.home.received.empty">
+        <AButton @click="router.push('/devices')">
           {{ messages.home.received.action }}
-        </RouterLink>
-      </p>
+        </AButton>
+      </AEmpty>
 
-      <ul v-else class="m-0 stack list-none gap-0 p-0">
-        <li
-          v-for="intent in intents"
-          :key="intent.intentId"
-          class="row gap-3 border-t border-line py-3 first:border-t-0"
-        >
-          <span class="rounded-pill bg-raised px-2 py-0.5 text-xs text-ink-dim">{{ intent.state }}</span>
-          <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
-        </li>
-      </ul>
+      <AList v-else size="small">
+        <AList.Item v-for="intent in intents" :key="intent.intentId">
+          <div class="row gap-3">
+            <ATag class="m-0">
+              {{ intent.state }}
+            </ATag>
+            <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
+          </div>
+        </AList.Item>
+      </AList>
     </section>
   </section>
 </template>
@@ -123,15 +119,25 @@
  * and reachable, a paired device that is not answering, or nothing paired at all. Against the fake kernel the last one is
  * what is drawn — honestly, with the action that changes it (R28) — rather than a decorative loop that would look alive
  * while saying nothing.
+ *
+ * # What is antd here, and what is not
+ *
+ * The buttons, the lists, the tags and the error surface are `ant-design-vue`, so they carry the theme the rest of the
+ * application does (R51). The wire is not: it is the screen's one designed object, and the component library does not
+ * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
+ * worth looking at.
  */
 import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
+import { Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 
+const router = useRouter()
 const devices = useDevicesStore()
 
 const intents = ref<readonly IntentSnapshot[]>([])

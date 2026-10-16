@@ -86,6 +86,12 @@ export const messages = {
     scanning: 'Scanning',
     scanProgress: 'Found',
     scanElapsed: 'Elapsed',
+    /**
+     * ★ A scan reports three facts, so it has three labels. Folding elapsed and total into one line ("1200 ms of
+     * 3000 ms") is the join R21 retires — the separator is what an author reaches for when the parts have no names —
+     * and a number with no label is one the reader has to guess at.
+     */
+    scanTotal: 'Total',
     empty: 'No device has been found yet.',
     emptyAction: 'Scan for devices',
     paired: 'Paired',
@@ -97,7 +103,18 @@ export const messages = {
   plugins: {
     title: 'Plugins',
     empty: 'No plugin is installed.',
-    emptyAction: 'See what a plugin is',
+    /**
+     * ★ This said "See what a plugin is". There is no screen with that answer — the explanation lives in the
+     * documentation site, and this window cannot open it (`default-src 'self'`, and the plugin facade's
+     * `platform:open-url` is not part of the host's surface) — so that label would have been a button that does
+     * nothing, which is the one failure this interface is sized against. What this page *can* do is read the list
+     * again, so that is what its empty state offers (R28).
+     */
+    emptyAction: 'Check again',
+    /** One label per machine fact, so no two of them are ever joined by a separator (R21). */
+    pluginId: 'Plugin id',
+    version: 'Version',
+    publisher: 'Publisher',
     granted: 'Granted',
     refused: 'Refused',
     none: 'nothing',
@@ -116,6 +133,17 @@ export const messages = {
       deviceId: 'Device id'
     },
     preferences: 'Preferences',
+    /**
+     * The two keys this page reads, in the user's words.
+     *
+     * The page's own key names are not the kernel's — its configuration is addressed by dotted paths (`ui.theme`) —
+     * so these are labels rather than the key printed into the interface, which is also what keeps a user-visible
+     * string out of the template (R31).
+     */
+    preference: {
+      theme: 'Theme',
+      autoSyncPlugins: 'Update plugins automatically'
+    },
     /**
      * Rendered next to controls that exist but do nothing yet. A toggle that looks like it works and does not is worse
      * than one that is visibly absent: the user changes it, sees nothing move, and starts debugging the wrong thing.
