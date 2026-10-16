@@ -10,7 +10,7 @@
       R28: an empty state is an invitation with a next step. This screen cannot install anything yet, so the invitation
       is the one thing it *can* do truthfully — read the list again — and the button reports that it is doing it.
     -->
-    <AEmpty v-if="plugins.length === 0" :description="messages.plugins.empty">
+    <AEmpty v-if="plugins?.length === 0" :description="messages.plugins.empty">
       <template #image>
         <!--
           The icon rather than antd's default illustration: that illustration draws its own light-grey palette into a
@@ -82,7 +82,7 @@
             <div class="stack gap-1">
               <div class="row flex-wrap gap-2">
                 <span class="text-xs text-ink-dim">{{ messages.plugins.granted }}</span>
-                <span v-if="plugin.granted.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
+                <span v-if="plugin.granted?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
                 <ATag v-for="capability in plugin.granted" :key="capability" class="font-mono">
                   {{ capability }}
                 </ATag>
@@ -90,7 +90,7 @@
 
               <div class="row flex-wrap gap-2">
                 <span class="text-xs text-ink-dim">{{ messages.plugins.refused }}</span>
-                <span v-if="plugin.denied.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
+                <span v-if="plugin.denied?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
                 <ATag v-for="capability in plugin.denied" :key="capability" color="error" class="font-mono">
                   {{ capability }}
                 </ATag>
