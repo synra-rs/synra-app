@@ -37,6 +37,15 @@ export interface PageRoute {
   readonly label: string
   /** One line under the label, so a screen's purpose is visible before it is opened. */
   readonly hint: string
+  /**
+   * The Carbon icon class, for the rail (md) and the bottom bar (base).
+   *
+   * Carbon rather than a generic set because it is drawn by the same people as the interface's typeface (R18) — the
+   * two are meant to sit together. It has to be an **icon font class, not an image or an inline SVG**, because R41
+   * requires icons to be inlined at build time: the window's CSP has `connect-src 'none'`, so an icon fetched at
+   * runtime fails as an empty box that looks like a broken icon library.
+   */
+  readonly icon: string
   /** The component. */
   readonly component: typeof HomePage
 }
@@ -47,24 +56,28 @@ export const PAGES: readonly PageRoute[] = [
     path: '/',
     label: 'Home',
     hint: 'What this device is doing',
+    icon: 'i-carbon-home',
     component: HomePage
   },
   {
     path: '/devices',
     label: 'Devices',
     hint: 'Pair and send',
+    icon: 'i-carbon-devices',
     component: DevicesPage
   },
   {
     path: '/plugins',
     label: 'Plugins',
     hint: 'Install and grant',
+    icon: 'i-carbon-application',
     component: PluginsPage
   },
   {
     path: '/settings',
     label: 'Settings',
     hint: 'This device',
+    icon: 'i-carbon-settings',
     component: SettingsPage
   }
 ]
