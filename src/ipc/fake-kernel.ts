@@ -19,123 +19,25 @@
  * drifts is a call that fails at runtime with "command not found" and points at neither file. A fake that invented
  * `getDevices` would pass every test and teach the interface a command the kernel does not have — so this one answers
  * the 39 names that are declared.
+ *
+ * # Why the data is in a file beside this one
+ *
+ * The tables were the longest part of this file and the least informative: a reader looking for what the fake *does* had
+ * to scroll past a device list to find it. They are in `fake-kernel-fixtures.ts`, which only this file imports — the
+ * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
  */
 
-import type {
-  DeviceCard,
-  DevicesSnapshot,
-  IdentitySnapshot,
-  IntentSnapshot,
-  PluginSnapshot,
-  SequencedKernelEvent,
-  TransferSnapshot
-} from '@synra/protocol'
+import type { DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
 
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
-
-/** A device id that is shaped like one, so nothing here accidentally tests id parsing. */
-const SELF_ID = '01HQ0000000000000000000SELF'
-const PEER_ID = '01HQ0000000000000000000PEER'
-const UNKNOWN_ID = '01HQ00000000000000000UNKNOWN'
-
-/** The identity of the machine running this interface. */
-const IDENTITY = {
-  deviceId: SELF_ID,
-  displayName: 'This device',
-  platform: 'windows',
-  kernelVersion: '0.1.0',
-  nameIsDefault: true
-} satisfies IdentitySnapshot
-
-/** Two devices: one paired and reachable, one seen once and gone. */
-const DEVICES: readonly DeviceCard[] = [
-  {
-    deviceId: PEER_ID,
-    displayName: 'Pixel 8',
-    platform: 'android',
-    online: true,
-    paired: true,
-    blocked: false,
-    lastSeenMs: 0
-  },
-  {
-    deviceId: UNKNOWN_ID,
-    displayName: 'unknown-android',
-    platform: 'android',
-    online: false,
-    paired: false,
-    blocked: false,
-    lastSeenMs: 0,
-    address: '192.168.1.57'
-  }
-]
-
-/**
- * Two plugins, and the second one is the interesting one.
- *
- * `faulted` while `enabled` is what the design document keeps insisting on: a state that is neither "on" nor "off" and
- * that must not be *derived* from the other two. A fake that only had healthy plugins would let that rule stay
- * untested until it was expensive.
- */
-const PLUGINS: readonly PluginSnapshot[] = [
-  {
-    pluginId: '@synra-plugin/github',
-    title: 'GitHub links',
-    description: 'Opens a shared repository in the desktop browser.',
-    version: '0.1.0',
-    publisher: '@synra',
-    enabled: true,
-    state: 'active',
-    hybrid: false,
-    health: {
-      health: 'healthy',
-      explanation: 'plugin.health.ok',
-      callsAdmitted: 12,
-      callsRefused: 0,
-      usage: null
-    },
-    granted: ['platform:open-url', 'net:read-title'],
-    denied: []
-  },
-  {
-    pluginId: '@synra-plugin/shortcuts',
-    title: 'Shortcuts',
-    version: '0.2.0',
-    publisher: '@synra',
-    enabled: true,
-    state: 'faulted',
-    hybrid: false,
-    health: {
-      health: 'faulted',
-      explanation: 'plugin.health.quotaExceeded',
-      callsAdmitted: 40,
-      callsRefused: 3,
-      usage: null
-    },
-    granted: ['platform:open-url'],
-    denied: ['fs:read', 'net:fetch'],
-    update: {
-      version: '0.3.0',
-      needsNewConsent: true,
-      addedCapabilities: ['net:fetch:api.github.com']
-    }
-  }
-]
-
-/** One intent that settled, so the home page has something true to say. */
-const INTENTS: readonly IntentSnapshot[] = [
-  {
-    intentId: '01HQ00000000000000000INTNT1',
-    state: 'succeeded',
-    pluginId: '@synra-plugin/github',
-    candidates: [],
-    startedAtMs: 0
-  }
-]
-
-/** No transfers: an empty list is a real answer and the panel has to render it. */
-const TRANSFERS: readonly TransferSnapshot[] = []
+import {
+  DEVICES,
+  IDENTITY,
+  INTENT,
+  PLUGINS,
+  TRANSFERS
+} from './fake-kernel-fixtures'
 
 /**
  * A `Bridge` that answers from constants.
@@ -167,11 +69,24 @@ const TRANSFERS: readonly TransferSnapshot[] = []
         this.#stopScan()
         return null
       case 'plugins_list':
-        return { plugins: PLUGINS.map(plugin => ({ ...plugin })) }
+        // ★ A bare array, because the kernel's own table says this command returns `Many`.
+        //
+        // `crates/synra-ipc/src/command.rs` declares the payload's arity per command: `"plugins_list" => Plugins, Host,
+        // Many, false`, and the shell's signature is `Result<Vec<PluginSnapshot>, IpcError>`. `Many` means the payload
+        // *is* the list — there is no envelope field to read it from.
+        //
+        // This used to answer `{ plugins: […] }`. That shape matched an earlier `PluginsPage.vue` which read
+        // `answer.value.plugins`, so every test passed and the real app crashed with `t.value is not iterable` the
+        // moment it ran against a real kernel. A fake that agrees with the interface instead of with the contract is
+        // the one failure mode a fake cannot catch by itself — which is why `commands.test.ts` now asserts every shape
+        // here against `command.rs`.
+        return PLUGINS.map(plugin => ({ ...plugin }))
       case 'intent_snapshot':
-        return { intents: INTENTS.map(intent => ({ ...intent })) }
+        // `One`, and it takes an `intent_id`: the command answers about *one* intent rather than listing them.
+        return { ...INTENT }
       case 'transfer_list':
-        return { transfers: TRANSFERS.map(transfer => ({ ...transfer })) }
+        // ★ A bare array, for the same reason as `plugins_list` above: `Many`.
+        return TRANSFERS.map(transfer => ({ ...transfer }))
       case 'config_get':
         // ★ The kernel's own shape, not a flat bag of settings.
         //

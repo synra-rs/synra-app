@@ -190,11 +190,11 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = undefined
 
-  const answer = await kernel.call<{ plugins: readonly PluginSnapshot[] }>('plugins_list')
+  const answer = await kernel.call<readonly PluginSnapshot[]>('plugins_list')
   loading.value = false
 
   if (answer.ok)
-    plugins.value = answer.value.plugins
+    plugins.value = answer.value
   else
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
