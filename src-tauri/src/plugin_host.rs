@@ -44,8 +44,15 @@ pub struct DesktopHost {
     /// call would start from zero every time and `max_concurrent` would never refuse anything. The host list is stored
     /// beside it because the guard is built from the plugin's grants — and a user who withdraws a host must not keep
     /// reaching it through a cached client, so a changed list rebuilds the client.
-    fetch_clients: Mutex<std::collections::HashMap<PluginId, (Vec<String>, Arc<synra_fetch::Client>)>>,
+    fetch_clients: Mutex<FetchClients>,
 }
+
+/// One fetcher per plugin, and the host list it was built for.
+///
+/// A `type` rather than the written-out type because clippy was right to complain: this appeared inline in the struct above
+/// and again wherever it is read, and a reader has to parse four levels of nesting to learn that it is a map of plugins to
+/// *(hosts, client)*.
+type FetchClients = std::collections::HashMap<PluginId, (Vec<String>, Arc<synra_fetch::Client>)>;
 
 impl DesktopHost {
     /// A host over the shell's own state.

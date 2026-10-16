@@ -319,11 +319,29 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
             // The cost was that this line stopped compiling, and nothing said so — the check being run was
             // `cargo test --lib`, and this code is in the binary.
             let host = Arc::new(synra_app::plugin_host::DesktopHost::new(Arc::clone(&state.db)));
-            let set = synra_core::dispatch::PluginSet::new(
-                synra_plugin_host::Backend::new(Arc::new(engine)),
-                host,
-            );
-            state.with_plugins(Arc::new(Mutex::new(set)))
+            let backend = synra_plugin_host::Backend::new(Arc::new(engine));
+            // ★ The same question the daemon asks, for the same reason: an engine that cannot enforce what this
+            // host will ask of it must not run third-party code at all.
+            //
+            // ★ And here the answer costs the **plugin half only**, which is the shape this function already has: the window
+            // still shows devices, settings and diagnostics. An engine missing a limit joins an engine that would not start,
+            // rather than becoming an engine that runs plugins without the bound.
+            match synra_plugin_host::engine::check_enforceable(
+                &backend,
+                &synra_plugin_host::quota::Quota::default(),
+            ) {
+                Ok(()) => {
+                    let set = synra_core::dispatch::PluginSet::new(backend, host);
+                    state.with_plugins(Arc::new(Mutex::new(set)))
+                }
+                Err(error) => {
+                    // The same shape as the arm below: said once, and the shell carries on without the plugin half.
+                    eprintln!(
+                        "synra: plugins will not run in this build: this engine cannot enforce the limits this shell sets: {error}"
+                    );
+                    state
+                }
+            }
         }
         Err(error) => {
             // ★ Said once, here, and then carried by every command that needs a plugin.
