@@ -10,6 +10,11 @@
 //! this crate is unit-testable on a machine with no WebView2, no NDK and no window — and a test that cannot run on a
 //! developer's machine is a test that does not exist.
 //!
+//! ★ That "nothing here" now has exactly one exception, and it is named: [`shell`]. The window's assembly lives in this
+//! library because Android loads a shared library and calls a symbol in it rather than starting a binary, so the entry
+//! point has nowhere else to be. It is behind the same `tauri-shell` feature the binary is, which is what keeps the
+//! sentence above true for every build that has no shell in it.
+//!
 //! # Why the state is a trait and not a concrete kernel
 //!
 //! Because a command that talks to a concrete kernel can only be tested against a running kernel, which needs a database,
@@ -49,6 +54,13 @@
 pub mod commands;
 pub mod plugin_host;
 pub mod state;
+
+// ★ The window, and only when there is one to build.
+//
+// Gated on the feature rather than on a target, because that is the axis that matters here: what must not happen is
+// `tauri` entering the graph of the build that runs the tests. See the module's own documentation.
+#[cfg(feature = "tauri-shell")]
+pub mod shell;
 
 #[cfg(test)]
 mod testing;

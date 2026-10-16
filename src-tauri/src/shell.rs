@@ -1,0 +1,444 @@
+//! The window: what it is built over, and what the interface may call.
+//!
+//! # Why this module is in the library and not in `main.rs`
+//!
+//! Because Android has no binary entry point to put it in. The generated `gen/android` project is a Kotlin activity
+//! that loads a **shared library** and calls one C symbol, `start_app`; that symbol is produced by
+//! `#[tauri::mobile_entry_point]` applied to a function in the library target. A `main.rs` is never linked into that
+//! library, so `main.rs` is the one file on Android that cannot hold anything.
+//!
+//! The desktop binary keeps its own `main.rs`, and it keeps it small: it calls [`run_window`] here and turns the answer
+//! into an exit code. So the two platforms share one assembly of the window and neither duplicates the other's.
+//!
+//! # Why it is behind the `tauri-shell` feature
+//!
+//! Because the library's other half must stay testable without a WebView. `cargo test --no-default-features` compiles
+//! this crate with no `tauri` in the graph at all, and this module is the only thing that would break that — so it is
+//! the only thing gated. The same reasoning as `build.rs`'s, and the two stay in step because both name the same
+//! feature rather than each other.
+
+use std::sync::Arc;
+
+use parking_lot::Mutex;
+use synra_store::{Paths, SynraDb};
+use tauri::Manager;
+
+use crate::commands;
+use crate::commands::diag::DiagExportResult;
+use crate::state::AppState;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The wrappers
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ★ Why each command is written twice.
+//
+// `#[tauri::command]` generates a module (`__cmd__identity_get`) and a symbol per command, and it does that by
+// referring to `tauri::State`. The library's command bodies deliberately do not depend on `tauri` — the
+// `--no-default-features` build runs them with no WebView in the build graph at all — so the bodies in `commands::*`
+// are plain functions and the attribute has to be applied out here, in the one place that is only built when the shell
+// is.
+//
+// The wrappers are as thin as the signature allows: take the arguments, call, return what came back. None of them
+// decides anything, because a decision made here is a decision no test can reach.
+//
+// ★ Why the dispatch table is also in this module, and not next to the builder.
+//
+// Because `#[tauri::command]` on a `pub fn` writes its wrapper macro with `#[macro_export]`, which puts that macro at
+// the crate root **instead of** leaving it in textual scope here. `generate_handler!` expands to an unqualified
+// `__cmd__identity_get!(…)`, so it resolves only where the macro's textual scope still reaches — inside this module,
+// below each definition. One module above, the same line fails with "cannot find macro". The alternative was forty
+// explicit macro imports; this is one function.
+//
+// ★ `needless_pass_by_value` is switched off for this block, and it is the one place in the crate where that is right.
+//
+// Every argument here is owned because `#[tauri::command]` deserialises it that way — the macro writes the
+// `Deserialize` bound into the generated `__cmd__*` module, so `&str` is not an option without changing what the
+// command accepts over the wire. The lint is correct everywhere else in this repository and wrong in exactly this
+// block, which is the distinction an `allow` is for.
+
+#[allow(clippy::needless_pass_by_value)]
+mod wrappers {
+    use synra_ipc::{
+        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IntentDecisionDto,
+        IntentSnapshot, IntentSourceDto, IpcError, PluginSnapshot, ScanOptions,
+    };
+    use synra_protocol::IntentId;
+
+    use super::{AppState, DiagExportResult, commands};
+
+    #[tauri::command]
+    pub fn identity_get(state: tauri::State<'_, AppState>) -> Result<IdentitySnapshot, IpcError> {
+        commands::identity::identity_get(&state)
+    }
+
+    #[tauri::command]
+    pub fn identity_set_display_name(
+        state: tauri::State<'_, AppState>,
+        name: String,
+    ) -> Result<(), IpcError> {
+        commands::identity::identity_set_display_name(&state, &name)
+    }
+
+    #[tauri::command]
+    pub fn devices_snapshot(state: tauri::State<'_, AppState>) -> Result<DevicesSnapshot, IpcError> {
+        commands::devices::devices_snapshot(&state)
+    }
+
+    #[tauri::command]
+    pub fn devices_scan_start(state: tauri::State<'_, AppState>, opts: ScanOptions) -> Result<String, IpcError> {
+        commands::devices::devices_scan_start(&state, &opts)
+    }
+
+    #[tauri::command]
+    pub fn devices_scan_cancel(state: tauri::State<'_, AppState>, scan_id: String) -> Result<(), IpcError> {
+        commands::devices::devices_scan_cancel(&state, &scan_id)
+    }
+
+    #[tauri::command]
+    pub fn devices_forget(state: tauri::State<'_, AppState>, device_id: String) -> Result<(), IpcError> {
+        commands::devices::devices_forget(&state, &device_id)
+    }
+
+    #[tauri::command]
+    pub fn plugins_list(state: tauri::State<'_, AppState>) -> Result<Vec<PluginSnapshot>, IpcError> {
+        commands::plugins::plugins_list(&state)
+    }
+
+    #[tauri::command]
+    pub fn plugins_enable(state: tauri::State<'_, AppState>, plugin_id: String) -> Result<(), IpcError> {
+        commands::plugins::plugins_enable(&state, &plugin_id)
+    }
+
+    #[tauri::command]
+    pub fn plugins_disable(state: tauri::State<'_, AppState>, plugin_id: String) -> Result<(), IpcError> {
+        commands::plugins::plugins_disable(&state, &plugin_id)
+    }
+
+    /// Records the user's decision about what a plugin may do.
+    #[tauri::command]
+    pub fn plugins_consent_respond(
+        state: tauri::State<'_, AppState>,
+        plugin_id: String,
+        granted: Vec<String>,
+    ) -> Result<PluginSnapshot, IpcError> {
+        commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
+    }
+
+    // ★ The audit trail, which had no writer until a plugin instance was given a session.
+    #[tauri::command]
+    pub fn plugins_audit(
+        state: tauri::State<'_, AppState>,
+        plugin_id: synra_protocol::PluginId,
+        limit: u32,
+    ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
+        commands::plugins::plugins_audit(&state, &plugin_id, limit)
+    }
+
+    // ★ The four that had no implementation until the orchestration moved out of the daemon binary.
+    //
+    // The reason recorded against them used to be "needs the intent board behind AppState", which was false: the board
+    // was already in the state. What was missing was roughly 250 lines of routing that only a binary could reach.
+    #[tauri::command]
+    pub fn intent_dispatch(
+        state: tauri::State<'_, AppState>,
+        source: IntentSourceDto,
+    ) -> Result<IntentId, IpcError> {
+        commands::intent::intent_dispatch(&state, &source)
+    }
+
+    #[tauri::command]
+    pub fn intent_snapshot(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+    ) -> Result<IntentSnapshot, IpcError> {
+        commands::intent::intent_snapshot(&state, intent_id)
+    }
+
+    #[tauri::command]
+    pub fn intent_decide(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+        decision: IntentDecisionDto,
+    ) -> Result<(), IpcError> {
+        commands::intent::intent_decide(&state, intent_id, &decision)
+    }
+
+    #[tauri::command]
+    pub fn intent_cancel(
+        state: tauri::State<'_, AppState>,
+        intent_id: IntentId,
+    ) -> Result<(), IpcError> {
+        commands::intent::intent_cancel(&state, intent_id)
+    }
+
+    #[tauri::command]
+    pub fn config_get(state: tauri::State<'_, AppState>) -> Result<ConfigSnapshot, IpcError> {
+        commands::config::config_get(&state)
+    }
+
+    #[tauri::command]
+    pub fn config_set(state: tauri::State<'_, AppState>, patch: ConfigPatch) -> Result<(), IpcError> {
+        commands::config::config_set(&state, &patch)
+    }
+
+    #[tauri::command]
+    pub fn diag_export(
+        state: tauri::State<'_, AppState>,
+        options: DiagExportOptions,
+    ) -> Result<DiagExportResult, IpcError> {
+        commands::diag::diag_export(&state, &options)
+    }
+
+    /// The tail of the shell's own log.
+    ///
+    /// `lines: Option<u32>` rather than an options struct, because there is one option. A struct for a single count
+    /// would be an IPC type that has to be mirrored in the TypeScript contract for no shape of its own.
+    #[tauri::command]
+    pub fn diag_logs_tail(
+        state: tauri::State<'_, AppState>,
+        lines: Option<u32>,
+    ) -> Result<Vec<String>, IpcError> {
+        commands::diag::diag_logs_tail(&state, lines)
+    }
+
+    /// What the shell's metrics hold.
+    ///
+    /// ★ No arguments, and that is the command's whole interface.
+    ///
+    /// Metrics are read as a set rather than queried one at a time; a command that took a metric name would be a command
+    /// whose caller already knew what it was looking for, which is the opposite of what a diagnostic is for.
+    #[tauri::command]
+    pub fn diag_metrics(
+        state: tauri::State<'_, AppState>,
+    ) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
+        commands::diag::diag_metrics(&state)
+    }
+
+    /// The dispatch table, built where the macros above are still in scope.
+    ///
+    /// The return type is written out rather than left to inference because the caller is
+    /// [`tauri::Builder::invoke_handler`], whose bound is what makes the shape a fact rather than a guess.
+    pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+        tauri::generate_handler![
+            identity_get,
+            identity_set_display_name,
+            devices_snapshot,
+            devices_scan_start,
+            devices_scan_cancel,
+            devices_forget,
+            plugins_list,
+            plugins_enable,
+            plugins_disable,
+            plugins_consent_respond,
+            plugins_audit,
+            intent_dispatch,
+            intent_snapshot,
+            intent_decide,
+            intent_cancel,
+            config_get,
+            config_set,
+            diag_export,
+            diag_logs_tail,
+            diag_metrics,
+        ]
+    }
+}
+
+/// The shell, with the state it reads and the commands it answers, and no window opened yet.
+///
+/// Split out of [`run_window`] so the two platforms can differ in how they *enter* the window — a desktop process
+/// returns an exit code, an Android activity calls in through JNI and has nowhere to return one to — while sharing how
+/// the window is built.
+pub fn builder() -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::default()
+        .setup(|app| {
+            let state = app_state(app.handle())?;
+            app.manage(state);
+            Ok(())
+        })
+        .invoke_handler(wrappers::handler())
+}
+
+/// Builds and runs the window, reporting what stopped it rather than unwinding.
+///
+/// # Errors
+///
+/// A message saying what stopped it.
+pub fn run_window() -> Result<(), String> {
+    builder()
+        .run(tauri::generate_context!())
+        .map_err(|error| format!("the window could not be opened: {error}"))
+}
+
+/// The entry point Android calls, and only there.
+///
+/// ★ **Why this is `#[cfg(mobile)]` rather than `#[cfg_attr(mobile, …)]`.**
+///
+/// With `cfg_attr` the attribute is skipped on a desktop build and what is left is an ordinary `pub fn`
+/// that nothing calls — a function that exists so that a reader can see it and wonder. Gated on `mobile`,
+/// it is **absent** from a desktop build, which is the honest description: a desktop process has `main`,
+/// and this symbol is what a shared library offers instead of one.
+///
+/// The refusal is printed rather than returned because there is no caller to return it to: a mobile entry
+/// point returns no exit code, and a panic across the FFI boundary would abort the process with nothing in
+/// the log.
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    if let Err(reason) = run_window() {
+        eprintln!("synra: {reason}");
+    }
+}
+
+/// The state, over the real database in the real place.
+///
+/// # Errors
+///
+/// A message saying what stopped it. The three ways this can fail are a directory that cannot be created, a database
+/// that cannot be opened or migrated, and an identity that cannot be written — and each one is a fact about the user's
+/// machine rather than a bug in the code, so each is reported in words rather than as an opaque error code.
+fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("the data directory could not be found: {error}"))?;
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("the cache directory could not be found: {error}"))?;
+
+    let paths = Paths::new(data_dir, cache_dir);
+    paths
+        .ensure_directories()
+        .map_err(|error| format!("the data directories could not be created: {error}"))?;
+
+    let mut db = SynraDb::open(&paths.db_path())
+        .map_err(|error| format!("the database could not be opened: {error}"))?;
+    // Migrated on the way in, so a shell that starts on an older database does not fail every command with a message
+    // about a missing table.
+    db.migrate().map_err(|error| format!("the database could not be migrated: {error}"))?;
+
+    // ★ The platform string the kernel stores, taken from the build target rather than from `std::env::consts`.
+    //
+    // They usually agree, and they disagree in the cross-compiled case — and the identity records the platform at first
+    // launch, so a wrong answer here is written to disk and then believed by every peer for the life of the install.
+    //
+    // ★ Android is the case that made this matter.
+    //
+    // `std::env::consts::OS` answered `"android"` for this build all along; what it did not answer was a string the
+    // kernel's own vocabulary has a word for. `identity` stores what a peer is told, and a peer that is told "unknown"
+    // records a device it can never name again — so the arm exists and says "android".
+    let platform = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "android") {
+        "android"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        "unknown"
+    };
+
+    let state = AppState::new(db, paths, platform, now_ms())
+        .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
+
+    let mut state = with_plugins_or_refuse(state);
+    // ★ The shell's own log, started before anything else can go wrong — and its failure is reported rather than fatal.
+    // A window that refuses to open because it cannot write a diagnostic file trades the user's actual work for its
+    // record, and `diag_export` says the section is absent instead of claiming there was nothing to log.
+    if let Err(error) = state.start_logging() {
+        eprintln!("synra-app: logging is not running: {error}");
+    }
+
+    Ok(state)
+}
+
+/// The plugin set when an engine starts, and a shell without one when it does not.
+///
+/// # Errors
+///
+/// None. This is the one failure in start-up that does not stop the shell, and that is the whole point of the function.
+///
+/// ★ An engine that will not start — a missing system library, a CPU feature this build was not compiled for — is a shell
+/// that still shows devices, settings and diagnostics. Dropping the window over it would turn a recoverable condition
+/// into an unusable application, and the plugin half is the smaller loss.
+///
+/// ★ This is also what keeps an Android build a *shell* rather than a black screen when the engine cannot start: the
+/// `wasmtime` engine is the largest and most platform-sensitive dependency in the tree, and this function is the seam
+/// that lets the rest of the application survive it.
+fn with_plugins_or_refuse(state: AppState) -> AppState {
+    // ★ The engine the platform wants, asked for rather than assumed.
+    //
+    // `BackendKind::default_for` is the table the kernel keeps for exactly this question, and a shell that named
+    // `WasmtimeCranelift` itself would be a second answer to it — one that is wrong on a phone, where a JIT costs build
+    // time and a baseline compiler is the compromise the design document names.
+    let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
+        synra_plugin_host::HostKind::Mobile
+    } else {
+        synra_plugin_host::HostKind::Desktop
+    };
+    let kind = synra_plugin_host::BackendKind::default_for(host_kind);
+    match synra_plugin_host::engine::WasmtimeBackend::new(kind) {
+        Ok(engine) => {
+            // ★ The host, which this shell had never supplied.
+            //
+            // `PluginSet::new` took an engine alone when this line was written and takes a host as well now. The second
+            // argument is not a detail: an instance with no session refuses every host call, which is what made the
+            // capability gate inert, and requiring the host is what made that state unrepresentable.
+            let host = Arc::new(crate::plugin_host::DesktopHost::new(Arc::clone(&state.db)));
+            let backend = synra_plugin_host::Backend::new(Arc::new(engine));
+            // ★ The same question the daemon asks, for the same reason: an engine that cannot enforce what this
+            // host will ask of it must not run third-party code at all.
+            //
+            // ★ And here the answer costs the **plugin half only**, which is the shape this function already has: the window
+            // still shows devices, settings and diagnostics. An engine missing a limit joins an engine that would not start,
+            // rather than becoming an engine that runs plugins without the bound.
+            match synra_plugin_host::engine::check_enforceable(
+                &backend,
+                &synra_plugin_host::quota::Quota::default(),
+            ) {
+                Ok(()) => {
+                    // ★ And the audit gets its durable half, which the shell never had.
+                    //
+                    // The daemon has installed this sink since the table's writer was written; the shell did not, so a
+                    // plugin's audit trail here lived in the in-memory ring and **died with the process** — while the
+                    // migration that created `plugin_audit` says what the table is for: *"the durable part is what makes the
+                    // interface's 'recent activity' survive a restart."*
+                    let set = synra_core::dispatch::PluginSet::new(backend, host)
+                        .with_audit_sink(crate::plugin_host::audit_sink(Arc::clone(&state.db)))
+                        // ★ And the same recorder the `diag_metrics` command reads, so the counts a plugin's
+                        // capability requests produce are reachable from the window rather than only from a log line.
+                        .with_metrics(Arc::clone(&state.metrics));
+                    state.with_plugins(Arc::new(Mutex::new(set)))
+                }
+                Err(error) => {
+                    // The same shape as the arm below: said once, and the shell carries on without the plugin half.
+                    eprintln!(
+                        "synra: plugins will not run in this build: this engine cannot enforce the limits this shell sets: {error}"
+                    );
+                    state
+                }
+            }
+        }
+        Err(error) => {
+            // ★ Said once, here, and then carried by every command that needs a plugin.
+            //
+            // `AppState::plugin_set` is where the user-facing refusal is produced, with the reason attached. Saying it
+            // again per command would be two statements of one fact, and the second is the one nobody reads.
+            eprintln!("synra: plugins will not run in this build: {error}");
+            state
+        }
+    }
+}
+
+/// The clock, in milliseconds since the epoch.
+///
+/// A clock before 1970 reads as zero rather than refusing: refusing to open a window over it would help nobody, and the
+/// value only has to be monotonic within this process to be useful in a log line.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+}

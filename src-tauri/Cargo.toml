@@ -40,6 +40,13 @@ authors = [ "Synra contributors" ]
 [lib]
 name = "synra_app"
 path = "src/lib.rs"
+# ★ `cdylib` 与 `staticlib` 是 Android 需要的**产物形状**，不是可选优化。
+#
+# 移动端没有「可执行文件入口」这回事：`gen/android` 里的 `MainActivity` 通过 JNI 调进一个动态库，Tauri 的
+# `mobile_entry_point` 宏就是那个 `start_app` 符号的产地。默认的 `rlib` 只产出一个给 Rust 链接器看的归档，Java
+# 侧找不到任何符号，构建会在 Gradle 的 `cargoBuild` 之后以 "symbol not found" 收场 —— 而那条报错不会提到
+# `crate-type`。桌面端多出来的 `.dll`/`.a` 是这次改动的代价，可以接受。
+crate-type = [ "lib", "cdylib", "staticlib" ]
 # ★ 只有库，没有窗口。
 #
 # 命令的实现在这一层，`main.rs` 只是把每个函数包成一个 `#[tauri::command]`。这样切分的理由不是整洁，是可测：
