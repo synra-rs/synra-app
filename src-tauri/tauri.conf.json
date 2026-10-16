@@ -12,7 +12,7 @@
         "title": "Synra",
         "width": 1100,
         "height": 720,
-        "minWidth": 880,
+        "minWidth": 1024,
         "minHeight": 560,
         "resizable": true,
         "center": true

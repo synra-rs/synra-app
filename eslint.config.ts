@@ -14,6 +14,25 @@ export default antfu({
     'style/comma-dangle': ['warn', 'never']
   },
 
+  // ★ `strict: true` is what turns on `unocss/blocklist`, and the blocklist it reads is the one `uno.config.ts`
+  // spreads in from `@synra/theme` — so "which utilities are forbidden" has one answer, shared with the build
+  // ([28 §13.1](./28-app-ui.md) guard 1).
+  //
+  // `attributify: false` because this interface does not use attributify mode (R5): the rule would only be
+  // available for something that does not exist.
+  unocss: {
+    attributify: false,
+    strict: true
+  },
+
+  // ★ **TOML is off, and it is off for a reason that is not "the rule was noisy".**
+  //
+  // The only TOML in this repository is `src-tauri/Cargo.toml` — the Rust shell's manifest. ESLint found a real
+  // formatting complaint in it (`toml/array-element-newline`), and that is the problem: the Rust side cannot see this
+  // linter, so the next `cargo`-side edit re-breaks it and the failure lands on whoever runs `pnpm run lint` next.
+  // One file, owned by another toolchain, linted by this one, is a rule that can only ever be right by accident.
+  toml: false,
+
   vue: {
     overrides: {
       'vue/block-order': ['error', {
