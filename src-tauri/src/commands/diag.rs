@@ -280,6 +280,23 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
     Ok(synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines)
 }
 
+/// What the shell's metrics currently hold.
+///
+/// """ + S + """ Why this command returns the snapshot rather than a rendering of it.
+///
+/// Because what a caller does with metrics is look for a name it cares about — `gate_denied_total` for a capability a plugin
+/// keeps asking for and not getting — and a caller that has to parse a rendering is a caller that has to know how the
+/// rendering was built. `MetricsSnapshot` is already the serialised shape the daemon puts in `status`, so both hosts answer
+/// the same question the same way.
+///
+/// # Errors
+///
+/// Never in practice: the recorder is behind a lock it holds for the length of a read. It returns a `Result` because every
+/// command in this module does, and a command that cannot fail is not a reason to break the shape the interface expects.
+pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
+    Ok(state.metrics.snapshot())
+}
+
 /// The one place a database or filesystem failure becomes an `IpcError`.
 fn internal(error: impl std::fmt::Display) -> IpcError {
     IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({ "reason": error.to_string() }))

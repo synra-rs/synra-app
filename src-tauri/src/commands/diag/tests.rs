@@ -8,7 +8,7 @@
 
 use serde_json::Value;
 
-use super::{DiagExportResult, diag_export};
+use super::{DiagExportResult, diag_export, diag_metrics};
 use crate::testing;
 
 fn options() -> synra_ipc::DiagExportOptions {
@@ -454,4 +454,57 @@ fn the_exclusions_are_the_same_whether_the_user_shared_more_or_less() {
     let second =
         diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: true, ..options() }).expect("exports");
     assert_eq!(first.excluded, second.excluded);
+}
+
+#[test]
+fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
+    // """ + S + """ The module's rule, on the command that had the least of it: a command either answers or says why it cannot,
+    // and never invents an answer.
+    //
+    // A shell that has not yet refused anything has **no** metrics, which is a different fact from "this build cannot tell
+    // you" — and the interface renders those two differently. So an empty snapshot is the answer, and `Ok` is right: the
+    // caller gets a list with nothing in it rather than an error it would have to special-case.
+    let root = testing::Root::fresh("diag-metrics-empty");
+    let state = testing::state_in(&root);
+
+    let snapshot = diag_metrics(&state).expect("metrics");
+    let value = serde_json::to_value(&snapshot).expect("serialises");
+
+    assert_eq!(value["values"].as_array().map(Vec::len), Some(0), "{value}");
+}
+
+#[test]
+fn what_the_gate_counts_is_what_the_command_reports() {
+    // """ + S + """ The join, and the reason this command exists at all.
+    //
+    // `diag_metrics` used to be declared by the contract and implemented nowhere, with the reason recorded in the
+    // registration test: *"no metrics sink is behind `AppState`"*. Adding a sink is only half of it — the other half is that
+    // the recorder the **gate** writes into and the recorder the **command** reads are the same one. A command over a
+    // second, empty recorder would answer `Ok` with nothing in it forever, which is the most misleading shape a diagnostic
+    // can have.
+    //
+    // So this writes a count the way the gate writes one and asserts the command sees it, labels and all — because a count
+    // without its label cannot answer "which permission do plugins keep asking for and not have".
+    let root = testing::Root::fresh("diag-metrics-join");
+    let state = testing::state_in(&root);
+
+    let key = synra_observe::metrics::SeriesKey::new(
+        "gate_denied_total",
+        [("capability".to_owned(), "device:send:*".to_owned())],
+    );
+    state.metrics.counter_inc(&key);
+
+    let value = serde_json::to_value(diag_metrics(&state).expect("metrics")).expect("serialises");
+    let series = value["values"].as_array().expect("the series list");
+    let found = series
+        .iter()
+        .find(|entry| entry["key"]["name"] == "gate_denied_total")
+        .expect("the count the gate made is reported");
+
+    assert_eq!(found["value"]["value"], 1);
+    let labels = found["key"]["labels"].as_array().expect("labels");
+    assert!(
+        labels.iter().any(|pair| pair[0] == "capability" && pair[1] == "device:send:*"),
+        "{found}"
+    );
 }

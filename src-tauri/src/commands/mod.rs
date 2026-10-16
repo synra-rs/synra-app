@@ -32,7 +32,7 @@ pub mod plugins;
 // mislead, and the place to look for "what does the shell implement" is that test.
 pub use config::{config_get, config_set};
 pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
-pub use diag::{diag_export, diag_logs_tail};
+pub use diag::{diag_export, diag_logs_tail, diag_metrics};
 pub use identity::{identity_get, identity_set_display_name};
 pub use intent::{intent_cancel, intent_decide, intent_dispatch, intent_snapshot};
 pub use plugins::{plugins_audit, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list};

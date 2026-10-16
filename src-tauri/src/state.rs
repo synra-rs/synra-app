@@ -75,6 +75,19 @@ pub struct AppState {
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 
+    /// The shell's own metrics, filled by the plugin gate.
+    ///
+    /// ★ Why the shell holds one, which is the same story as the log ring below.
+    ///
+    /// `diag_metrics` is one of the kernel's commands and this shell did not implement it, with the reason written in the
+    /// registration test: *"no metrics sink is behind `AppState`"*. That is an honest refusal, and it is also a gap — the
+    /// **daemon** has had a recorder since the gate learned to count, and a plugin asking for a capability it was not
+    /// granted is exactly as interesting in the window as it is on a headless machine.
+    ///
+    /// The recorder is shared rather than duplicated, and read through `snapshot`, so what the command reports and what the
+    /// gate counted cannot drift apart.
+    pub metrics: Arc<synra_observe::metrics::RingRecorder>,
+
     /// The log subscription, when it could be started.
     ///
     /// # ★ Why the shell holds it rather than the daemon
@@ -122,6 +135,7 @@ impl AppState {
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
             started_at_ms: now_ms,
+            metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
             log: None,
         })
     }

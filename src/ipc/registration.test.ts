@@ -62,7 +62,11 @@ const REGISTERED = [
   'config_get',
   'config_set',
   'diag_export',
-  'diag_logs_tail'
+  'diag_logs_tail',
+  // ★ And the metrics command, which came up the same way the log tail did: the gate has counted into a `RingRecorder`
+  // since it learned to count, and what was missing here was a sink behind `AppState` rather than the command itself.
+  // The reason it used to carry — "no metrics sink is behind AppState" — was true, and it was the *only* thing in the way.
+  'diag_metrics'
 ] as const
 
 /**
@@ -114,9 +118,7 @@ const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel does not exist at all.
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
-  plugin_ui_ready: 'the plugin UI origin and its token injection do not exist',
-  // Logs and metrics have no sink behind AppState yet.
-  diag_metrics: 'no metrics sink is behind AppState'
+  plugin_ui_ready: 'the plugin UI origin and its token injection do not exist'
 }
 
 /**

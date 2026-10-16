@@ -181,11 +181,25 @@ mod wrappers {
     ) -> Result<Vec<String>, IpcError> {
         commands::diag::diag_logs_tail(&state, lines)
     }
+
+    /// What the shell's metrics hold.
+    ///
+    /// ★ No arguments, and that is the command's whole interface.
+    ///
+    /// Metrics are read as a set rather than queried one at a time; a command that took a metric name would be a command
+    /// whose caller already knew what it was looking for, which is the opposite of what a diagnostic is for.
+    #[tauri::command]
+    pub fn diag_metrics(
+        state: tauri::State<'_, AppState>,
+    ) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
+        commands::diag::diag_metrics(&state)
+    }
 }
 
 use wrappers::{
     config_get, config_set, devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, diag_export,
-    diag_logs_tail, identity_get, identity_set_display_name, intent_cancel, intent_decide, intent_dispatch,
+    diag_logs_tail, diag_metrics, identity_get, identity_set_display_name, intent_cancel, intent_decide,
+    intent_dispatch,
     intent_snapshot, plugins_audit, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list,
 };
 
@@ -236,6 +250,7 @@ fn run() -> Result<(), String> {
             config_set,
             diag_export,
             diag_logs_tail,
+            diag_metrics,
         ])
         .run(tauri::generate_context!())
         .map_err(|error| format!("the window could not be opened: {error}"))
@@ -338,7 +353,10 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
                     // migration that created `plugin_audit` says what the table is for: *"the durable part is what makes the
                     // interface's 'recent activity' survive a restart."*
                     let set = synra_core::dispatch::PluginSet::new(backend, host)
-                        .with_audit_sink(synra_app::plugin_host::audit_sink(Arc::clone(&state.db)));
+                        .with_audit_sink(synra_app::plugin_host::audit_sink(Arc::clone(&state.db)))
+            // ★ And the same recorder the `diag_metrics` command reads, so the counts a plugin's
+            // capability requests produce are reachable from the window rather than only from a log line.
+            .with_metrics(Arc::clone(&state.metrics));
                     state.with_plugins(Arc::new(Mutex::new(set)))
                 }
                 Err(error) => {
