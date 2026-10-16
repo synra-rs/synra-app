@@ -42,10 +42,7 @@
             <template #icon>
               <span :class="page.icon" aria-hidden="true" />
             </template>
-            <span class="flex flex-col">
-              <span class="font-medium">{{ page.label }}</span>
-              <span v-if="!rail" class="text-xs text-ink-dim font-normal">{{ page.hint }}</span>
-            </span>
+            {{ page.label }}
           </AMenuItem>
         </AMenu>
 

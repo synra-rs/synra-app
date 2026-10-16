@@ -36,15 +36,17 @@ export interface PageRoute {
   readonly path: string
   /** What the sidebar says. */
   readonly label: string
-  /** One line under the label, so a screen's purpose is visible before it is opened. */
-  readonly hint: string
   /**
-   * The Carbon icon class, for the rail (md) and the bottom bar (base).
+   * The Carbon icon class, for the sidebar and the bottom bar.
    *
    * Carbon rather than a generic set because it is drawn by the same people as the interface's typeface (R18) — the
    * two are meant to sit together. It has to be an **icon font class, not an image or an inline SVG**, because R41
    * requires icons to be inlined at build time: the window's CSP has `connect-src 'none'`, so an icon fetched at
    * runtime fails as an empty box that looks like a broken icon library.
+   *
+   * ★ It comes from `messages.nav`, not from here (see that object's note): a class name that only ever appears as
+   *   data* is invisible to UnoCSS's extractor, which is how two of these four icons went missing. The same object is
+   *   what `uno.config.ts` derives its `safelist` from, so the two can never disagree.
    */
   readonly icon: string
   /** The component. */
@@ -56,25 +58,21 @@ export const PAGES: readonly PageRoute[] = [
   {
     path: '/',
     ...messages.nav.home,
-    icon: 'i-carbon-home',
     component: HomePage
   },
   {
     path: '/devices',
     ...messages.nav.devices,
-    icon: 'i-carbon-devices',
     component: DevicesPage
   },
   {
     path: '/plugins',
     ...messages.nav.plugins,
-    icon: 'i-carbon-application',
     component: PluginsPage
   },
   {
     path: '/settings',
     ...messages.nav.settings,
-    icon: 'i-carbon-settings',
     component: SettingsPage
   }
 ]

@@ -3,6 +3,8 @@ import { synraConfig } from '@synra/theme/unocss'
 
 import { defineConfig } from 'unocss'
 
+import { messages } from './src/messages'
+
 /**
  * The host interface's styles, in one place.
  *
@@ -26,6 +28,16 @@ import { defineConfig } from 'unocss'
  */
 export default defineConfig({
   ...synraConfig({ preflight: 'app' }),
+
+  /**
+   * ★ **The navigation's icons, named in data rather than in markup.**
+   *
+   * UnoCSS extracts class names from source *text*, so a name that only ever appears as a value (`messages.nav.home`'s
+   * `icon`) is invisible to it — which is exactly how `i-carbon-home` and `i-carbon-settings` came to be missing while
+   * the other two icons rendered. Deriving the list from the same object the sidebar renders from means the two can
+   * never disagree, and adding a page stays one edit.
+   */
+  safelist: Object.values(messages.nav).map(page => page.icon),
 
   preflights: [
     {
