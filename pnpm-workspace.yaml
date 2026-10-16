@@ -33,4 +33,8 @@ overrides:
 # `esbuild` ships a native binary built by a postinstall script, and `vitest` does not run without it. pnpm 10 refuses
 # to run a dependency's install scripts unless it is named here, which is a supply-chain default worth keeping.
 allowBuilds:
+  # ★ `ant-design-vue` 带进来 `core-js`，而 pnpm 在装它时**自己往这个文件里写了一行占位**
+  #   （`core-js: set this to true or false`）。那个 postinstall 是 core-js 的捐赠横幅，
+  #   对功能没有任何作用，所以显式关掉 —— 保持"依赖的脚本默认不跑"这条默认，而不是为了消掉一条提示把它打开。
+  core-js: false
   esbuild: true
