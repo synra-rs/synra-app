@@ -1,47 +1,22 @@
 /**
- * The client's decisions, asserted against a bridge that records what it was asked.
+ * Calling a command and subscribing to an event, over a bridge that records what it was asked.
  *
  * # What is real here and what is not
  *
  * `invoke` and `listen` are the only two things faked, and they are faked because the real ones need a WebView. Below
  * them everything is the shipped code: the error classification, the rejection handling, the retry judgement. A test
  * that stubbed the client's own logic would be testing the stub.
+ *
+ * This file is the first of two: the calls and the subscription are here, and the classification of what came back —
+ * `client-error.test.ts` — is beside it. The factories both use are in `client-test-helpers.ts`, which the runner does
+ * not collect.
  */
 
-import type { ErrorCode } from '@synra/protocol'
-import type { Bridge, IpcError } from './client'
+import type { Bridge } from './client'
 
 import { describe, expect, it, vi } from 'vitest'
-import { isIpcError, KernelClient, shouldOfferRetry } from './client'
-
-/** A bridge that records its calls and answers with what a test queued. */
-function bridge(answer: unknown = { ok: true }): {
-  bridge: Bridge
-  commands: string[]
-  listeners: Map<string, (payload: unknown) => void>
-} {
-  const commands: string[] = []
-  const listeners = new Map<string, (payload: unknown) => void>()
-  return {
-    commands,
-    listeners,
-    bridge: {
-      invoke: (command) => {
-        commands.push(command)
-        return Promise.resolve(answer)
-      },
-      listen: (event, handler) => {
-        listeners.set(event, handler)
-        return Promise.resolve(() => listeners.delete(event))
-      }
-    }
-  }
-}
-
-/** An error with the three fields the interface reads. */
-function ipcError(code: ErrorCode, retryable: boolean): IpcError {
-  return { code, message: 'error.someKey', retryable }
-}
+import { KernelClient, shouldOfferRetry } from './client'
+import { bridge, ipcError } from './client-test-helpers'
 
 describe('calling a command', () => {
   it('reports a value as a success', async () => {
@@ -130,44 +105,6 @@ describe('calling a command', () => {
   })
 })
 
-describe('whether a value is an error', () => {
-  it('accepts the three fields the interface reads', () => {
-    expect(isIpcError(ipcError('timeout', true))).toBe(true)
-  })
-
-  it('refuses anything missing one of them', () => {
-    // Each field is used: `code` is what a caller branches on, `message` is the key the interface renders, `retryable`
-    // is whether to offer the button. One missing is one the interface cannot render correctly.
-    expect(isIpcError({ code: 'timeout', retryable: true })).toBe(false)
-    expect(isIpcError({ code: 'timeout', message: 'k' })).toBe(false)
-    expect(isIpcError({ message: 'k', retryable: true })).toBe(false)
-    expect(isIpcError({ code: 'timeout', message: 'k', retryable: 'yes' })).toBe(false)
-  })
-
-  it('refuses the things a bridge might send instead', () => {
-    // A string, a number, null and a bare Error are all shapes a WebView bridge can produce for a failure, and none of
-    // them is renderable — so each becomes `internal` through `bridgeFailure` rather than being read as a code.
-    for (const value of ['a string', 42, null, undefined, [], new Error('boom')]) {
-      expect(isIpcError(value)).toBe(false)
-    }
-  })
-
-  it('accepts a richer error, because more fields is not less information', () => {
-    // The Rust type has `params`, `details` and `actions`, and a check that required an exact field set would refuse
-    // the real error the moment the kernel gained one.
-    expect(
-      isIpcError({
-        code: 'invalid_argument',
-        message: 'error.badArgument',
-        params: { field: 'name' },
-        details: 'the name was empty',
-        retryable: false,
-        actions: ['openSettings']
-      })
-    ).toBe(true)
-  })
-})
-
 describe('whether to offer a retry', () => {
   it('uses the kernel’s answer rather than deriving one', () => {
     // ★ The design document is explicit that `internal` **is** retryable in the kernel. An interface that decided for
@@ -214,15 +151,5 @@ describe('subscribing to an event', () => {
 
     listeners.get('kernel-event')?.({ seq: 1 })
     expect(seen).toEqual([{ seq: 1 }])
-  })
-})
-
-describe('the error type the interface uses', () => {
-  it('is not the plugin-facing one', () => {
-    // A compile-time assertion with a runtime witness: `message` here is a **key** and in `SynraError` a sentence, and
-    // the field the interface needs to localise is the field a plugin cannot use. Two types rather than one is what lets
-    // the interface render in the user's language.
-    const error: IpcError = { code: 'timeout', message: 'error.timeout', retryable: true }
-    expect(error.message).toMatch(/^error\./)
   })
 })

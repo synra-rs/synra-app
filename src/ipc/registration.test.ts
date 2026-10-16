@@ -8,9 +8,9 @@
  * the failure worth catching. The test cannot see it: it compares the registry against a hand-written list in the same
  * file, so it compares two copies of one decision.
  *
- * The gap it misses is real. The registry declares thirty-nine commands; `src-tauri/src/main.rs` registers twelve. A
- * front end calling `pairing_request` reaches a command the shell does not have — the exact sentence the comment
- * promised was covered.
+ * The gap it misses is real. The registry declares thirty-nine commands; the shell's `src-tauri/src/shell.rs` registers
+ * twelve. A front end calling `pairing_request` reaches a command the shell does not have — the exact sentence the
+ * comment promised was covered.
  *
  * A test inside that crate cannot read this file: it lives in a different repository. So the half about the shell is
  * checked here, where the shell is. `scripts/check-shapes.ts` already reads the sibling core checkout for the same
@@ -37,10 +37,14 @@ import { describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(HERE, '..', '..')
-const MAIN_RS = resolve(APP_ROOT, 'src-tauri', 'src', 'main.rs')
+// ★ `shell.rs`, not `main.rs`: the dispatch table moved into the library when the window assembly did, and `main.rs` is
+// now only the exit code a desktop process returns. The test was reading `main.rs` and failing with "generate_handler!
+// is not in …" rather than with anything about a command — a failed test that named the wrong file, and a gate that was
+// red before this change rather than because of it.
+const SHELL_RS = resolve(APP_ROOT, 'src-tauri', 'src', 'shell.rs')
 const CONTRACT_RS = resolve(APP_ROOT, '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
 
-/** The commands `src-tauri/src/main.rs` hands to `tauri::generate_handler!`. */
+/** The commands `src-tauri/src/shell.rs` hands to `tauri::generate_handler!`. */
 const REGISTERED = [
   'identity_get',
   'identity_set_display_name',
@@ -161,11 +165,11 @@ function declaredInContract(): string[] {
   return names
 }
 
-/** The names inside `generate_handler![...]` in the shell's `main.rs`. */
+/** The names inside `generate_handler![...]` in the shell's `shell.rs`. */
 function registeredInShell(): string[] {
-  const source = readFileSync(MAIN_RS, 'utf8')
+  const source = readFileSync(SHELL_RS, 'utf8')
   const start = source.indexOf('generate_handler![')
-  expect(start, `generate_handler! is not in ${MAIN_RS}`).toBeGreaterThan(-1)
+  expect(start, `generate_handler! is not in ${SHELL_RS}`).toBeGreaterThan(-1)
 
   const open = source.indexOf('[', start)
   const close = source.indexOf(']', open)

@@ -7,42 +7,17 @@
  * kernel does, and a test that asserted a rule would be a second copy of the rule. What is asserted is what the store
  * records*: that a snapshot replaces, that an event updates one card, and that a device the kernel stopped mentioning
  * stops being mentioned.
+ *
+ * This file is the first of two: what the store *records* is here, and what it *renders* — the paired/online lists —
+ * is in `devices-lists.test.ts`. The factories both use are in `devices-test-helpers.ts`, which the runner does not
+ * collect.
  */
 
-import type { DeviceCard, DevicesSnapshot } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useDevicesStore } from './devices'
-
-/** A card with the given id and nothing interesting. */
-function card(deviceId: string, overrides: Partial<DeviceCard> = {}): DeviceCard {
-  return {
-    deviceId,
-    displayName: `Device ${deviceId}`,
-    platform: 'windows',
-    online: true,
-    paired: true,
-    blocked: false,
-    lastSeenMs: 1_000,
-    ...overrides
-  }
-}
-
-/** A snapshot with the given cards. */
-function snapshot(devices: DeviceCard[], scanning?: DevicesSnapshot['scanning']): DevicesSnapshot {
-  return {
-    identity: {
-      deviceId: 'dev_self',
-      displayName: 'This machine',
-      platform: 'linux',
-      kernelVersion: '0.1.0',
-      nameIsDefault: false
-    },
-    devices,
-    ...(scanning === undefined ? {} : { scanning })
-  }
-}
+import { card, snapshot, transferSnapshot } from './devices-test-helpers'
 
 describe('recording a snapshot', () => {
   beforeEach(() => {
@@ -192,58 +167,3 @@ describe('a transfer on a device', () => {
     expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a'])
   })
 })
-
-describe('the lists a screen renders', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia())
-  })
-
-  it('separates paired from merely-seen, and online from merely-paired', () => {
-    // ★ Two questions, not one. A paired device that is offline is one the user can send to later; a device that is
-    // online and unpaired is one they have to pair with first. Collapsing them would make the list show a device as
-    // usable when it is not.
-    const store = useDevicesStore()
-    store.applySnapshot(
-      snapshot([
-        card('dev_paired_online', { paired: true, online: true }),
-        card('dev_paired_offline', { paired: true, online: false }),
-        card('dev_unpaired_online', { paired: false, online: true }),
-        card('dev_unpaired_offline', { paired: false, online: false })
-      ])
-    )
-
-    expect(store.paired.map(each => each.deviceId)).toEqual([
-      'dev_paired_online',
-      'dev_paired_offline'
-    ])
-    expect(store.online.map(each => each.deviceId)).toEqual(['dev_paired_online'])
-  })
-
-  it('is empty before the first snapshot rather than undefined', () => {
-    // The panel renders on mount, before the kernel has answered. A store that started as `undefined` would make every
-    // component handle a case that is not a state.
-    const store = useDevicesStore()
-    expect(store.cards).toEqual([])
-    expect(store.paired).toEqual([])
-    expect(store.online).toEqual([])
-    expect(store.scanning).toBe(false)
-  })
-})
-
-/** A transfer snapshot, for the one test about an event that is not the devices store's. */
-function transferSnapshot(transferId: string) {
-  return {
-    transferId,
-    peerDevice: 'dev_a',
-    peerName: 'Laptop',
-    direction: 'send',
-    kind: 'attachment',
-    state: 'active',
-    fileName: 'a.txt',
-    receivedBytes: 1,
-    totalBytes: 2,
-    blocksDone: 1,
-    blocksTotal: 2,
-    startedAtMs: 1
-  }
-}
