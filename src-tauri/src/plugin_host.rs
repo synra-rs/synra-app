@@ -400,6 +400,42 @@ impl Host for DesktopHost {
     }
 }
 
+/// Where a plugin's audit records go, besides the ring.
+///
+/// # ★ Why the shell needs one, and did not have one
+///
+/// `PluginSet::with_audit_sink` was written for the daemon, and the daemon was the only host that called it. So in the
+/// desktop shell a plugin's audit trail lived in the in-memory ring and **died with the process** — which is the exact gap
+/// the sink exists to close, and the reason the `plugin_audit` migration says what the table is for: *"the durable part is
+/// what makes the interface's 'recent activity' survive a restart."* A user who quit the app and opened it again saw an
+/// empty history, and nothing anywhere said the history had never been written down.
+///
+/// # Why the write is logged and not refused
+///
+/// Because the call it describes has already happened. Refusing afterwards would tell a plugin its action did not occur when
+/// it did, and an audit trail is a record of what happened rather than a gate on it — the same reasoning the daemon's sink
+/// follows.
+#[must_use]
+pub fn audit_sink(db: Arc<Mutex<SynraDb>>) -> synra_core::dispatch::plugins::AuditSink {
+    Arc::new(move |entry: &synra_observe::audit::AuditEntry| {
+        let record = synra_store::records::AuditRecord {
+            plugin_id: entry.plugin.as_str().to_owned(),
+            capability: entry.capability.to_string(),
+            outcome: entry.outcome.as_str().to_owned(),
+            at_ms: entry.at_ms,
+            elapsed_ms: entry.elapsed_ms.map(|elapsed| i64::try_from(elapsed).unwrap_or(i64::MAX)),
+        };
+        if let Err(error) = db.lock().record_audit(&record) {
+            // The app has no `tracing`, so this is what the shell reports through — the same channel `main.rs` uses for the
+            // plugin host's own failures.
+            eprintln!(
+                "synra: an audit record for {} could not be written down: {error}. The call it describes has already happened.",
+                entry.plugin.as_str()
+            );
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -618,5 +654,36 @@ mod tests {
         // reachable without a network, because the guard refuses before anything is sent.
         let refused = host.fetch(&plugin, r#"{"url":"https://api.github.com/"}"#).expect_err("no grant");
         assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused:?}");
+    }
+
+    #[test]
+    fn an_audited_call_is_written_down_rather_than_only_remembered() {
+        // ★ The half the shell was missing. The ring is written by the kernel and read by the running process; this is what
+        // makes the trail outlive it. What is asserted is the **table**, read back through the store rather than the entry
+        // that was handed in — so a sink that accepted the entry and wrote nothing fails here.
+        let db = Arc::new(Mutex::new({
+            let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
+            // The migrations are not run by `open_in_memory`, and without them the table does not exist — which is what the
+            // first version of this test found, as `no such table: plugin_audit` rather than as a passing assertion.
+            db.migrate().expect("the schema");
+            db
+        }));
+        let sink = super::audit_sink(Arc::clone(&db));
+
+        let entry = synra_observe::audit::AuditEntry {
+            plugin: PluginId::parse("@acme/notes").expect("an id"),
+            capability: "device:list".parse().expect("a capability"),
+            outcome: synra_observe::audit::AuditOutcome::Allowed,
+            at_ms: 1_000,
+            elapsed_ms: Some(3),
+        };
+        sink(&entry);
+
+        let trail = db.lock().audit_trail().expect("the trail");
+        assert_eq!(trail.len(), 1, "the record reached the table");
+        assert_eq!(trail[0].plugin_id, "@acme/notes");
+        assert_eq!(trail[0].capability, "device:list");
+        assert_eq!(trail[0].outcome, "allowed");
+        assert_eq!(trail[0].elapsed_ms, Some(3));
     }
 }

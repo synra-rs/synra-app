@@ -331,7 +331,14 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
                 &synra_plugin_host::quota::Quota::default(),
             ) {
                 Ok(()) => {
-                    let set = synra_core::dispatch::PluginSet::new(backend, host);
+                    // ★ And the audit gets its durable half, which the shell never had.
+                    //
+                    // The daemon has installed this sink since the table's writer was written; the shell did not, so a
+                    // plugin's audit trail here lived in the in-memory ring and **died with the process** — while the
+                    // migration that created `plugin_audit` says what the table is for: *"the durable part is what makes the
+                    // interface's 'recent activity' survive a restart."*
+                    let set = synra_core::dispatch::PluginSet::new(backend, host)
+                        .with_audit_sink(synra_app::plugin_host::audit_sink(Arc::clone(&state.db)));
                     state.with_plugins(Arc::new(Mutex::new(set)))
                 }
                 Err(error) => {
