@@ -30,7 +30,19 @@ authors.workspace = true
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+# ★ **1.90，不是 1.88 —— 而升它的原因值得写下来，因为它是一次被依赖逼出来的决定。**
+#
+# 2026-10-16：`pnpm tauri dev` 报 "Found version mismatched Tauri packages"（`tauri 2.11.6` vs
+# `@tauri-apps/api 2.12.3`）。Tauri 的 CLI 要求两边的 major/minor 相同，所以要让它们对齐 ——
+# 而**升不上去的不是 npm，是 Rust**：`tauri 2.12.x` 与 `tauri-build 2.7.x` 的 MSRV 是 **1.90**，
+# 而这里写着 1.88，于是 `cargo update -p tauri` 会安静地什么都不做
+# （它说的是 "Locking 0 packages to latest Rust 1.88 compatible versions" —— 那句话就是 MSRV 在挡）。
+# 本机工具链是 1.98，所以抬到 1.90 不阻塞任何东西；代价是贡献者需要 Rust ≥ 1.90 才能构建外壳。
+#
+# 另一条路是**把 npm 侧降到 2.11.x**（`@tauri-apps/api@2.11.1` + `@tauri-apps/cli@2.11.5`）：它不需要
+# 重编译任何 Rust，也不用抬 MSRV。没走那条路，是因为 JS 侧被升到 2.12 是一个已经做出的选择，
+# 而"把新的降回去"会让下一个人再升一次 —— 同一个决定做两遍。
+rust-version = "1.90"
 license = "MIT"
 repository = "https://github.com/synra-rs/synra-app"
 authors = [ "Synra contributors" ]
@@ -38,6 +50,16 @@ authors = [ "Synra contributors" ]
 [workspace.dependencies]
 
 [lib]
+# ★ **这个名字与 bin 的产物名撞车，这是已知的，而修它的时机是有代价的。**
+#
+# `[[bin]] name = "synra-app"` 与 `[lib] name = "synra_app"` 在 Cargo 里归一到同一个产物名，于是 dev 构建会报
+# `output filename collision at target/debug/synra_app.pdb`（两条 note，指 bin 与 lib 的 pdb 同名）。
+# Tauri 的模板正是为此把 lib 命名成 `<crate>_lib`。
+#
+# 没现在改的原因：`gen/android` 里 `Rust.kt` 写着 `System.loadLibrary("synra_app")`，`.so` 也按这个名字产出 ——
+# 改名必须连着重新生成移动端工程（需要 Android SDK），否则 Android 会在 JNI 那一层断掉，而**它断掉的样子
+# 不是编译错误**。pdb 撞车的实际代价只是"其中一个目标的调试符号被覆盖"（dev 构建、无功能影响）。
+# 所以正确的时机是**下一次重新生成移动端工程时一起做**，而不是现在单独改这一行。
 name = "synra_app"
 path = "src/lib.rs"
 # ★ `cdylib` 与 `staticlib` 是 Android 需要的**产物形状**，不是可选优化。
@@ -103,8 +125,15 @@ tauri = { version = "2", optional = true, features = [] }
 # instruction" whenever `tauri` is out of the dependency graph, which is exactly what `--no-default-features` does.
 #
 # That is worth writing down because it looks like an optionality mistake when you meet it: it reads as a version
-# mismatch ("please update tauri to latest") and it is not — `tauri` is already 2.11.6. The dependency is real and the
-# gating is the only correct arrangement.
+# mismatch ("please update tauri to latest") and it is not — the dependency is real and the gating is the only correct
+# arrangement.
+#
+# ★ **2026-10-16：那句话里的版本号（当时写的是 `tauri` 2.11.6）已经过期，而更值得记的是"版本相关的报错有两种"。**
+#   ① **假的那种**（本节上面描述的）：`--no-default-features` 让 `tauri` 离开依赖图，`tauri-build` 于是 panic，
+#      文案里带"update to latest" —— 依赖关系的问题，不是版本问题。
+#   ② **真的那种**（同一天遇到的）：`pnpm tauri dev` 报 "Found version mismatched Tauri packages"
+#      （`tauri 2.11.6` vs `@tauri-apps/api 2.12.3`）。那是 CLI 在比 major/minor，而它当时升不上去的原因是
+#      **MSRV**（见 `[workspace.package] rust-version` 那一段）。现在两边都是 2.12。
 tauri-build = { version = "2", optional = true, features = [ ] }
 
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
