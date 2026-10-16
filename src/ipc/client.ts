@@ -23,7 +23,7 @@
  * below: the error mapping, the retry classification, the ordering of the listen and the snapshot are all real.
  */
 
-import type { ErrorCode } from '@synra/protocol'
+import type { ErrorCode, SuggestedAction } from '@synra/protocol'
 
 /**
  * What an `invoke` call can fail with, as the host sends it.
@@ -43,7 +43,11 @@ export interface IpcError {
   /** Whether the same call may be made again as it was. */
   readonly retryable: boolean
   /** What the user can do about it, in the order the kernel suggests. */
-  readonly actions?: readonly string[]
+  // ★ 这一行原来是 `readonly string[]` —— 而 `synra-ipc` 的 `actions` 是 `Vec<SuggestedAction>`，
+  //   `@synra/protocol` 生成的类型里也是那个判别联合（`wire.ts` 的 `IpcError`）。
+  //   两者不一致一直没被发现，因为**界面从来没渲染过 actions**（R33 说的"既有契约的一半没接上"）。
+  //   接上它的当天就变成编译错误 —— 这也是"没被使用的半个契约会漂移"的一个实例。
+  readonly actions?: readonly SuggestedAction[]
 }
 
 /**

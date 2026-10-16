@@ -19,6 +19,7 @@
 
 import { createRouter, createWebHashHistory } from 'vue-router'
 
+import { messages } from './messages'
 import DevicesPage from './pages/DevicesPage.vue'
 import HomePage from './pages/HomePage.vue'
 import PluginsPage from './pages/PluginsPage.vue'
@@ -54,29 +55,25 @@ export interface PageRoute {
 export const PAGES: readonly PageRoute[] = [
   {
     path: '/',
-    label: 'Home',
-    hint: 'What this device is doing',
+    ...messages.nav.home,
     icon: 'i-carbon-home',
     component: HomePage
   },
   {
     path: '/devices',
-    label: 'Devices',
-    hint: 'Pair and send',
+    ...messages.nav.devices,
     icon: 'i-carbon-devices',
     component: DevicesPage
   },
   {
     path: '/plugins',
-    label: 'Plugins',
-    hint: 'Install and grant',
+    ...messages.nav.plugins,
     icon: 'i-carbon-application',
     component: PluginsPage
   },
   {
     path: '/settings',
-    label: 'Settings',
-    hint: 'This device',
+    ...messages.nav.settings,
     icon: 'i-carbon-settings',
     component: SettingsPage
   }
