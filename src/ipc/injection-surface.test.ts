@@ -8,9 +8,10 @@
  * members the design document listed — `isCapabilityDenied` and `ready` — which the implementation did not have, and
  * the two facts a plugin branches on that used to be hardcoded constants.
  *
- * The behaviour groups are separate files beside this one (`injection-capabilities.test.ts`,
- * `injection-refusals.test.ts`), and the factories they all share are in `injection-test-helpers.ts`, which the runner
- * does not collect.
+ * The behaviour groups are separate files beside this one (`injection-env.test.ts` for what the host says about itself
+ * and the three "can"s, `injection-capabilities.test.ts` for the advertised/actual biconditional,
+ * `injection-refusals.test.ts` for the refusals and the subscription guarantees), and the factory they all share is in
+ * `injection-test-helpers.ts`, which the runner does not collect.
  */
 
 import type { ErrorCode } from '@synra/protocol'
@@ -96,68 +97,6 @@ describe('the two members the design listed and the implementation did not have'
     )
 
     expect(() => synra.ready()).not.toThrow()
-  })
-})
-
-describe('what the host says about itself', () => {
-  // ★ These four used to be literals — `'desktop'`, `'windows'`, `'0.1.0'` — returned for every machine, so the
-  // interface told a plugin on Linux, macOS, Android and iOS that it was running on Windows. A plugin that branched on
-  // `platform()` took the Windows path everywhere, and nothing failed, because a plausible wrong answer is
-  // indistinguishable from a right one at the call site.
-  //
-  // The test that would have caught it is this one: ask on two different platforms and require two different answers.
-  // A single assertion against `'windows'` would have passed happily on the one machine CI ran on.
-  it('reports the platform it was given, not a hardcoded one', () => {
-    const onLinux = createInjection(context({ platform: 'linux' }))
-    const onMac = createInjection(context({ platform: 'macos' }))
-    const onAndroid = createInjection(context({ platform: 'android' }))
-
-    expect(onLinux.env.platform()).toBe('linux')
-    expect(onMac.env.platform()).toBe('macos')
-    expect(onAndroid.env.platform()).toBe('android')
-    // ★ And they differ, which is the part that makes the three assertions above a test rather than a transcription of
-    // the implementation. A facade that ignored the context and returned one value would fail here.
-    expect(new Set([onLinux.env.platform(), onMac.env.platform(), onAndroid.env.platform()]).size).toBe(3)
-  })
-
-  it('reports the host kind and the app version it was given', () => {
-    const synra = createInjection(context({ hostKind: 'mobile', appVersion: '9.9.9' }))
-
-    expect(synra.env.hostKind()).toBe('mobile')
-    expect(synra.env.appVersion()).toBe('9.9.9')
-  })
-
-  it('keeps the host kind and the SDK version apart', () => {
-    // Two different versions, and the point is that neither is the other: a plugin asking for the SDK version must not
-    // be told the application's, which is what a single hardcoded string would have done.
-    const synra = createInjection(context({ appVersion: '9.9.9', sdkVersion: '1.2.3' }))
-
-    expect(synra.env.appVersion()).toBe('9.9.9')
-    expect(synra.env.sdkVersion()).toBe('1.2.3')
-  })
-})
-
-describe('the three "can"s mean three different things', () => {
-  // ★ The library's own comment warns that mixing these makes a button's disabled condition wrong. So they are tested
-  // apart: a capability the platform cannot do but the user granted is still granted, and asking about the grant must
-  // not be answered by the platform.
-  it('can answers about the grant', () => {
-    const synra = createInjection(context({ granted: ['clipboard_read'] }))
-    expect(synra.env.can('clipboard_read')).toBe(true)
-    expect(synra.env.can('clipboard_write')).toBe(false)
-  })
-
-  it('platformSupports answers about the platform, never the grant', () => {
-    const granted = createInjection(context({ granted: ['clipboard_read'] }))
-    const refused = createInjection(context({ granted: [] }))
-    expect(granted.env.platformSupports('clipboard_read'))
-      .toBe(refused.env.platformSupports('clipboard_read'))
-  })
-
-  it('hostSupports answers about the host version', () => {
-    const synra = createInjection(context())
-    expect(synra.env.hostSupports('event.subscribe')).toBe(true)
-    expect(synra.env.hostSupports('network.fetch')).toBe(false)
   })
 })
 

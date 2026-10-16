@@ -184,14 +184,14 @@ async function load(): Promise<void> {
 
   const asked = await Promise.all([
     kernel.call<{ intents: readonly IntentSnapshot[] }>('intent_snapshot'),
-    kernel.call<{ transfers: readonly TransferSnapshot[] }>('transfer_list')
+    kernel.call<readonly TransferSnapshot[]>('transfer_list')
   ])
 
   const [intentAnswer, transferAnswer] = asked
   if (intentAnswer?.ok)
     intents.value = intentAnswer.value.intents
   if (transferAnswer?.ok)
-    transfers.value = transferAnswer.value.transfers
+    transfers.value = transferAnswer.value
 
   // Both refusals are reported rather than swallowed: a panel that renders "nothing on its way" when the kernel could
   // not be asked is worse than an empty one, because it is an answer.

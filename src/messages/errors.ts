@@ -27,7 +27,14 @@ export const kernelErrors = {
   'error.capabilityDenied': 'This needs a permission that has not been granted.',
   'error.commandNotFound': 'That is not something this version can do.',
   'error.storeUnavailable': 'The place that keeps this is not available.',
-  'error.timeout': 'The kernel did not answer in time.'
+  'error.timeout': 'The kernel did not answer in time.',
+  // ★ The key `IpcError::unknown` builds for `Unsupported`, which had no sentence until a refusal needed one.
+  //
+  // The shell answers `unsupported` for the halves this build does not have — a scan with no discovery service, a plugin
+  // with no engine — and every such refusal carries a `reason` in its `params`. The interface does not render `params`
+  // (R34), so until this line existed the user read the fallback for an unknown *code*, "That did not work.", which says
+  // nothing about whether to wait or give up.
+  'error.unsupported': 'This version cannot do that yet.'
 } as const
 
 export const errors = {
@@ -37,6 +44,8 @@ export const errors = {
   not_found: 'That is not here any more.',
   plugin_faulted: 'That plugin stopped working.',
   unauthorized: 'This is not allowed.',
+  // The code half of the key above, for a refusal whose message key this table has not met.
+  unsupported: 'This version cannot do that yet.',
   unknown: 'That did not work.'
 } as const
 

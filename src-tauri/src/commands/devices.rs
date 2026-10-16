@@ -14,7 +14,7 @@
 //! is exactly the failure this module's own header forbids: an answer that says something happened when nothing did. They
 //! arrive with the session commands, against a real [`Host`] API.
 
-use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions, ScanState};
+use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions};
 use synra_protocol::DeviceId;
 
 use crate::state::{AppState, internal};
@@ -120,6 +120,11 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
 ///
 /// [`IpcError`] when an active scan was asked for. A `cached_only` scan is answered, because reading what is already
 /// known needs no sockets and is exactly what the shell can do.
+///
+/// # What a cached scan leaves behind
+///
+/// Nothing: it records no scan, because `scanning` means *in progress* and this one has finished before it answers. The
+/// note at the end of the body is about the round where it did record one, and what that cost the interface.
 pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String, IpcError> {
     if !opts.cached_only {
         return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
@@ -131,18 +136,18 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
             }),
         ));
     }
-    // ★ `cached_only` finishes immediately, with nothing to wait for.
+    // ★ `cached_only` finishes before it answers, so it records no scan at all — and this is the half that was wrong.
     //
-    // A "show me what I already know" scan uses no sockets, so giving it a running state with a deadline would show a
-    // progress bar that cannot progress. Zero is what a finished scan looks like, and it is true here.
-    let scan_id = state.next_scan_id();
-    *state.scanning.lock() = Some(ScanState {
-        scan_id: scan_id.clone(),
-        elapsed_ms: 0,
-        total_ms: 0,
-        found: 0,
-    });
-    Ok(scan_id)
+    // It used to leave `Some(ScanState { elapsed_ms: 0, total_ms: 0, found: 0 })` behind, with the argument that "zero is
+    // what a finished scan looks like". Zero *is* what a finished scan looks like; `Some` is not how the interface reads
+    // the field. `scanning` means **the scan in progress** — the store asks `scan !== undefined` — and nothing in this
+    // shell ever updates or clears it, because the shell publishes no kernel events. So the recorded scan disabled the
+    // Scan button and drew a bar that could never move, and it stayed that way until the process was restarted: the
+    // zeroed progress bar this module's header refuses, rebuilt on the one path that still existed.
+    //
+    // A scan with nothing to wait for is not a scan in progress, so the answer is the identifier alone. The contract
+    // answers with one, and it costs nothing.
+    Ok(state.next_scan_id())
 }
 
 /// Ends a scan.

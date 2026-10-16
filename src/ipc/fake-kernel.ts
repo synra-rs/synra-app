@@ -40,13 +40,37 @@ import {
 } from './fake-kernel-fixtures'
 
 /**
+ * The arguments the shell requires, per command — the half of the contract this fake used to ignore.
+ *
+ * ★ **Why the fake checks this at all.**
+ *
+ * `#[tauri::command]` deserializes every argument *before* the command body runs, so a call that is missing one is
+ * rejected by the bridge — `invalid args \`opts\` for command \`devices_scan_start\`: command devices_scan_start missing
+ * required key opts` — and a rejection is not a refusal value. `DevicesPage.vue` called `devices_scan_start` with no
+ * arguments at all for as long as it did because this fake answered anyway: every test was green, `pnpm dev` scanned
+ * happily, and the first run against the real shell said "The interface could not reach the kernel". A fake that is
+ * **more permissive** than the thing it stands in for is the one failure it cannot catch, so the names here are the
+ * shell's own (`src-tauri/src/shell.rs`), and `scripts/check-shapes.ts` compares this table against those wrapper
+ * signatures in both directions.
+ *
+ * The keys are camelCase because that is the rename rule `#[tauri::command]` applies to a parameter name: `scan_id` on the
+ * Rust side is `scanId` over the wire.
+ */
+export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
+  devices_scan_start: ['opts'],
+  devices_scan_cancel: ['scanId'],
+  intent_snapshot: ['intentId']
+}
+
+/**
  * A `Bridge` that answers from constants.
  *
  * # Why the constants are copied per call rather than shared
  *
  * `applySnapshot` replaces the array it is given, and a component that sorted one in place would edit the constant that
  * every later call returns. Copying costs three devices and makes the fake safe to hold across tests.
- */export class FakeKernel implements Bridge {
+ */
+export class FakeKernel implements Bridge {
   /** Handlers by channel, so `listen` can hand back an unsubscribe that actually unsubscribes. */
   readonly #handlers = new Map<string, Set<(payload: unknown) => void>>()
 
@@ -56,15 +80,52 @@ import {
   /** The scan's timer, so a second `devices_scan_start` does not leave the first one running. */
   #scanTimer: ReturnType<typeof setInterval> | undefined
 
-  async invoke(command: string, _args?: Readonly<Record<string, unknown>>): Promise<unknown> {
+  /**
+   * Refuses a call that is missing an argument the shell requires.
+   *
+   * The message is the one `tauri::Error::InvalidArgs` formats: Tauri rejects the invoke with that string, and the client
+   * classifies a rejection that is not an `IpcError` as `error.bridgeFailed` — which is the sentence the user saw. It is
+   * an `Error` here rather than a bare string because this is TypeScript, and `bridgeFailure` reads `thrown.message`
+   * either way, so the interface cannot tell the difference.
+   */
+  #requireArguments(command: string, args?: Readonly<Record<string, unknown>>): void {
+    for (const key of REQUIRED_ARGS[command] ?? []) {
+      if (args?.[key] === undefined) {
+        throw new Error(
+          `invalid args \`${key}\` for command \`${command}\`: command ${command} missing required key ${key}`
+        )
+      }
+    }
+  }
+
+  async invoke(command: string, args?: Readonly<Record<string, unknown>>): Promise<unknown> {
+    // First, because this is the order the shell has: the bridge deserializes the arguments and only then runs the
+    // command. See `REQUIRED_ARGS`.
+    this.#requireArguments(command, args)
+
     switch (command) {
       case 'identity_get':
         return { ...IDENTITY }
       case 'devices_snapshot':
         return this.#devicesSnapshot()
-      case 'devices_scan_start':
+      case 'devices_scan_start': {
+        // ★ The mode matters, and this fake used to scan whatever it was asked for.
+        //
+        // A cached scan is over before it answers and publishes nothing, which is what the shell answers today; a network
+        // scan is the one that reports itself as events. A fake that animated for both made the only mode a real shell
+        // can currently answer invisible in every test — and made the page's two calls look like one call.
+        const opts = args?.opts as { readonly cachedOnly?: boolean } | undefined
+        if (opts?.cachedOnly === true) {
+          // Nothing to wait for and nothing to publish: the scan is over before the answer, which is what the shell
+          // answers today.
+          this.#stopScan()
+          return null
+        }
         this.#startScan()
+        // `null` is the divergence `commands.test.ts` records: the shell answers with the new scan's id and this fake does
+        // not invent one, because the page reads only `ok` and the arity the contract declares is `One`.
         return null
+      }
       case 'devices_scan_cancel':
         this.#stopScan()
         return null

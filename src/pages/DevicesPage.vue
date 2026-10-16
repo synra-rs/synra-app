@@ -121,7 +121,20 @@
  * one action whose whole effect arrives as events, so it is the only way to exercise the path the design document cares
  * about — listen first, then apply by sequence number, and re-read on a gap.
  *
- * Against the fake kernel that path is real: `devices_scan_start` makes the fake publish `scanUpdated` and then
+ * ★ **And the scan takes options, which this page used not to send at all.** The call was `call('devices_scan_start')`
+ * with no arguments, while the shell's wrapper declares `opts: ScanOptions` as required. Tauri deserializes a command's
+ * arguments *before* the command runs, so the call was refused by the bridge — `command devices_scan_start missing
+ * required key opts` — and a rejection that is not an `IpcError` is what the client reports as "The interface could not
+ * reach the kernel". The kernel never saw the call, the reason was in `params.detail` and nothing renders that, and the
+ * fake kernel answered anyway because it ignored its arguments. So the arguments are typed now, and the fake requires
+ * them.
+ *
+ * ★ **Which scan to ask for is the kernel's answer rather than this page's guess.** This shell answers only the
+ * `cachedOnly` mode: discovery belongs to the daemon, which is already writing what it hears into the list this page
+ * reads (`src-tauri/src/commands/devices.rs` says so, and what is missing is the shell's network half rather than a
+ * request). So the page asks for the scan the button means, and when the kernel refuses that *mode* it asks for the cached
+ * scan — which is not the page papering over a refusal: the kernel's own refusal tells the caller to do exactly that.
+ * Against the fake kernel the first path is real: `devices_scan_start` makes the fake publish `scanUpdated` and then
  * `deviceCardUpdated`, and the dispatcher's `SequenceTracker` judges every one of them.
  *
  * # Why paired and online are two columns
@@ -144,6 +157,40 @@ const devices = useDevicesStore()
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/**
+ * The two scans `ScanOptions` describes, as this page asks for them.
+ *
+ * ★ Both flags are written out rather than left to a default, because the struct on the wire requires both: it denies
+ * unknown fields and has no `serde(default)`, so a payload that omitted `includePaired` would fail in the bridge exactly
+ * the way the missing `opts` did. The type is the contract's own — `@synra/protocol` generates it from `synra-ipc` — so
+ * the day a flag is added this file stops compiling rather than sending a payload the kernel refuses.
+ */
+/**
+ * ★ **`devices_scan_start`'s options, declared here because the protocol does not export them.**
+ *
+ * The shell's own wrapper takes `opts: ScanOptions` (see the note above `loadSnapshot`), so the shape is the kernel's
+ * and not this page's invention — but `@synra/protocol`'s generated types do not carry it, and a page cannot import a
+ * name that was never generated. An earlier version of this file imported it anyway, which typechecked only while
+ * `vue-tsc`'s incremental cache said the project was up to date.
+ *
+ * When the generated types grow this DTO, delete this and import it (the same one-source rule as everything else on
+ * the wire).
+ */
+interface ScanOptions {
+  readonly includePaired: boolean
+  readonly cachedOnly: boolean
+}
+
+const NETWORK_SCAN: ScanOptions = { includePaired: false, cachedOnly: false }
+
+/** The scan this shell can answer: read what the daemon has already written down, and wait for nothing. */
+const CACHED_SCAN: ScanOptions = { includePaired: false, cachedOnly: true }
+
+/** Records a refusal for the notice above, which is the one caller that needs a code, a key and the actions. */
+function refuse(answer: { readonly code: string, readonly message: string, readonly actions?: readonly SuggestedAction[] | undefined }): void {
+  error.value = { code: answer.code, message: answer.message, actions: answer.actions }
+}
 
 let stop: (() => void) | undefined
 
@@ -180,8 +227,8 @@ const scanPercent = computed(() => {
 /**
  * The call the error surface's retry repeats (R33).
  *
- * The kernel's `retry` action means "that call, again" — and this page makes two calls whose refusals the notice above
- * renders the same way, so the failing one is remembered beside the refusal instead of being guessed from its code.
+ * The kernel's `retry` action means "that call, again" — and every call this page makes has its refusal rendered by the
+ * notice above, so the failing one is remembered beside the refusal instead of being guessed from its code.
  */
 const repeat = ref<() => Promise<void>>(loadSnapshot)
 
@@ -216,15 +263,38 @@ async function loadSnapshot(): Promise<void> {
   if (answer.ok)
     devices.applySnapshot(answer.value)
   else
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    refuse(answer.error)
 }
 
+/**
+ * Starts the scan, in the mode this kernel can answer.
+ *
+ * ★ The second call is not a fallback for a failure; it is the kernel's own instruction. A shell with no discovery half
+ * refuses the network scan with `unsupported` and a reason that ends "Ask for a cached scan to see what is already
+ * known", and `params` is not something the interface renders (R34) — so the half of that refusal a caller acts on is the
+ * code it branches by, which is what the client's header says codes are for.
+ */
 async function scan(): Promise<void> {
   repeat.value = scan
   error.value = undefined
 
-  const answer = await kernel.call('devices_scan_start')
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  const started = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
+  if (started.ok) {
+    // A scan that is really running reports itself as events, which is the path this button exists to exercise.
+    return
+  }
+  if (started.error.code !== 'unsupported') {
+    refuse(started.error)
+    return
+  }
+
+  const cached = await kernel.call<string>('devices_scan_start', { opts: CACHED_SCAN })
+  if (!cached.ok) {
+    refuse(cached.error)
+    return
+  }
+  // A cached scan is over before it answers and publishes nothing — there is no event to wait for — so the list it read
+  // is what shows it happened.
+  await loadSnapshot()
 }
 </script>

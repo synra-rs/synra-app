@@ -88,8 +88,11 @@ function declaredArities(): Map<string, Arity> {
 const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | undefined>> = {
   identity_get: undefined,
   devices_snapshot: undefined,
-  devices_scan_start: undefined,
-  devices_scan_cancel: undefined,
+  // The command takes an `opts`, and `REQUIRED_ARGS` in `fake-kernel.ts` is where the fake says so: a table that omitted
+  // it would be asserting the shape of an answer to a call the shell refuses. `cachedOnly` keeps the suite free of a
+  // running interval — the shape of the answer is the same either way.
+  devices_scan_start: { opts: { includePaired: false, cachedOnly: true } },
+  devices_scan_cancel: { scanId: '01HQ00000000000000000SCAN01' },
   plugins_list: undefined,
   // The command is `One` **and takes an `intent_id`**: it answers about one intent rather than listing them.
   intent_snapshot: { intentId: '01HQ00000000000000000INTNT1' },

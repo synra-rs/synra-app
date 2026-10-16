@@ -10,8 +10,9 @@
  * That last one is the case an interface that predates its kernel is in, and it is the one a `switch`-based dispatcher
  * gets wrong by falling through to a default that does nothing.
  *
- * This file is the second of two: the routing decisions are in `dispatcher-routing.test.ts`, and the factories both use
- * are in `dispatcher-test-helpers.ts`, which the runner does not collect.
+ * This file is the second of three: the routing decisions are in `dispatcher-routing.test.ts`, the whole-stream property
+ * is in `dispatcher-property.test.ts`, and the factories all three use are in `dispatcher-test-helpers.ts`, which the
+ * runner does not collect.
  */
 
 import type { SequencedKernelEvent } from '@synra/protocol'
@@ -192,37 +193,5 @@ describe('resetting for a reload', () => {
     dispatcher.accept(logLine(1))
     dispatcher.accept(logLine(3))
     expect(dispatcher.report()).toEqual({ last: 3, gaps: 1, unknown: 0, stale: true })
-  })
-})
-
-describe('a run of events in every order', () => {
-  it('never applies an event twice and never applies one out of order', () => {
-    // A property rather than a case: whatever the channel delivers, the store sees each sequence at most once and
-    // never sees one after the gap that followed it.
-    const { refresh } = refresher()
-    const dispatcher = new EventDispatcher(refresh)
-    const applied: number[] = []
-    dispatcher.on('logLine', event => applied.push(event.payload.line.length))
-
-    // A stream with a gap, a repeat, and a backwards jump.
-    const sequences = [1, 2, 2, 5, 4, 6, 6, 7]
-    const decisions = sequences.map(seq => dispatcher.accept(logLine(seq)).kind)
-
-    // The `2` is a repeat and the `4` is *behind* the sequence: neither advances it, so both are ignored. The `5` jumps
-    // and is the one gap, so it asks for a snapshot — and the snapshot request *advances* the sequence to five, which
-    // is what makes `6` and `7` contiguous again.
-    //
-    // That is the design rather than an accident: asking for a fresh picture is the interface deciding where it stands,
-    // and an interface that treated every event after a gap as another gap would be one that could not make progress
-    // without a round trip per event.
-    expect(decisions).toEqual(['applied', 'applied', 'ignored', 'stale', 'ignored', 'applied', 'ignored', 'applied'])
-
-    // The picture is announced as whole once the snapshot answers, and the stream continues.
-    dispatcher.snapshotTaken()
-    expect(dispatcher.isStale).toBe(false)
-    expect(dispatcher.accept(logLine(8))).toEqual({ kind: 'applied' })
-    // The gap event itself was never applied — it is the one the interface could not place — while the contiguous
-    // events after it were, because dropping them would put the store further behind than keeping them.
-    // Four applications: 1, 2, 6, 7 and 8 — the gap event (5) is the one that was never applied.\n    expect(applied).toEqual([1, 1, 1, 1, 1])
   })
 })

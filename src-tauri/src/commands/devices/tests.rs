@@ -7,7 +7,7 @@
 //! second set at all — the table existed, the reader existed, and nothing wrote it — which is what a reader without a
 //! writer looks like from the outside.
 
-use synra_ipc::ScanOptions;
+use synra_ipc::{ScanOptions, ScanState};
 use synra_protocol::ErrorCode;
 use synra_store::{Paired, Seen};
 
@@ -259,43 +259,82 @@ fn a_long_scan_request_is_refused_for_the_same_reason_as_a_short_one() {
 #[test]
 fn a_cached_only_scan_finishes_immediately_rather_than_showing_a_bar_that_cannot_move() {
     let state = testing::state();
-    devices_scan_start(
-        &state,
-        &ScanOptions { cached_only: true, ..ScanOptions::default() },
-    )
-    .expect("a scan");
-    let scanning = devices_snapshot(&state).expect("a snapshot").scanning.expect("a scan");
-    assert_eq!(scanning.total_ms, 0, "there is nothing to wait for");
+
+    let scan_id = devices_scan_start(&state, &cached()).expect("a scan");
+    assert!(!scan_id.is_empty(), "the contract answers with an identifier");
+
+    // ★ `None` is what "nothing to wait for" looks like on the wire, and `Some` is what the interface reads as *a scan is
+    // running* — it disables the Scan button and draws the bar. This used to assert `total_ms == 0` on a state that
+    // existed, which is the reading the interface contradicts.
+    assert_eq!(
+        devices_snapshot(&state).expect("a snapshot").scanning,
+        None,
+        "a scan that finishes before it answers is not a scan in progress"
+    );
 }
 
+#[test]
+fn the_options_the_interface_sends_deserialize_into_this_commands_argument() {
+    // ★ The argument half of the contract, asserted on the side that can assert it.
+    //
+    // `DevicesPage.vue` sends `{ opts: { includePaired: false, cachedOnly: true } }`, and Tauri deserializes the inner
+    // object into `ScanOptions` *before* this module is reached. `ScanOptions` denies unknown fields and requires both
+    // flags, so a payload that drifted — a renamed key, a missing flag — fails in the bridge and arrives at the interface
+    // as a transport failure ("The interface could not reach the kernel.") rather than as a refusal. That is exactly the
+    // shape of the bug this test was written after: the interface had sent **no** `opts` at all.
+    let sent = serde_json::json!({
+        "includePaired": false,
+        "cachedOnly": true,
+    });
+
+    let parsed: ScanOptions = serde_json::from_value(sent).expect("the interface's payload is this struct");
+    assert!(parsed.cached_only, "the interface asks for the scan this shell can answer");
+    assert!(!parsed.include_paired);
+    assert_eq!(parsed.timeout_ms, None);
+}
 
 /// The only scan this shell can start.
 ///
-/// ★ These tests are about cancelling and about identifiers, not about scanning, so they set up with the scan
-/// that exists. An active scan is refused for the reason `devices_scan_start` gives; using one here would make three
-/// tests about cancellation into tests about a refusal.
+/// ★ It finishes before it answers and records nothing, which is why the tests about *cancelling* no longer set up with
+/// it: there is no scan in progress to cancel. They install the state directly instead, in [`scanning`].
 fn cached() -> ScanOptions {
     ScanOptions { cached_only: true, ..ScanOptions::default() }
+}
+
+/// A scan that is genuinely running, put in place directly.
+///
+/// ★ This is the setup the cancellation tests used to reach through the command, and no longer can. An active scan is
+/// refused for the reason [`devices_scan_start`] gives, and a cached one is over before it answers — so **nothing in this
+/// shell can leave a scan in progress**, which is a fact about the shell rather than about cancelling. What is written
+/// here is the state a future active scan would leave, and `devices_scan_cancel` is tested against it rather than
+/// against a scan that never ran.
+fn scanning(state: &AppState, scan_id: &str) {
+    *state.scanning.lock() = Some(ScanState {
+        scan_id: scan_id.to_owned(),
+        elapsed_ms: 0,
+        total_ms: 5_000,
+        found: 0,
+    });
 }
 
 #[test]
 fn a_cancelled_scan_is_gone_from_the_next_snapshot() {
     let state = testing::state();
-    let scan_id = devices_scan_start(&state, &cached()).expect("a scan");
-    devices_scan_cancel(&state, &scan_id).expect("cancels");
+    scanning(&state, "scan-1");
+    devices_scan_cancel(&state, "scan-1").expect("cancels");
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
 }
 
 #[test]
 fn cancelling_a_scan_that_is_not_running_says_so_and_names_what_is() {
     let state = testing::state();
-    let running = devices_scan_start(&state, &cached()).expect("a scan");
+    scanning(&state, "scan-1");
 
     let error = devices_scan_cancel(&state, "scan-999").expect_err("the wrong scan");
     assert_eq!(error.code, ErrorCode::InvalidArgument);
     assert_eq!(
         error.params["running"].as_str(),
-        Some(running.as_str()),
+        Some("scan-1"),
         "the refusal names the scan that is actually running, so a stale interface can correct itself"
     );
 }
@@ -312,7 +351,6 @@ fn two_scans_in_a_row_get_different_identifiers() {
     // log. A counter that repeats would make the log line ambiguous, which defeats that reason.
     let state = testing::state();
     let first = devices_scan_start(&state, &cached()).expect("a scan");
-    devices_scan_cancel(&state, &first).expect("cancels");
     let second = devices_scan_start(&state, &cached()).expect("a scan");
     assert_ne!(first, second);
 }
