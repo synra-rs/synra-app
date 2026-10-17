@@ -151,6 +151,20 @@ mod wrappers {
         commands::transfers::transfer_cancel(&state, &transfer_id)
     }
 
+    /// Sends a file to a paired device, and answers the transfer it started.
+    ///
+    /// ★ **Blocking, deliberately, for now.** The dial and the block loop run on this call, so a large file occupies the
+    /// command's thread until it is done; the interface is not frozen because Tauri runs commands off the UI thread, but two
+    /// sends at once would queue. The fix is a worker thread that owns the loop and reports through `announce_transfer` —
+    /// which is why that function exists separately from this command.
+    #[tauri::command]
+    pub fn transfer_send_file(
+        state: tauri::State<'_, AppState>,
+        request: synra_ipc::dto::SendFileRequest,
+    ) -> Result<synra_protocol::ids::TransferId, IpcError> {
+        commands::transfers::transfer_send_file(&state, &request)
+    }
+
     /// The transfers in flight.
     #[tauri::command]
     pub fn transfer_list(
@@ -330,6 +344,7 @@ mod wrappers {
             plugin_ui_open,
             plugin_ui_ready,
             transfer_cancel,
+            transfer_send_file,
             transfer_list,
             plugins_audit,
             intent_dispatch,

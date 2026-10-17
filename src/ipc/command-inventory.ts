@@ -37,6 +37,7 @@ export const REGISTERED = [
   // The transfers in flight. Registered with an empty registry behind it: the worker that fills it does not exist yet, so the
   // honest answer today is "nothing is in flight", which is true.
   'transfer_cancel',
+  'transfer_send_file',
   'transfer_list',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
@@ -85,7 +86,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
   // `synra_core::dispatch::orchestrate` now, and the shell's commands are the thin layer that turns DTOs into calls.
   // Transfers are implemented in the kernel but this shell has nothing to send them over.
-  transfer_send_file: 'the shell has no transport to send one over',
   transfer_send_text: 'the shell has no transport to send one over',
   // Connecting and disconnecting are deliberately absent — the kernel dials, the UI does not.
   //
