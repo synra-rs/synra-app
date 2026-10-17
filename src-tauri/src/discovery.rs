@@ -117,7 +117,11 @@ impl Discovery {
                 // What was heard is written where the devices screen reads it. That write is the caller's job rather than
                 // `synra-core`'s, deliberately: a crate that knows nothing about storage is what keeps a database out of
                 // a socket loop.
-                move |candidates| record(&db, candidates),
+                move |candidates| {
+                    // The identifiers are the announce hook's input; until one is passed in, discarding them is the
+                    // honest thing — a `Vec` nobody reads is not a fact anybody is promised.
+                    record(&db, candidates);
+                },
             );
             Ok(())
         })
@@ -179,7 +183,12 @@ impl Discovery {
 ///
 /// Because the next announcement refreshes the row anyway. A scan of a network full of devices would otherwise report the
 /// same failure once per device per scan, and a log line repeated is a log line nobody reads.
-pub(crate) fn record(db: &Arc<Mutex<SynraDb>>, candidates: &[Candidate]) {
+/// # Returns
+///
+/// The identifiers it managed to record, so a caller that wants to announce them does not have to re-derive which of the
+/// candidates landed — and so a device whose row was refused is not announced as if it had been.
+pub(crate) fn record(db: &Arc<Mutex<SynraDb>>, candidates: &[Candidate]) -> Vec<String> {
+    let mut recorded = Vec::with_capacity(candidates.len());
     for candidate in candidates {
         let sighting = Seen {
             device_id: candidate.device_id.to_string(),
@@ -190,8 +199,11 @@ pub(crate) fn record(db: &Arc<Mutex<SynraDb>>, candidates: &[Candidate]) {
         };
         if let Err(error) = db.lock().record_seen_device(&sighting) {
             eprintln!("synra: could not remember {}: {error}", sighting.device_id);
+            continue;
         }
+        recorded.push(sighting.device_id);
     }
+    recorded
 }
 
 /// The platform string the device table stores.
