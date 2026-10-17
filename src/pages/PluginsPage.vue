@@ -210,6 +210,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
+import { decide, installFrom, setEnabled } from './plugins/actions'
 
 const plugins = ref<readonly PluginSnapshot[]>([])
 
@@ -296,17 +297,14 @@ const consenting = ref<string | undefined>(undefined)
 async function consent(plugin: PluginSnapshot, granted: readonly string[]): Promise<void> {
   consenting.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<PluginSnapshot>('plugins_consent_respond', {
-    pluginId: plugin.pluginId,
-    granted: [...granted],
-  })
+  const outcome = await decide(kernel, plugin.pluginId, granted)
   consenting.value = undefined
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (!outcome.ok) {
+    error.value = outcome.failure
     return
   }
-  plugins.value = plugins.value.map(card => (card.pluginId === answer.value.pluginId ? answer.value : card))
-  selection[answer.value.pluginId] = [...answer.value.granted]
+  plugins.value = plugins.value.map(card => (card.pluginId === outcome.value.pluginId ? outcome.value : card))
+  selection[outcome.value.pluginId] = [...outcome.value.granted]
 }
 
 /** The plugin whose switch is being written, so it shows a spinner and cannot be pressed twice. */
@@ -322,12 +320,10 @@ const toggling = ref<string | undefined>(undefined)
 async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
   toggling.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', {
-    pluginId: plugin.pluginId,
-  })
+  const outcome = await setEnabled(kernel, plugin.pluginId, enabled)
   toggling.value = undefined
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (!outcome.ok)
+    error.value = outcome.failure
 }
 
 /** The directory the user typed. */
@@ -346,10 +342,10 @@ async function install(): Promise<void> {
     return
   installing.value = true
   error.value = undefined
-  const answer = await kernel.call<{ readonly enabled: boolean }>('plugins_install', { source: { source: 'path', path: from } })
+  const outcome = await installFrom(kernel, from)
   installing.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (!outcome.ok) {
+    error.value = outcome.failure
     return
   }
   note.value = messages.plugins.installedSwitchedOff
