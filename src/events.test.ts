@@ -15,7 +15,9 @@ import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { KernelClient } from './ipc/client'
 import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { useDevicesStore } from './stores/devices'
+import { useIntentsStore } from './stores/intents'
 import { usePluginsStore } from './stores/plugins'
+import { useSettingsStore } from './stores/settings'
 
 /**
  * A client over a bridge that records calls and hands back a listener.
@@ -128,5 +130,38 @@ describe('the event stream', () => {
     } as unknown as SequencedKernelEvent)
 
     expect(plugins.plugin('@acme/hello')?.enabled).toBe(true)
+  })
+
+  it('applies an intent to the intents store', async () => {
+    // Every store the dispatcher routes to gets the same assertion, because the alternative is a `switch` that grows a case
+    // nobody notices is wrong: routing `intentUpdated` into the device store would leave the home page stale, and this file
+    // would stay green.
+    const { client, listeners } = harness()
+    const intents = useIntentsStore()
+
+    await startEvents(client)
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 1,
+      at: 1,
+      type: 'intentUpdated',
+      payload: { intentId: 'intent-1', state: 'succeeded', pluginId: '@acme/hello', candidates: [], startedAtMs: 0 },
+    } as unknown as SequencedKernelEvent)
+
+    expect(intents.intent('intent-1')?.state).toBe('succeeded')
+  })
+
+  it('applies a configuration to the settings store', async () => {
+    const { client, listeners } = harness()
+    const settings = useSettingsStore()
+
+    await startEvents(client)
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 1,
+      at: 1,
+      type: 'configUpdated',
+      payload: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] },
+    } as unknown as SequencedKernelEvent)
+
+    expect(settings.value('ui.theme')).toBe('dark')
   })
 })
