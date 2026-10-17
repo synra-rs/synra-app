@@ -184,5 +184,34 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
     Ok(())
 }
 
+/// What this shell says about itself when it dials a peer.
+///
+/// # Why the platform is mapped rather than passed through
+///
+/// Because the identity stores the platform as a string (what the installer recorded) while the wire wants `PlatformKind`,
+/// and the two must not drift: a peer reading "windows" where it expected an enum would decline the handshake, and the shell
+/// would look like a broken build rather than a mistyped one.
+///
+/// # Why the display name comes from the identity
+///
+/// Because that is the name the user set and the one the discovery responder already announces. A second source would let
+/// one device appear under two names on the same network.
+#[must_use]
+pub fn local_peer(identity: &synra_core::identity::Identity) -> synra_core::peer::LocalPeer {
+    use synra_protocol::session::PlatformKind;
+
+    let platform = match identity.platform.to_ascii_lowercase().as_str() {
+        "android" => PlatformKind::Android,
+        "ios" | "macos" | "mac" => PlatformKind::Ios,
+        _ => PlatformKind::Desktop,
+    };
+    synra_core::peer::LocalPeer::new(
+        identity.device_id,
+        identity.display_name.clone(),
+        platform,
+        env!("CARGO_PKG_VERSION"),
+    )
+}
+
 #[cfg(test)]
 mod tests;

@@ -64,6 +64,25 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn what_this_shell_says_when_it_dials_is_the_identity() {
+    // ★ The name is the one discovery already announces — two sources would let one device appear twice on a network — and
+    // the platform has to become the wire's enum rather than a string a peer would decline.
+    let identity = synra_core::identity::Identity {
+        device_id: DeviceId::new(),
+        display_name: "Study PC".to_owned(),
+        platform: "windows".to_owned(),
+        created_at_ms: 0,
+    };
+
+    let peer = super::local_peer(&identity);
+
+    assert_eq!(peer.device_id, identity.device_id);
+    assert_eq!(peer.display_name, "Study PC");
+    assert_eq!(peer.platform, synra_protocol::session::PlatformKind::Desktop);
+    assert!(!peer.features.is_empty(), "a build announces what it can do");
+}
+
+#[test]
 fn a_sender_becomes_the_row_the_panel_shows() {
     // ★ The two things the worker must not get wrong: the peer comes from the link (not from a request that has none), and the
     // block count is the sender's own arithmetic rather than a guess at what the receiver will report.
