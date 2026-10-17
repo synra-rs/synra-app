@@ -56,6 +56,55 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
     assert_eq!(marked, Some(true));
 }
 
+/// A plugin identity, and the manifest that gives it a UI half.
+const ID: &str = "@synra-plugin/chat";
+const UI_MANIFEST: &str = r#"{
+    "id": "@synra-plugin/chat",
+    "version": "1.0.0",
+    "title": "Chat",
+    "publisher": { "id": "synra-official" },
+    "sdk": { "min": "1.0.0" },
+    "wit": "synra:plugin@1.0.0",
+    "runtime": {
+        "headless": { "artifact": "dist/plugin.wasm", "stateful": false },
+        "ui": { "artifact": "dist/ui.zip", "entry": "dist/index.html" }
+    },
+    "capabilities": [{ "cap": "log:*" }]
+}"#;
+
+/// A state with that plugin installed on disk.
+fn installed_with_ui() -> (crate::testing::Root, crate::AppState) {
+    let (root, state) = crate::testing::file_state();
+    let directory = state.paths.plugin_dir(ID);
+    std::fs::create_dir_all(&directory).expect("the plugin directory");
+    std::fs::write(directory.join("manifest.json"), UI_MANIFEST).expect("a manifest");
+    state
+        .db()
+        .insert_plugin(ID, true, false, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .expect("a plugin row");
+    (root, state)
+}
+
+#[test]
+fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
+    // ★ The three values `shell.rs` hands to Tauri, and the table entry that makes `plugin_ui_ready` possible. The address
+    // shape is the design's (`synra-plugin://<plugin-id>/<page>`); the page key falls back to the entry's stem because
+    // `dist/index.html` is a path, not a page.
+    let (_root, state) = installed_with_ui();
+
+    let request = super::open_request(&state, ID).expect("it has a UI");
+
+    assert!(request.url.starts_with("synra-plugin://@synra-plugin/chat/"), "got {}", request.url);
+    assert!(request.url.ends_with("/index"), "the entry's stem is the page: {}", request.url);
+    assert!(request.script.contains(&request.label), "the script names the page it is for");
+
+    let hosted = state.hosted_ui.lock();
+    let entry = hosted.get(&request.label).expect("the page is recorded");
+    assert_eq!(entry.plugin_id.as_str(), ID);
+    assert_eq!(entry.version, "1.0.0");
+    assert!(!entry.ready, "it has not said it has drawn yet");
+}
+
 #[test]
 fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
     // ★ The refusal a caller can act on: "install it". The other half — a plugin with no UI half — needs a fixture whose
