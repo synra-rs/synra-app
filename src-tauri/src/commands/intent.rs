@@ -411,6 +411,41 @@ mod tests {
     }
 
     #[test]
+    fn a_share_is_dispatched_even_when_nothing_matches_it() {
+        // ★ "This build cannot run plugins" and "no installed plugin wants that" are two facts a user acts on differently,
+        // and only the first was tested. The set here is real but empty: the scripted backend answers nothing, and the
+        // refusing host is the shared fixture (`synra_plugin_host::testing`).
+        let backend = synra_plugin_host::Backend::new(std::sync::Arc::new(
+            synra_plugin_host::engine::scripted::ScriptedBackend::new(),
+        ));
+        let set = synra_core::dispatch::PluginSet::new(
+            backend,
+            std::sync::Arc::new(synra_plugin_host::testing::RefusingHost),
+        );
+        let state = crate::testing::state()
+            .with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(set)));
+        let subscriber = state.events.subscribe();
+
+        // ★ The success path this file had none of: with an engine present a share is dispatched even when no plugin
+        // matches — the intent exists and says so, which is a different answer from "this build cannot run plugins".
+        let id = intent_dispatch(
+            &state,
+            &IntentSourceDto::Share { text: "hi".to_owned(), title: None },
+        )
+        .expect("an intent is raised even with nothing to match");
+
+        assert!(
+            intent_list(&state).expect("the list").iter().any(|intent| intent.intent_id == id),
+            "the board holds it"
+        );
+        let delivery = state.events.take(subscriber).expect("and the window was told");
+        match delivery.events() {
+            [synra_ipc::event::KernelEvent::IntentUpdated(intent)] => assert_eq!(intent.intent_id, id),
+            other => panic!("expected the intent's card, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_command_without_an_engine_says_which_thing_is_missing() {
         // The shell is constructible without a plugin engine, and every intent command then refuses with the reason
         // rather than an empty answer. "No plugins are installed" and "this build cannot run them" are different facts
