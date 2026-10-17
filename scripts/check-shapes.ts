@@ -439,11 +439,19 @@ function literalEnd(text: string, start: number): number | undefined {
 
 /** The keys of an object literal at its own top level: the `opts` of `{ opts: { … } }`, not the flags inside it. */
 function topLevelKeys(literal: string): string[] {
+  // ★ Shorthand properties are expanded **before** the scan: `{ pluginId, granted }` is the same object as
+  // `{ pluginId: pluginId, granted: granted }`, and ESLint's `object-shorthand` rule rewrites it to the first form. Without
+  // this, running the linter silently turned a call that passes its arguments into one the guard reported as missing them
+  // — a fixer and a checker disagreeing about what the code says.
+  // ★ The separator is a **lookahead**, so it survives the replacement: consuming it made the *next* shorthand invisible
+  // (`{ pluginId, removeData }` expanded only the first, because the comma that should have introduced the second had
+  // already been eaten), and the guard reported a call it had just rewritten as missing an argument.
+  const expanded = literal.replace(/([{,]\s*)([a-z_$][\w$]*)(?=\s*[,}])/gi, '$1$2: $2')
   const keys: string[] = []
   let depth = 0
   let quote: string | undefined
-  for (let index = 0; index < literal.length; index += 1) {
-    const character = literal[index]
+  for (let index = 0; index < expanded.length; index += 1) {
+    const character = expanded[index]
     if (quote !== undefined) {
       if (character === '\\')
         index += 1
@@ -464,7 +472,7 @@ function topLevelKeys(literal: string): string[] {
       continue
     }
     if (depth === 1 && character === ':') {
-      const name = /([a-z_$][\w$]*)\s*$/i.exec(literal.slice(0, index))?.[1]
+      const name = /([a-z_$][\w$]*)\s*$/i.exec(expanded.slice(0, index))?.[1]
       if (name !== undefined && !keys.includes(name))
         keys.push(name)
     }

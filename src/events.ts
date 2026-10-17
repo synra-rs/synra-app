@@ -47,13 +47,18 @@ export interface StartedEvents {
 export async function startEvents(client: KernelClient = kernel): Promise<StartedEvents> {
   const devices = useDevicesStore()
 
-  // Declared before the dispatcher and used only from its callback: the callback runs when an event arrives, by which
-  // time the dispatcher exists. `snapshotTaken` is what clears the "I may be stale" flag, so it must run **after** the
-  // snapshot is applied.
-  const reread = async (): Promise<void> => {
+  /**
+   * Re-reads the device snapshot and marks the picture whole again.
+   *
+   * A **declaration**, not an arrow const, and it takes the dispatcher explicitly: the refresh callback is created with
+   * the dispatcher, so a closure over it would read a binding that does not exist yet — correct at call time, and the
+   * kind of "works but reads as a bug" that a linter is right to flag. Passing it in says what the dependency is.
+   *
+   * A failed re-read leaves the picture stale on purpose: `snapshotTaken` marks it whole again, and marking a picture
+   * whole when the call failed is the silent-staleness failure the sequence tracker exists to make visible.
+   */
+  async function reread(client: KernelClient, devices: ReturnType<typeof useDevicesStore>, dispatcher: EventDispatcher): Promise<void> {
     const answer = await client.call<DevicesSnapshot>('devices_snapshot', {})
-    // A failed re-read leaves the picture stale on purpose: `snapshotTaken` marks it whole again, and marking a picture
-    // whole when the call failed is the silent-staleness failure the sequence tracker exists to make visible.
     if (!answer.ok)
       return
     devices.applySnapshot(answer.value)
@@ -61,19 +66,19 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   }
 
   const dispatcher = new EventDispatcher(() => {
-    void reread()
+    void reread(client, devices, dispatcher)
   })
 
-  dispatcher.on('deviceCardUpdated', event => {
+  dispatcher.on('deviceCardUpdated', (event) => {
     devices.apply(event)
   })
-  dispatcher.on('deviceRemoved', event => {
+  dispatcher.on('deviceRemoved', (event) => {
     devices.apply(event)
   })
   // A scan is not a device: its progress is a transient the page reads from the scan state it already asked for, so the
   // response is to re-read rather than to model a second copy of it here.
   dispatcher.on('scanUpdated', () => {
-    void reread()
+    void reread(client, devices, dispatcher)
   })
 
   // ★ The two facts that had no consumer until now: an intent arriving and a transfer moving. `apply` answers whether the
@@ -99,7 +104,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     intents.apply(event)
   })
 
-  const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, payload => {
+  const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
     dispatcher.accept(payload as SequencedKernelEvent)
   })
 

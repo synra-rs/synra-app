@@ -189,7 +189,6 @@ function refuse(answer: { readonly code: string, readonly message: string, reado
   error.value = { code: answer.code, message: answer.message, actions: answer.actions }
 }
 
-
 /**
  * The scan in progress, or nothing.
  *

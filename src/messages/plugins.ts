@@ -46,5 +46,5 @@ export const plugins = {
   /** Removing, and the sentence that says what happens to the user's data. */
   removeAction: 'Remove',
   removeTitle: 'Remove this plugin?',
-  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.',
+  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.'
 } as const

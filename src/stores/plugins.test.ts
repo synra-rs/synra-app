@@ -24,7 +24,7 @@ function card(pluginId: string, overrides: Partial<PluginSnapshot> = {}): Plugin
     granted: [],
     denied: [],
     requested: [],
-    ...overrides,
+    ...overrides
   } as PluginSnapshot
 }
 

@@ -10,10 +10,10 @@
  *
  * # The three things this pattern needs, learned the hard way on the other pages
  *
- * * `matchMedia`, `ResizeObserver`, `IntersectionObserver` — jsdom gives the first a **placeholder that is not a
+ * `matchMedia`, `ResizeObserver`, `IntersectionObserver` — jsdom gives the first a **placeholder that is not a
  *   function**, so a guard like `if (!('matchMedia' in window))` installs nothing and hides the failure;
- * * answers **by command name**, because a blanket `{ ok: true, value: [] }` fails far from the call that was wrong;
- * * assertions on fields the DTO **actually has** — `toContain(undefined)` passes on `undefined`.
+ * answers **by command name**, because a blanket `{ ok: true, value: [] }` fails far from the call that was wrong;
+ * assertions on fields the DTO **actually has** — `toContain(undefined)` passes on `undefined`.
  */
 
 import { flushPromises, mount } from '@vue/test-utils'
@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn(),
+  subscribe: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
@@ -39,7 +39,7 @@ function installBrowserApis(): void {
     removeListener: () => {},
     addEventListener: () => {},
     removeEventListener: () => {},
-    dispatchEvent: () => false,
+    dispatchEvent: () => false
   })) as unknown as typeof window.matchMedia
 
   const noop = class {
@@ -82,7 +82,7 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
-  it("shows this device's name, which is the one field the page can state without being told", async () => {
+  it('shows this device\'s name, which is the one field the page can state without being told', async () => {
     answer({ config_get: {}, identity_get: IDENTITY })
 
     const wrapper = mount(SettingsPage)

@@ -18,8 +18,8 @@ function client(answer: unknown = { ok: true }) {
     invoke,
     client: new KernelClient({
       invoke,
-      listen: async () => () => {},
-    } as never),
+      listen: async () => () => {}
+    } as never)
   }
 }
 
@@ -30,7 +30,7 @@ describe('the install call', () => {
     const outcome = await installFrom(kernel, '/tmp/package')
 
     expect(invoke).toHaveBeenCalledWith('plugins_install', {
-      source: { source: 'path', path: '/tmp/package' },
+      source: { source: 'path', path: '/tmp/package' }
     })
     expect(outcome.ok).toBe(true)
   })
@@ -40,7 +40,7 @@ describe('the install call', () => {
       code: 'invalid_argument',
       message: 'error.invalidArgument',
       retryable: false,
-      actions: [{ kind: 'retry' }],
+      actions: [{ kind: 'retry' }]
     })
 
     const outcome = await installFrom(kernel, '/tmp/package')
@@ -87,7 +87,7 @@ describe('the uninstall call', () => {
 
     expect(invoke).toHaveBeenCalledWith('plugins_uninstall', {
       pluginId: '@acme/hello',
-      removeData: false,
+      removeData: false
     })
   })
 })

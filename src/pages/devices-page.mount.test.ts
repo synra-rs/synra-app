@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn(),
+  subscribe: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
@@ -38,7 +38,7 @@ function installBrowserApis(): void {
     removeListener: () => {},
     addEventListener: () => {},
     removeEventListener: () => {},
-    dispatchEvent: () => false,
+    dispatchEvent: () => false
   })) as unknown as typeof window.matchMedia
 
   const noop = class {

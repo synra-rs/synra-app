@@ -24,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn(),
+  subscribe: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
@@ -50,7 +50,7 @@ function installBrowserApis(): void {
     removeListener: () => {},
     addEventListener: () => {},
     removeEventListener: () => {},
-    dispatchEvent: () => false,
+    dispatchEvent: () => false
   }) as MediaQueryList
 
   const noop = class {
@@ -83,7 +83,7 @@ function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
     denied: [],
     requested: ['log:*'],
     update: undefined,
-    ...overrides,
+    ...overrides
   } as PluginSnapshot
 }
 

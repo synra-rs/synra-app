@@ -10,10 +10,10 @@ import type { DeviceCard, SequencedKernelEvent } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { KernelClient } from './ipc/client'
-import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
-import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { startEvents } from './events'
+import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
+import { KernelClient } from './ipc/client'
+import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { useDevicesStore } from './stores/devices'
 
 /**
@@ -33,7 +33,7 @@ function harness() {
     listen: async (event: string, handler: (payload: unknown) => void) => {
       listeners.set(event, handler)
       return () => listeners.delete(event)
-    },
+    }
   } as never)
   return { client, invoke, listeners }
 }
@@ -66,7 +66,7 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'deviceCardUpdated',
-      payload: card(PEER_ID),
+      payload: card(PEER_ID)
     } satisfies SequencedKernelEvent)
 
     expect(store.get(PEER_ID)?.deviceId).toBe(PEER_ID)
@@ -86,7 +86,7 @@ describe('the event stream', () => {
       // store learned it. The distinction the test is about is "no handler", which is a property of this file's wiring
       // rather than of the kernel's enum; a fabricated name is the honest way to say that, and the cast says it too.
       type: 'aKindThisBuildDoesNotKnow',
-      payload: {},
+      payload: {}
     } as unknown as SequencedKernelEvent)
 
     expect(invoke).toHaveBeenCalledWith('devices_snapshot', {})

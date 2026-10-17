@@ -44,7 +44,7 @@ function failureOf(error: { code: string, message: string, actions?: readonly Su
  */
 export async function installFrom(client: KernelClient, path: string): Promise<Outcome<InstallReport>> {
   const answer = await client.call<InstallReport>('plugins_install', {
-    source: { source: 'path', path },
+    source: { source: 'path', path }
   })
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
@@ -59,11 +59,11 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
 export async function decide(
   client: KernelClient,
   pluginId: string,
-  granted: readonly string[],
+  granted: readonly string[]
 ): Promise<Outcome<PluginSnapshot>> {
   const answer = await client.call<PluginSnapshot>('plugins_consent_respond', {
-    pluginId: pluginId,
-    granted: [...granted],
+    pluginId,
+    granted: [...granted]
   })
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
@@ -75,7 +75,7 @@ export async function decide(
  * page that chose between them itself would be a second place where "enabled" is spelled out.
  */
 export async function setEnabled(client: KernelClient, pluginId: string, enabled: boolean): Promise<Outcome<null>> {
-  const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId: pluginId })
+  const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId })
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
 }
 
@@ -87,8 +87,8 @@ export async function setEnabled(client: KernelClient, pluginId: string, enabled
  */
 export async function uninstall(client: KernelClient, pluginId: string, removeData: boolean): Promise<Outcome<null>> {
   const answer = await client.call<null>('plugins_uninstall', {
-    pluginId: pluginId,
-    removeData: removeData,
+    pluginId,
+    removeData
   })
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
 }

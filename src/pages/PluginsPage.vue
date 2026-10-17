@@ -143,7 +143,7 @@
                   v-for="capability in plugin.requested"
                   :key="capability"
                   :value="capability"
-                  class="font-mono text-xs"
+                  class="text-xs font-mono"
                 >
                   {{ capability }}
                 </ACheckbox>
@@ -235,6 +235,9 @@ import { decide, installFrom, setEnabled, uninstall } from './plugins/actions'
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
 
+/** Which capabilities the user has ticked, per plugin. Seeded from `granted` when the cards arrive. */
+const selection = reactive<Record<string, string[]>>({})
+
 /**
  * The plugins as the list takes them.
  *
@@ -283,11 +286,10 @@ async function load(): Promise<void> {
         selection[plugin.pluginId] = [...plugin.granted]
     }
   }
-  else
+  else {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  }
 }
-/** Which capabilities the user has ticked, per plugin. Seeded from `granted` when the cards arrive. */
-const selection = reactive<Record<string, string[]>>({})
 
 /** The plugin whose decision is being written, so its button says so and cannot be pressed twice. */
 const consenting = ref<string | undefined>(undefined)
@@ -376,5 +378,4 @@ async function install(): Promise<void> {
   installPath.value = ''
   await load()
 }
-
 </script>
