@@ -86,6 +86,18 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('shows a preference the kernel has a value for', async () => {
+    // ★ The bug this locks down: the page's own key names ('theme') are labels, and the kernel's are dotted ('ui.theme').
+    // Reading the label returned `undefined`, so both controls showed "unset" no matter what was configured.
+    answer({ config_get: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] }, identity_get: IDENTITY })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('dark')
+    wrapper.unmount()
+  })
+
   it('shows this device\'s name, which is the one field the page can state without being told', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 

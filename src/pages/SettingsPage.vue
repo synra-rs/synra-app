@@ -65,10 +65,10 @@
                 no value for that key — and the controls below take their state from the same read, so nothing here is
                 a default this page invented.
               -->
-              <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(key) ?? null) }}</span>
+              <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
             </span>
 
-            <ASwitch v-if="key === 'autoSyncPlugins'" :checked="settings.value(key) === true" disabled />
+            <ASwitch v-if="key === 'autoSyncPlugins'" :checked="settings.value(configKey(key)) === true" disabled />
 
             <!--
               A select with no options: the set of themes is the kernel's to name, and a list we wrote here would be
@@ -119,13 +119,24 @@ const settings = useSettingsStore()
 const identity = ref<IdentitySnapshot | undefined>(undefined)
 
 /**
+ * The kernel's key for one of this page's preferences.
+ *
+ * ★ The page's names (`theme`) are **labels**; the kernel addresses configuration by dotted path (`ui.theme`). Reading
+ * `key` directly returned `undefined` for every preference — the second half of the bug that made both controls show
+ * "unset", and the half a corrected DTO shape alone would not have fixed.
+ */
+function configKey(key: PreferenceKey): string {
+  return `ui.${key}`
+}
+
+/**
  * The kernel's answer for a key, as a select can show it.
  *
  * A select holds scalars, and the kernel's bag is `unknown`, so anything that is not one is passed to the control as
  * "no value" rather than stringified into a value this page made up.
  */
 function preferenceValue(key: PreferenceKey): string | number | undefined {
-  const value = settings.value(key)
+  const value = settings.value(configKey(key))
   return typeof value === 'string' || typeof value === 'number' ? value : undefined
 }
 
