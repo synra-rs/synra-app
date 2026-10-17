@@ -10,6 +10,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
 import App from './App.vue'
+import { startEvents } from './events'
 
 import { router } from './router'
 // ★ `uno.css` is the stylesheet `@synra/theme` produces: the tokens as custom properties, the reset, and the utilities
@@ -19,3 +20,8 @@ import { router } from './router'
 import 'uno.css'
 
 createApp(App).use(createPinia()).use(router).mount('#app')
+
+// ★ After the mount, and after Pinia is installed: the stream's handlers reach a store, and a store outside an active
+// Pinia is the error this ordering avoids. It is fire-and-forget because the window must open whether or not a listener
+// registers — a page that renders a snapshot and never updates is better than a blank window.
+void startEvents()
