@@ -68,20 +68,20 @@ mod wrappers {
     use super::{AppState, DiagExportResult, commands};
 
     #[tauri::command]
-    pub fn identity_get(state: tauri::State<'_, AppState>) -> Result<IdentitySnapshot, IpcError> {
+    pub fn identity_get(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<IdentitySnapshot, IpcError> {
         commands::identity::identity_get(&state)
     }
 
     #[tauri::command]
     pub fn identity_set_display_name(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         name: String,
     ) -> Result<(), IpcError> {
         commands::identity::identity_set_display_name(&state, &name)
     }
 
     #[tauri::command]
-    pub fn devices_snapshot(state: tauri::State<'_, AppState>) -> Result<DevicesSnapshot, IpcError> {
+    pub fn devices_snapshot(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<DevicesSnapshot, IpcError> {
         commands::devices::devices_snapshot(&state)
     }
 
@@ -93,39 +93,39 @@ mod wrappers {
     /// (`sync_threadpool` in the macro's own vocabulary), so the window keeps painting while the network is asked. The
     /// daemon makes the same move for the same reason, by running discovery on a thread of its own.
     #[tauri::command(async)]
-    pub fn devices_scan_start(state: tauri::State<'_, AppState>, opts: ScanOptions) -> Result<String, IpcError> {
+    pub fn devices_scan_start(state: tauri::State<'_, std::sync::Arc<AppState>>, opts: ScanOptions) -> Result<String, IpcError> {
         commands::devices::devices_scan_start(&state, &opts)
     }
 
     #[tauri::command]
-    pub fn devices_scan_cancel(state: tauri::State<'_, AppState>, scan_id: String) -> Result<(), IpcError> {
+    pub fn devices_scan_cancel(state: tauri::State<'_, std::sync::Arc<AppState>>, scan_id: String) -> Result<(), IpcError> {
         commands::devices::devices_scan_cancel(&state, &scan_id)
     }
 
     #[tauri::command]
-    pub fn devices_forget(state: tauri::State<'_, AppState>, device_id: String) -> Result<(), IpcError> {
+    pub fn devices_forget(state: tauri::State<'_, std::sync::Arc<AppState>>, device_id: String) -> Result<(), IpcError> {
         commands::devices::devices_forget(&state, &device_id)
     }
 
     #[tauri::command]
-    pub fn plugins_list(state: tauri::State<'_, AppState>) -> Result<Vec<PluginSnapshot>, IpcError> {
+    pub fn plugins_list(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<PluginSnapshot>, IpcError> {
         commands::plugins::plugins_list(&state)
     }
 
     #[tauri::command]
-    pub fn plugins_enable(state: tauri::State<'_, AppState>, plugin_id: String) -> Result<(), IpcError> {
+    pub fn plugins_enable(state: tauri::State<'_, std::sync::Arc<AppState>>, plugin_id: String) -> Result<(), IpcError> {
         commands::plugins::plugins_enable(&state, &plugin_id)
     }
 
     #[tauri::command]
-    pub fn plugins_disable(state: tauri::State<'_, AppState>, plugin_id: String) -> Result<(), IpcError> {
+    pub fn plugins_disable(state: tauri::State<'_, std::sync::Arc<AppState>>, plugin_id: String) -> Result<(), IpcError> {
         commands::plugins::plugins_disable(&state, &plugin_id)
     }
 
     /// Records the user's decision about what a plugin may do.
     #[tauri::command]
     pub fn plugins_consent_respond(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
         granted: Vec<String>,
     ) -> Result<PluginSnapshot, IpcError> {
@@ -138,7 +138,7 @@ mod wrappers {
     /// stays, and a default in this layer could disagree with it.
     #[tauri::command]
     pub fn plugins_uninstall(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
         remove_data: bool,
     ) -> Result<(), IpcError> {
@@ -147,7 +147,7 @@ mod wrappers {
 
     /// Abandons a transfer, and refuses one that is not in flight.
     #[tauri::command]
-    pub fn transfer_cancel(state: tauri::State<'_, AppState>, transfer_id: String) -> Result<(), IpcError> {
+    pub fn transfer_cancel(state: tauri::State<'_, std::sync::Arc<AppState>>, transfer_id: String) -> Result<(), IpcError> {
         commands::transfers::transfer_cancel(&state, &transfer_id)
     }
 
@@ -159,7 +159,7 @@ mod wrappers {
     /// which is why that function exists separately from this command.
     #[tauri::command]
     pub fn transfer_send_file(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendFileRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
         commands::transfers::transfer_send_file(&state, &request)
@@ -170,7 +170,7 @@ mod wrappers {
     /// The same blocking caveat as [`transfer_send_file`](Self::transfer_send_file): the dial and the loop run on this call.
     #[tauri::command]
     pub fn transfer_send_text(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendTextRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
         commands::transfers::transfer_send_text(&state, &request)
@@ -179,7 +179,7 @@ mod wrappers {
     /// The transfers in flight.
     #[tauri::command]
     pub fn transfer_list(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
     ) -> Vec<synra_ipc::dto::TransferSnapshot> {
         commands::transfers::transfer_list(&state)
     }
@@ -189,7 +189,7 @@ mod wrappers {
     /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
     /// that took a plugin id could not tell them apart.
     #[tauri::command]
-    pub fn plugin_ui_ready(state: tauri::State<'_, AppState>, label: String) -> Result<(), IpcError> {
+    pub fn plugin_ui_ready(state: tauri::State<'_, std::sync::Arc<AppState>>, label: String) -> Result<(), IpcError> {
         commands::plugin_ui::plugin_ui_ready(&state, &label)
     }
 
@@ -205,7 +205,7 @@ mod wrappers {
     #[tauri::command]
     pub fn plugin_ui_open(
         app: tauri::AppHandle,
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
     ) -> Result<(), IpcError> {
         let request = commands::plugin_ui::open_request(&state, &plugin_id)?;
@@ -229,7 +229,7 @@ mod wrappers {
     /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
     #[tauri::command]
     pub fn plugins_install(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         source: InstallSourceDto,
     ) -> Result<InstallReport, IpcError> {
         commands::plugins::plugins_install(&state, &source)
@@ -237,7 +237,7 @@ mod wrappers {
 
     // ★ The audit trail, which had no writer until a plugin instance was given a session.
     #[tauri::command]
-    pub fn plugins_audit(        state: tauri::State<'_, AppState>,
+    pub fn plugins_audit(        state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: synra_protocol::PluginId,
         limit: u32,
     ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
@@ -250,7 +250,7 @@ mod wrappers {
     // was already in the state. What was missing was roughly 250 lines of routing that only a binary could reach.
     #[tauri::command]
     pub fn intent_dispatch(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         source: IntentSourceDto,
     ) -> Result<IntentId, IpcError> {
         commands::intent::intent_dispatch(&state, &source)
@@ -262,13 +262,13 @@ mod wrappers {
     /// which is the distinction `intent_snapshot` **below** it draws, and the one the interface missed while it called
     /// that command and read a list out of it.
     #[tauri::command]
-    pub fn intent_list(state: tauri::State<'_, AppState>) -> Result<Vec<IntentSnapshot>, IpcError> {
+    pub fn intent_list(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<IntentSnapshot>, IpcError> {
         commands::intent::intent_list(&state)
     }
 
     #[tauri::command]
     pub fn intent_snapshot(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         intent_id: IntentId,
     ) -> Result<IntentSnapshot, IpcError> {
         commands::intent::intent_snapshot(&state, intent_id)
@@ -276,7 +276,7 @@ mod wrappers {
 
     #[tauri::command]
     pub fn intent_decide(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         intent_id: IntentId,
         decision: IntentDecisionDto,
     ) -> Result<(), IpcError> {
@@ -285,25 +285,25 @@ mod wrappers {
 
     #[tauri::command]
     pub fn intent_cancel(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         intent_id: IntentId,
     ) -> Result<(), IpcError> {
         commands::intent::intent_cancel(&state, intent_id)
     }
 
     #[tauri::command]
-    pub fn config_get(state: tauri::State<'_, AppState>) -> Result<ConfigSnapshot, IpcError> {
+    pub fn config_get(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<ConfigSnapshot, IpcError> {
         commands::config::config_get(&state)
     }
 
     #[tauri::command]
-    pub fn config_set(state: tauri::State<'_, AppState>, patch: ConfigPatch) -> Result<(), IpcError> {
+    pub fn config_set(state: tauri::State<'_, std::sync::Arc<AppState>>, patch: ConfigPatch) -> Result<(), IpcError> {
         commands::config::config_set(&state, &patch)
     }
 
     #[tauri::command]
     pub fn diag_export(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         options: DiagExportOptions,
     ) -> Result<DiagExportResult, IpcError> {
         commands::diag::diag_export(&state, &options)
@@ -315,7 +315,7 @@ mod wrappers {
     /// would be an IPC type that has to be mirrored in the TypeScript contract for no shape of its own.
     #[tauri::command]
     pub fn diag_logs_tail(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         lines: Option<u32>,
     ) -> Result<Vec<String>, IpcError> {
         commands::diag::diag_logs_tail(&state, lines)
@@ -329,7 +329,7 @@ mod wrappers {
     /// whose caller already knew what it was looking for, which is the opposite of what a diagnostic is for.
     #[tauri::command]
     pub fn diag_metrics(
-        state: tauri::State<'_, AppState>,
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
     ) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
         commands::diag::diag_metrics(&state)
     }
@@ -393,7 +393,7 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // command that publishes later finds a subscriber waiting — a bridge started after the first command would
             // miss exactly the event that command raised.
             crate::events::spawn(app.handle().clone(), std::sync::Arc::clone(&state.events));
-            app.manage(state);
+            app.manage(std::sync::Arc::new(state));
             Ok(())
         })
         .invoke_handler(wrappers::handler())
