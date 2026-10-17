@@ -127,8 +127,9 @@
  * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
  * worth looking at.
  */
-import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
+import type { IntentSnapshot, SuggestedAction } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
+import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -136,12 +137,17 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
+import { useIntentsStore } from '../stores/intents'
 
 const router = useRouter()
 const devices = useDevicesStore()
 
-const intents = ref<readonly IntentSnapshot[]>([])
-const transfers = ref<readonly TransferSnapshot[]>([])
+// ★ The intent store, not two local refs. The kernel publishes `intentUpdated` / `transferUpdated` and `src/events.ts`
+// applies them to this store; a page holding its own copy would show the list it read at mount while the store moved on —
+// and the two would disagree about exactly the thing the user is waiting to see.
+const intentsStore = useIntentsStore()
+const { intents, transfers } = storeToRefs(intentsStore)
+
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
 
