@@ -417,6 +417,10 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // miss exactly the event that command raised.
             crate::events::spawn(app.handle().clone(), std::sync::Arc::clone(&state.events));
             app.manage(std::sync::Arc::new(state));
+            // ★ The listener starts after the state is managed, because it reads that state to build its host and router. The token
+            // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
+            // does, and a restart would fail to bind a port the old one still holds.
+            app.manage(crate::listener::spawn(app.handle()));
             Ok(())
         })
         .invoke_handler(wrappers::handler())
