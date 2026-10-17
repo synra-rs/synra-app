@@ -53,6 +53,7 @@
 
 pub mod commands;
 pub mod discovery;
+pub mod events;
 pub mod plugin_host;
 pub mod state;
 

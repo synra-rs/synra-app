@@ -284,6 +284,10 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .setup(|app| {
             let state = app_state(app.handle())?;
+            // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
+            // command that publishes later finds a subscriber waiting — a bridge started after the first command would
+            // miss exactly the event that command raised.
+            crate::events::spawn(app.handle().clone(), std::sync::Arc::clone(&state.events));
             app.manage(state);
             Ok(())
         })

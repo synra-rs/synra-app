@@ -98,7 +98,9 @@ pub fn plugins_consent_respond(
                 .with_params(serde_json::json!({"pluginId": plugin_id}))
         })?;
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
-    Ok(snapshot(state, &row, &id, loaded.as_deref()))
+    let card = snapshot(state, &row, &id, loaded.as_deref());
+    state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(card.clone())));
+    Ok(card)
 }
 
 /// Installs a plugin from a directory, through the checks, and reports what the user has to be told.
@@ -146,8 +148,16 @@ pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<In
             "reason": refusal.reason,
         }))
     })?;
+    // ★ The set's lock is released before anything reads it again.
+    //
+    // `announce` asks the set what is loaded, and this mutex is not reentrant: holding it across the call was a
+    // same-thread self-deadlock, and the symptom was a test that hung rather than one that failed.
+    drop(set);
+    let plugin_id = parse(&installed.plugin_id)?;
+    // The interface learns about the plugin the moment it lands, rather than when the page is reopened.
+    announce(state, &plugin_id);
     Ok(InstallReport {
-        plugin_id: parse(&installed.plugin_id)?,
+        plugin_id,
         version: installed.version,
         warnings: installed.warnings,
         enabled: false,
@@ -216,7 +226,28 @@ fn set_enabled(state: &AppState, plugin_id: &str, enabled: bool) -> Result<(), I
                 .with_params(serde_json::json!({"pluginId": plugin_id})),
         );
     }
+    // ★ The interface learns about it here rather than on its next snapshot. The frontend has had an event dispatcher
+    // since before there was anything to dispatch; a switch that flipped in the store and nowhere else is what that
+    // gap looked like from the window.
+    announce(state, &id);
     Ok(())
+}
+
+/// Tells the interface that a plugin's card changed, when it can be read back.
+///
+/// Failure to read the card is not a failure of the command: the write already happened, and refusing the command
+/// afterwards would tell the user their change did not take effect when it did — the same reasoning as an audit write
+/// that fails after the call it describes.
+fn announce(state: &AppState, plugin_id: &PluginId) {
+    let Ok(rows) = state.db().plugins() else {
+        return;
+    };
+    let Some(row) = rows.into_iter().find(|row| row.plugin_id == plugin_id.to_string()) else {
+        return;
+    };
+    let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
+    let card = snapshot(state, &row, plugin_id, loaded.as_deref());
+    state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(card)));
 }
 
 /// Builds one card.
@@ -450,6 +481,26 @@ mod tests {
             .expect("a row");
         assert!(!row.enabled, "installing must not switch it on");
         assert!(!row.trusted, "installing must not trust it");
+    }
+
+    #[test]
+    fn enabling_a_plugin_tells_the_interface() {
+        // ★ The producer the event dispatcher never had. A switch that flipped in the store and nowhere else is what
+        // "the shell never emits" looked like from the window: the page showed whatever it had read when it opened.
+        let (_root, state) = installed();
+        let subscriber = state.events.subscribe();
+
+        super::plugins_enable(&state, ID).expect("the plugin is enabled");
+
+        let delivery = state.events.take(subscriber).expect("one event");
+        assert_eq!(delivery.first_seq(), 1, "the bus numbers it, not this command");
+        match delivery.events().first() {
+            Some(synra_ipc::event::KernelEvent::PluginUpdated(card)) => {
+                assert_eq!(card.plugin_id.as_str(), ID);
+                assert!(card.enabled, "the card says what the row now says");
+            }
+            other => panic!("expected a plugin card, got {other:?}"),
+        }
     }
 
     #[test]

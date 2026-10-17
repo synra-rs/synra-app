@@ -113,6 +113,20 @@ pub struct AppState {
     /// write a diagnostic file trades the user's work for its record — and `diag_export` says the section is missing
     /// instead of claiming there was nothing to log.
     pub log: Option<synra_observe::logging::LogGuard>,
+
+    /// What the kernel tells the interface about, as it happens.
+    ///
+    /// # ★ Why the shell needed one
+    ///
+    /// Because every page was a snapshot and nothing else: the frontend has had a `SequenceTracker` and an event
+    /// dispatcher for two rounds, and no producer — so a plugin enabled in another window, a scan that finished while a
+    /// dialog was open, and a consent decision were all invisible until the user navigated away and back.
+    ///
+    /// The bus is the kernel's own ([`synra_core::bus::EventBus`]), not a second one built here: it numbers events,
+    /// bounds each subscriber's queue and says when a subscriber was too slow. The payloads are the **wire** events
+    /// ([`synra_ipc::event::KernelEvent`]) rather than the kernel's internal ones, because the interface is the only
+    /// consumer of this stream and a mapping layer between two enums would be a second place for the two to drift.
+    pub events: Arc<synra_core::bus::EventBus<synra_ipc::event::KernelEvent>>,
 }
 
 impl AppState {
@@ -147,7 +161,16 @@ impl AppState {
             started_at_ms: now_ms,
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
             log: None,
+            events: Arc::new(synra_core::bus::EventBus::new()),
         })
+    }
+
+    /// Publishes an event for the interface, and answers with its sequence number.
+    ///
+    /// The number comes from the bus rather than from a counter here: the bus is what a subscriber's gap detection
+    /// compares against, and two numbering schemes would disagree the first time anything else published.
+    pub fn publish(&self, event: synra_ipc::event::KernelEvent) -> u64 {
+        self.events.emit(event)
     }
 
     /// Starts the shell's own log, in the directory `Paths` keeps logs in.
