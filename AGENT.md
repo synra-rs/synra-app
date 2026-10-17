@@ -71,6 +71,11 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 - Answer mocks **by command name**. A blanket `{ ok: true, value: [] }` fails far from the call that was wrong.
 - Assert a notice through its **props**, not its text; the text is a translated sentence.
 - An assertion against a field the DTO does not have passes on `undefined`. `INTENT.summary` did.
+- **`crate::testing::state()` puts every test in one directory** (`temp_dir()/synra-app-tests`), while `file_state()` gets a
+  named one. A test that writes files and uses `state()` therefore shares a data directory with every other such test, and
+  `cargo test` runs them in parallel — so the failure looks like a flake and is really a collision. Use `file_state()` (or
+  `root(name)`) for anything that touches the disk. One run of this suite did report a single failure that five reruns could
+  not reproduce, and this is the first place to look.
 
 ## 7. Commits
 
