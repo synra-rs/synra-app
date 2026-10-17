@@ -160,6 +160,10 @@ pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<Int
     let item = item_for(state, source)?;
     let routed = orchestrate::dispatch(plugins, &state.board, &item, synra_store::sqlite::now_ms())
         .map_err(|error| as_ipc(&error))?;
+    // ★ The window learns an intent exists without asking. The snapshot is read back from the board rather than built
+    // from `routed`: the board is what `intent_list` will answer with, and a card assembled here would be a second
+    // description of the same intent — the one that disagrees the first time the two are computed differently.
+    announce(state, routed.intent_id);
     Ok(routed.intent_id)
 }
 
@@ -209,6 +213,17 @@ pub fn intent_snapshot(state: &AppState, intent_id: IntentId) -> Result<IntentSn
 ///
 /// [`IpcError`] when the identifier names an intent this shell never raised.
 #[allow(clippy::result_large_err)]
+/// Announces an intent's current state, if the board can still answer for it.
+///
+/// Silent when it cannot: the board losing an intent between the change and the announcement is a race the caller cannot
+/// repair, and publishing an error is not what an event is for. The interface's next `intent_list` is the truth either
+/// way, so a missed announcement costs one stale list rather than a wrong one.
+fn announce(state: &AppState, intent_id: IntentId) {
+    if let Ok(snapshot) = snapshot_of(state, intent_id) {
+        state.publish(synra_ipc::event::KernelEvent::IntentUpdated(Box::new(snapshot)));
+    }
+}
+
 fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, IpcError> {
     let view = orchestrate::snapshot(&state.board, &intent_id.to_string()).map_err(|error| as_ipc(&error))?;
     Ok(IntentSnapshot {
@@ -250,7 +265,7 @@ pub fn intent_decide(
     let plugins = plugins(state)?;
     let local = state.identity.lock().device_id;
     let id = intent_id.to_string();
-    match decision {
+    let outcome = match decision {
         IntentDecisionDto::Accept { device_id } => orchestrate::decide(
             plugins,
             &state.board,
@@ -288,7 +303,13 @@ pub fn intent_decide(
         // trail that nobody made.
         _ => Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
             .with_params(serde_json::json!({ "reason": "this build does not know that decision" }))),
-    }
+    };
+
+    // ★ Announced only when the decision landed: a refused decision changed nothing, and publishing the intent's
+    // unchanged state would tell the panel something happened.
+    outcome?;
+    announce(state, intent_id);
+    Ok(())
 }
 
 /// Refuses when a move produced a message this shell cannot send.
@@ -327,7 +348,11 @@ pub fn intent_cancel(state: &AppState, intent_id: IntentId) -> Result<(), IpcErr
     refuse_if_remote(
         &orchestrate::cancel(&state.board, local, &intent_id.to_string(), "the user cancelled it")
             .map_err(|error| as_ipc(&error))?,
-    )
+    )?;
+    // The panel shows a cancelled intent as cancelled rather than making it vanish: the board keeps it (`intent_list` is
+    // `all`, not the live ones), so the announcement is the same announcement a decision makes.
+    announce(state, intent_id);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -370,6 +395,19 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn announcing_an_intent_the_board_cannot_answer_for_publishes_nothing() {
+        // ★ The decision the helper documents: a board that lost the intent between the change and the announcement is a
+        // race no caller can repair, and publishing an **error** is not what an event is for. A missed announcement costs
+        // one stale list; a made-up one costs a wrong one.
+        let state = crate::testing::state();
+        let subscriber = state.events.subscribe();
+
+        announce(&state, synra_protocol::ids::IntentId::new());
+
+        assert!(state.events.take(subscriber).is_none(), "nothing was announced, because nothing was known");
     }
 
     #[test]
