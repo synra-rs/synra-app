@@ -102,6 +102,10 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
             .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
     }
     state.transfers.forget(&id);
+    // ★ The panel learns without asking. `TransferFinished` removes the row in the intents store, and without this a
+    // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every other
+    // command here was fixed for.
+    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id: id });
     Ok(())
 }
 

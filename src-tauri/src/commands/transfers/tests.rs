@@ -40,11 +40,18 @@ fn cancelling_a_transfer_that_is_in_flight_drops_it() {
     let state = crate::testing::state();
     let id = TransferId::new();
     state.transfers.record(snapshot(id, "active"));
+    let subscriber = state.events.subscribe();
 
     super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
 
     assert!(state.transfers.is_empty(), "the registry no longer holds it");
     assert!(super::transfer_list(&state).is_empty(), "and the list does not show it");
+    // ★ And the panel is told, or the row stays until the page is reopened.
+    let delivery = state.events.take(subscriber).expect("announced");
+    match delivery.events() {
+        [synra_ipc::event::KernelEvent::TransferFinished { transfer_id }] => assert_eq!(*transfer_id, id),
+        other => panic!("expected a finished transfer, got {other:?}"),
+    }
 }
 
 #[test]
