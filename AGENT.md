@@ -14,7 +14,7 @@ cargo check --manifest-path src-tauri/Cargo.toml                        # the sh
 pnpm test        # vitest: node by default, four pages opt into jsdom
 pnpm run lint    # eslint — and it is not decoration, see §4
 pnpm run build   # vue-tsc -b + vite build
-pnpm run shapes  # seven guards the README calls hard requirements
+pnpm run shapes  # seven guards the README calls hard requirements — one of them now checks the README itself
 ```
 
 ★ **Both Cargo invocations.** `shell.rs` only compiles under the default feature, so `--no-default-features` alone cannot
