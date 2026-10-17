@@ -54,6 +54,9 @@
 pub mod commands;
 pub mod discovery;
 pub mod events;
+/// The shell's own listener: the half that makes this device reachable.
+#[cfg(feature = "tauri-shell")]
+pub mod listener;
 pub mod plugin_host;
 pub mod state;
 
