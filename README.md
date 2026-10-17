@@ -102,7 +102,7 @@ synra-app/
 
 ```powershell
 pnpm install
-pnpm test            # vitest（139 条；node 环境，不渲染页面）
+pnpm test            # vitest（169 条；默认 node 环境，四个页面各有一个 jsdom 挂载测试）
 pnpm build           # vue-tsc -b + vite build
 pnpm shapes          # 注入面 / 命令名 / 类型唯一性等 7 条守卫
 
