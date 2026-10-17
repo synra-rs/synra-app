@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
+import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vitest/config'
 
 /**
@@ -12,6 +13,7 @@ import { defineConfig } from 'vitest/config'
  * on a component rendering — which is a different kind of test and not the one this run is for.
  */
 export default defineConfig({
+  plugins: [vue()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
