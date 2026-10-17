@@ -4,6 +4,21 @@
       {{ messages.plugins.title }}
     </h1>
 
+    <!--
+      The install form. A **path** rather than a package name: this shell has no registry client, and the command refuses a
+      registry source by name instead of pretending to fetch one.
+    -->
+    <div class="row gap-2">
+      <AInput v-model:value="installPath" :placeholder="messages.plugins.installPath" allow-clear @press-enter="install" />
+      <AButton :loading="installing" :disabled="installPath.trim() === ''" @click="install">
+        {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
+      </AButton>
+    </div>
+
+    <!-- Installing is not approving: the sentence says the plugin is off, because a user told only "installed" would
+         look for a fault in a plugin that is behaving exactly as designed. -->
+    <AAlert v-if="note" type="success" :message="note" closable @close="note = undefined" />
+
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
@@ -144,7 +159,7 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Tag as ATag } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -216,4 +231,31 @@ async function load(): Promise<void> {
   else
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
+/** The directory the user typed. */
+const installPath = ref('')
+
+/** Whether an install is in flight, so the button says so and cannot be pressed twice. */
+const installing = ref(false)
+
+/** What to tell the user after an install succeeded. */
+const note = ref<string | undefined>(undefined)
+
+/** Installs the package in the directory the user named, then re-reads the list. */
+async function install(): Promise<void> {
+  const from = installPath.value.trim()
+  if (from === '' || installing.value)
+    return
+  installing.value = true
+  error.value = undefined
+  const answer = await kernel.call<{ readonly enabled: boolean }>('plugins_install', { source: { source: 'path', path: from } })
+  installing.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  note.value = messages.plugins.installedSwitchedOff
+  installPath.value = ''
+  await load()
+}
+
 </script>
