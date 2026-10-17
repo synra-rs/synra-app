@@ -23,6 +23,11 @@ export const plugins = {
   none: 'nothing',
   updateAvailable: 'An update is available',
   updateNeedsConsent: 'It asks for new permission',
+  /** The list the user decides about, one checkbox each. */
+  requested: 'It asks for',
+  /** The button that records the decision. "Allow" rather than "Save": the act is approval, not persistence. */
+  consentAction: 'Allow selected',
+
   /**
    * The install form's words, added when the command became reachable from this window.
    *

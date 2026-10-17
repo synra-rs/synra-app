@@ -113,6 +113,44 @@
             </div>
 
             <!--
+              The decision itself: one checkbox per **requested** capability, starting from what was already granted.
+
+              ★ Not an "allow everything" button. This is the one screen where the user is asked what a plugin may do,
+              and a single button would hand over exactly what the per-capability model exists to itemise. `requested`
+              is what the manifest declares, so the boxes are what the *plugin* asks for rather than what it was given.
+            -->
+            <div v-if="plugin.requested?.length" class="stack gap-2">
+              <span class="text-xs text-ink-dim">{{ messages.plugins.requested }}</span>
+
+              <!--
+                `:value` + `@update:value` rather than `v-model`: the map may not have an entry yet on the first render,
+                and `v-model` on a possibly-undefined key does not type-check under `exactOptionalPropertyTypes`.
+              -->
+              <ACheckboxGroup
+                :value="selection[plugin.pluginId] ?? []"
+                class="stack"
+                @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
+              >
+                <ACheckbox
+                  v-for="capability in plugin.requested"
+                  :key="capability"
+                  :value="capability"
+                  class="font-mono text-xs"
+                >
+                  {{ capability }}
+                </ACheckbox>
+              </ACheckboxGroup>
+
+              <AButton
+                size="small"
+                :loading="consenting === plugin.pluginId"
+                @click="consent(plugin, selection[plugin.pluginId] ?? [])"
+              >
+                {{ messages.plugins.consentAction }}
+              </AButton>
+            </div>
+
+            <!--
               An update is a decision rather than routine news when it asks for something new, so it is an alert with
               the version and the added permissions in it — and the permissions are named, not counted (R33's spirit:
               the user is told what they are being asked to allow).
@@ -159,8 +197,8 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Tag as ATag } from 'ant-design-vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Tag as ATag } from 'ant-design-vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
@@ -226,11 +264,45 @@ async function load(): Promise<void> {
   const answer = await kernel.call<readonly PluginSnapshot[]>('plugins_list')
   loading.value = false
 
-  if (answer.ok)
+  if (answer.ok) {
     plugins.value = answer.value
+    // ★ The boxes start from what was already granted, so a second visit shows the decision rather than an empty form.
+    for (const plugin of answer.value) {
+      if (!(plugin.pluginId in selection))
+        selection[plugin.pluginId] = [...plugin.granted]
+    }
+  }
   else
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
+/** Which capabilities the user has ticked, per plugin. Seeded from `granted` when the cards arrive. */
+const selection = reactive<Record<string, string[]>>({})
+
+/** The plugin whose decision is being written, so its button says so and cannot be pressed twice. */
+const consenting = ref<string | undefined>(undefined)
+
+/**
+ * Records the ticked capabilities and replaces the card with the answer's own.
+ *
+ * The answer **is** the card, so the list is replaced rather than re-read: one call, and what the user sees is exactly
+ * what the kernel just recorded — a re-read would answer the same question a moment later and about every plugin.
+ */
+async function consent(plugin: PluginSnapshot, granted: readonly string[]): Promise<void> {
+  consenting.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<PluginSnapshot>('plugins_consent_respond', {
+    pluginId: plugin.pluginId,
+    granted: [...granted],
+  })
+  consenting.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  plugins.value = plugins.value.map(card => (card.pluginId === answer.value.pluginId ? answer.value : card))
+  selection[answer.value.pluginId] = [...answer.value.granted]
+}
+
 /** The directory the user typed. */
 const installPath = ref('')
 
