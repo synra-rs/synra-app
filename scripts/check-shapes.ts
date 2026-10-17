@@ -698,6 +698,27 @@ async function checkCommandArguments(): Promise<void> {
   )
   if (unreadable > 0)
     notes.push(`command-arguments: ${String(unreadable)} call(s) were not read — their name or arguments are not literals`)
+
+  // ★ The README states the registered count in prose, and prose is not compiled: it said "23", then "25", while the shell
+  // grew to 29 — four commands' worth of a promise nobody could check. The number is derivable, so it is checked rather than
+  // remembered.
+  //
+  // Only the registered count is compared here. `checked` above counts **call sites**, while the README's "被调用 N 条" counts
+  // **distinct commands**: comparing them reported 15 against 10 and would have failed a true sentence.
+  const readme = await readFile('README.md', 'utf8')
+  const stated = /注册 (\d+) 条/.exec(readme)
+  if (stated === null) {
+    failures.push({
+      check: 'readme-counts',
+      detail: 'README.md no longer states how many commands are registered, so nothing checks it',
+    })
+  }
+  else if (stated[1] !== String(wrappers.size)) {
+    failures.push({
+      check: 'readme-counts',
+      detail: `README.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`,
+    })
+  }
 }
 
 await checkInjection()
