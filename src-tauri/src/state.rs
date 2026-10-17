@@ -137,6 +137,11 @@ pub struct AppState {
     /// version, and a token is a nonce: it says "some page holds this", not "this page is plugin X". The window that
     /// created the WebView knows both, so it records them here and `plugin_ui_ready` looks the label up.
     pub hosted_ui: Mutex<std::collections::HashMap<String, HostedUi>>,
+    /// The transfers this shell is running.
+    ///
+    /// Written by the worker that moves the chunks, read by `transfer_list`. A registry rather than a read from the link: a
+    /// transfer outlives the frame that started it, so the interface has to be able to ask between two of them.
+    pub transfers: crate::commands::transfers::Transfers,
 }
 
 /// One plugin page this shell opened, as the window that opened it knows it.
@@ -187,6 +192,7 @@ impl AppState {
             events: Arc::new(synra_core::bus::EventBus::new()),
             ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
             hosted_ui: Mutex::new(std::collections::HashMap::new()),
+            transfers: crate::commands::transfers::Transfers::new(),
         })
     }
 

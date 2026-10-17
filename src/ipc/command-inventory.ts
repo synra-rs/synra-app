@@ -34,6 +34,9 @@ export const REGISTERED = [
   'plugin_ui_open',
   // The page's own report, checked against the session the host issued for it.
   'plugin_ui_ready',
+  // The transfers in flight. Registered with an empty registry behind it: the worker that fills it does not exist yet, so the
+  // honest answer today is "nothing is in flight", which is true.
+  'transfer_list',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
@@ -84,7 +87,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   transfer_send_file: 'the shell has no transport to send one over',
   transfer_send_text: 'the shell has no transport to send one over',
   transfer_cancel: 'the shell has no transport, so nothing is in flight to cancel',
-  transfer_list: 'the shell has no transport, so there is no transfer to list',
   // Connecting and disconnecting are deliberately absent — the kernel dials, the UI does not.
   //
   // ★ "The kernel dials" is still true of the daemon and not of this shell, which never dials anything. The reason stands

@@ -145,6 +145,14 @@ mod wrappers {
         commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
     }
 
+    /// The transfers in flight.
+    #[tauri::command]
+    pub fn transfer_list(
+        state: tauri::State<'_, AppState>,
+    ) -> Vec<synra_ipc::dto::TransferSnapshot> {
+        commands::transfers::transfer_list(&state)
+    }
+
     /// Records that a plugin page has drawn, after checking the session it was given.
     ///
     /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
@@ -315,6 +323,7 @@ mod wrappers {
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,
+            transfer_list,
             plugins_audit,
             intent_dispatch,
             intent_list,

@@ -69,5 +69,14 @@ impl Transfers {
     }
 }
 
+/// The transfers in flight, for the interface's progress panel.
+///
+/// The list is the registry's own order (by identifier), not the arrival order: the panel redraws on every event, and rows
+/// that swap places between two redraws look like rows that are moving for no reason.
+#[must_use]
+pub fn transfer_list(state: &crate::state::AppState) -> Vec<TransferSnapshot> {
+    state.transfers.list()
+}
+
 #[cfg(test)]
 mod tests;
