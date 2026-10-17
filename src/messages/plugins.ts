@@ -22,5 +22,20 @@ export const plugins = {
   refused: 'Refused',
   none: 'nothing',
   updateAvailable: 'An update is available',
-  updateNeedsConsent: 'It asks for new permission'
+  updateNeedsConsent: 'It asks for new permission',
+  /**
+   * The install form's words, added when the command became reachable from this window.
+   *
+   * `installPath` is a **path**, not a package name: the shell has no registry client yet, and a field labelled
+   * "package" that only accepted a directory would be a lie about what it does.
+   */
+  installPath: 'Directory to install from',
+  installAction: 'Install',
+  installing: 'Installing…',
+  /**
+   * Shown after a successful install, and the sentence is deliberate: the plugin is **not on** yet. Installing and
+   * approving are two acts, and a user who was told "installed" and found a plugin that does nothing would go looking
+   * for a fault that is not there.
+   */
+  installedSwitchedOff: 'Installed. It is switched off until you allow what it asks for.'
 } as const
