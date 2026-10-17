@@ -47,9 +47,13 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 
 - **Any edit touching more than one line goes through the editor tool. Not "prefer" — do not use the shell.** PowerShell
   string replacement has silently done nothing, written a literal `\r\n`, inserted a bare CR into a doc comment, and merged
-  two list items, six times in this repository's history. Every one of those produced a *successful-looking* command whose
+  two list items, seven times in this repository's history. Every one of those produced a *successful-looking* command whose
   failure only showed up in the next build. Single-line replacements with an exact anchor are all the shell may be used for,
   and even then the result is re-read.
+- **The reason is mechanical, not stylistic**: inside a double-quoted PowerShell string a backtick is an escape — `` `t `` is a
+  tab, `` `r `` a carriage return, `` `n `` a newline. Every comment in this repository is full of `` `identifier` `` markup,
+  so a shell edit that looks like it copies a sentence quietly eats the character after each backtick. That is how
+  `read by `transfer_list`` became `read by <TAB>ransfer_list`.
 - Re-read after a tool rewrites a file: a stale read makes the next edit fail, and a failed edit that is retried with a
   looser anchor is how a heading gets deleted.
 - When replacing an anchor, **write the anchor back**. The most common self-inflicted error here is an edit whose
