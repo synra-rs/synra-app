@@ -376,7 +376,11 @@ function shellWrappers(source: string): Map<string, Wrapper> {
   // and is skipped: `#[tauri::command(async)]` is the same command with a different execution context, and a parser that
   // only understood the bare attribute would report the command as missing — which is exactly what it did, and what the
   // `generate_handler!` comparison below caught.
-  for (const match of source.matchAll(/#\[tauri::command(?:\([^)]*\))?\]\s*pub fn\s+(\w+)\s*\(([\s\S]*?)\)\s*->/g)) {
+  //
+  // ★ `pub async fn` is the same wrapper too. Two commands became `async` when their blocking bodies moved to a worker
+  // thread, and a parser that only knew `pub fn` reported both as missing — the same failure as the attribute above, one
+  // syntax feature further along.
+  for (const match of source.matchAll(/#\[tauri::command(?:\([^)]*\))?\]\s*pub (?:async )?fn\s+(\w+)\s*\(([\s\S]*?)\)\s*->/g)) {
     const name = match[1]
     const parameters = match[2]
     if (name === undefined || parameters === undefined)
