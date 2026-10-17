@@ -482,6 +482,32 @@ mod tests {
     }
 
     #[test]
+    fn a_cancelled_intent_keeps_its_card_and_says_it_was_cancelled() {
+        // ★ Cancellation is the one decision that does **not** remove the intent: `intent_list` is `all`, not the live
+        // ones, so a panel that dropped it would lose the record of what the user stopped — the thing they are most likely
+        // to look for. The announcement is therefore the same card with a different state.
+        let state = engine_state();
+        let id = intent_dispatch(
+            &state,
+            &IntentSourceDto::Share { text: "hi".to_owned(), title: None },
+        )
+        .expect("raised");
+        let subscriber = state.events.subscribe();
+
+        intent_cancel(&state, id).expect("cancelled");
+
+        assert!(
+            intent_list(&state).expect("the list").iter().any(|intent| intent.intent_id == id),
+            "it is still listed after being cancelled"
+        );
+        let delivery = state.events.take(subscriber).expect("announced");
+        match delivery.events() {
+            [synra_ipc::event::KernelEvent::IntentUpdated(intent)] => assert_eq!(intent.intent_id, id),
+            other => panic!("expected the intent's card, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_command_without_an_engine_says_which_thing_is_missing() {
         // The shell is constructible without a plugin engine, and every intent command then refuses with the reason
         // rather than an empty answer. "No plugins are installed" and "this build cannot run them" are different facts
