@@ -26,6 +26,14 @@ export interface InjectionContext {
   readonly bridge: Bridge
   /** This plugin's id, for scoping storage and self-invoke when they arrive. */
   readonly pluginId: PluginId
+  /**
+   * The WebView this page is in, as the host labelled it.
+   *
+   * ★ The one thing a page cannot derive: `plugin_ui_ready` looks the label up in the host's `hosted_ui` table to find out
+   * which* plugin it is talking to and which session it was given. Without it the call could say only "some page is
+   * ready", which is not a fact a host can check.
+   */
+  readonly label: string
   /** The capabilities this plugin was granted. */
   readonly granted: readonly string[]
   /** The capabilities it was refused, which is the list a plugin may still ask about. */

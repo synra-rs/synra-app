@@ -35,6 +35,8 @@ export function context(overrides: Partial<InjectionContext> = {}): InjectionCon
   return {
     bridge: bridge(),
     pluginId: 'com.example.notes',
+    // A label the host would have made for a page: it is what plugin_ui_ready is called with.
+    label: 'plugin-com.example.notes',
     granted: [],
     deniedCapabilities: [],
     locale: 'zh-CN',

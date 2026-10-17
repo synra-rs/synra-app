@@ -99,7 +99,7 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel does not exist at all.
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
-  plugin_ui_ready: 'the plugin UI origin and its token injection do not exist'
+  plugin_ui_ready: 'the command is written and tested; the injected page cannot call it until the scheme handler exists'
 }
 
 /**

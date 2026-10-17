@@ -106,7 +106,9 @@ export function createInjection(context: InjectionContext): SynraClient {
      * they never called and cannot fix — which is worse than the truth, that the host is not listening yet.
      */
     ready: (): void => {
-      void context.bridge.invoke('plugin_ui_ready').catch(() => undefined)
+      // ★ The label is what makes this checkable: the host looks it up in its own table to learn which plugin this page is
+      // and which session it was given. A page that sent nothing could only say "some page is ready".
+      void context.bridge.invoke('plugin_ui_ready', { label: context.label }).catch(() => undefined)
     },
     // ★ From the host, not `crypto.randomUUID()`.
     //
