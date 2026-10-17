@@ -13,6 +13,7 @@
 
 use synra_core::plugin_sync::{ConflictPolicy, RemoteState, SyncAction, decide};
 use synra_ipc::dto::{SyncPlanDto, SyncTarget};
+use synra_ipc::IpcError;
 use synra_protocol::ids::DeviceId;
 
 /// What one device holds of the plugin being planned.
@@ -63,6 +64,71 @@ pub fn plan_for(
         .collect();
 
     SyncPlanDto { plugin_id, targets }
+}
+
+/// What would have to be sent, for one plugin, to every paired device.
+///
+/// # Where each fact comes from
+///
+/// `paired_devices` for who could receive it, `active_plugin_version` for what this device has, and `sync_records` for what each
+/// peer was last known to hold. Nothing is dialled: a plan is a statement about data, and asking every peer would make the panel
+/// wait for the slowest one.
+///
+/// # What `online` means here, and what it does not
+///
+/// It means "this device has an address to dial", which is what the sending path needs. It is **not** a liveness check — this
+/// shell does not keep a link open — and the interface draws a row it cannot reach differently from one it can.
+///
+/// # Errors
+///
+/// [`ErrorCode::PluginNotInstalled`] when the plugin has no active version here: there is nothing to plan a send of, and a plan
+/// with no source would be a list of devices to bring up to date with something that does not exist.
+pub fn plugins_sync_plan(
+    state: &crate::state::AppState,
+    plugin_id: &str,
+) -> Result<SyncPlanDto, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let id = synra_protocol::ids::PluginId::parse(plugin_id).map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
+    })?;
+
+    let read = |error: synra_store::DbError| {
+        IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+    };
+
+    let Some((version, digest)) = state.db().active_plugin_version(id.as_str()).map_err(read)? else {
+        return Err(IpcError::unknown(ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "reason": "it has no active version here"})));
+    };
+
+    let records = state.db().sync_records().map_err(read)?;
+    let peers: Vec<PeerView> = state
+        .db()
+        .paired_devices()
+        .map_err(read)?
+        .into_iter()
+        .map(|device| {
+            let remote = records
+                .iter()
+                .find(|record| record.plugin_id == plugin_id && record.peer_device == device.device_id)
+                .map(|record| RemoteState {
+                    plugin_id: id.clone(),
+                    version: Some(record.version.clone()),
+                    digest: Some(record.digest.clone()),
+                    active: false,
+                });
+            PeerView {
+                device_id: device.device_id.parse().ok().unwrap_or_else(DeviceId::new),
+                display_name: device.display_name,
+                online: device.address.is_some(),
+                remote,
+            }
+        })
+        .collect();
+
+    Ok(plan_for(id, &version, &digest, &peers, ConflictPolicy::NeverDowngrade))
 }
 
 #[cfg(test)]
