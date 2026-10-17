@@ -20,7 +20,7 @@ pub mod identity;
 pub mod intent;
 pub mod plugin_ui;
 pub mod plugins;
-/// The transfers in flight: the registry the worker writes and 	ransfer_list reads.
+/// The transfers in flight: the registry the worker writes and  ransfer_list reads.
 pub mod transfers;
 
 // ★ These are re-exports, not an inventory.

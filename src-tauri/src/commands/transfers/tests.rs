@@ -29,7 +29,7 @@ fn a_recorded_transfer_is_listed_and_a_forgotten_one_is_not() {
     assert!(transfers.is_empty());
 
     let id = TransferId::new();
-    transfers.record(snapshot(id.clone(), "active"));
+    transfers.record(snapshot(id, "active"));
     assert_eq!(transfers.len(), 1);
     assert_eq!(transfers.list().len(), 1);
 
@@ -44,7 +44,7 @@ fn a_second_report_replaces_the_first_rather_than_joining_it() {
     let transfers = Transfers::new();
     let id = TransferId::new();
 
-    transfers.record(snapshot(id.clone(), "active"));
+    transfers.record(snapshot(id, "active"));
     transfers.record(snapshot(id, "finishing"));
 
     let listed = transfers.list();
@@ -59,8 +59,8 @@ fn the_list_is_ordered_by_identifier_not_by_arrival() {
     let transfers = Transfers::new();
     let one = TransferId::new();
     let two = TransferId::new();
-    transfers.record(snapshot(one.clone(), "active"));
-    transfers.record(snapshot(two.clone(), "active"));
+    transfers.record(snapshot(one, "active"));
+    transfers.record(snapshot(two, "active"));
 
     let ordered: Vec<TransferId> = transfers.list().into_iter().map(|t| t.transfer_id).collect();
 

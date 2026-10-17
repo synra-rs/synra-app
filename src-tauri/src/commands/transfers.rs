@@ -37,7 +37,7 @@ impl Transfers {
     /// Replacement rather than merge: a snapshot is a complete answer, and merging two would let a field the worker stopped
     /// reporting keep its old value for ever — a progress bar that freezes while the transfer moves.
     pub fn record(&self, snapshot: TransferSnapshot) {
-        self.by_id.lock().insert(snapshot.transfer_id.clone(), snapshot);
+        self.by_id.lock().insert(snapshot.transfer_id, snapshot);
     }
 
     /// Drops a transfer, which is what "finished" means for this list.
@@ -52,7 +52,7 @@ impl Transfers {
     #[must_use]
     pub fn list(&self) -> Vec<TransferSnapshot> {
         let mut transfers: Vec<TransferSnapshot> = self.by_id.lock().values().cloned().collect();
-        transfers.sort_by(|left, right| left.transfer_id.cmp(&right.transfer_id));
+        transfers.sort_by_key(|transfer| transfer.transfer_id);
         transfers
     }
 
