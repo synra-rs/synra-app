@@ -104,8 +104,8 @@ import { onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
-import { useSettingsStore } from '../stores/settings'
 import { messages } from '../messages'
+import { useSettingsStore } from '../stores/settings'
 
 /** The keys this page knows about, in the order they are shown. */
 const KEYS = ['theme', 'autoSyncPlugins'] as const
