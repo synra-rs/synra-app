@@ -18,6 +18,7 @@ pub mod devices;
 pub mod diag;
 pub mod identity;
 pub mod intent;
+pub mod plugin_ui;
 pub mod plugins;
 
 // ★ These are re-exports, not an inventory.

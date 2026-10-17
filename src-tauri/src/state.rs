@@ -127,6 +127,29 @@ pub struct AppState {
     /// ([`synra_ipc::event::KernelEvent`]) rather than the kernel's internal ones, because the interface is the only
     /// consumer of this stream and a mapping layer between two enums would be a second place for the two to drift.
     pub events: Arc<synra_core::bus::EventBus<synra_ipc::event::KernelEvent>>,
+    /// The tokens issued to plugin pages, and the validation `plugin_ui_ready` performs against them.
+    ///
+    /// The registry is the kernel's, which is where issuing and revoking live; this shell only ever asks it a question.
+    pub ui_sessions: Arc<synra_plugin_ui::UiSessionRegistry>,
+    /// Which plugin page is in which WebView.
+    ///
+    /// ★ The identity a token cannot carry. `UiSessionRegistry::validate` needs the **claiming** plugin and its running
+    /// version, and a token is a nonce: it says "some page holds this", not "this page is plugin X". The window that
+    /// created the WebView knows both, so it records them here and `plugin_ui_ready` looks the label up.
+    pub hosted_ui: Mutex<std::collections::HashMap<String, HostedUi>>,
+}
+
+/// One plugin page this shell opened, as the window that opened it knows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostedUi {
+    /// The plugin the page belongs to.
+    pub plugin_id: synra_protocol::ids::PluginId,
+    /// The version it was opened for, which validation compares against the session's.
+    pub version: String,
+    /// The token's nonce, as issued to this page.
+    pub nonce: u128,
+    /// Whether the page has said it is ready. A page that never does is a page that never drew.
+    pub ready: bool,
 }
 
 impl AppState {
@@ -162,6 +185,8 @@ impl AppState {
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
             log: None,
             events: Arc::new(synra_core::bus::EventBus::new()),
+            ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
+            hosted_ui: Mutex::new(std::collections::HashMap::new()),
         })
     }
 
