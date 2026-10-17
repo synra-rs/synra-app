@@ -64,6 +64,46 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn a_send_to_a_paired_device_with_a_dead_address_fails_and_leaves_no_row() {
+    // ★ The path a real broken network takes: the device is paired and has an address, and nothing answers there. The command
+    // must answer `TransferFailed` **and** remove the row it recorded — a failed send that stayed in the registry would look
+    // like one still running.
+    let state = crate::testing::state();
+    let device = DeviceId::new();
+    state
+        .db()
+        .pair_device(&synra_store::Paired {
+            device_id: device.to_string(),
+            display_name: "Study PC".to_owned(),
+            platform: "windows".to_owned(),
+            features: "[]".to_owned(),
+            link_token: "unused-here".to_owned(),
+            // Nothing listens on port 1, so the dial is refused rather than hanging.
+            address: Some("127.0.0.1:1".to_owned()),
+            paired_at_ms: 1_000,
+        })
+        .expect("a paired device");
+
+    // A real file: the command opens the sender before it dials, so a path that does not exist is refused as a bad argument
+    // and never reaches the dial this test is about.
+    let path = std::env::temp_dir().join(format!("synra-send-{}.bin", std::process::id()));
+    std::fs::write(&path, b"x").expect("a file to send");
+
+    let request = synra_ipc::dto::SendFileRequest {
+        to: device,
+        path: path.to_string_lossy().into_owned(),
+        context_id: None,
+    };
+
+    let refused = super::transfer_send_file(&state, &request).expect_err("nothing answers");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
+    assert!(state.transfers.is_empty(), "the row was removed on the failure path");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn sending_to_a_device_that_was_never_paired_is_a_refusal_that_says_why() {
     // ★ The address comes from `paired_devices`, so a device nobody paired has none — and the answer must be "connect it
     // first", not "the transfer failed". This is also the whole command's reach without a peer: everything after the address
