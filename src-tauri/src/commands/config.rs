@@ -96,6 +96,9 @@ pub fn config_set(state: &AppState, patch: &ConfigPatch) -> Result<(), IpcError>
     // to be worth the certainty. Only removals are checked, because a value the store refused to serialise is already an
     // error rather than a silent success.
     if patch.unset.is_empty() {
+        // ★ Announced on **both** paths, and this is the common one: a patch that only sets values returns here, so a
+        // publish at the end of the function would never run for the case the interface uses most.
+        announce_config(state);
         return Ok(());
     }
     let remaining = {
@@ -113,7 +116,19 @@ pub fn config_set(state: &AppState, patch: &ConfigPatch) -> Result<(), IpcError>
                 .with_params(serde_json::json!({"keys": still_there, "reason": "the keys were not removed"})),
         );
     }
+    // ★ Announced here as well as in the early-return above: this path is a patch that also removed something, and the
+    // order of the two calls is what keeps "refused" from being announced — every refusal above returned before either.
+    announce_config(state);
     Ok(())
+}
+
+/// Announces the configuration as it now stands.
+///
+/// Silent when the read-back fails: an event is not where an error goes, and the next `config_get` is the truth either way.
+fn announce_config(state: &AppState) {
+    if let Ok(snapshot) = config_get(state) {
+        state.publish(synra_ipc::event::KernelEvent::ConfigUpdated(Box::new(snapshot)));
+    }
 }
 
 /// The one place a database failure becomes an `IpcError`, so every command here reports it identically.
@@ -155,6 +170,40 @@ mod tests {
         let state = testing::state();
         config_set(&state, &set(&[("ui.locale", serde_json::json!("zh"))])).expect("writes");
         assert_eq!(config_get(&state).expect("a snapshot").values, serde_json::json!({"ui.locale": "zh"}));
+    }
+
+    #[test]
+    fn a_written_setting_is_announced_so_another_window_agrees() {
+        // ★ Two windows on one kernel is the case this is for: the second one has no way to learn that the first changed a
+        // setting except this event. The snapshot carries the whole configuration, so the reader does not have to apply
+        // the patch itself — the patch is the writer's input, not a description of the result.
+        let state = testing::state();
+        let subscriber = state.events.subscribe();
+
+        config_set(&state, &set(&[("ui.locale", serde_json::json!("zh"))])).expect("writes");
+
+        let delivery = state.events.take(subscriber).expect("announced");
+        assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
+        match delivery.events() {
+            [synra_ipc::event::KernelEvent::ConfigUpdated(snapshot)] => {
+                assert_eq!(snapshot.values, serde_json::json!({"ui.locale": "zh"}));
+            }
+            other => panic!("expected the configuration, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_refused_patch_announces_nothing() {
+        // A reader told "the configuration changed" when it did not would re-read, find the old values, and conclude the
+        // write was lost. The announcement is after the checks for that reason.
+        let state = testing::state();
+        let subscriber = state.events.subscribe();
+        let conflicting = set(&[("ui.locale", serde_json::json!("zh"))]);
+        let mut patch = conflicting;
+        patch.unset.push("ui.locale".to_owned());
+
+        assert!(config_set(&state, &patch).is_err(), "it is refused");
+        assert!(state.events.take(subscriber).is_none(), "and nothing is said");
     }
 
     #[test]
