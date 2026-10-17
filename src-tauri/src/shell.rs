@@ -165,6 +165,17 @@ mod wrappers {
         commands::transfers::transfer_send_file(&state, &request)
     }
 
+    /// Sends text as a file, and answers the transfer it started.
+    ///
+    /// The same blocking caveat as [`transfer_send_file`](Self::transfer_send_file): the dial and the loop run on this call.
+    #[tauri::command]
+    pub fn transfer_send_text(
+        state: tauri::State<'_, AppState>,
+        request: synra_ipc::dto::SendTextRequest,
+    ) -> Result<synra_protocol::ids::TransferId, IpcError> {
+        commands::transfers::transfer_send_text(&state, &request)
+    }
+
     /// The transfers in flight.
     #[tauri::command]
     pub fn transfer_list(
@@ -345,6 +356,7 @@ mod wrappers {
             plugin_ui_ready,
             transfer_cancel,
             transfer_send_file,
+            transfer_send_text,
             transfer_list,
             plugins_audit,
             intent_dispatch,
