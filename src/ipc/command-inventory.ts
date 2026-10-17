@@ -102,8 +102,8 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_sync_plan: 'the shell has no transport, and no caller for the planner either',
   plugins_sync_run: 'the shell has no transport, and no caller for the runner either',
   plugins_request_registry_search: 'no registry search is wired',
-  // The plugin UI channel does not exist at all.
-  plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
+  // The plugin UI channel: the token is injected and `ready` is registered, so what is missing is the page itself.
+  plugin_ui_rpc: 'the token injection exists; the synra-plugin:// handler that would serve a page does not',
 }
 
 /**
