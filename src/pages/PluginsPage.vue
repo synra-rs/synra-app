@@ -53,6 +53,12 @@
               <span class="truncate text-base font-medium">{{ plugin.title }}</span>
 
               <!-- R23: the state is the word in the tag; the colour is the redundancy that survives a greyscale shot. -->
+              <!-- The switch is the user's decision about whether it runs; should_run is this **and** the consent. -->
+              <ASwitch
+                :checked="plugin.enabled"
+                :loading="toggling === plugin.pluginId"
+                @change="(checked) => toggle(plugin, checked as boolean)"
+              />
               <ATag :color="stateColour(plugin.state)" class="shrink-0">
                 {{ plugin.state }}
               </ATag>
@@ -197,7 +203,7 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -301,6 +307,27 @@ async function consent(plugin: PluginSnapshot, granted: readonly string[]): Prom
   }
   plugins.value = plugins.value.map(card => (card.pluginId === answer.value.pluginId ? answer.value : card))
   selection[answer.value.pluginId] = [...answer.value.granted]
+}
+
+/** The plugin whose switch is being written, so it shows a spinner and cannot be pressed twice. */
+const toggling = ref<string | undefined>(undefined)
+
+/**
+ * Turns a plugin on or off.
+ *
+ * The list is **not** re-read here: the command publishes `PluginUpdated` and the page's own subscription reloads on
+ * it. Replacing the card locally as well would be a second description of the same change, and the two would disagree
+ * the first time the kernel answered something other than what the click assumed.
+ */
+async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
+  toggling.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', {
+    pluginId: plugin.pluginId,
+  })
+  toggling.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 /** The directory the user typed. */
