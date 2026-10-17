@@ -164,6 +164,37 @@ pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<In
     })
 }
 
+/// Removes a plugin, and its data when the caller says so.
+///
+/// # The order, and what a failure in the middle leaves
+///
+/// The **record** goes first. A directory removed while its row remains is a plugin the list still offers that the
+/// loader then reports as broken; the other order leaves files `record_discovered_plugins` would rediscover on the next
+/// start, which at least shows the user something true. So the row goes first and the directory second, and a failure of
+/// the second refuses the command rather than being swallowed — the user has to know the uninstall is half done.
+///
+/// # Why there is no event
+///
+/// Because the only plugin event the interface knows is `PluginUpdated`, which carries a card — and there is no card for
+/// a plugin that no longer exists. The page reloads its list after this command, which is the honest shape for a
+/// removal.
+///
+/// # Errors
+///
+/// `PluginNotInstalled` when no row has that identifier, and `Internal` when the store or the filesystem refuses.
+pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -> Result<(), IpcError> {
+    let id = parse(plugin_id)?;
+    let removed = state.db().remove_plugin(&id.to_string()).map_err(internal)?;
+    if !removed {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id})));
+    }
+    synra_store::PluginFiles::new(state.paths.clone())
+        .remove(&id.to_string(), remove_data)
+        .map_err(internal)?;
+    Ok(())
+}
+
 
 /// The plugins this device has, as cards.
 ///
@@ -757,6 +788,34 @@ mod tests {
             after.iter().all(|row| row.manifest_digest == digest_before),
             "an unchanged manifest must not look changed: {after:?}"
         );
+    }
+
+    #[test]
+    fn uninstalling_removes_the_row_and_keeps_the_data() {
+        // ★ The default the design document asks for: a plugin the user may reinstall keeps its settings, and deleting
+        // them unless asked would be the interface deciding what is replaceable.
+        let (_root, state) = installed();
+        let data = state.paths.plugin_sandbox_dir(ID);
+        std::fs::create_dir_all(&data).expect("some plugin data");
+
+        super::plugins_uninstall(&state, ID, false).expect("uninstalls");
+
+        assert!(
+            state.db().plugins().expect("rows").iter().all(|row| row.plugin_id != ID),
+            "the row is gone"
+        );
+        assert!(!state.paths.plugin_dir(ID).exists(), "and the artifacts with it");
+        assert!(data.exists(), "but the data stays unless asked for");
+    }
+
+    #[test]
+    fn uninstalling_something_that_is_not_installed_is_a_refusal() {
+        // A typo and a no-op are different answers, and this one names the identifier so the user can see their own.
+        let (_root, state) = installed();
+
+        let refused = super::plugins_uninstall(&state, "@acme/typo", false).expect_err("nothing is there");
+
+        assert_eq!(refused.code, synra_protocol::ErrorCode::PluginNotInstalled);
     }
 
     #[test]
