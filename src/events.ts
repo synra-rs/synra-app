@@ -27,6 +27,7 @@ import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
+import { useIntentsStore } from './stores/intents'
 
 /** What the caller keeps, so a test — or a future hot-reload — can stop the stream. */
 export interface StartedEvents {
@@ -72,6 +73,23 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   // response is to re-read rather than to model a second copy of it here.
   dispatcher.on('scanUpdated', () => {
     void reread()
+  })
+
+  // ★ The two facts that had no consumer until now: an intent arriving and a transfer moving. `apply` answers whether the
+  // store recognised the event, and a `false` here is a bug in this file rather than a missed event — every kind the
+  // store knows is registered above, so the dispatcher's "unknown kind" path stays for kinds *this build* lacks.
+  const intents = useIntentsStore()
+  dispatcher.on('intentUpdated', (event) => {
+    intents.apply(event)
+  })
+  dispatcher.on('intentFinished', (event) => {
+    intents.apply(event)
+  })
+  dispatcher.on('transferUpdated', (event) => {
+    intents.apply(event)
+  })
+  dispatcher.on('transferFinished', (event) => {
+    intents.apply(event)
   })
 
   const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, payload => {
