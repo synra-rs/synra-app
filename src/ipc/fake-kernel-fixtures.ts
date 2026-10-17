@@ -88,7 +88,10 @@ export const PLUGINS: readonly PluginSnapshot[] = [
       usage: null
     },
     granted: ['platform:open-url', 'net:read-title'],
-    denied: []
+    denied: [],
+    // ★ The manifest's list, which is what the consent checkboxes are built from. Without it the fake kernel's screen
+    // shows no prompt at all — the one place the browser build is supposed to demonstrate the consent flow.
+    requested: ['platform:open-url', 'net:read-title']
   },
   {
     pluginId: '@synra-plugin/shortcuts',
@@ -107,6 +110,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     },
     granted: ['platform:open-url'],
     denied: ['fs:read', 'net:fetch'],
+    requested: ['platform:open-url', 'fs:read', 'net:fetch'],
     update: {
       version: '0.3.0',
       needsNewConsent: true,
