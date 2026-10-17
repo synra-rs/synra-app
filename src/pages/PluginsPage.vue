@@ -22,8 +22,10 @@
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
-      R28: an empty state is an invitation with a next step. This screen cannot install anything yet, so the invitation
-      is the one thing it *can* do truthfully — read the list again — and the button reports that it is doing it.
+      R28: an empty state is an invitation with a next step. The next step is now the **form above** — this screen can
+      install — so the button here is the honest second option: read the list again, for a plugin installed from
+      somewhere else. It said "this screen cannot install anything yet" while that was true; leaving the sentence behind
+      would be the kind of comment that outlives its fact and sends the next reader looking for a missing feature.
     -->
     <AEmpty v-if="plugins?.length === 0" :description="messages.plugins.empty">
       <template #image>
