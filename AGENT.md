@@ -93,3 +93,8 @@ finished.
 Design decisions and their reasons go into [`design-docs/08`](https://github.com/synra-rs/design-docs), §9, with a date.
 That file is a status ledger, not a plan: what is done, what is not, and *why* — including the attempts that failed. A
 failed approach recorded there is worth more than a successful one, because the next person will try it again otherwise.
+
+★ **A table that exists is not a table in use.** Before treating a schema as a source of truth, find **who writes it and who
+reads it** — `grep` for the insert and for the select. This session found three separate cases: `plugin_versions` had no
+reader, `sync_records` had no writer outside tests, and an address the shell needed was in a table it was not consulting. Each
+one would have produced a feature that compiled, returned a well-shaped answer, and was empty.
