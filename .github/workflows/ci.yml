@@ -66,11 +66,17 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # ★ Vitest is `environment: 'node'`, so "test" here means the pure modules — the stores, the IPC client, the
-      # event dispatcher — and **not** a rendered page. The absence of a component test is a known gap, recorded in
-      # design-docs/08 §9; this step must not be read as evidence that the pages render.
+      # ★ Vitest is `environment: 'node'` **by default**, and four files opt into `jsdom` for a mounted page — so "test"
+      # here means the pure modules plus those four, not every page rendered. The list is in `src/pages/*.mount.test.ts`.
       - name: Test
         run: pnpm test
+
+      # ★ Lint is not decoration here: `eslint --fix` and the guards disagreed once (shorthand properties — the fixer wrote
+      # `{ pluginId }`, the guard only understood `{ pluginId: pluginId }`, so a formatted file read as a call with a
+      # missing argument). A rule and a checker that disagree are invisible until both run in the same place, which is
+      # what this step makes true.
+      - name: Lint
+        run: pnpm lint
 
       - name: Build
         run: pnpm build
