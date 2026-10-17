@@ -104,6 +104,8 @@ synra-platform = { path = "../../synra-rust-core/crates/synra-platform" }
 synra-plugin-api = { path = "../../synra-rust-core/crates/synra-plugin-api" }
 # The kernel holds the plugin seam but not an engine, so the shell brings one — the same split the daemon makes.
 synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", features = [ "wasm-runtime" ] }
+# The UI session registry: tokens issued to a plugin page, and the validation `plugin_ui_ready` performs against them.
+synra-plugin-ui = { path = "../../synra-rust-core/crates/synra-plugin-ui" }
 parking_lot = "0.12"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
