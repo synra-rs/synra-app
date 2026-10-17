@@ -182,28 +182,21 @@ const wireLive = computed(() => wire.value.state === 'connected' || wire.value.s
 async function load(): Promise<void> {
   error.value = undefined
 
-  const asked = await Promise.all([
-    // ★ `intent_list`, not `intent_snapshot`.
-    //
-    // The panel wants the intents that have arrived, and `intent_snapshot` answers about **one** intent — it takes an
-    // identifier the page does not have, so calling it with none was a bridge rejection rendered as "The interface could
-    // not reach the kernel", and reading `answer.value.intents` was reading a field no DTO carries. `intent_list` is
-    // `Many`: the payload *is* the list, the same shape as `transfer_list` beside it.
-    kernel.call<readonly IntentSnapshot[]>('intent_list'),
-    kernel.call<readonly TransferSnapshot[]>('transfer_list')
-  ])
+  // ★ `intent_list` only. `transfer_list` was called here beside it, and this shell does not register it — there is no
+  // transport, so there is nothing to list. The call could therefore only fail, and it did so into a branch that ignored
+  // the failure: the panel showed "nothing on its way" whether the answer was "none" or "you cannot ask". An empty list
+  // that is known to be empty is the honest shape; the command returns when the transport does.
+  const answer = await kernel.call<readonly IntentSnapshot[]>('intent_list')
 
-  const [intentAnswer, transferAnswer] = asked
-  if (intentAnswer?.ok)
-    intents.value = intentAnswer.value
-  if (transferAnswer?.ok)
-    transfers.value = transferAnswer.value
+  if (answer.ok) {
+    intents.value = answer.value
+    transfers.value = []
+    return
+  }
 
-  // Both refusals are reported rather than swallowed: a panel that renders "nothing on its way" when the kernel could
-  // not be asked is worse than an empty one, because it is an answer.
-  const refusal = asked.find(answer => answer && !answer.ok)
-  if (refusal && !refusal.ok)
-    error.value = { code: refusal.error.code, message: refusal.error.message, actions: refusal.error.actions }
+  // The refusal is reported rather than swallowed: a panel that renders "nothing on its way" when the kernel could not be
+  // asked is worse than an empty one, because it is an answer.
+  error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 onMounted(load)
