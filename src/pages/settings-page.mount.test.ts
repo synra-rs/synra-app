@@ -29,6 +29,7 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 
 const SettingsPage = (await import('./SettingsPage.vue')).default
 const { IDENTITY } = await import('../ipc/fake-kernel-fixtures')
+const { useSettingsStore } = await import('../stores/settings')
 const ErrorNotice = (await import('../components/ErrorNotice.vue')).default
 
 function installBrowserApis(): void {
@@ -95,6 +96,25 @@ describe('the settings page', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('dark')
+    wrapper.unmount()
+  })
+
+  it('writes the switch under the kernel key, and does not touch the store itself', async () => {
+    // ★ Two claims in one: the patch names `ui.autoSyncPlugins` (the kernel's key, not the page's label), and the page does
+    // **not** set the value locally — the kernel's `ConfigUpdated` event is what will change the store, so the switch must
+    // still show the old value until that arrives.
+    answer({ config_get: { values: { 'ui.autoSyncPlugins': false }, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    await wrapper.findComponent({ name: 'ASwitch' }).vm.$emit('change', true)
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'ui.autoSyncPlugins': true } },
+    })
+    const store = useSettingsStore()
+    expect(store.value('ui.autoSyncPlugins')).toBe(false)
     wrapper.unmount()
   })
 
