@@ -484,6 +484,26 @@ mod tests {
     }
 
     #[test]
+    fn recording_consent_tells_the_interface() {
+        // ★ The consent command published an event since it was wired, and nothing asserted it. The enable path has a
+        // test; this one is the other half — a decision recorded from the interface has to reach the interface, or the
+        // card it returns and the list another window draws disagree about whether the user approved anything.
+        let (_root, state) = installed();
+        let subscriber = state.events.subscribe();
+
+        plugins_consent_respond(&state, ID, &["log:*".to_owned()]).expect("consent");
+
+        let delivery = state.events.take(subscriber).expect("one event");
+        assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
+        match delivery.events().first() {
+            Some(synra_ipc::event::KernelEvent::PluginUpdated(card)) => {
+                assert_eq!(card.plugin_id.as_str(), ID);
+                assert!(!card.granted.is_empty(), "the card carries the decision that was just recorded");
+            }
+            other => panic!("expected a plugin card, got {other:?}"),
+        }
+    }
+    #[test]
     fn enabling_a_plugin_tells_the_interface() {
         // ★ The producer the event dispatcher never had. A switch that flipped in the store and nowhere else is what
         // "the shell never emits" looked like from the window: the page showed whatever it had read when it opened.
