@@ -64,6 +64,38 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn sending_text_to_a_device_that_was_never_paired_is_refused_and_writes_nothing() {
+    // ★ The temporary file is written **after** the address is known, so a refusal must leave the temp directory clean: a
+    // command that wrote the file first would leave one behind for every mistyped device id.
+    let state = crate::testing::state();
+    let before = temp_files();
+    let request = synra_ipc::dto::SendTextRequest {
+        to: DeviceId::new(),
+        text: "hello".to_owned(),
+        file_name: "hello.txt".to_owned(),
+        context_id: None,
+    };
+
+    let refused = super::transfer_send_text(&state, &request).expect_err("nothing to dial");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    assert_eq!(temp_files(), before, "no temporary file was written");
+    assert!(state.transfers.is_empty(), "and no row");
+}
+
+/// How many `message-*.txt` files the temporary directory holds, which is what this command would add.
+fn temp_files() -> usize {
+    std::fs::read_dir(std::env::temp_dir())
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_name().to_string_lossy().starts_with("message-"))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+#[test]
 fn a_send_to_a_paired_device_with_a_dead_address_fails_and_leaves_no_row() {
     // ★ The path a real broken network takes: the device is paired and has an address, and nothing answers there. The command
     // must answer `TransferFailed` **and** remove the row it recorded — a failed send that stayed in the registry would look
