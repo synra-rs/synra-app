@@ -3778,6 +3778,7 @@ dependencies = [
  "synra-platform",
  "synra-plugin-api",
  "synra-plugin-host",
+ "synra-plugin-ui",
  "synra-protocol",
  "synra-store",
  "thiserror 2.0.21",
