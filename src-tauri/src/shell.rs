@@ -145,6 +145,15 @@ mod wrappers {
         commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
     }
 
+    /// Records that a plugin page has drawn, after checking the session it was given.
+    ///
+    /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
+    /// that took a plugin id could not tell them apart.
+    #[tauri::command]
+    pub fn plugin_ui_ready(state: tauri::State<'_, AppState>, label: String) -> Result<(), IpcError> {
+        commands::plugin_ui::plugin_ui_ready(&state, &label)
+    }
+
     /// Opens a plugin's page in its own WebView, under its own origin.
     ///
     /// ★ The contract declares it now (`plugin_ui_open` => PluginUi, **Host**), which is what makes registering it legal:
@@ -305,6 +314,7 @@ mod wrappers {
             plugins_install,
             plugins_uninstall,
             plugin_ui_open,
+            plugin_ui_ready,
             plugins_audit,
             intent_dispatch,
             intent_list,

@@ -32,6 +32,8 @@ export const REGISTERED = [
   // ★ The contract declares it (`PluginUi`, **Host**), and this is the only command that creates a WebView. A plugin page
   // that could call it would be one that can spawn windows, which is not a capability this model grants.
   'plugin_ui_open',
+  // The page's own report, checked against the session the host issued for it.
+  'plugin_ui_ready',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
@@ -102,7 +104,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel does not exist at all.
   plugin_ui_rpc: 'the plugin UI origin and its token injection do not exist',
-  plugin_ui_ready: 'the command is written and tested; the injected page cannot call it until the scheme handler exists'
 }
 
 /**
