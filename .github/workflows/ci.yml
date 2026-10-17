@@ -1,0 +1,116 @@
+name: checks
+
+# ★ What this workflow is.
+#
+# Two jobs, each running a command that already exists in this repository: the interface (`pnpm test`, `pnpm build`,
+# `pnpm shapes`) and the shell (`cargo test`, `cargo clippy`). Nothing here is a check that only CI knows how to do.
+#
+# ★ The sibling checkouts are not optional decoration.
+#
+# `src-tauri/Cargo.toml` reaches the kernel by **path** (`../../synra-rust-core/crates/…`) and
+# `pnpm-workspace.yaml` reaches the type library by `overrides: link:../synra-js/packages/…`. Both are resolved against
+# the *parent directory*, so the three repositories are checked out side by side under the same names a local checkout
+# uses. Without them this workflow could only test a copy of the app that does not exist.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  interface:
+    name: interface
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: synra-rust-app
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+        with:
+          path: synra-rust-app
+
+      - name: Check out the type library
+        uses: actions/checkout@v4
+        with:
+          repository: synra-rs/synra-js
+          path: synra-js
+
+      # ★ Pinned rather than "latest": the lockfile is `lockfileVersion: '9.0'`, and a pnpm major that reads a
+      # different lockfile format would turn "the lockfile is out of date" into a red build that says nothing about
+      # this repository's code.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: synra-rust-app/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # ★ Vitest is `environment: 'node'`, so "test" here means the pure modules — the stores, the IPC client, the
+      # event dispatcher — and **not** a rendered page. The absence of a component test is a known gap, recorded in
+      # design-docs/08 §9; this step must not be read as evidence that the pages render.
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # ★ The guards are what keep the injected object and the command names honest; `pnpm build` would pass without
+      # them, because a command name is a string until a guard reads it.
+      - name: Guards
+        run: pnpm shapes
+
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: synra-rust-app/src-tauri
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+        with:
+          path: synra-rust-app
+
+      - name: Check out the kernel
+        uses: actions/checkout@v4
+        with:
+          repository: synra-rs/synra-core
+          path: synra-rust-core
+
+      - name: Add clippy
+        run: rustup component add clippy
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: synra-rust-app/src-tauri -> target
+
+      # ★ `--no-default-features` is the whole point: it compiles the shell **without Tauri**, which is how every
+      # command body is tested here. The default feature needs a webview toolchain, and a CI box that installs
+      # WebKitGTK tests the runner rather than the code. `src-tauri/Cargo.toml` documents the gate.
+      - name: Clippy
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --no-default-features
