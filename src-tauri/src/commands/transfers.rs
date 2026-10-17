@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use parking_lot::Mutex;
 use synra_ipc::dto::TransferSnapshot;
+use synra_ipc::IpcError;
 use synra_protocol::ids::TransferId;
 
 /// The transfers in flight, by identifier.
@@ -76,6 +77,32 @@ impl Transfers {
 #[must_use]
 pub fn transfer_list(state: &crate::state::AppState) -> Vec<TransferSnapshot> {
     state.transfers.list()
+}
+
+/// Abandons a transfer, and answers whether there was one.
+///
+/// # Why this refuses an unknown identifier
+///
+/// Because a cancel naming a transfer that is not in flight nearly always means the interface's picture is out of date, and
+/// answering "done" would leave it believing it stopped something. The refusal names the identifier so a stale panel can
+/// correct itself by re-reading.
+///
+/// # What it does not do yet
+///
+/// It does not tell the peer. A cancellation is a frame, and the link that would carry it is what the worker is for; today
+/// this stops the shell's own record, which is the part the progress panel reads.
+pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Result<(), IpcError> {
+    let id = transfer_id.parse::<TransferId>().map_err(|error| {
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}))
+    })?;
+
+    if state.transfers.list().iter().all(|transfer| transfer.transfer_id != id) {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed)
+            .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
+    }
+    state.transfers.forget(&id);
+    Ok(())
 }
 
 #[cfg(test)]

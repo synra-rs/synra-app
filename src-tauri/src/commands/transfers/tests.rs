@@ -24,6 +24,39 @@ fn snapshot(transfer_id: TransferId, state: &str) -> TransferSnapshot {
 }
 
 #[test]
+fn cancelling_a_transfer_that_is_not_in_flight_is_refused() {
+    // ★ A cancel naming a transfer nobody is running means the panel is out of date. Answering "done" would leave it
+    // believing it stopped something, so the refusal names the identifier and the panel can re-read.
+    let state = crate::testing::state();
+
+    let refused =
+        super::transfer_cancel(&state, "00000000-0000-4000-8000-000000000003").expect_err("nothing is in flight");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
+}
+
+#[test]
+fn cancelling_a_transfer_that_is_in_flight_drops_it() {
+    let state = crate::testing::state();
+    let id = TransferId::new();
+    state.transfers.record(snapshot(id, "active"));
+
+    super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
+
+    assert!(state.transfers.is_empty(), "the registry no longer holds it");
+    assert!(super::transfer_list(&state).is_empty(), "and the list does not show it");
+}
+
+#[test]
+fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
+    let state = crate::testing::state();
+
+    let refused = super::transfer_cancel(&state, "not-an-id").expect_err("it does not parse");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
+}
+
+#[test]
 fn a_recorded_transfer_is_listed_and_a_forgotten_one_is_not() {
     let transfers = Transfers::new();
     assert!(transfers.is_empty());

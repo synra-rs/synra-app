@@ -145,6 +145,12 @@ mod wrappers {
         commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
     }
 
+    /// Abandons a transfer, and refuses one that is not in flight.
+    #[tauri::command]
+    pub fn transfer_cancel(state: tauri::State<'_, AppState>, transfer_id: String) -> Result<(), IpcError> {
+        commands::transfers::transfer_cancel(&state, &transfer_id)
+    }
+
     /// The transfers in flight.
     #[tauri::command]
     pub fn transfer_list(
@@ -323,6 +329,7 @@ mod wrappers {
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,
+            transfer_cancel,
             transfer_list,
             plugins_audit,
             intent_dispatch,
