@@ -150,15 +150,20 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
         })));
     };
 
-    *state.scanning.lock() = Some(ScanState {
+    // Zero elapsed with the whole budget ahead: this is the state of the scan **as it starts**, and the number that
+    // matters is `total_ms` — a caller that got it knows the scan is real and bounded.
+    let running = ScanState {
         scan_id: scan_id.clone(),
-        // Zero elapsed with the whole budget ahead: a report read from a snapshot, and this shell publishes no kernel
-        // events yet, so a bar drawn from it is at its start. The number that matters is `total_ms` — a snapshot taken
-        // mid-scan is how a caller knows the scan is real and bounded.
         elapsed_ms: 0,
         total_ms: u64::try_from(budget.as_millis()).unwrap_or(u64::MAX),
         found: 0,
-    });
+    };
+    *state.scanning.lock() = Some(running.clone());
+    // ★ The window learns the scan started without asking. The comment here used to say this shell published no kernel
+    // events, and while that was true the Scan button had to poll to draw anything. The finishing side is still a
+    // snapshot: the discovered count is the database's answer, not this function's, and inventing one here would be a
+    // second source for it.
+    state.publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(running)));
     discovery.scan(budget);
     // Cleared before the answer, because the scan this records is over. This is also the field's whole meaning: a finished
     // scan recorded as a running one is what disabled the Scan button and drew the bar that could not move.
