@@ -122,6 +122,44 @@ fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
 }
 
 #[test]
+fn a_plugin_address_splits_at_the_id_the_host_opened() {
+    // ★ The reason this is not a URL parse: an id contains a slash, so `synra-plugin://@acme/hello/index.html` would split
+    // into host `@acme` and path `/hello/index.html` — the id broken in the wrong place.
+    let ids: Vec<synra_protocol::ids::PluginId> = ["@acme/hello", "@acme/hello-world"]
+        .iter()
+        .map(|id| synra_protocol::ids::PluginId::parse(id).expect("an id"))
+        .collect();
+
+    let (id, path) = super::split_ui_url("synra-plugin://@acme/hello/index.html", &ids).expect("it is one of ours");
+
+    assert_eq!(id.as_str(), "@acme/hello");
+    assert_eq!(path, "index.html");
+}
+
+#[test]
+fn the_longest_id_wins_when_two_share_a_prefix() {
+    // ★ First-match would let `@acme/hello` serve `@acme/hello-world`'s files, which is one plugin reading another's bundle.
+    let ids: Vec<synra_protocol::ids::PluginId> = ["@acme/hello", "@acme/hello-world"]
+        .iter()
+        .map(|id| synra_protocol::ids::PluginId::parse(id).expect("an id"))
+        .collect();
+
+    let (id, path) = super::split_ui_url("synra-plugin://@acme/hello-world/app.js", &ids).expect("it is one of ours");
+
+    assert_eq!(id.as_str(), "@acme/hello-world");
+    assert_eq!(path, "app.js");
+}
+
+#[test]
+fn an_address_for_an_unknown_plugin_is_not_split() {
+    let ids = [synra_protocol::ids::PluginId::parse("@acme/hello").expect("an id")];
+
+    for url in ["synra-plugin://@acme/other/index.html", "https://example.com/x", "synra-plugin://@acme/hello"] {
+        assert!(super::split_ui_url(url, &ids).is_none(), "{url} must not be served");
+    }
+}
+
+#[test]
 fn a_bundle_file_is_served_with_its_type() {
     use std::path::Path;
 

@@ -181,5 +181,39 @@ pub fn ui_file(root: &std::path::Path, path: &str) -> Result<(Vec<u8>, &'static 
     Ok((bytes, content_type))
 }
 
+/// Splits a `synra-plugin://` address into the plugin it names and the path inside its bundle.
+///
+/// # Why this is not a `Url` parse
+///
+/// A plugin id contains a slash (`@acme/hello`), and the address is `synra-plugin://<plugin-id>/<path>` — so a URL parser
+/// would read `@acme` as the host and `/hello/index.html` as the path, splitting the id in the wrong place. The split is
+/// therefore made against the ids the host actually opened: the **longest** one that prefixes the address wins, and what
+/// follows is the path.
+///
+/// Longest rather than first-match because two ids can share a prefix (`@acme/hello` and `@acme/hello-world`): first-match
+/// would serve one plugin's files under the other's name.
+#[must_use]
+pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -> Option<(&'a synra_protocol::ids::PluginId, String)> {
+    const SCHEME: &str = "synra-plugin://";
+    let rest = url.strip_prefix(SCHEME)?;
+    // A query or fragment is not part of a file path, and a cache-busting `?v=1` is common enough to allow.
+    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+
+    let mut best: Option<(&'a synra_protocol::ids::PluginId, String)> = None;
+    for id in known {
+        let Some(after) = rest.strip_prefix(id.as_str()) else {
+            continue;
+        };
+        let Some(path) = after.strip_prefix('/') else {
+            continue;
+        };
+        let better = best.as_ref().is_none_or(|(winner, _)| id.as_str().len() > winner.as_str().len());
+        if better {
+            best = Some((id, path.to_owned()));
+        }
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests;
