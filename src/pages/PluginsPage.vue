@@ -145,9 +145,10 @@
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
+import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 
@@ -183,7 +184,24 @@ function stateColour(state: string): 'success' | 'error' | 'default' {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  // ★ The list keeps itself current. A plugin enabled in another window — or installed by a command — publishes
+  // `pluginUpdated`, and a page that only read once at mount would show the old list until it was reopened.
+  // A re-read rather than an incremental apply: this page owns no store, so "ask again" is the correct answer, and it
+  // is the same call the empty state's button makes.
+  stopEvents = await kernel.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
+    if ((payload as { type?: string }).type === 'pluginUpdated')
+      void load()
+  })
+})
+
+onBeforeUnmount(() => {
+  void stopEvents?.()
+})
+
+/** The subscription's unsubscribe, so leaving the page stops reading the channel. */
+let stopEvents: (() => void) | undefined
 
 /** Reads the installed plugins. Startup and the empty state's button are the same read. */
 async function load(): Promise<void> {
