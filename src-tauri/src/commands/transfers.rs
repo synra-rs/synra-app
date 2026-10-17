@@ -237,24 +237,7 @@ pub fn transfer_send_file(
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
-    let address = state
-        .db()
-        .paired_devices()
-        .map_err(|error| {
-            IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
-        })?
-        .into_iter()
-        .find(|device| device.device_id == request.to.to_string())
-        .and_then(|device| device.address.clone());
-
-    let Some(address) = address else {
-        return Err(IpcError::unknown(ErrorCode::Unsupported)
-            .with_params(serde_json::json!({"deviceId": request.to.to_string(), "reason": "it has no address"})));
-    };
-    let address: std::net::SocketAddr = address.parse::<std::net::SocketAddr>().map_err(|error| {
-        IpcError::unknown(ErrorCode::Unsupported)
-            .with_params(serde_json::json!({"address": address, "reason": error.to_string()}))
-    })?;
+    let address = address_of(state, request.to)?;
 
     let sender = synra_core::transfer::TransferSender::open(
         std::path::Path::new(&request.path),
@@ -347,6 +330,96 @@ fn unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0_u64, |elapsed| elapsed.as_millis() as u64)
+}
+
+/// Where a paired device can be reached, or a refusal that says which kind of missing this is.
+///
+/// # Why the two failures are different answers
+///
+/// [`ErrorCode::Unsupported`] covers both "never paired" and "paired, but this side has never seen an address", and it says
+/// which in the parameters — the first needs the user to pair, the second needs the user to connect once. A single "cannot
+/// send" would leave them guessing.
+///
+/// # Errors
+///
+/// [`ErrorCode::Internal`] when the database cannot be read, and [`ErrorCode::Unsupported`] as above.
+pub fn address_of(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+) -> Result<std::net::SocketAddr, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let address = state
+        .db()
+        .paired_devices()
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+        })?
+        .into_iter()
+        .find(|device| device.device_id == to.to_string())
+        .and_then(|device| device.address);
+
+    let Some(address) = address else {
+        return Err(IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"deviceId": to.to_string(), "reason": "it has no address"})));
+    };
+    address.parse::<std::net::SocketAddr>().map_err(|error| {
+        IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"address": address, "reason": error.to_string()}))
+    })
+}
+
+/// Sends text as a file, and answers the transfer it started.
+///
+/// # Why text is a file
+///
+/// Because the transport has no notion of one: [`TransferSender`] opens a path, and the wire's metadata has `Attachment`
+/// and `PluginBundle` and nothing else. The alternative — a new kind for text — would be a protocol change to save writing one
+/// file and deleting it again.
+///
+/// # What this leaves behind if it is cancelled
+///
+/// The file. `transfer_cancel` removes the registry row and cannot reach the path, which is a known gap rather than an
+/// oversight: the fix is for the registry to carry the path so a worker can delete it, and that waits on the worker.
+///
+/// # Errors
+///
+/// As [`transfer_send_file`], plus [`ErrorCode::Internal`] when the temporary file cannot be written.
+pub fn transfer_send_text(
+    state: &crate::state::AppState,
+    request: &synra_ipc::dto::SendTextRequest,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let address = address_of(state, request.to)?;
+
+    // One file per transfer, named for a person rather than for a uuid: `open` derives the name the peer sees from the path.
+    let path = std::env::temp_dir().join(format!("message-{}.txt", unix_millis()));
+    std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+    })?;
+
+    let sender = synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
+        .inspect_err(|_| {
+            // ★ Removed here as well as after the send: a sender that refused the file must not leave it on disk for the next
+            // run to find, and the delete below is only reached when this call succeeded.
+            let _ = std::fs::remove_file(&path);
+        })
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+        })?;
+
+    let planned = sender.request();
+    let now_ms = synra_core::host::millis_reading(unix_millis());
+    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    row.kind = "attachment".to_owned();
+
+    let outcome = send_over(state, request.to, address, sender, row);
+    // Every exit path, including the one where the link refused every block.
+    let _ = std::fs::remove_file(&path);
+    outcome
 }
 
 #[cfg(test)]
