@@ -72,12 +72,37 @@ const UI_MANIFEST: &str = r#"{
     "capabilities": [{ "cap": "log:*" }]
 }"#;
 
+/// The same plugin without a UI half — the manifest that makes "it has no window" the answer.
+const HEADLESS_MANIFEST: &str = r#"{
+    "id": "@synra-plugin/chat",
+    "version": "1.0.0",
+    "title": "Chat",
+    "publisher": { "id": "synra-official" },
+    "sdk": { "min": "1.0.0" },
+    "wit": "synra:plugin@1.0.0",
+    "runtime": { "headless": { "artifact": "dist/plugin.wasm", "stateful": false } },
+    "capabilities": [{ "cap": "log:*" }]
+}"#;
+
 /// A state with that plugin installed on disk.
 fn installed_with_ui() -> (crate::testing::Root, crate::AppState) {
     let (root, state) = crate::testing::file_state();
     let directory = state.paths.plugin_dir(ID);
     std::fs::create_dir_all(&directory).expect("the plugin directory");
     std::fs::write(directory.join("manifest.json"), UI_MANIFEST).expect("a manifest");
+    state
+        .db()
+        .insert_plugin(ID, true, false, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .expect("a plugin row");
+    (root, state)
+}
+
+/// The same plugin, installed, with a manifest that declares no UI.
+fn installed_headless_only() -> (crate::testing::Root, crate::AppState) {
+    let (root, state) = crate::testing::file_state();
+    let directory = state.paths.plugin_dir(ID);
+    std::fs::create_dir_all(&directory).expect("the plugin directory");
+    std::fs::write(directory.join("manifest.json"), HEADLESS_MANIFEST).expect("a manifest");
     state
         .db()
         .insert_plugin(ID, true, false, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
@@ -111,14 +136,26 @@ fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
 
 #[test]
 fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
-    // ★ The refusal a caller can act on: "install it". The other half — a plugin with no UI half — needs a fixture whose
-    // manifest declares `runtime.ui`, and that fixture does not exist yet; this test covers the path a typo reaches.
+    // ★ The refusal a caller can act on: "install it".
     let state = crate::testing::state();
 
     let refused = super::open_request(&state, "@acme/absent").expect_err("nothing is installed");
 
     assert_eq!(refused.code, ErrorCode::PluginNotInstalled);
     assert!(state.hosted_ui.lock().is_empty(), "and nothing was recorded");
+}
+
+#[test]
+fn opening_a_page_for_a_plugin_with_no_ui_is_a_different_refusal() {
+    // ★ The other refusal, and a different instruction: it is installed, so "install it" would be wrong advice. It has no
+    // window to open, and nothing should be recorded or issued for a page that will never exist.
+    let (_root, state) = installed_headless_only();
+
+    let refused = super::open_request(&state, ID).expect_err("it has no UI");
+
+    assert_eq!(refused.code, ErrorCode::Unsupported);
+    assert!(state.hosted_ui.lock().is_empty(), "and no page was recorded");
+    assert!(state.ui_sessions.is_empty(), "nor a session issued");
 }
 
 #[test]
