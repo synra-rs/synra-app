@@ -223,15 +223,17 @@
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
-import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
+import { usePluginsStore } from '../stores/plugins'
 import { decide, installFrom, setEnabled, uninstall } from './plugins/actions'
 
-const plugins = ref<readonly PluginSnapshot[]>([])
+const pluginsStore = usePluginsStore()
+const { plugins } = storeToRefs(pluginsStore)
 
 /**
  * The plugins as the list takes them.
@@ -263,24 +265,7 @@ function stateColour(state: string): 'success' | 'error' | 'default' {
   }
 }
 
-onMounted(async () => {
-  await load()
-  // ★ The list keeps itself current. A plugin enabled in another window — or installed by a command — publishes
-  // `pluginUpdated`, and a page that only read once at mount would show the old list until it was reopened.
-  // A re-read rather than an incremental apply: this page owns no store, so "ask again" is the correct answer, and it
-  // is the same call the empty state's button makes.
-  stopEvents = await kernel.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
-    if ((payload as { type?: string }).type === 'pluginUpdated')
-      void load()
-  })
-})
-
-onBeforeUnmount(() => {
-  void stopEvents?.()
-})
-
-/** The subscription's unsubscribe, so leaving the page stops reading the channel. */
-let stopEvents: (() => void) | undefined
+onMounted(load)
 
 /** Reads the installed plugins. Startup and the empty state's button are the same read. */
 async function load(): Promise<void> {
@@ -291,7 +276,7 @@ async function load(): Promise<void> {
   loading.value = false
 
   if (answer.ok) {
-    plugins.value = answer.value
+    pluginsStore.applySnapshot(answer.value)
     // ★ The boxes start from what was already granted, so a second visit shows the decision rather than an empty form.
     for (const plugin of answer.value) {
       if (!(plugin.pluginId in selection))
@@ -322,7 +307,7 @@ async function consent(plugin: PluginSnapshot, granted: readonly string[]): Prom
     error.value = outcome.failure
     return
   }
-  plugins.value = plugins.value.map(card => (card.pluginId === outcome.value.pluginId ? outcome.value : card))
+  pluginsStore.upsert(outcome.value)
   selection[outcome.value.pluginId] = [...outcome.value.granted]
 }
 
@@ -359,6 +344,9 @@ async function remove(plugin: PluginSnapshot): Promise<void> {
     error.value = outcome.failure
     return
   }
+  // ★ No event for a removal — there is no card for a plugin that no longer exists — so the store is told directly, then
+  // the list is read once. Forgetting here rather than only reloading means the card disappears even if the read fails.
+  pluginsStore.forget(plugin.pluginId)
   await load()
 }
 

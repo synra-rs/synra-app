@@ -28,6 +28,7 @@ import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
+import { usePluginsStore } from './stores/plugins'
 
 /** What the caller keeps, so a test — or a future hot-reload — can stop the stream. */
 export interface StartedEvents {
@@ -78,6 +79,12 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   // ★ The two facts that had no consumer until now: an intent arriving and a transfer moving. `apply` answers whether the
   // store recognised the event, and a `false` here is a bug in this file rather than a missed event — every kind the
   // store knows is registered above, so the dispatcher's "unknown kind" path stays for kinds *this build* lacks.
+  // ★ A plugin card arrives with the event, so the plugins page no longer re-reads the list to show it.
+  const plugins = usePluginsStore()
+  dispatcher.on('pluginUpdated', (event) => {
+    plugins.apply(event)
+  })
+
   const intents = useIntentsStore()
   dispatcher.on('intentUpdated', (event) => {
     intents.apply(event)

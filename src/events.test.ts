@@ -82,7 +82,10 @@ describe('the event stream', () => {
     listeners.get(KERNEL_EVENT_CHANNEL)?.({
       seq: 1,
       at: 1,
-      type: 'pluginUpdated',
+      // ★ A kind **this build** does not register — not `pluginUpdated`, which was this test's example until the plugins
+      // store learned it. The distinction the test is about is "no handler", which is a property of this file's wiring
+      // rather than of the kernel's enum; a fabricated name is the honest way to say that, and the cast says it too.
+      type: 'aKindThisBuildDoesNotKnow',
       payload: {},
     } as unknown as SequencedKernelEvent)
 
