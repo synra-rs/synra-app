@@ -16,7 +16,13 @@
 //! # Why it runs in its own thread
 //!
 //! Because `serve` loops until its cancellation is asked to stop: it must not own the thread that draws the window, and it must be
-//! stoppable when the window closes, or a restart would fail to bind a port the old process still holds.
+//! stoppable without killing the process.
+//!
+//! # What the token is and is not for
+//!
+//! It is for an **in-process** stop — a test, or a future reload — because a process that exits releases its port by itself. Nothing
+//! calls `cancel` today: the token is managed so that something can, and the port is released when the window closes because the
+//! process ends. A comment that claimed otherwise would be describing a mechanism this build does not have.
 
 use std::sync::Arc;
 
