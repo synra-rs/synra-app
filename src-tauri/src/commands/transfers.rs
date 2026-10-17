@@ -70,6 +70,32 @@ impl Transfers {
     }
 }
 
+/// Reports one transfer's state: records it, and tells the interface.
+///
+/// # Why the two happen together
+///
+/// Because a snapshot that is recorded but not announced is a panel that is right the next time it opens and wrong until
+/// then, and one that is announced but not recorded is a `transfer_list` that disagrees with what the panel shows. The worker
+/// calls this on every change; nothing else should have to remember the pair.
+///
+/// # What it does not decide
+///
+/// Whether the transfer is over. A worker that knows a transfer finished calls [`Transfers::forget`] and publishes
+/// `TransferFinished` itself — this function cannot tell from the snapshot alone whether "finished" means done or failed, and
+/// guessing that would put a transfer's fate in the wrong place.
+pub fn announce_transfer(state: &crate::state::AppState, snapshot: TransferSnapshot) {
+    let transfer_id = snapshot.transfer_id;
+    state.transfers.record(snapshot.clone());
+    state.publish(synra_ipc::event::KernelEvent::TransferUpdated(Box::new(snapshot)));
+    // The identifier is kept above so the event and the record cannot name different transfers, which is the failure a
+    // second read of `snapshot.transfer_id` after the move would allow.
+    debug_assert_eq!(
+        state.transfers.list().iter().filter(|t| t.transfer_id == transfer_id).count(),
+        1,
+        "one record per transfer"
+    );
+}
+
 /// The transfers in flight, for the interface's progress panel.
 ///
 /// The list is the registry's own order (by identifier), not the arrival order: the panel redraws on every event, and rows

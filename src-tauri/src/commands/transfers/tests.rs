@@ -64,6 +64,24 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn announcing_a_transfer_records_it_and_tells_the_interface() {
+    // ★ The two halves the worker must not forget separately: a snapshot recorded but not announced is a panel that is right
+    // the next time it opens and wrong until then.
+    let state = crate::testing::state();
+    let id = TransferId::new();
+    let subscriber = state.events.subscribe();
+
+    super::announce_transfer(&state, snapshot(id, "active"));
+
+    assert_eq!(super::transfer_list(&state).len(), 1, "the registry has it");
+    let delivery = state.events.take(subscriber).expect("announced");
+    match delivery.events() {
+        [synra_ipc::event::KernelEvent::TransferUpdated(transfer)] => assert_eq!(transfer.transfer_id, id),
+        other => panic!("expected a transfer update, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_recorded_transfer_is_listed_and_a_forgotten_one_is_not() {
     let transfers = Transfers::new();
     assert!(transfers.is_empty());
