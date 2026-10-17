@@ -6,7 +6,7 @@
 //! run from the library is a command test that gets skipped. There is no use case for building a test fixture into a
 //! release, so it is not one.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use synra_store::{Paths, SynraDb};
 
@@ -40,6 +40,15 @@ impl Root {
     #[must_use]
     pub fn fresh(label: &str) -> Self {
         root(label)
+    }
+
+    /// Where the directory is.
+    ///
+    /// An accessor rather than a public field because the field is the thing `Drop` deletes: a test that overwrote it
+    /// would leave the directory it was meant to clean up, and the deletion would find nothing.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 

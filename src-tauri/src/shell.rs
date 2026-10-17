@@ -61,7 +61,7 @@ use crate::state::AppState;
 mod wrappers {
     use synra_ipc::{
         ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IntentDecisionDto,
-        IntentSnapshot, IntentSourceDto, IpcError, PluginSnapshot, ScanOptions,
+        IntentSnapshot, IntentSourceDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot, ScanOptions,
     };
     use synra_protocol::IntentId;
 
@@ -132,10 +132,21 @@ mod wrappers {
         commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
     }
 
+    /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.
+    ///
+    /// The source is a tagged enum rather than a string because the design's install command takes a source, and a
+    /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
+    #[tauri::command]
+    pub fn plugins_install(
+        state: tauri::State<'_, AppState>,
+        source: InstallSourceDto,
+    ) -> Result<InstallReport, IpcError> {
+        commands::plugins::plugins_install(&state, &source)
+    }
+
     // ★ The audit trail, which had no writer until a plugin instance was given a session.
     #[tauri::command]
-    pub fn plugins_audit(
-        state: tauri::State<'_, AppState>,
+    pub fn plugins_audit(        state: tauri::State<'_, AppState>,
         plugin_id: synra_protocol::PluginId,
         limit: u32,
     ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
@@ -248,6 +259,7 @@ mod wrappers {
             plugins_enable,
             plugins_disable,
             plugins_consent_respond,
+            plugins_install,
             plugins_audit,
             intent_dispatch,
             intent_list,

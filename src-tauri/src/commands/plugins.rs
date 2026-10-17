@@ -18,7 +18,7 @@
 //! needs to see: they will go looking for the setting to remove it, and if it is not on the screen they will file a bug
 //! about it having vanished.
 
-use synra_ipc::{AuditEntryDto, IpcError, PluginSnapshot};
+use synra_ipc::{AuditEntryDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
 use synra_plugin_api::{Manifest, manifest_digest};
 use synra_protocol::PluginId;
 
@@ -114,6 +114,66 @@ pub fn plugins_consent_respond(
 ///
 /// [`IpcError::Internal`] when the records cannot be read. Not an empty list: "nothing is installed" and "the database
 /// could not be read" are different facts and the interface draws them differently.
+/// Installs a plugin from a directory, through the checks, and reports what the user has to be told.
+///
+/// # Why the shell installs rather than the kernel
+///
+/// Because the pipeline needs an engine, and the kernel holds the seam rather than an engine. `synra_core::install` is
+/// the pipeline — the same one the daemon runs, so the order of the checks has **one** implementation — and what differs
+/// between the two hosts is the [`HostFacts`] passed in: a desktop can open a window, so a plugin that declares a
+/// notification installs here without the warning a daemon earns.
+///
+/// # What an install is not
+///
+/// It is not an approval. The row this writes is installed, switched off and untrusted, and the answer says `enabled:
+/// false` so that a caller cannot read the absence of a decision as a decision.
+///
+/// # Errors
+///
+/// * `Unsupported` for a registry source — this build has no fetcher, and refusing it by name is the honest alternative
+///   to a network error that does not exist. It is also `Unsupported` when this shell has no plugin engine at all.
+/// * `InvalidArgument` when a check refused the package; the params carry the stage and the reason.
+pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<InstallReport, IpcError> {
+    let InstallSourceDto::Path { path } = source else {
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
+            .with_params(serde_json::json!({ "why": "this build has no registry client" })));
+    };
+    let plugins = state.plugin_set()?;
+    let set = plugins.lock();
+    // The database guard is scoped to the call rather than held while the report is built: this mutex is not reentrant,
+    // and a `plugins_list` inside the same breadth would be a hang rather than an error.
+    let outcome = {
+        let db = state.db();
+        synra_core::install::from_directory(
+            &db,
+            set.backend(),
+            &state.paths.plugins_dir(),
+            std::path::Path::new(path),
+            synra_store::sqlite::now_ms(),
+            synra_plugin_host::verify::HostFacts::desktop(),
+        )
+    };
+    let installed = outcome.map_err(|refusal| {
+        IpcError::unknown(refusal.code()).with_params(serde_json::json!({
+            "stage": refusal.stage,
+            "reason": refusal.reason,
+        }))
+    })?;
+    Ok(InstallReport {
+        plugin_id: parse(&installed.plugin_id)?,
+        version: installed.version,
+        warnings: installed.warnings,
+        enabled: false,
+    })
+}
+
+
+/// The plugins this device has, as cards.
+///
+/// # Errors
+///
+/// `Internal` when the table or a row cannot be read: an empty list would say "nothing is installed", which is a
+/// different and false answer.
 pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
     let rows = state.db().plugins().map_err(internal)?;
 
@@ -338,11 +398,91 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 
 #[cfg(test)]
 mod tests {
-    use super::{entry_card, plugins_audit, plugins_consent_respond, plugins_list};
+    use super::{entry_card, plugins_audit, plugins_consent_respond, plugins_install, plugins_list};
+    use synra_ipc::InstallSourceDto;
     use synra_protocol::PluginId;
     use crate::testing;
 
     const ID: &str = "@synra-plugin/chat";
+
+    /// A state with a scripted engine, because installing needs one and the fixture builds a shell without.
+    ///
+    /// The backend answers from a table rather than compiling Wasm: what is being tested is the shell's command — the
+    /// source it accepts, the report it returns and the row that lands — and the pipeline behind it has its own tests.
+    fn with_engine(state: crate::state::AppState) -> crate::state::AppState {
+        let host = std::sync::Arc::new(crate::plugin_host::DesktopHost::new(std::sync::Arc::clone(&state.db)));
+        let backend =
+            synra_plugin_host::Backend::new(std::sync::Arc::new(synra_plugin_host::ScriptedBackend::new()));
+        state.with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(
+            synra_core::dispatch::PluginSet::new(backend, host),
+        )))
+    }
+
+    /// A package directory a local install will accept: a manifest and a component.
+    fn package(root: &std::path::Path) -> std::path::PathBuf {
+        let directory = root.join("package");
+        std::fs::create_dir_all(&directory).expect("a package directory");
+        let manifest = format!(
+            r#"{{"id": "@acme/hello", "version": "1.0.0", "title": "Hello",
+                "publisher": {{"id": "@acme"}}, "sdk": {{"min": "0.1.0"}},
+                "wit": "{}",
+                "capabilities": [{{"cap": "log:*"}}],
+                "runtime": {{"headless": {{"artifact": "plugin.wasm", "stateful": false}}}}}}"#,
+            synra_plugin_host::host_world()
+        );
+        std::fs::write(directory.join("manifest.json"), manifest).expect("a manifest");
+        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        directory
+    }
+
+    #[test]
+    fn installing_a_directory_records_it_switched_off() {
+        // ★ The command an interface needs before it can offer an install at all. What it asserts is the answer and the
+        // row: an install that reported success without writing one would look identical from the caller's side.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+
+        let report = plugins_install(
+            &state,
+            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+        )
+        .expect("it installs");
+
+        assert_eq!(report.plugin_id.as_str(), "@acme/hello");
+        assert_eq!(report.version, "1.0.0");
+        assert!(!report.enabled, "installing is not approving");
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+
+        let row = state
+            .db()
+            .plugins()
+            .expect("the rows")
+            .into_iter()
+            .find(|row| row.plugin_id == "@acme/hello")
+            .expect("a row");
+        assert!(!row.enabled, "installing must not switch it on");
+        assert!(!row.trusted, "installing must not trust it");
+    }
+
+    #[test]
+    fn a_registry_source_is_refused_by_name() {
+        // Refused rather than reported as a network failure: there is no fetcher, and "could not reach the registry"
+        // would send a user to check a connection that was never used.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+
+        let refused = plugins_install(
+            &state,
+            &InstallSourceDto::Registry {
+                plugin_id: PluginId::try_from("@acme/hello".to_owned()).expect("a plugin id"),
+                version: None,
+            },
+        )
+        .expect_err("there is no registry client");
+
+        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    }
 
     /// A manifest declaring the two capabilities the consent tests decide about.
     ///
