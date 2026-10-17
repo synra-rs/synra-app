@@ -23,7 +23,20 @@ use synra_protocol::ids::TransferId;
 #[derive(Debug, Default)]
 pub struct Transfers {
     /// Keyed by the transfer, not ordered: `list` sorts, so the worker never has to.
-    by_id: Mutex<HashMap<TransferId, TransferSnapshot>>,
+    by_id: Mutex<HashMap<TransferId, Entry>>,
+}
+
+/// One transfer: what the interface shows, and what this shell owns on disk.
+#[derive(Debug, Clone)]
+struct Entry {
+    /// What the panel draws.
+    snapshot: TransferSnapshot,
+    /// A file this shell created for the transfer, to be removed when the transfer ends.
+    ///
+    /// Carried here rather than recomputed from the snapshot because the path is not derivable: a sent file belongs to the user
+    /// and must **not** be deleted, while a sent message was written by this shell and must be. The two look identical from the
+    /// snapshot alone.
+    temp: Option<std::path::PathBuf>,
 }
 
 impl Transfers {
@@ -37,13 +50,26 @@ impl Transfers {
     ///
     /// Replacement rather than merge: a snapshot is a complete answer, and merging two would let a field the worker stopped
     /// reporting keep its old value for ever — a progress bar that freezes while the transfer moves.
+    ///
+    /// The temporary file is **kept**: this is called on every block, and a version that cleared it would forget what to delete
+    /// on the second report — which is the one moment a cancel is likely to arrive.
     pub fn record(&self, snapshot: TransferSnapshot) {
-        self.by_id.lock().insert(snapshot.transfer_id, snapshot);
+        let mut registry = self.by_id.lock();
+        let temp = registry.get(&snapshot.transfer_id).and_then(|entry| entry.temp.clone());
+        registry.insert(snapshot.transfer_id, Entry { snapshot, temp });
     }
 
-    /// Drops a transfer, which is what "finished" means for this list.
-    pub fn forget(&self, transfer_id: &TransferId) {
-        self.by_id.lock().remove(transfer_id);
+    /// Records a snapshot and the file this shell created for it.
+    pub fn record_with_temp(&self, snapshot: TransferSnapshot, temp: std::path::PathBuf) {
+        self.by_id.lock().insert(snapshot.transfer_id, Entry { snapshot, temp: Some(temp) });
+    }
+
+    /// Drops a transfer, answering the file the caller should delete.
+    ///
+    /// Returning the path rather than deleting it here keeps this type free of the filesystem: the registry's job is to know
+    /// what is in flight, and a caller that cancels is the one that knows whether the transfer was a message of its own.
+    pub fn forget(&self, transfer_id: &TransferId) -> Option<std::path::PathBuf> {
+        self.by_id.lock().remove(transfer_id).and_then(|entry| entry.temp)
     }
 
     /// Every transfer, ordered by identifier.
@@ -52,7 +78,7 @@ impl Transfers {
     /// transfers swap places between two reads, which the interface would draw as two rows moving for no reason.
     #[must_use]
     pub fn list(&self) -> Vec<TransferSnapshot> {
-        let mut transfers: Vec<TransferSnapshot> = self.by_id.lock().values().cloned().collect();
+        let mut transfers: Vec<TransferSnapshot> = self.by_id.lock().values().map(|entry| entry.snapshot.clone()).collect();
         transfers.sort_by_key(|transfer| transfer.transfer_id);
         transfers
     }
@@ -176,7 +202,11 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
         return Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
     }
-    state.transfers.forget(&id);
+    // ★ The file this shell created for the transfer goes with it. A cancel that only removed the row would leave a message
+    // on disk that nobody will ever send and nothing will ever delete.
+    if let Some(path) = state.transfers.forget(&id) {
+        let _ = std::fs::remove_file(path);
+    }
     // ★ The panel learns without asking. `TransferFinished` removes the row in the intents store, and without this a
     // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every other
     // command here was fixed for.
@@ -425,6 +455,8 @@ pub fn transfer_send_text(
     let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
     row.kind = "attachment".to_owned();
 
+    // Registered with its file before the send starts, so a cancel that arrives mid-send has something to delete.
+    state.transfers.record_with_temp(row.clone(), path.clone());
     let outcome = send_over(state, request.to, address, sender, row);
     // Every exit path, including the one where the link refused every block.
     let _ = std::fs::remove_file(&path);

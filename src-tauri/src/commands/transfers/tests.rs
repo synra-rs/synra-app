@@ -64,6 +64,42 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn cancelling_a_transfer_removes_the_file_it_created() {
+    // ★ The gap this closes: a cancelled message was removed from the panel and left on disk. The registry is the only place
+    // that knows the path — a sent file belongs to the user and must survive, so "delete on cancel" cannot be a guess.
+    let state = crate::testing::state();
+    let path = std::env::temp_dir().join(format!("synra-cancel-{}.txt", std::process::id()));
+    std::fs::write(&path, b"a message").expect("a file");
+    let id = TransferId::new();
+    state.transfers.record_with_temp(snapshot(id, "active"), path.clone());
+    let subscriber = state.events.subscribe();
+
+    super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
+
+    assert!(!path.exists(), "the file went with the transfer");
+    let delivery = state.events.take(subscriber).expect("announced");
+    assert!(matches!(
+        delivery.events(),
+        [synra_ipc::event::KernelEvent::TransferFinished { .. }]
+    ));
+}
+
+#[test]
+fn a_second_report_keeps_the_file_the_first_one_registered() {
+    // ★ `announce_transfer` runs on every block; a `record` that dropped the path would forget what to delete on the second
+    // one — exactly when a cancel is likely to arrive.
+    let state = crate::testing::state();
+    let path = std::env::temp_dir().join(format!("synra-keep-{}.txt", std::process::id()));
+    let id = TransferId::new();
+    state.transfers.record_with_temp(snapshot(id, "active"), path.clone());
+
+    super::announce_transfer(&state, snapshot(id, "active"));
+    let forgotten = state.transfers.forget(&id);
+
+    assert_eq!(forgotten.as_deref(), Some(path.as_path()), "the path survived the second report");
+}
+
+#[test]
 fn sending_text_to_a_device_that_was_never_paired_is_refused_and_writes_nothing() {
     // ★ The temporary file is written **after** the address is known, so a refusal must leave the outbox empty: a command that
     // wrote the file first would leave one behind for every mistyped device id.
