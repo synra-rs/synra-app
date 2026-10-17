@@ -213,5 +213,110 @@ pub fn local_peer(identity: &synra_core::identity::Identity) -> synra_core::peer
     )
 }
 
+/// Sends a file to a paired device, and answers the transfer it started.
+///
+/// # Where the address comes from
+///
+/// `paired_devices`, not `devices_seen`: a transfer's target must already be paired, and that table is the one that records
+/// where a device is. `None` is not bad data — it means this device has never been dialled — so it becomes
+/// [`ErrorCode::Unsupported`] with a reason a person can act on.
+///
+/// # Why the row is recorded before the dial
+///
+/// So a send that fails to connect leaves a row saying why instead of nothing at all. The row is removed on every exit path and
+/// `TransferFinished` is announced on each: a transfer that stayed in the registry after failing would look like one still
+/// running.
+///
+/// # Errors
+///
+/// [`ErrorCode::Unsupported`] for an unknown or address-less device, [`ErrorCode::InvalidArgument`] for a file that cannot be
+/// planned, and [`ErrorCode::TransferFailed`] for a dial or a block the link refused.
+pub fn transfer_send_file(
+    state: &crate::state::AppState,
+    request: &synra_ipc::dto::SendFileRequest,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let address = state
+        .db()
+        .paired_devices()
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+        })?
+        .into_iter()
+        .find(|device| device.device_id == request.to.to_string())
+        .and_then(|device| device.address.clone());
+
+    let Some(address) = address else {
+        return Err(IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"deviceId": request.to.to_string(), "reason": "it has no address"})));
+    };
+    let address: std::net::SocketAddr = address.parse::<std::net::SocketAddr>().map_err(|error| {
+        IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"address": address, "reason": error.to_string()}))
+    })?;
+
+    let mut sender = synra_core::transfer::TransferSender::open(
+        std::path::Path::new(&request.path),
+        synra_core::transfer::DEFAULT_CHUNK_SIZE,
+    )
+    .map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": request.path, "reason": error.to_string()}))
+    })?;
+    let planned = sender.request();
+    let transfer_id = planned.transfer_id;
+
+    let identity = state.identity.lock().clone();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0_u64, |elapsed| elapsed.as_millis() as u64);
+    let now_i64 = synra_core::host::millis_reading(now_ms);
+    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_i64);
+    // The row names the file a person chose, not the path the interface happened to pass.
+    row.file_name = std::path::Path::new(&request.path)
+        .file_name()
+        .map_or_else(|| request.path.clone(), |name| name.to_string_lossy().into_owned());
+    announce_transfer(state, row.clone());
+
+    let finish = |state: &crate::state::AppState| {
+        state.transfers.forget(&transfer_id);
+        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+    };
+
+    let dialled = match synra_core::host::dial_peer(
+        &local_peer(&identity),
+        synra_core::peer::Flags::production(),
+        address,
+        None,
+        now_ms,
+    ) {
+        Ok(dialled) => dialled,
+        Err(error) => {
+            finish(state);
+            return Err(IpcError::unknown(ErrorCode::TransferFailed)
+                .with_params(serde_json::json!({"detail": error.to_string()})));
+        }
+    };
+    let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+
+    row.state = "active".to_owned();
+    announce_transfer(state, row.clone());
+
+    let outcome = synra_core::transfer::send_blocks(
+        &mut sender,
+        |index, data| link.send_chunk(index, data),
+        |done, _total| {
+            row.blocks_done = done;
+            announce_transfer(state, row.clone());
+        },
+    );
+    finish(state);
+
+    outcome.map(|()| transfer_id).map_err(|error| {
+        IpcError::unknown(ErrorCode::TransferFailed).with_params(serde_json::json!({"detail": error.to_string()}))
+    })
+}
+
 #[cfg(test)]
 mod tests;
