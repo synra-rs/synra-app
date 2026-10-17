@@ -73,6 +73,26 @@ fn forgetting_a_device_tells_the_interface() {
 }
 
 #[test]
+fn a_finished_scan_announces_the_cards_it_left_behind() {
+    // ★ The publish the scan does after its network work, which no test could reach: extracted, it is called here on a
+    // fixture with one paired device. The claim is the one that matters — a scan ends and the window is told what it
+    // produced, one card per device, built by `devices_snapshot` rather than assembled separately.
+    let state = with_paired_device();
+    let subscriber = state.events.subscribe();
+
+    super::announce_cards(&state);
+
+    let delivery = state.events.take(subscriber).expect("a card was announced");
+    assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
+    match delivery.events() {
+        [synra_ipc::event::KernelEvent::DeviceCardUpdated(card)] => {
+            assert_eq!(card.device_id.to_string(), state.identity.lock().device_id.to_string());
+        }
+        other => panic!("expected one card, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_device_with_nothing_paired_shows_an_empty_list_and_not_an_error() {
     let snapshot = devices_snapshot(&testing::state()).expect("a snapshot");
     assert!(snapshot.devices.is_empty(), "nothing is paired, so nothing is listed");

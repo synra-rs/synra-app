@@ -169,20 +169,30 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     // scan recorded as a running one is what disabled the Scan button and drew the bar that could not move.
     *state.scanning.lock() = None;
 
-    // ★ What the scan turned up, announced as **cards** — and built by the same `devices_snapshot` the screen reads, so
-    // the card in the event is the card in the next list rather than a second description of it. That is the whole
-    // reason this publish is here and not in the discovery worker: the worker has a sighting, and an event needs a card.
-    //
-    // One event per device rather than one "the list changed": the interface applies each card to the store it already
-    // has, so a device that appeared, one that went offline and one that changed its name are three different facts, and
-    // a single "changed" would collapse them into a re-read of everything.
+    announce_cards(state);
+
+    Ok(scan_id)
+}
+
+/// Announces every device the kernel currently knows, one card at a time.
+///
+/// # Why it is a function rather than four lines in the scan
+///
+/// Because the scan's happy path cannot be tested without binding sockets, and this is the part worth a test: a scan ends
+/// and the window learns what it produced. Extracted, a test can call it on a fixture with one paired device and assert the
+/// event — no network, no timing.
+///
+/// # Why one event per device
+///
+/// The interface applies each card to the store it already has, so a device that appeared, one that went offline and one
+/// that changed its name are three different facts; a single "the list changed" would collapse them into a re-read of
+/// everything. The cards come from `devices_snapshot`, so the card in the event is the card in the next list.
+fn announce_cards(state: &AppState) {
     if let Ok(snapshot) = devices_snapshot(state) {
         for card in snapshot.devices {
             state.publish(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(card)));
         }
     }
-
-    Ok(scan_id)
 }
 
 /// Ends a scan.
