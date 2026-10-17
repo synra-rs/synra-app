@@ -42,6 +42,37 @@ fn with_paired_device() -> AppState {
 }
 
 #[test]
+fn forgetting_a_device_tells_the_interface() {
+    // ★ The event side of forgetting. Without it the card stays on the list until the page is reopened — the same silent
+    // staleness the plugin commands were fixed for.
+    let state = testing::state();
+    state
+        .db()
+        .pair_device(&Paired {
+            device_id: OTHER.to_owned(),
+            display_name: "Phone".to_owned(),
+            platform: "android".to_owned(),
+            features: "[]".to_owned(),
+            paired_at_ms: 1_000,
+            link_token: "token-for-tests".to_owned(),
+            address: None,
+        })
+        .expect("pairs a device");
+    let subscriber = state.events.subscribe();
+
+    super::devices_forget(&state, OTHER).expect("forgets it");
+
+    let delivery = state.events.take(subscriber).expect("one event");
+    assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
+    match delivery.events().first() {
+        Some(synra_ipc::event::KernelEvent::DeviceRemoved { device_id }) => {
+            assert_eq!(device_id.to_string(), OTHER, "and names the device that went");
+        }
+        other => panic!("expected a removal, got {other:?}"),
+    }
+}
+
+#[test]
 fn a_device_with_nothing_paired_shows_an_empty_list_and_not_an_error() {
     let snapshot = devices_snapshot(&testing::state()).expect("a snapshot");
     assert!(snapshot.devices.is_empty(), "nothing is paired, so nothing is listed");

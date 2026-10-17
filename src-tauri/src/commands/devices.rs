@@ -216,6 +216,9 @@ pub fn devices_forget(state: &AppState, device_id: &str) -> Result<(), IpcError>
     // memory while the database still calls it paired — and the next start brings it back with no explanation.
     state.host.lock().went_offline(parsed, state.started_at_ms);
     state.db().unpair_device(device_id).map_err(internal)?;
+    // ★ The window learns the device is gone without asking. What a page drew is a snapshot; a device forgotten here
+    // would otherwise stay on the list until the page was reopened — with a pairing prompt beside it.
+    state.publish(synra_ipc::event::KernelEvent::DeviceRemoved { device_id: parsed });
     Ok(())
 }
 
