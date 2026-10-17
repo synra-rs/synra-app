@@ -111,7 +111,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
-      patch: { set: { 'ui.autoSyncPlugins': true } },
+      patch: { set: { 'ui.autoSyncPlugins': true } }
     })
     const store = useSettingsStore()
     expect(store.value('ui.autoSyncPlugins')).toBe(false)

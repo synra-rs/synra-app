@@ -125,8 +125,8 @@ describe('the event stream', () => {
         hybrid: false,
         granted: [],
         denied: [],
-        requested: [],
-      },
+        requested: []
+      }
     } as unknown as SequencedKernelEvent)
 
     expect(plugins.plugin('@acme/hello')?.enabled).toBe(true)
@@ -144,7 +144,7 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'intentUpdated',
-      payload: { intentId: 'intent-1', state: 'succeeded', pluginId: '@acme/hello', candidates: [], startedAtMs: 0 },
+      payload: { intentId: 'intent-1', state: 'succeeded', pluginId: '@acme/hello', candidates: [], startedAtMs: 0 }
     } as unknown as SequencedKernelEvent)
 
     expect(intents.intent('intent-1')?.state).toBe('succeeded')
@@ -159,7 +159,7 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'configUpdated',
-      payload: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] },
+      payload: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] }
     } as unknown as SequencedKernelEvent)
 
     expect(settings.value('ui.theme')).toBe('dark')
