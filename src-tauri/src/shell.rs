@@ -145,6 +145,35 @@ mod wrappers {
         commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
     }
 
+    /// Opens a plugin's page in its own WebView, under its own origin.
+    ///
+    /// # What is deliberately *not* here
+    ///
+    /// Every decision is in [`commands::plugin_ui::open_request`] — the address, the label, the token, the record in
+    /// `hosted_ui` — because those are values a test can assert. What is left is the one call no test in this repository
+    /// can make: `WebviewWindowBuilder`.
+    #[tauri::command]
+    pub fn plugin_ui_open(
+        app: tauri::AppHandle,
+        state: tauri::State<'_, AppState>,
+        plugin_id: String,
+    ) -> Result<(), IpcError> {
+        let request = commands::plugin_ui::open_request(&state, &plugin_id)?;
+        let failed = |error: tauri::Error| {
+            IpcError::unknown(synra_protocol::ErrorCode::Internal)
+                .with_params(serde_json::json!({ "reason": error.to_string() }))
+        };
+        let url = request.url.parse::<tauri::Url>().map_err(|error| {
+            IpcError::unknown(synra_protocol::ErrorCode::Internal)
+                .with_params(serde_json::json!({ "reason": error.to_string() }))
+        })?;
+        tauri::WebviewWindowBuilder::new(&app, &request.label, tauri::WebviewUrl::CustomProtocol(url))
+            .initialization_script(&request.script)
+            .build()
+            .map(|_window| ())
+            .map_err(failed)
+    }
+
     /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.    ///
     /// The source is a tagged enum rather than a string because the design's install command takes a source, and a
     /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
@@ -273,6 +302,7 @@ mod wrappers {
             plugins_consent_respond,
             plugins_install,
             plugins_uninstall,
+            plugin_ui_open,
             plugins_audit,
             intent_dispatch,
             intent_list,
