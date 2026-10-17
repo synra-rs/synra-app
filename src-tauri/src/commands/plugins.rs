@@ -285,6 +285,13 @@ fn snapshot(
         // indistinguishable from a plugin that genuinely never uses anything — and those two need different reactions
         // from a user deciding whether to keep it.
         health: None,
+        // ★ What the plugin **asks for**, so the consent prompt has something to ask about. `granted` and `denied` are
+        // both empty before the user answers, and a prompt that had to derive its list from them would have nothing to
+        // show — which is why this field exists rather than the interface reading the manifest itself.
+        requested: manifest
+            .as_ref()
+            .map(|manifest| manifest.capabilities.iter().map(|declared| declared.cap.clone()).collect())
+            .unwrap_or_default(),
         // ★ Granted and denied are both listed, and both are sorted.
         //
         // Listing only the granted ones makes a refusal invisible, which is how a user ends up re-granting something
@@ -750,6 +757,20 @@ mod tests {
             after.iter().all(|row| row.manifest_digest == digest_before),
             "an unchanged manifest must not look changed: {after:?}"
         );
+    }
+
+    #[test]
+    fn a_card_says_what_the_plugin_asks_for() {
+        // ★ The field the consent prompt reads. `granted` and `denied` are both empty before the user answers, so a card
+        // carrying only those could not say what to ask about — and the prompt would have to read the manifest itself,
+        // which is the shell doing the kernel's job.
+        let (_root, state) = installed();
+
+        let cards = plugins_list(&state).expect("the list");
+
+        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        assert_eq!(card.requested, vec!["log:*".to_owned(), "device:list".to_owned()]);
+        assert!(card.granted.is_empty(), "nothing has been decided yet");
     }
 
     #[test]
