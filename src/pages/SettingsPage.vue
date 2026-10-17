@@ -68,7 +68,12 @@
               <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
             </span>
 
-            <ASwitch v-if="key === 'autoSyncPlugins'" :checked="settings.value(configKey(key)) === true" disabled />
+            <ASwitch
+              v-if="key === 'autoSyncPlugins'"
+              :checked="settings.value(configKey(key)) === true"
+              :loading="saving === key"
+              @change="(checked) => save(key, checked === true)"
+            />
 
             <!--
               A select with no options: the set of themes is the kernel's to name, and a list we wrote here would be
@@ -142,6 +147,28 @@ function preferenceValue(key: PreferenceKey): string | number | undefined {
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/** The key being written, so its control can say so and cannot be pressed twice. */
+const saving = ref<PreferenceKey | undefined>(undefined)
+
+/**
+ * Writes one preference.
+ *
+ * # Why it does not touch the store
+ *
+ * Because the kernel announces the change (`ConfigUpdated`) and `src/events.ts` puts it in the store. Writing locally too
+ * would be a second description of the same fact — and the two would disagree the first time the kernel normalised a value
+ * or refused the write.
+ */
+async function save(key: PreferenceKey, value: boolean): Promise<void> {
+  saving.value = key
+  error.value = undefined
+  const patch = { set: { [configKey(key)]: value } }
+  const answer = await kernel.call<null>('config_set', { patch })
+  saving.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 onMounted(load)
 
