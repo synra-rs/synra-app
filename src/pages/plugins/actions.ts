@@ -62,7 +62,7 @@ export async function decide(
   granted: readonly string[],
 ): Promise<Outcome<PluginSnapshot>> {
   const answer = await client.call<PluginSnapshot>('plugins_consent_respond', {
-    pluginId,
+    pluginId: pluginId,
     granted: [...granted],
   })
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
@@ -75,6 +75,6 @@ export async function decide(
  * page that chose between them itself would be a second place where "enabled" is spelled out.
  */
 export async function setEnabled(client: KernelClient, pluginId: string, enabled: boolean): Promise<Outcome<null>> {
-  const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId })
+  const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId: pluginId })
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
 }
