@@ -65,10 +65,10 @@
                 no value for that key — and the controls below take their state from the same read, so nothing here is
                 a default this page invented.
               -->
-              <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(config[key] ?? null) }}</span>
+              <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(key) ?? null) }}</span>
             </span>
 
-            <ASwitch v-if="key === 'autoSyncPlugins'" :checked="config[key] === true" disabled />
+            <ASwitch v-if="key === 'autoSyncPlugins'" :checked="settings.value(key) === true" disabled />
 
             <!--
               A select with no options: the set of themes is the kernel's to name, and a list we wrote here would be
@@ -98,12 +98,13 @@
  * visibly absent: the user changes a setting, sees the shell's own state move, restarts the app, and is now debugging a
  * bug in the settings page. So the control is rendered disabled, with the reason.
  */
-import type { IdentitySnapshot, SuggestedAction } from '@synra/protocol'
+import type { ConfigSnapshot, IdentitySnapshot, SuggestedAction } from '@synra/protocol'
 import { Descriptions as ADescriptions, Select as ASelect, Switch as ASwitch, Tooltip as ATooltip } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
+import { useSettingsStore } from '../stores/settings'
 import { messages } from '../messages'
 
 /** The keys this page knows about, in the order they are shown. */
@@ -111,7 +112,10 @@ const KEYS = ['theme', 'autoSyncPlugins'] as const
 
 type PreferenceKey = typeof KEYS[number]
 
-const config = ref<Record<string, unknown>>({})
+// ★ The store, not a copy of the answer. Two things this fixes: another window's change arrives as `configUpdated` and
+// lands here, and — the defect this line replaced — the command answers a **`ConfigSnapshot`** (`{ values, overridden }`),
+// not a bare map, so a page that stored the answer as the map read `config['theme']` as `undefined` forever.
+const settings = useSettingsStore()
 const identity = ref<IdentitySnapshot | undefined>(undefined)
 
 /**
@@ -121,7 +125,7 @@ const identity = ref<IdentitySnapshot | undefined>(undefined)
  * "no value" rather than stringified into a value this page made up.
  */
 function preferenceValue(key: PreferenceKey): string | number | undefined {
-  const value = config.value[key]
+  const value = settings.value(key)
   return typeof value === 'string' || typeof value === 'number' ? value : undefined
 }
 
@@ -135,12 +139,12 @@ async function load(): Promise<void> {
   error.value = undefined
 
   const [configAnswer, identityAnswer] = await Promise.all([
-    kernel.call<Record<string, unknown>>('config_get'),
+    kernel.call<ConfigSnapshot>('config_get'),
     kernel.call<IdentitySnapshot>('identity_get')
   ])
 
   if (configAnswer.ok)
-    config.value = configAnswer.value
+    settings.applySnapshot(configAnswer.value)
   if (identityAnswer.ok)
     identity.value = identityAnswer.value
 

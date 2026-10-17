@@ -17,6 +17,7 @@
  */
 
 import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -65,6 +66,9 @@ function answer(byCommand: Record<string, unknown>) {
 
 beforeEach(() => {
   installBrowserApis()
+  // The page reads `useSettingsStore`, so a fresh Pinia is part of the fixture: without it the store call throws before
+  // any assertion runs.
+  setActivePinia(createPinia())
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
@@ -72,7 +76,7 @@ beforeEach(() => {
 
 describe('the settings page', () => {
   it('reads the configuration and this device when it is mounted', async () => {
-    answer({ config_get: {}, identity_get: IDENTITY })
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 
     const wrapper = mount(SettingsPage)
     await flushPromises()
@@ -83,7 +87,7 @@ describe('the settings page', () => {
   })
 
   it('shows this device\'s name, which is the one field the page can state without being told', async () => {
-    answer({ config_get: {}, identity_get: IDENTITY })
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 
     const wrapper = mount(SettingsPage)
     await flushPromises()
