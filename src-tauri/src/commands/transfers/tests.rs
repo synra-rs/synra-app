@@ -64,6 +64,64 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn a_sender_becomes_the_row_the_panel_shows() {
+    // ★ The two things the worker must not get wrong: the peer comes from the link (not from a request that has none), and the
+    // block count is the sender's own arithmetic rather than a guess at what the receiver will report.
+    use synra_protocol::ids::PluginId;
+    use synra_protocol::session::{TransferKind, TransferMeta, TransferRequest};
+
+    let request = TransferRequest {
+        transfer_id: TransferId::new(),
+        kind: TransferKind::PluginBundle,
+        byte_length: 5_000,
+        chunk_size: 1_000,
+        digest: synra_protocol::session::SriDigest::new(synra_protocol::session::DigestAlgorithm::Sha256, "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU")
+            .expect("a digest"),
+        sync_session_id: None,
+        meta: TransferMeta::PluginBundle {
+            plugin_id: PluginId::parse("@acme/hello").expect("a plugin id"),
+            version: "1.2.3".to_owned(),
+        },
+    };
+    let peer = (DeviceId::new(), "Study PC");
+
+    let snapshot = super::snapshot_from(&request, peer, "active", 1_000);
+
+    assert_eq!(snapshot.peer_name, "Study PC", "the name is the link's, not the request's");
+    assert_eq!(snapshot.kind, "plugin-bundle");
+    assert_eq!(snapshot.file_name, "@acme/hello 1.2.3", "what the row names");
+    assert_eq!(snapshot.total_bytes, 5_000);
+    assert_eq!(snapshot.blocks_total, 5, "five chunks of a thousand bytes");
+    assert_eq!(snapshot.blocks_done, 0, "nothing sent yet");
+}
+
+#[test]
+fn an_attachment_is_named_by_its_file() {
+    use synra_protocol::session::{TransferKind, TransferMeta, TransferRequest};
+
+    let request = TransferRequest {
+        transfer_id: TransferId::new(),
+        kind: TransferKind::Attachment,
+        byte_length: 10,
+        chunk_size: 1_000,
+        digest: synra_protocol::session::SriDigest::new(synra_protocol::session::DigestAlgorithm::Sha256, "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU")
+            .expect("a digest"),
+        sync_session_id: None,
+        meta: TransferMeta::Attachment {
+            file_name: "notes.txt".to_owned(),
+            mime_type: None,
+            context_id: None,
+        },
+    };
+
+    let snapshot = super::snapshot_from(&request, (DeviceId::new(), "Laptop"), "queued", 0);
+
+    assert_eq!(snapshot.kind, "attachment");
+    assert_eq!(snapshot.file_name, "notes.txt");
+    assert_eq!(snapshot.blocks_total, 1, "a small file is still one block");
+}
+
+#[test]
 fn announcing_a_transfer_records_it_and_tells_the_interface() {
     // ★ The two halves the worker must not forget separately: a snapshot recorded but not announced is a panel that is right
     // the next time it opens and wrong until then.

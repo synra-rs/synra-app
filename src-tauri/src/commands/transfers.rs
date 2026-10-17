@@ -96,6 +96,55 @@ pub fn announce_transfer(state: &crate::state::AppState, snapshot: TransferSnaps
     );
 }
 
+/// The row a worker reports for a sender it just started.
+///
+/// # Why the peer is an argument
+///
+/// Because [`TransferRequest`] does not carry one: who the other device is, only the link knows. A version that read the peer
+/// from the request would have to invent it, and a progress row naming the wrong device is worse than no row.
+///
+/// # Why the state is an argument too
+///
+/// Because "queued" and "active" are the worker's judgement — it knows whether a link accepted the first chunk — and a
+/// snapshot this module guessed would be describing a transfer it is not running.
+#[must_use]
+pub fn snapshot_from(
+    request: &synra_protocol::session::TransferRequest,
+    peer: (synra_protocol::ids::DeviceId, &str),
+    state: &str,
+    started_at_ms: i64,
+) -> TransferSnapshot {
+    use synra_protocol::session::TransferMeta;
+
+    // The two kinds carry different things a person reading the panel needs: which plugin, or which file. Everything else
+    // about them is the same row, so the difference stays here rather than in a trait.
+    let (kind, file_name) = match &request.meta {
+        TransferMeta::PluginBundle { plugin_id, version } => {
+            ("plugin-bundle".to_owned(), format!("{plugin_id} {version}"))
+        }
+        TransferMeta::Attachment { file_name, .. } => ("attachment".to_owned(), file_name.clone()),
+        // TransferMeta is #[non_exhaustive]: a kind this build does not know is still a row, just a nameless one.
+        _ => ("unknown".to_owned(), String::new()),
+    };
+    let blocks_total = u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size))).unwrap_or(u32::MAX);
+
+    TransferSnapshot {
+        transfer_id: request.transfer_id,
+        peer_device: peer.0,
+        peer_name: peer.1.to_owned(),
+        direction: "send".to_owned(),
+        kind,
+        state: state.to_owned(),
+        file_name,
+        received_bytes: 0,
+        total_bytes: request.byte_length,
+        blocks_done: 0,
+        blocks_total,
+        abort_reason: None,
+        started_at_ms,
+    }
+}
+
 /// The transfers in flight, for the interface's progress panel.
 ///
 /// The list is the registry's own order (by identifier), not the arrival order: the panel redraws on every event, and rows
