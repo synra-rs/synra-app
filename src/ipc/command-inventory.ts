@@ -42,6 +42,8 @@ export const REGISTERED = [
   'transfer_list',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
+  // Planning a sync: reads paired devices, the active version and the last synced state; dials nothing.
+  'plugins_sync_plan',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
   // ★ And the fifth, which the interface had been pretending existed: `HomePage.vue`'s "received" panel called
@@ -101,7 +103,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_update: 'no updater exists',
   // ★ These two are also waiting on the missing network half, not just on a caller. Sync moves bytes over links, so with
   // no transport in this shell a planner would plan a transfer that could not happen.
-  plugins_sync_plan: 'the shell has no transport, and no caller for the planner either',
   plugins_sync_run: 'the shell has no transport, and no caller for the runner either',
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel: the token is injected and `ready` is registered, so what is missing is the page itself.

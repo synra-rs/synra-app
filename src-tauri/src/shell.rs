@@ -254,6 +254,18 @@ mod wrappers {
         commands::plugins::plugins_audit(&state, &plugin_id, limit)
     }
 
+    /// Plans the sync of one plugin to every paired device.
+    ///
+    /// Reads the tables and dials nothing: a plan is a statement about data, and asking each peer would make the panel wait for
+    /// the slowest one.
+    #[tauri::command]
+    pub fn plugins_sync_plan(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<synra_ipc::dto::SyncPlanDto, IpcError> {
+        commands::sync_plan::plugins_sync_plan(&state, &plugin_id)
+    }
+
     // ★ The four that had no implementation until the orchestration moved out of the daemon binary.
     //
     // The reason recorded against them used to be "needs the intent board behind AppState", which was false: the board
@@ -369,6 +381,7 @@ mod wrappers {
             transfer_send_text,
             transfer_list,
             plugins_audit,
+            plugins_sync_plan,
             intent_dispatch,
             intent_list,
             intent_snapshot,
