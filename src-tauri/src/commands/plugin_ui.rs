@@ -225,7 +225,7 @@ pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -
 #[cfg(feature = "tauri-shell")]
 pub fn serve(
     app: &tauri::AppHandle,
-    request: tauri::http::Request<Vec<u8>>,
+    request: &tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
     use std::borrow::Cow;
     use tauri::Manager as _;

@@ -157,23 +157,33 @@ mod wrappers {
     /// command's thread until it is done; the interface is not frozen because Tauri runs commands off the UI thread, but two
     /// sends at once would queue. The fix is a worker thread that owns the loop and reports through `announce_transfer` —
     /// which is why that function exists separately from this command.
+    /// Sends a file to a paired device, and answers the transfer it started.
+    ///
+    /// # Why it is `async` around a blocking call
+    ///
+    /// The dial and the block loop cannot be made asynchronous without rewriting the link, so they run on a blocking thread
+    /// instead. Two things follow, and only two: the window's thread is never held, and two sends proceed at once instead of
+    /// queueing. **The result is still awaited**, so a refusal reaches the caller as an error rather than as an event that
+    /// arrives later — the command still promises "this transfer is running", not "this transfer has been queued".
     #[tauri::command]
-    pub fn transfer_send_file(
+    pub async fn transfer_send_file(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendFileRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-        commands::transfers::transfer_send_file(&state, &request)
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::transfers::transfer_send_file(&state, &request)).await
     }
 
     /// Sends text as a file, and answers the transfer it started.
     ///
-    /// The same blocking caveat as [`transfer_send_file`](Self::transfer_send_file): the dial and the loop run on this call.
+    /// As [`transfer_send_file`](Self::transfer_send_file): a blocking send on its own thread, with the result awaited.
     #[tauri::command]
-    pub fn transfer_send_text(
+    pub async fn transfer_send_text(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendTextRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-        commands::transfers::transfer_send_text(&state, &request)
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::transfers::transfer_send_text(&state, &request)).await
     }
 
     /// The transfers in flight.
@@ -385,7 +395,7 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         // same path rules `ui_file` tests. Everything a request cannot have — another plugin's files, `..`, a missing
         // bundle — is a refusal here rather than a guess.
         .register_uri_scheme_protocol("synra-plugin", |ctx, request| {
-            crate::commands::plugin_ui::serve(ctx.app_handle(), request)
+            crate::commands::plugin_ui::serve(ctx.app_handle(), &request)
         })
         .setup(|app| {
             let state = app_state(app.handle())?;
@@ -437,6 +447,25 @@ pub fn run() {
 /// A message saying what stopped it. The three ways this can fail are a directory that cannot be created, a database
 /// that cannot be opened or migrated, and an identity that cannot be written — and each one is a fact about the user's
 /// machine rather than a bug in the code, so each is reported in words rather than as an opaque error code.
+/// Runs a blocking command body off the window's thread, and awaits it.
+///
+/// # Why a helper rather than `spawn_blocking` at each call site
+///
+/// Because the error when the task cannot be started is not something a caller can act on, and every call site would invent
+/// its own sentence for it. One sentence, one place: a blocked thread that could not be obtained is the runtime shutting down,
+/// which during a command means the application is closing.
+async fn blocking<T, F>(body: F) -> Result<T, synra_ipc::IpcError>
+where
+    F: FnOnce() -> Result<T, synra_ipc::IpcError> + Send + 'static,
+    T: Send + 'static,
+{
+    match tauri::async_runtime::spawn_blocking(body).await {
+        Ok(answer) => answer,
+        Err(_) => Err(synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal)
+            .with_params(serde_json::json!({"reason": "the runtime stopped before the task ran"}))),
+    }
+}
+
 fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     let data_dir = app
         .path()
