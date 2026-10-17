@@ -19,7 +19,7 @@
 //! about it having vanished.
 
 use synra_ipc::{AuditEntryDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
-use synra_plugin_api::{Manifest, manifest_digest};
+use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
 
 use crate::state::{AppState, internal};
@@ -35,15 +35,14 @@ use crate::state::{AppState, internal};
 ///
 /// # The rule for `trusted`
 ///
-/// **Every capability the manifest declares must have been granted.** A plugin that is missing one cannot do what it
-/// says it does, and a plugin in that state that ran anyway is precisely the silent degradation consent exists to
-/// prevent.
+/// **Anything allowed is approval.** A decision that grants one capability and refuses two means the plugin runs with
+/// that one and is refused at the gate for the other two — which is what a capability gate is for, and what the design's
+/// `Consent::is_partial()` describes. A decision that refuses everything leaves the plugin unable to run.
 ///
-/// ★ This is stricter than the design document implies, and deliberately so. `15-plugin-sdk.md` describes the manifest
-/// declaration as `{ cap: "..." }` "supporting optionality", and `CapabilityDeclaration` has no `optional` field — only
-/// `cap` and `reason`. So there is no author statement that a plugin degrades gracefully without something, and a rule
-/// that guessed which capabilities were droppable would be inventing one. If optionality is added, this is where it
-/// belongs.
+/// ★ **This used to be the opposite here** — trusted only when *every* declared capability was granted — while the
+/// daemon used "any". The loader then took the granted rows as the authority and loaded either way, so one user
+/// decision produced a plugin that could not run in this host and one that ran with a subset in the other. The rule now
+/// lives in `synra_core::consent`, and both hosts ask it.
 ///
 /// # Why the answer is the card rather than a bare success
 ///
@@ -71,25 +70,19 @@ pub fn plugins_consent_respond(
     })?;
     let manifest: Manifest = serde_json::from_str(&text).map_err(internal)?;
 
-    let decisions: Vec<(String, bool)> = manifest
-        .capabilities
-        .iter()
-        .map(|declared| (declared.cap.clone(), granted.contains(&declared.cap)))
-        .collect();
-
-    // ★ Trusted only when nothing declared was declined.
-    let trusted = decisions.iter().all(|(_, granted)| *granted);
-
-    // The digest of the document the user is agreeing to, so a later manifest that declares more is visibly a different
-    // document from the one these rows were decided against.
-    let digest = manifest_digest(&text);
+    // ★ What the decision means is the kernel's rule rather than this command's — see the note above about the two
+    // hosts having answered it differently.
+    let decision = synra_core::consent::decide(&manifest, &text, granted).map_err(|error| {
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
+    })?;
 
     state
         .db()
-        .record_grants(&id.to_string(), &decisions, state.started_at_ms, &digest)
+        .record_grants(&id.to_string(), &decision.pairs(), state.started_at_ms, decision.digest())
         .map_err(internal)?;
 
-    if !state.db().set_plugin_trusted(&id.to_string(), trusted, state.started_at_ms).map_err(internal)? {
+    if !state.db().set_plugin_trusted(&id.to_string(), decision.trusted(), state.started_at_ms).map_err(internal)? {
         return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     }
@@ -108,12 +101,6 @@ pub fn plugins_consent_respond(
     Ok(snapshot(state, &row, &id, loaded.as_deref()))
 }
 
-/// Every plugin this device has installed, whether or not it is running.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`] when the records cannot be read. Not an empty list: "nothing is installed" and "the database
-/// could not be read" are different facts and the interface draws them differently.
 /// Installs a plugin from a directory, through the checks, and reports what the user has to be told.
 ///
 /// # Why the shell installs rather than the kernel
@@ -598,21 +585,40 @@ mod tests {
     }
 
     #[test]
-    fn declining_a_capability_leaves_the_plugin_untrusted_and_the_refusal_visible() {
-        // ★ A declined capability is recorded as a **denial**, not omitted. A plugin whose manifest declares two
-        // capabilities and whose table holds one row is one the interface cannot describe: the user would be shown a
-        // capability they never answered about, which is how they end up re-granting something they refused.
+    fn declining_one_capability_records_the_denial_and_still_trusts() {
+        // ★ Two claims in one test, and the second is the one this host used to get wrong.
+        //
+        // A declined capability is recorded as a **denial**, not omitted: a plugin whose manifest declares two
+        // capabilities and whose table holds one row is one the interface cannot describe, so the user is shown a
+        // capability they never answered about.
+        //
+        // And the plugin is **trusted anyway**: it may run with what it was allowed and be refused at the gate for the
+        // rest. This host used to require every capability, the daemon required any, and the loader took the rows as
+        // the authority — so the same decision produced a plugin that could not run here and one that ran there.
         let (_root, state) = installed();
 
         let card = plugins_consent_respond(&state, ID, &["log:*".to_owned()]).expect("consent");
 
-        assert_eq!(card.state, "awaiting_consent", "a declined capability means it cannot do what it claims");
         assert_eq!(card.granted, vec!["log:*".to_owned()]);
         assert_eq!(card.denied, vec!["device:list".to_owned()]);
+        assert_ne!(card.state, "awaiting_consent", "one allowed capability is approval");
         assert_eq!(
             grants(&state),
             vec![("device:list".to_owned(), false), ("log:*".to_owned(), true)],
         );
+    }
+
+    #[test]
+    fn denying_every_capability_leaves_it_awaiting_consent() {
+        // The other side of the rule: a decision that allows nothing is a refusal, and `should_run` is
+        // `enabled && trusted` — so the row stays unable to run even though the user answered the prompt.
+        let (_root, state) = installed();
+
+        let card = plugins_consent_respond(&state, ID, &[]).expect("consent");
+
+        assert_eq!(card.state, "awaiting_consent");
+        assert!(card.granted.is_empty());
+        assert_eq!(card.denied.len(), 2);
     }
 
     #[test]
