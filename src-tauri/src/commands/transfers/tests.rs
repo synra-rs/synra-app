@@ -65,10 +65,9 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 
 #[test]
 fn sending_text_to_a_device_that_was_never_paired_is_refused_and_writes_nothing() {
-    // ★ The temporary file is written **after** the address is known, so a refusal must leave the temp directory clean: a
-    // command that wrote the file first would leave one behind for every mistyped device id.
+    // ★ The temporary file is written **after** the address is known, so a refusal must leave the outbox empty: a command that
+    // wrote the file first would leave one behind for every mistyped device id.
     let state = crate::testing::state();
-    let before = temp_files();
     let request = synra_ipc::dto::SendTextRequest {
         to: DeviceId::new(),
         text: "hello".to_owned(),
@@ -79,20 +78,11 @@ fn sending_text_to_a_device_that_was_never_paired_is_refused_and_writes_nothing(
     let refused = super::transfer_send_text(&state, &request).expect_err("nothing to dial");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
-    assert_eq!(temp_files(), before, "no temporary file was written");
+    // ★ The outbox is under the app's own cache directory, not the system one: a file holding what a person typed must not sit
+    // where every other process on the machine can read it.
+    let outbox = state.paths.cache_dir().join("outbox");
+    assert!(!outbox.exists(), "no outbox was created: {}", outbox.display());
     assert!(state.transfers.is_empty(), "and no row");
-}
-
-/// How many `message-*.txt` files the temporary directory holds, which is what this command would add.
-fn temp_files() -> usize {
-    std::fs::read_dir(std::env::temp_dir())
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .filter(|entry| entry.file_name().to_string_lossy().starts_with("message-"))
-                .count()
-        })
-        .unwrap_or(0)
 }
 
 #[test]

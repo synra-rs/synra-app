@@ -394,7 +394,16 @@ pub fn transfer_send_text(
     let address = address_of(state, request.to)?;
 
     // One file per transfer, named for a person rather than for a uuid: `open` derives the name the peer sees from the path.
-    let path = std::env::temp_dir().join(format!("message-{}.txt", unix_millis()));
+    //
+    // ★ Under the **cache** directory rather than the system one: the system temporary directory is shared with every other
+    // process on the machine, and this file holds something a person typed. A per-user directory is the difference between a
+    // file that is deleted and a file that was readable by anyone while it existed.
+    let outbox = state.paths.cache_dir().join("outbox");
+    std::fs::create_dir_all(&outbox).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
+    })?;
+    let path = outbox.join(format!("message-{}.txt", unix_millis()));
     std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
