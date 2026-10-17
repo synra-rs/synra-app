@@ -809,6 +809,19 @@ mod tests {
     }
 
     #[test]
+    fn asking_for_the_data_removes_it_as_well() {
+        // ★ The other half of the `remove_data` parameter, which the page never sends — and which nothing tested. It is the
+        // one value of it that cannot be undone, so an untested `true` is the worst one to leave untested.
+        let (_root, state) = installed();
+        let data = state.paths.plugin_sandbox_dir(ID);
+        std::fs::create_dir_all(&data).expect("some plugin data");
+
+        super::plugins_uninstall(&state, ID, true).expect("uninstalls");
+
+        assert!(!data.exists(), "the data went with the plugin");
+    }
+
+    #[test]
     fn uninstalling_something_that_is_not_installed_is_a_refusal() {
         // A typo and a no-op are different answers, and this one names the identifier so the user can see their own.
         let (_root, state) = installed();
