@@ -107,4 +107,23 @@ describe('the home page', () => {
     expect(wrapper.text()).toContain(INTENT.pluginId)
     wrapper.unmount()
   })
+
+  it('drops an intent the kernel says is over', async () => {
+    // ★ `intentFinished` is the one intent event that removes rather than replaces. A page that only handled
+    // `intentUpdated` would keep a finished intent on screen — the row the user is most likely to notice is wrong.
+    answer({ intent_list: [] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const store = useIntentsStore()
+    store.apply({ type: 'intentUpdated', payload: INTENT })
+    await flushPromises()
+    expect(wrapper.text()).toContain(INTENT.pluginId)
+
+    store.apply({ type: 'intentFinished', payload: { intentId: INTENT.intentId } })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain(INTENT.pluginId)
+    wrapper.unmount()
+  })
 })
