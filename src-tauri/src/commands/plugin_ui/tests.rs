@@ -122,6 +122,40 @@ fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
 }
 
 #[test]
+fn a_bundle_file_is_served_with_its_type() {
+    use std::path::Path;
+
+    let root = std::env::temp_dir().join(format!("synra-ui-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("assets")).expect("a bundle");
+    std::fs::write(root.join("index.html"), b"<!doctype html>").expect("a page");
+    std::fs::write(root.join("assets/app.js"), b"export {}").expect("a script");
+
+    let (bytes, content_type) = super::ui_file(&root, "index.html").expect("it is there");
+
+    assert_eq!(content_type, "text/html; charset=utf-8");
+    assert_eq!(bytes, b"<!doctype html>");
+    let (_, script_type) = super::ui_file(&root, "assets/app.js").expect("it is there");
+    assert!(script_type.starts_with("text/javascript"), "got {script_type}");
+
+    let _ = std::fs::remove_dir_all(Path::new(&root));
+}
+
+#[test]
+fn a_path_that_leaves_the_bundle_is_refused() {
+    // ★ The assertion a security review asks for. `../../identity.toml` is the request that would hand a plugin the
+    // device's private key, and both guards have to say no: the artifact rules, and the containment check after the join.
+    let root = std::env::temp_dir().join(format!("synra-ui-escape-{}", std::process::id()));
+    std::fs::create_dir_all(&root).expect("a bundle");
+
+    for path in ["../identity.toml", "../../etc/passwd", "/etc/passwd"] {
+        let refused = super::ui_file(&root, path).expect_err("{path} must not be served");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument, "{path}");
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn the_initialization_script_carries_the_label_and_a_string_token() {
     // ★ The token is quoted, and that is the assertion worth having: `u128::MAX` is not representable as a JavaScript
     // number, and a script that emitted it bare would round — the page would then present a token that validates for

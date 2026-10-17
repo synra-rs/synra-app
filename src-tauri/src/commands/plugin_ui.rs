@@ -141,5 +141,45 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
     Ok(OpenRequest { label, url, script })
 }
 
+/// One file out of a plugin's extracted UI bundle.
+///
+/// # What this is, and what it is not
+///
+/// It is the **policy** half of the `synra-plugin://` handler: which paths are legal, which content type a file gets, and
+/// that the joined path is still inside the bundle. It is not the Tauri handler, because a handler needs a running
+/// application and this needs a directory — so the interesting failure (a page asking for `../../identity.toml`) is a unit
+/// test rather than a manual experiment.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] for a path the artifact rules refuse or one that escapes the root, and
+/// [`ErrorCode::Internal`] when the file cannot be read. The two are different answers: the first is somebody's bug or an
+/// attack, the second is a broken install.
+pub fn ui_file(root: &std::path::Path, path: &str) -> Result<(Vec<u8>, &'static str), IpcError> {
+    use synra_protocol::ErrorCode;
+
+    synra_plugin_ui::artifact::check_path(path).map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })?;
+
+    let file = root.join(path);
+    // ★ Belt **and** braces: `check_path` already refuses `..` and absolute paths, and this refuses a join that escaped
+    // anyway. A path check that is the only guard is one refactor away from not being a guard.
+    if !synra_store::is_within(root, &file) {
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": "it leaves the bundle"})));
+    }
+
+    let bytes = std::fs::read(&file).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })?;
+    // A file nobody said the type of is still a file: `application/octet-stream` makes the WebView download it rather than
+    // guess, which is the honest default.
+    let content_type = synra_plugin_ui::artifact::content_type_for(path).unwrap_or("application/octet-stream");
+    Ok((bytes, content_type))
+}
+
 #[cfg(test)]
 mod tests;
