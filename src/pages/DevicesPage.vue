@@ -154,10 +154,9 @@
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
-import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
@@ -190,7 +189,6 @@ function refuse(answer: { readonly code: string, readonly message: string, reado
   error.value = { code: answer.code, message: answer.message, actions: answer.actions }
 }
 
-let stop: (() => void) | undefined
 
 /**
  * The scan in progress, or nothing.
@@ -245,22 +243,15 @@ const scanning = computed(() => devices.scanning || busy.value)
  */
 const repeat = ref<() => Promise<void>>(loadSnapshot)
 
-onMounted(async () => {
-  await loadSnapshot()
-
-  // The listener is registered after the snapshot above, which is the order the client documents as the caller's to get
-  // right. On startup nothing is on screen, so there is nothing to miss; the scan below is where the ordering earns
-  // its keep.
-  const unsubscribe = await kernel.subscribe(KERNEL_EVENT_CHANNEL, () => {
-    // The payload's `type` is read here only to decide whether this store cares; the dispatcher does the real work of
-    // deciding whether it is *safe* to apply.
-  })
-  stop = unsubscribe
-})
-
-onUnmounted(() => {
-  stop?.()
-})
+/**
+ * ★ The page no longer subscribes to the channel, and that is not a regression.
+ *
+ * `src/events.ts` owns the one subscription, judges every event by its sequence number and applies the device cards to
+ * the store this page reads. What used to be here was a listener with an empty body — registered at mount, held until
+ * unmount, doing nothing — because the comment at the time said the dispatcher would "do the real work" and nobody had
+ * wired one. Two listeners would now mean two sequence trackers on one channel, each concluding it had missed events.
+ */
+onMounted(loadSnapshot)
 
 /**
  * Reads the device list once.
