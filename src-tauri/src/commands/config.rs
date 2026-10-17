@@ -193,6 +193,31 @@ mod tests {
     }
 
     #[test]
+    fn removing_a_setting_is_announced_without_it() {
+        // ★ The **other** path through `config_set`: a patch that removes something skips the early return, verifies the
+        // removal against the table, and announces on the way out. The bug this covers is real — a publish placed only at
+        // the end of the common path was silent here, and the removal would reach one window only.
+        let state = testing::state();
+        config_set(&state, &set(&[("ui.locale", serde_json::json!("zh"))])).expect("writes");
+        let subscriber = state.events.subscribe();
+
+        config_set(&state, &unset(&["ui.locale"])).expect("removes");
+
+        let delivery = state.events.take(subscriber).expect("announced");
+        match delivery.events() {
+            [synra_ipc::event::KernelEvent::ConfigUpdated(snapshot)] => {
+                assert_eq!(
+                    snapshot.values,
+                    serde_json::json!({}),
+                    "the reader is told what is left, not what was removed"
+                );
+                assert!(snapshot.overridden.is_empty());
+            }
+            other => panic!("expected the configuration, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_refused_patch_announces_nothing() {
         // A reader told "the configuration changed" when it did not would re-read, find the old values, and conclude the
         // write was lost. The announcement is after the checks for that reason.
