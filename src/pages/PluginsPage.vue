@@ -159,6 +159,23 @@
             </div>
 
             <!--
+              Removal asks first, and the question says what happens to the data: this is the one action on the card that
+              cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
+            -->
+            <div class="row">
+              <APopconfirm
+                :title="messages.plugins.removeTitle"
+                :description="messages.plugins.removeKeepsData"
+                :ok-text="messages.plugins.removeAction"
+                @confirm="remove(plugin)"
+              >
+                <AButton size="small" danger>
+                  {{ messages.plugins.removeAction }}
+                </AButton>
+              </APopconfirm>
+            </div>
+
+            <!--
               An update is a decision rather than routine news when it asks for something new, so it is an alert with
               the version and the added permissions in it — and the permissions are named, not counted (R33's spirit:
               the user is told what they are being asked to allow).
@@ -205,14 +222,14 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
-import { decide, installFrom, setEnabled } from './plugins/actions'
+import { decide, installFrom, setEnabled, uninstall } from './plugins/actions'
 
 const plugins = ref<readonly PluginSnapshot[]>([])
 
@@ -326,6 +343,23 @@ async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
   toggling.value = undefined
   if (!outcome.ok)
     error.value = outcome.failure
+}
+
+/**
+ * Removes the plugin, keeping its data.
+ *
+ * `remove_data` is `false` and not a choice here: the confirmation says the data stays, so asking for it to go would
+ * contradict the sentence the user just agreed to. A checkbox for the other case belongs in a dialog that can show the
+ * path, not in a one-line confirm.
+ */
+async function remove(plugin: PluginSnapshot): Promise<void> {
+  error.value = undefined
+  const outcome = await uninstall(kernel, plugin.pluginId, false)
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  await load()
 }
 
 /** The directory the user typed. */

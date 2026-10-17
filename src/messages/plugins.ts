@@ -42,5 +42,9 @@ export const plugins = {
    * approving are two acts, and a user who was told "installed" and found a plugin that does nothing would go looking
    * for a fault that is not there.
    */
-  installedSwitchedOff: 'Installed. It is switched off until you allow what it asks for.'
+  installedSwitchedOff: 'Installed. It is switched off until you allow what it asks for.',
+  /** Removing, and the sentence that says what happens to the user's data. */
+  removeAction: 'Remove',
+  removeTitle: 'Remove this plugin?',
+  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.',
 } as const
