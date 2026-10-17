@@ -29,6 +29,7 @@ import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
 import { usePluginsStore } from './stores/plugins'
+import { useSettingsStore } from './stores/settings'
 
 /** What the caller keeps, so a test — or a future hot-reload — can stop the stream. */
 export interface StartedEvents {
@@ -88,6 +89,12 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   const plugins = usePluginsStore()
   dispatcher.on('pluginUpdated', (event) => {
     plugins.apply(event)
+  })
+
+  // A configuration change carries the whole picture, so it is applied rather than re-read.
+  const settings = useSettingsStore()
+  dispatcher.on('configUpdated', (event) => {
+    settings.apply(event)
   })
 
   const intents = useIntentsStore()
