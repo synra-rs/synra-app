@@ -15,6 +15,7 @@ import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { KernelClient } from './ipc/client'
 import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { useDevicesStore } from './stores/devices'
+import { usePluginsStore } from './stores/plugins'
 
 /**
  * A client over a bridge that records calls and hands back a listener.
@@ -99,5 +100,33 @@ describe('the event stream', () => {
     await started.stop()
 
     expect(listeners.has(KERNEL_EVENT_CHANNEL)).toBe(false)
+  })
+
+  it('applies a plugin card to the plugins store', async () => {
+    // ★ The wiring added when the plugins page stopped re-reading on every event: a `pluginUpdated` must reach the store
+    // itself, or the page falls back to whatever it read at mount. Asserted on the store, not on a DOM.
+    const { client, listeners } = harness()
+    const plugins = usePluginsStore()
+
+    await startEvents(client)
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 1,
+      at: 1,
+      type: 'pluginUpdated',
+      payload: {
+        pluginId: '@acme/hello',
+        title: 'Hello',
+        version: '1.0.0',
+        publisher: 'acme',
+        enabled: true,
+        state: 'active',
+        hybrid: false,
+        granted: [],
+        denied: [],
+        requested: [],
+      },
+    } as unknown as SequencedKernelEvent)
+
+    expect(plugins.plugin('@acme/hello')?.enabled).toBe(true)
   })
 })
