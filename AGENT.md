@@ -45,8 +45,11 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 
 ## 5. Editing files
 
-- **Multi-line edits go through the editor tool, not the shell.** PowerShell string replacement has silently done nothing
-  (or corrupted a line) five times in this repository's history; a `\r\n` inside single quotes is literal text.
+- **Any edit touching more than one line goes through the editor tool. Not "prefer" — do not use the shell.** PowerShell
+  string replacement has silently done nothing, written a literal `\r\n`, inserted a bare CR into a doc comment, and merged
+  two list items, six times in this repository's history. Every one of those produced a *successful-looking* command whose
+  failure only showed up in the next build. Single-line replacements with an exact anchor are all the shell may be used for,
+  and even then the result is re-read.
 - Re-read after a tool rewrites a file: a stale read makes the next edit fail, and a failed edit that is retried with a
   looser anchor is how a heading gets deleted.
 - When replacing an anchor, **write the anchor back**. The most common self-inflicted error here is an edit whose
