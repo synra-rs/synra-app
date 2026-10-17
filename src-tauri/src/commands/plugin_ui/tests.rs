@@ -98,8 +98,12 @@ fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
     assert!(request.url.ends_with("/index"), "the entry's stem is the page: {}", request.url);
     assert!(request.script.contains(&request.label), "the script names the page it is for");
 
-    let hosted = state.hosted_ui.lock();
-    let entry = hosted.get(&request.label).expect("the page is recorded");
+    let entry = state
+        .hosted_ui
+        .lock()
+        .get(&request.label)
+        .cloned()
+        .expect("the page is recorded");
     assert_eq!(entry.plugin_id.as_str(), ID);
     assert_eq!(entry.version, "1.0.0");
     assert!(!entry.ready, "it has not said it has drawn yet");
