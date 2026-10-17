@@ -83,6 +83,11 @@ Conventional Commits, subject ≤ 50 characters, no body, no GPG. One commit per
 part of a larger change, say so in the subject (`chore: depend on the UI session registry`) rather than pretending it is
 finished.
 
+- **Verify in one call, commit in the next. Never chain them.** A shell line that runs `pnpm test` and then `git commit`
+  commits even when the test failed: the exit code is printed and ignored, and the output scrolls past. This has happened six
+  times in this repository's history, each time producing a commit whose own message was contradicted by the line above it in
+  the same output. The order that works is: run the gates, read the exit codes, and only then write the commit.
+
 ## 8. Recording what was learned
 
 Design decisions and their reasons go into [`design-docs/08`](https://github.com/synra-rs/design-docs), §9, with a date.
