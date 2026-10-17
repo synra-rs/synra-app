@@ -55,5 +55,30 @@ pub fn plugin_ui_ready(state: &AppState, label: &str) -> Result<(), IpcError> {
     Ok(())
 }
 
+/// The script a plugin page is started with: its identity, and the token `ready()` will present.
+///
+/// # Why the token is a **string**
+///
+/// Because it is a `u128`, and JavaScript numbers are exact only to 2^53. A nonce that silently loses its low digits is a
+/// token that validates for nobody, and the failure would look like "the page never became ready" rather than like a
+/// rounding error.
+///
+/// # Why `Object.freeze`
+///
+/// The page runs someone else's code. A mutable global is one a script can rewrite before the injected client reads it, so
+/// the object is frozen at the moment it is created and the client closes over the values rather than re-reading them.
+///
+/// # Why the label is safe to interpolate
+///
+/// Tauri's WebView labels are its own identifiers (alphanumeric, `-`, `_`, `/`, `:`); this function is called with one the
+/// shell created, never with anything a page supplied. The token is a number formatted here. Nothing else goes in.
+#[must_use]
+pub fn initialization_script(label: &str, token: u128) -> String {
+    format!(
+        "Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze({{ label: {label:?}, token: {:?} }}));",
+        token.to_string()
+    )
+}
+
 #[cfg(test)]
 mod tests;

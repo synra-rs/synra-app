@@ -57,6 +57,21 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
 }
 
 #[test]
+fn the_initialization_script_carries_the_label_and_a_string_token() {
+    // ★ The token is quoted, and that is the assertion worth having: `u128::MAX` is not representable as a JavaScript
+    // number, and a script that emitted it bare would round — the page would then present a token that validates for
+    // nobody, and the symptom would look like "the page never became ready".
+    let script = super::initialization_script("page-1", u128::MAX);
+
+    assert!(script.contains("\"page-1\""), "the label, quoted");
+    assert!(
+        script.contains(&format!("{:?}", u128::MAX.to_string())),
+        "the token as a **string**, so no digits are lost"
+    );
+    assert!(script.starts_with("Object.freeze("), "the page gets a frozen object, not a mutable global");
+}
+
+#[test]
 fn a_session_that_expired_is_refused() {
     // ★ A different refusal from "no such token": the registry knows this nonce and rejects it on age. Both are the same
     // answer to the caller (see the module docs), but a check that only ever sees unknown nonces could stop validating
