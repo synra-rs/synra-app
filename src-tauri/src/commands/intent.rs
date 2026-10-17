@@ -410,11 +410,12 @@ mod tests {
         assert!(state.events.take(subscriber).is_none(), "nothing was announced, because nothing was known");
     }
 
-    #[test]
-    fn a_share_is_dispatched_even_when_nothing_matches_it() {
-        // ★ "This build cannot run plugins" and "no installed plugin wants that" are two facts a user acts on differently,
-        // and only the first was tested. The set here is real but empty: the scripted backend answers nothing, and the
-        // refusing host is the shared fixture (`synra_plugin_host::testing`).
+    /// A state with a real plugin engine that answers nothing.
+    ///
+    /// Enough for `plugins(state)` to answer `Some`, which is what the success paths need: the commands above refuse
+    /// with `Unsupported` when there is no engine at all. No manifest and no plugin is installed — an empty set is a
+    /// *state*, not a stand-in.
+    fn engine_state() -> crate::AppState {
         let backend = synra_plugin_host::Backend::new(std::sync::Arc::new(
             synra_plugin_host::engine::scripted::ScriptedBackend::new(),
         ));
@@ -422,8 +423,14 @@ mod tests {
             backend,
             std::sync::Arc::new(synra_plugin_host::testing::RefusingHost),
         );
-        let state = crate::testing::state()
-            .with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(set)));
+        crate::testing::state().with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(set)))
+    }
+
+    #[test]
+    fn a_share_is_dispatched_even_when_nothing_matches_it() {
+        // ★ "This build cannot run plugins" and "no installed plugin wants that" are two facts a user acts on differently,
+        // and only the first was tested before this.
+        let state = engine_state();
         let subscriber = state.events.subscribe();
 
         // ★ The success path this file had none of: with an engine present a share is dispatched even when no plugin
@@ -441,6 +448,35 @@ mod tests {
         let delivery = state.events.take(subscriber).expect("and the window was told");
         match delivery.events() {
             [synra_ipc::event::KernelEvent::IntentUpdated(intent)] => assert_eq!(intent.intent_id, id),
+            other => panic!("expected the intent's card, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declined_intent_is_announced_in_its_new_state() {
+        // The other half of the announce rule: a decision that **landed** is announced, with the state the board now
+        // holds rather than the one it had before the decision.
+        let state = engine_state();
+        let id = intent_dispatch(
+            &state,
+            &IntentSourceDto::Share { text: "hi".to_owned(), title: None },
+        )
+        .expect("raised");
+        let subscriber = state.events.subscribe();
+
+        intent_decide(
+            &state,
+            id,
+            &IntentDecisionDto::Decline { reason: Some("not now".to_owned()) },
+        )
+        .expect("declined");
+
+        let delivery = state.events.take(subscriber).expect("announced");
+        match delivery.events() {
+            [synra_ipc::event::KernelEvent::IntentUpdated(intent)] => {
+                assert_eq!(intent.intent_id, id);
+                assert_ne!(intent.state, "awaiting_choice", "the announcement carries the decision");
+            }
             other => panic!("expected the intent's card, got {other:?}"),
         }
     }
