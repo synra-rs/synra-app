@@ -93,6 +93,18 @@ fn a_finished_scan_announces_the_cards_it_left_behind() {
 }
 
 #[test]
+fn a_scan_with_nothing_known_announces_nothing() {
+    // ★ The other side of the same call: an empty record produces no events. A loop that published "the list is like this"
+    // once would tell the window about nothing; this one is silent, which is what "nothing changed" should cost.
+    let state = testing::state();
+    let subscriber = state.events.subscribe();
+
+    super::announce_cards(&state);
+
+    assert!(state.events.take(subscriber).is_none(), "no devices, no announcements");
+}
+
+#[test]
 fn a_device_with_nothing_paired_shows_an_empty_list_and_not_an_error() {
     let snapshot = devices_snapshot(&testing::state()).expect("a snapshot");
     assert!(snapshot.devices.is_empty(), "nothing is paired, so nothing is listed");
