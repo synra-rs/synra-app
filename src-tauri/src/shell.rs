@@ -132,8 +132,20 @@ mod wrappers {
         commands::plugins::plugins_consent_respond(&state, &plugin_id, &granted)
     }
 
-    /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.
+    /// Removes a plugin, and its data only when the user asked for that.
     ///
+    /// `remove_data` is a parameter rather than a default here: the sentence the user confirms says whether their data
+    /// stays, and a default in this layer could disagree with it.
+    #[tauri::command]
+    pub fn plugins_uninstall(
+        state: tauri::State<'_, AppState>,
+        plugin_id: String,
+        remove_data: bool,
+    ) -> Result<(), IpcError> {
+        commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
+    }
+
+    /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.    ///
     /// The source is a tagged enum rather than a string because the design's install command takes a source, and a
     /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
     #[tauri::command]
@@ -260,6 +272,7 @@ mod wrappers {
             plugins_disable,
             plugins_consent_respond,
             plugins_install,
+            plugins_uninstall,
             plugins_audit,
             intent_dispatch,
             intent_list,

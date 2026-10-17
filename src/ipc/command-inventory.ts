@@ -27,6 +27,8 @@ export const REGISTERED = [
   // ★ The install path, which moved from "no installer is wired" to registered when the pipeline became a kernel
   // function: `synra_core::install` is the same one the daemon runs.
   'plugins_install',
+  // ★ Removable, with the data decision passed through rather than defaulted in two places.
+  'plugins_uninstall',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
@@ -88,7 +90,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // pipeline became reachable from the shell: `synra_core::install` is the daemon's pipeline too, so the order of the
   // checks has one implementation and this shell supplies only what it can do (a desktop can open a window).
   plugins_catalog_search: 'no catalog client is wired',
-  plugins_uninstall: 'no uninstaller is wired',
   plugins_check_update: 'no update checker exists',
   plugins_update: 'no updater exists',
   // ★ These two are also waiting on the missing network half, not just on a caller. Sync moves bytes over links, so with

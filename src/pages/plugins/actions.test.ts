@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { KernelClient } from '../../ipc/client'
-import { decide, installFrom, setEnabled } from './actions'
+import { decide, installFrom, setEnabled, uninstall } from './actions'
 
 /** A client whose bridge answers with `answer` and records every call. */
 function client(answer: unknown = { ok: true }) {
@@ -76,5 +76,18 @@ describe('the enable call', () => {
     expect(invoke.mock.calls[0]?.[0]).toBe('plugins_enable')
     expect(invoke.mock.calls[1]?.[0]).toBe('plugins_disable')
     expect(invoke.mock.calls[0]?.[1]).toEqual({ pluginId: '@acme/hello' })
+  })
+})
+
+describe('the uninstall call', () => {
+  it('sends the identifier and the data decision the user made', async () => {
+    const { client: kernel, invoke } = client(null)
+
+    await uninstall(kernel, '@acme/hello', false)
+
+    expect(invoke).toHaveBeenCalledWith('plugins_uninstall', {
+      pluginId: '@acme/hello',
+      removeData: false,
+    })
   })
 })

@@ -78,3 +78,17 @@ export async function setEnabled(client: KernelClient, pluginId: string, enabled
   const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId: pluginId })
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
 }
+
+/**
+ * Removes a plugin, and its data when the caller says so.
+ *
+ * `removeData` is passed through rather than defaulted here: the decision belongs to the confirmation the user sees, and
+ * a default in two places is a default that can disagree with the sentence next to the button.
+ */
+export async function uninstall(client: KernelClient, pluginId: string, removeData: boolean): Promise<Outcome<null>> {
+  const answer = await client.call<null>('plugins_uninstall', {
+    pluginId: pluginId,
+    removeData: removeData,
+  })
+  return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+}
