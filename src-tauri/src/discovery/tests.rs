@@ -106,3 +106,14 @@ fn a_scan_publishes_a_deadline_the_worker_reads_and_releases_it_before_answering
         "the deadline is released before the answer, so a caller that has gone stops the broadcast"
     );
 }
+
+#[test]
+fn recording_a_sighting_names_what_it_wrote() {
+    // ★ The return value is the announce hook's input, so what matters is that it names exactly the devices the table
+    // accepted — an upsert of a device already seen still names it, because "heard it again" is a fact worth announcing
+    // (the row just changed) and a device whose write failed must not be named at all.
+    let state = crate::testing::state();
+
+    assert_eq!(record(&state.db, &[candidate()]), vec![PEER.to_owned()]);
+    assert_eq!(record(&state.db, &[candidate()]), vec![PEER.to_owned()], "a second sighting is still an announcement");
+}
