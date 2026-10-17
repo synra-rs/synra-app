@@ -67,10 +67,32 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
         Arc::clone(&state.board),
     ));
 
+    // Cloned before the thread starts: the guard borrows the application handle, and a thread outlives that borrow.
+    let db_state: Arc<AppState> = Arc::clone(state.inner());
+
     std::thread::Builder::new()
         .name(format!("synra-listener-{port}"))
         .spawn(move || {
-            let finished = synra_core::listener::no_answer();
+            // ★ This callback is what makes `sync_records` have a writer. Without it the table is empty, and
+            // `plugins_sync_plan` reports every peer as holding nothing — a plan that says "send everything" for ever.
+            let finished: synra_core::listener::FinishedCallback = Arc::new(move |transfer: &synra_core::listener::FinishedTransfer| {
+                // Only a bundle says anything about a plugin: an attachment arriving tells this device nothing about what the peer
+                // holds, and recording it would overwrite a real answer with a file that happens to have been sent.
+                let plugin = transfer.bundle.as_ref()?;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0_i64, |elapsed| synra_core::host::millis_reading(elapsed.as_millis() as u64));
+                if let Err(error) = db_state.db().record_sync(
+                    plugin.as_str(),
+                    &transfer.peer.to_string(),
+                    transfer.version.as_deref().unwrap_or_default(),
+                    &transfer.digest,
+                    now,
+                ) {
+                    eprintln!("synra: a received bundle could not be recorded: {error}");
+                }
+                None
+            });
             synra_core::listener::serve(&host, &thread_cancel, &data_dir, &desk, &router, &finished);
         })
         .map_or_else(
