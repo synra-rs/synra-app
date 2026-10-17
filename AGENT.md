@@ -21,6 +21,10 @@ pnpm run shapes  # seven guards the README calls hard requirements
 see a mistake in it; CI runs only the first because a Linux runner has no WebKitGTK. That is a fact about CI, not about
 your machine — the second command works here.
 
+★ **`cargo run -p guards` is not in this list, and that is not an omission**: `guards` is a binary in the **core** workspace,
+so it is run from `synra-rust-core/`, not from here. `cargo run -p guards` in this repository fails with "package not found in
+workspace", which reads like a broken guard and is really a wrong directory.
+
 ## 2. Facts to hold while editing
 
 | Fact | Why it matters |
