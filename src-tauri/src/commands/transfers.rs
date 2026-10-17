@@ -305,20 +305,14 @@ pub fn send_over(
     state: &crate::state::AppState,
     to: synra_protocol::ids::DeviceId,
     address: std::net::SocketAddr,
-    mut sender: synra_core::transfer::TransferSender,
-    mut row: TransferSnapshot,
+    sender: synra_core::transfer::TransferSender,
+    row: TransferSnapshot,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
     let transfer_id = row.transfer_id;
     let identity = state.identity.lock().clone();
     let now_ms = unix_millis();
-    announce_transfer(state, row.clone());
-
-    let finish = |state: &crate::state::AppState| {
-        state.transfers.forget(&transfer_id);
-        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
-    };
 
     let dialled = match synra_core::host::dial_peer(
         &local_peer(&identity),
@@ -329,12 +323,33 @@ pub fn send_over(
     ) {
         Ok(dialled) => dialled,
         Err(error) => {
-            finish(state);
+            finish_transfer(state, transfer_id);
             return Err(IpcError::unknown(ErrorCode::TransferFailed)
                 .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()})));
         }
     };
     let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+    send_ready(state, to, &mut link, sender, row)
+}
+
+/// Moves the blocks over a link that is already connected, and reports each one.
+///
+/// # Why the link is a parameter
+///
+/// Because this is the half that needs testing, and a test that must dial cannot be run without a peer. Everything here is
+/// driven by what arrives on the link, so a memory link exercises it exactly as a socket does — the dial above is the only
+/// part that has to be real.
+pub fn send_ready(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    link: &mut synra_core::link::PeerLink,
+    mut sender: synra_core::transfer::TransferSender,
+    mut row: TransferSnapshot,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let transfer_id = row.transfer_id;
+    announce_transfer(state, row.clone());
 
     row.state = "active".to_owned();
     announce_transfer(state, row.clone());
@@ -347,12 +362,21 @@ pub fn send_over(
             announce_transfer(state, row.clone());
         },
     );
-    finish(state);
+    finish_transfer(state, transfer_id);
 
     outcome.map(|()| transfer_id).map_err(|error| {
         IpcError::unknown(ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}))
     })
+}
+
+/// Removes a transfer and tells the interface it is over.
+///
+/// One function because the two halves must not be separated: a row removed without the announcement leaves the panel
+/// showing a transfer that no longer exists, and an announcement without the removal leaves one it can never clear.
+fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::ids::TransferId) {
+    state.transfers.forget(&transfer_id);
+    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
 }
 
 /// The wall clock, in milliseconds, as the counts this module reports are measured.

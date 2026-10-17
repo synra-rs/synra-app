@@ -64,6 +64,56 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
+    // ★ The success path, without a socket: `send_ready` is everything after the dial, so a memory link drives it exactly as a
+    // socket would. Two claims: the peer received every block in order, and the panel was told about each one and then about
+    // the end — the two events the interface needs and cannot derive from a snapshot.
+    use crate::testing::state as app_state;
+    use synra_core::link::memory::MemoryStream;
+    use synra_core::peer::Flags;
+    use synra_protocol::handshake::Agreed;
+
+    let state = app_state();
+    let (near, far) = MemoryStream::pair_with_capacity(4 * 1024 * 1024);
+    let agreed = Agreed { common: Vec::new(), missing_required: Vec::new() };
+    let local = DeviceId::new();
+    let peer = DeviceId::new();
+    let mut sending = synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
+    let mut receiving = synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
+
+    let path = std::env::temp_dir().join(format!("synra-ready-{}.bin", std::process::id()));
+    std::fs::write(&path, vec![3u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize]).expect("a file");
+    let sender =
+        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE).expect("a sender");
+    let planned = sender.request();
+    let total = u32::try_from(planned.byte_length.div_ceil(u64::from(planned.chunk_size))).expect("blocks");
+    let row = super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
+    let subscriber = state.events.subscribe();
+
+    super::send_ready(&state, peer, &mut sending, sender, row).expect("it sends");
+
+    for expected in 0..total {
+        match receiving.receive_inbound().expect("a block") {
+            synra_core::link::Inbound::Block { chunk_id, .. } => {
+                assert_eq!(chunk_id, expected, "blocks arrive in order");
+            }
+            other => panic!("expected a block, got {other:?}"),
+        }
+    }
+    let delivery = state.events.take(subscriber).expect("announced");
+    assert!(
+        delivery
+            .events()
+            .iter()
+            .any(|event| matches!(event, synra_ipc::event::KernelEvent::TransferFinished { .. })),
+        "the end was announced"
+    );
+    assert!(state.transfers.is_empty(), "and the row is gone");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn cancelling_a_transfer_removes_the_file_it_created() {
     // ★ The gap this closes: a cancelled message was removed from the panel and left on disk. The registry is the only place
     // that knows the path — a sent file belongs to the user and must survive, so "delete on cancel" cannot be a guess.
