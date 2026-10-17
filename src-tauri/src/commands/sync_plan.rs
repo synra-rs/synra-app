@@ -68,6 +68,13 @@ pub fn plan_for(
 
 /// What would have to be sent, for one plugin, to every paired device.
 ///
+/// # What this can and cannot know today
+///
+/// ★ **`sync_records` is written by nothing in production yet.** A sync session keeps its "who holds what" answer in memory
+/// (`plugin_sync::SyncTable`) and the durable table is only written by tests. So this plan currently reports every peer as having
+/// nothing, and therefore says every plugin needs sending — **honest, and wrong in the direction that wastes a transfer rather
+/// than skipping one**. The fix is for a completed session to call `record_sync`, and that waits on the receive side.
+///
 /// # Where each fact comes from
 ///
 /// `paired_devices` for who could receive it, `active_plugin_version` for what this device has, and `sync_records` for what each
