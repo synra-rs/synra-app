@@ -289,6 +289,7 @@ fn with_discovery() -> (AppState, Arc<AtomicI64>) {
         Arc::clone(&state.db),
         state.host.clone(),
         0,
+        Arc::new(|_: &str| {}),
     )
     .expect("the sockets are free");
     let deadline = discovery.on_demand();

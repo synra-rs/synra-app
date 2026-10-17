@@ -54,36 +54,18 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
     };
 
     let mut cards: Vec<DeviceCard> =
-        paired.iter().map(|row| card_from_paired(state, row)).collect::<Result<_, _>>()?;
+        paired.iter().map(|row| card_from_paired(&state.host, row)).collect::<Result<_, _>>()?;
     // ★ Seen-but-unpaired devices are added here rather than by the interface.
     //
     // The interface cannot know which seen devices are already paired — that is the kernel's record — so a list built
     // by the interface either shows a paired device twice or needs a second call to find out which are which. Both are
     // worse than one call that already knows.
     for row in &seen {
-        let device_id = parse_from_store(row.device_id.as_str())?;
-        if cards.iter().any(|card| card.device_id == device_id) {
+        let card = card_from_seen(row)?;
+        if cards.iter().any(|existing| existing.device_id == card.device_id) {
             continue;
         }
-        cards.push(DeviceCard {
-            device_id,
-            display_name: row.display_name.clone(),
-            platform: row.platform.clone(),
-            online: true,
-            paired: false,
-            // A seen device that has never been paired is not blocked; blocking is a decision the user made, and a row
-            // that has one is a paired row that was left in place deliberately.
-            blocked: false,
-            last_seen_ms: row.last_seen_ms,
-            // ★ No address for a seen device.
-            //
-            // The store keeps an address for a paired device because that is where it is *reachable*; for a device seen
-            // once over discovery, the address in that announcement is where it was then, which is not a promise about
-            // now. Showing it would offer a device the user cannot reach, on a card that looks exactly as usable as a
-            // paired one. Absent is the honest answer, and the interface is already written to omit the field.
-            address: None,
-            transfer: None,
-        });
+        cards.push(card);
     }
     cards.sort_by(|left, right| {
         right
@@ -250,13 +232,75 @@ pub fn devices_forget(state: &AppState, device_id: &str) -> Result<(), IpcError>
     Ok(())
 }
 
+/// A card for a device that was seen and never paired.
+///
+/// # Errors
+///
+/// [`IpcError::Internal`] when the stored identifier does not parse, for the reason [`devices_snapshot`] gives: a
+/// corrupted row must not become a missing card.
+fn card_from_seen(row: &synra_store::SeenDeviceRow) -> Result<DeviceCard, IpcError> {
+    let device_id = parse_from_store(row.device_id.as_str())?;
+    Ok(DeviceCard {
+        device_id,
+        display_name: row.display_name.clone(),
+        platform: row.platform.clone(),
+        online: true,
+        paired: false,
+        // A seen device that has never been paired is not blocked; blocking is a decision the user made, and a row that
+        // has one is a paired row that was left in place deliberately.
+        blocked: false,
+        last_seen_ms: row.last_seen_ms,
+        // ★ No address for a seen device.
+        //
+        // The store keeps an address for a paired device because that is where it is *reachable*; for a device seen once
+        // over discovery, the address in that announcement is where it was then, which is not a promise about now.
+        // Showing it would offer a device the user cannot reach, on a card that looks exactly as usable as a paired one.
+        // Absent is the honest answer, and the interface is already written to omit the field.
+        address: None,
+        transfer: None,
+    })
+}
+
+/// The card for one device, looked up in the record.
+///
+/// # Why this exists rather than a call to [`devices_snapshot`]
+///
+/// Because the caller that needs it is the **discovery worker's** announcement, and it has no `AppState` to give — only the
+/// database, the session registry and the identifier it just recorded. Building the card from the same two functions the
+/// snapshot uses is what keeps one description of a card instead of two.
+///
+/// # Errors
+///
+/// [`IpcError::Internal`] when a stored identifier does not parse, for the reason [`devices_snapshot`] gives.
+#[cfg(feature = "tauri-shell")]
+pub(crate) fn card_for(
+    db: &std::sync::Arc<parking_lot::Mutex<synra_store::SynraDb>>,
+    host: &synra_core::SharedHost,
+    device_id: &str,
+) -> Result<Option<DeviceCard>, IpcError> {
+    // Locked, read, released before a card is built: `card_from_paired` takes the registry, and holding the database lock
+    // across that is one more lock order for nobody's benefit.
+    let (paired, seen) = {
+        let db = db.lock();
+        (db.paired_devices().map_err(internal)?, db.seen_devices().map_err(internal)?)
+    };
+
+    if let Some(row) = paired.iter().find(|row| row.device_id == device_id) {
+        return card_from_paired(host, row).map(Some);
+    }
+    match seen.iter().find(|row| row.device_id == device_id) {
+        Some(row) => card_from_seen(row).map(Some),
+        None => Ok(None),
+    }
+}
+
 /// A card for a device this kernel has paired with.
 ///
 /// # Errors
 ///
 /// [`IpcError::Internal`] when the stored identifier does not parse. See [`devices_snapshot`]: a corrupted row must not
 /// become a missing card.
-fn card_from_paired(state: &AppState, row: &synra_store::DeviceRow) -> Result<DeviceCard, IpcError> {
+fn card_from_paired(host: &synra_core::SharedHost, row: &synra_store::DeviceRow) -> Result<DeviceCard, IpcError> {
     let device_id = parse_from_store(row.device_id.as_str())?;
     Ok(DeviceCard {
         device_id,
@@ -269,7 +313,7 @@ fn card_from_paired(state: &AppState, row: &synra_store::DeviceRow) -> Result<De
         // right. Every paired device was reported online, so the dashboard showed a green dot for a laptop that had been
         // shut for a week, and the first the user heard about it was a send that failed. The registry is what knows:
         // `live_for` answers "is there a session with this peer now", which is exactly the question the card asks.
-        online: state.host.lock().sessions().live_for(device_id).is_some(),
+        online: host.lock().sessions().live_for(device_id).is_some(),
         paired: true,
         blocked: row.blocked,
         last_seen_ms: row.last_seen_ms,

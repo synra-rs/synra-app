@@ -43,7 +43,7 @@ fn candidate() -> Candidate {
 /// this machine, and a test that needed it free would fail for a reason unrelated to what it asserts. It is the same
 /// reason `DiscoveryService::bind_on` takes the port as an argument.
 fn discovery(state: &crate::AppState) -> Discovery {
-    Discovery::start(state.announcement(1), 0, Arc::clone(&state.db), state.host.clone(), 0)
+    Discovery::start(state.announcement(1), 0, Arc::clone(&state.db), state.host.clone(), 0, Arc::new(|_: &str| {}))
         .expect("the sockets are free")
 }
 

@@ -420,12 +420,23 @@ fn with_discovery_or_report(state: AppState) -> AppState {
     // ★ The announced port is the discovery port, and that is not a mistake — it is the only port this process binds. See
     // `crate::discovery`'s header: this build has no transport, and the wire format refuses `port: 0`.
     let announcement = state.announcement(synra_protocol::limits::DISCOVERY_PORT);
-    let started = crate::discovery::Discovery::start(
-        announcement,
+    // The announcement the worker makes: it reports an identifier, and the host builds the card and publishes it.
+    let announce: crate::discovery::Announce = {
+        let db = Arc::clone(&state.db);
+        let host = state.host.clone();
+        let events = Arc::clone(&state.events);
+        Arc::new(move |device_id: &str| {
+            if let Ok(Some(card)) = crate::commands::devices::card_for(&db, &host, device_id) {
+                events.emit(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(card)));
+            }
+        })
+    };
+    let started = crate::discovery::Discovery::start(        announcement,
         synra_protocol::limits::DISCOVERY_PORT,
         Arc::clone(&state.db),
         state.host.clone(),
         state.started_at_ms,
+        announce,
     );
 
     match started {

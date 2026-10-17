@@ -38,6 +38,13 @@ use synra_protocol::limits::SCAN_PASSIVE;
 use synra_protocol::session::PlatformKind;
 use synra_store::{Seen, SynraDb};
 
+/// What the worker calls for each device it managed to record.
+///
+/// A function rather than a bus handle: the worker has a **sighting** and an event needs a **card**, and building one needs
+/// the record and the session registry. Handing those to the socket loop would put two more pieces of the shell inside it,
+/// so the loop reports what it saw and the host decides what to say.
+pub type Announce = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// How often the wait loop looks at the clock.
 ///
 /// Not a deadline for anything: the whole wait is bounded by the protocol's scan window, and this is only how often the
@@ -84,6 +91,7 @@ impl Discovery {
         db: Arc<Mutex<SynraDb>>,
         host: SharedHost,
         started_at_ms: i64,
+        announce: Announce,
     ) -> Result<Self, String> {
         let service = DiscoveryService::bind_on(ours, responder_port, QUERY_INTERVAL)
             .map_err(|error| format!("the discovery sockets could not be bound: {error}"))?;
@@ -118,9 +126,11 @@ impl Discovery {
                 // `synra-core`'s, deliberately: a crate that knows nothing about storage is what keeps a database out of
                 // a socket loop.
                 move |candidates| {
-                    // The identifiers are the announce hook's input; until one is passed in, discarding them is the
-                    // honest thing — a `Vec` nobody reads is not a fact anybody is promised.
-                    record(&db, candidates);
+                    // ★ Every device the table accepted is announced, and only those: `record` skips a sighting whose write
+                    // failed, so a device the kernel could not remember is not one the window is told about.
+                    for device_id in record(&db, candidates) {
+                        announce(&device_id);
+                    }
                 },
             );
             Ok(())
