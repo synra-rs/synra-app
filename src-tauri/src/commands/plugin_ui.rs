@@ -215,5 +215,56 @@ pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -
     best
 }
 
+/// The `synra-plugin://` handler: one bundle file, or a refusal.
+///
+/// # Why it is here and not in `shell.rs`
+///
+/// Because it is three decisions and one call: which ids a request may name, which file it may have, and what to answer
+/// when the answer is no. Those are the same decisions [`split_ui_url`] and [`ui_file`] make, and they have tests; the
+/// protocol registration in `shell.rs` is wiring.
+#[cfg(feature = "tauri-shell")]
+pub fn serve(
+    app: &tauri::AppHandle,
+    request: tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
+    use std::borrow::Cow;
+    use tauri::Manager as _;
+
+    fn answer(status: u16, body: &'static str) -> tauri::http::Response<Cow<'static, [u8]>> {
+        tauri::http::Response::builder()
+            .status(status)
+            .header(tauri::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Cow::Borrowed(body.as_bytes()))
+            .unwrap_or_else(|_| tauri::http::Response::new(Cow::Borrowed(b"the response could not be built")))
+    }
+
+    let state = app.state::<AppState>();
+    let uri = request.uri().to_string();
+
+    // ★ The ids come from the host's own table, not from the request: a page may only name a plugin this shell opened a
+    // window for, which is what makes the longest-prefix split safe.
+    let known: Vec<synra_protocol::ids::PluginId> =
+        state.hosted_ui.lock().values().map(|entry| entry.plugin_id.clone()).collect();
+
+    let Some((plugin_id, path)) = split_ui_url(&uri, &known) else {
+        return answer(404, "no page by that name");
+    };
+    let root = synra_plugin_ui::artifact::bundle_dir(&state.paths.plugin_dir(plugin_id.as_str()));
+
+    match ui_file(&root, &path) {
+        Ok((bytes, content_type)) => tauri::http::Response::builder()
+            .status(200)
+            .header(tauri::http::header::CONTENT_TYPE, content_type)
+            .body(Cow::Owned(bytes))
+            .unwrap_or_else(|_| answer(500, "the response could not be built")),
+        Err(refusal) => {
+            // 403 for a path the rules refuse, 404 for a file that is not there: the first is somebody asking for something
+            // they may never have, the second is a bundle that is missing a file it should carry.
+            let status = if refusal.code == synra_protocol::ErrorCode::InvalidArgument { 403 } else { 404 };
+            answer(status, "no page by that name")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

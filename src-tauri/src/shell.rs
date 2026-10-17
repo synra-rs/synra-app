@@ -337,6 +337,13 @@ mod wrappers {
 /// the window is built.
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        // ★ A plugin page is served from its own origin, and this is the only place that knows how: the address is split
+        // against the ids the host actually opened (`hosted_ui`), and the file comes from that plugin's bundle through the
+        // same path rules `ui_file` tests. Everything a request cannot have — another plugin's files, `..`, a missing
+        // bundle — is a refusal here rather than a guess.
+        .register_uri_scheme_protocol("synra-plugin", |ctx, request| {
+            crate::commands::plugin_ui::serve(ctx.app_handle(), request)
+        })
         .setup(|app| {
             let state = app_state(app.handle())?;
             // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
