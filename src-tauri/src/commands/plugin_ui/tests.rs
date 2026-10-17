@@ -55,3 +55,26 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
     let marked = state.hosted_ui.lock().get("page-2").map(|entry| entry.ready);
     assert_eq!(marked, Some(true));
 }
+
+#[test]
+fn a_session_that_expired_is_refused() {
+    // ★ A different refusal from "no such token": the registry knows this nonce and rejects it on age. Both are the same
+    // answer to the caller (see the module docs), but a check that only ever sees unknown nonces could stop validating
+    // expiry entirely and nothing here would notice.
+    let state = crate::testing::state();
+    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+    let long_ago = now - synra_plugin_ui::SESSION_LIFETIME_MS - 1;
+    let nonce = state
+        .ui_sessions
+        .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), long_ago);
+    state.hosted_ui.lock().insert(
+        "page-3".to_owned(),
+        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce, ready: false },
+    );
+
+    let refused = plugin_ui_ready(&state, "page-3").expect_err("the session is too old");
+
+    assert_eq!(refused.code, ErrorCode::CapabilityDenied);
+    let marked = state.hosted_ui.lock().get("page-3").map(|entry| entry.ready);
+    assert_eq!(marked, Some(false), "and it is not marked ready");
+}
