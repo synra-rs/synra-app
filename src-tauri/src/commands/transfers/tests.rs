@@ -64,6 +64,24 @@ fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
 }
 
 #[test]
+fn sending_to_a_device_that_was_never_paired_is_a_refusal_that_says_why() {
+    // ★ The address comes from `paired_devices`, so a device nobody paired has none — and the answer must be "connect it
+    // first", not "the transfer failed". This is also the whole command's reach without a peer: everything after the address
+    // needs a socket.
+    let state = crate::testing::state();
+    let request = synra_ipc::dto::SendFileRequest {
+        to: DeviceId::new(),
+        path: "does-not-matter.bin".to_owned(),
+        context_id: None,
+    };
+
+    let refused = super::transfer_send_file(&state, &request).expect_err("nothing to dial");
+
+    assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    assert!(state.transfers.is_empty(), "a refused send leaves no row behind");
+}
+
+#[test]
 fn what_this_shell_says_when_it_dials_is_the_identity() {
     // ★ The name is the one discovery already announces — two sources would let one device appear twice on a network — and
     // the platform has to become the wire's enum rather than a string a peer would decline.
