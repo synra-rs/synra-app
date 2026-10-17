@@ -80,5 +80,66 @@ pub fn initialization_script(label: &str, token: u128) -> String {
     )
 }
 
+/// What the shell needs in order to open one plugin page.
+///
+/// The parts are separated from the Tauri call on purpose: a URL, a label and a script are values a test can assert, and
+/// `WebviewWindowBuilder` is a call no test here can make. Everything that could be wrong in an interesting way is in this
+/// struct; what is left in `shell.rs` is five lines of plumbing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenRequest {
+    /// The WebView's label, and the key `plugin_ui_ready` is called with.
+    pub label: String,
+    /// The page's address, under the plugin origin: `synra-plugin://<plugin-id>/<page>`.
+    pub url: String,
+    /// The initialization script carrying the token and the label.
+    pub script: String,
+}
+
+/// Prepares the page for one plugin, and records who it belongs to.
+///
+/// # Errors
+///
+/// [`ErrorCode::PluginNotInstalled`] when there is no manifest to read, [`ErrorCode::Unsupported`] when the plugin has no
+/// UI half. Both are refusals a caller can act on: the first says "install it", the second says "this one has no window".
+pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let id = super::plugins::parse(plugin_id)?;
+    let manifest = super::plugins::read_manifest(state, &id.to_string()).ok_or_else(|| {
+        IpcError::unknown(ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id}))
+    })?;
+    let Some(ui) = manifest.runtime.ui.as_ref() else {
+        return Err(IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "reason": "it has no UI"})));
+    };
+
+    // ★ The page key is the manifest's default page when it names one, and the entry's file stem otherwise: the address
+    // shape is `synra-plugin://<plugin-id>/<page>` and `entry` is a path inside the bundle (`dist/index.html`), which is
+    // not a page key.
+    let page = ui.default_page.clone().unwrap_or_else(|| {
+        std::path::Path::new(&ui.entry)
+            .file_stem()
+            .map_or_else(|| "index".to_owned(), |stem| stem.to_string_lossy().into_owned())
+    });
+    let label = format!("plugin-{}", id.as_str().replace('/', "__"));
+    let url = format!("synra-plugin://{}/{page}", id.as_str());
+
+    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+    let nonce = state.ui_sessions.issue_placeholder(
+        &id,
+        manifest.version.clone(),
+        synra_capability::CapabilitySet::new(),
+        now,
+    );
+    state.hosted_ui.lock().insert(
+        label.clone(),
+        crate::state::HostedUi { plugin_id: id, version: manifest.version, nonce, ready: false },
+    );
+
+    let script = initialization_script(&label, nonce);
+    Ok(OpenRequest { label, url, script })
+}
+
 #[cfg(test)]
 mod tests;

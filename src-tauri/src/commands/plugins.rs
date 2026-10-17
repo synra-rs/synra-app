@@ -366,7 +366,7 @@ fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: boo
 ///
 /// Returns `None` rather than a refusal, because one unreadable manifest among twenty installed plugins must not stop the
 /// other nineteen from being listed.
-fn read_manifest(state: &AppState, plugin_id: &str) -> Option<Manifest> {
+pub(crate) fn read_manifest(state: &AppState, plugin_id: &str) -> Option<Manifest> {
     let text = read_manifest_text(state, plugin_id)?;
     serde_json::from_str(&text).ok()
 }
@@ -386,7 +386,7 @@ fn read_manifest_text(state: &AppState, plugin_id: &str) -> Option<String> {
 /// # Errors
 ///
 /// [`IpcError::InvalidArgument`].
-fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
+pub(crate) fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
     PluginId::try_from(plugin_id.to_owned()).map_err(|error| {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))

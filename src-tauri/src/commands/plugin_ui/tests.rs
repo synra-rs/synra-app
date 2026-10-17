@@ -57,6 +57,18 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
 }
 
 #[test]
+fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
+    // ★ The refusal a caller can act on: "install it". The other half — a plugin with no UI half — needs a fixture whose
+    // manifest declares `runtime.ui`, and that fixture does not exist yet; this test covers the path a typo reaches.
+    let state = crate::testing::state();
+
+    let refused = super::open_request(&state, "@acme/absent").expect_err("nothing is installed");
+
+    assert_eq!(refused.code, ErrorCode::PluginNotInstalled);
+    assert!(state.hosted_ui.lock().is_empty(), "and nothing was recorded");
+}
+
+#[test]
 fn the_initialization_script_carries_the_label_and_a_string_token() {
     // ★ The token is quoted, and that is the assertion worth having: `u128::MAX` is not representable as a JavaScript
     // number, and a script that emitted it bare would round — the page would then present a token that validates for
