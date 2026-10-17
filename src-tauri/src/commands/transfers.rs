@@ -256,7 +256,7 @@ pub fn transfer_send_file(
             .with_params(serde_json::json!({"address": address, "reason": error.to_string()}))
     })?;
 
-    let mut sender = synra_core::transfer::TransferSender::open(
+    let sender = synra_core::transfer::TransferSender::open(
         std::path::Path::new(&request.path),
         synra_core::transfer::DEFAULT_CHUNK_SIZE,
     )
@@ -265,18 +265,41 @@ pub fn transfer_send_file(
             .with_params(serde_json::json!({"path": request.path, "reason": error.to_string()}))
     })?;
     let planned = sender.request();
-    let transfer_id = planned.transfer_id;
 
-    let identity = state.identity.lock().clone();
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0_u64, |elapsed| elapsed.as_millis() as u64);
-    let now_i64 = synra_core::host::millis_reading(now_ms);
-    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_i64);
+    let now_ms = synra_core::host::millis_reading(unix_millis());
+    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
     // The row names the file a person chose, not the path the interface happened to pass.
     row.file_name = std::path::Path::new(&request.path)
         .file_name()
         .map_or_else(|| request.path.clone(), |name| name.to_string_lossy().into_owned());
+
+    send_over(state, request.to, address, sender, row)
+}
+
+/// Dials, moves every block, and reports each one — the part two commands share.
+///
+/// # Why this is a function
+///
+/// Because `transfer_send_file` and `transfer_send_text` differ only in how they obtain a [`TransferSender`] and what the row
+/// is named: everything after "there is a sender and an address" is the same dial, the same loop and the same three exit
+/// paths. Two copies would be two places for the cleanup to be forgotten, and the cleanup is what keeps a failed transfer
+/// from looking like a running one.
+///
+/// # Errors
+///
+/// [`ErrorCode::TransferFailed`] for a refused dial or a refused block, after removing the row either way.
+pub fn send_over(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    address: std::net::SocketAddr,
+    mut sender: synra_core::transfer::TransferSender,
+    mut row: TransferSnapshot,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let transfer_id = row.transfer_id;
+    let identity = state.identity.lock().clone();
+    let now_ms = unix_millis();
     announce_transfer(state, row.clone());
 
     let finish = |state: &crate::state::AppState| {
@@ -295,7 +318,7 @@ pub fn transfer_send_file(
         Err(error) => {
             finish(state);
             return Err(IpcError::unknown(ErrorCode::TransferFailed)
-                .with_params(serde_json::json!({"detail": error.to_string()})));
+                .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()})));
         }
     };
     let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
@@ -314,8 +337,16 @@ pub fn transfer_send_file(
     finish(state);
 
     outcome.map(|()| transfer_id).map_err(|error| {
-        IpcError::unknown(ErrorCode::TransferFailed).with_params(serde_json::json!({"detail": error.to_string()}))
+        IpcError::unknown(ErrorCode::TransferFailed)
+            .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}))
     })
+}
+
+/// The wall clock, in milliseconds, as the counts this module reports are measured.
+fn unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0_u64, |elapsed| elapsed.as_millis() as u64)
 }
 
 #[cfg(test)]
