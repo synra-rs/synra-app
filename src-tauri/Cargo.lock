@@ -3728,6 +3728,7 @@ dependencies = [
  "synra-platform",
  "synra-plugin-api",
  "synra-plugin-host",
+ "synra-plugin-ui",
  "synra-protocol",
  "synra-store",
  "tauri",
@@ -3860,6 +3861,19 @@ dependencies = [
  "thiserror 2.0.21",
  "wasmtime",
  "wit-codegen",
+]
+
+[[package]]
+name = "synra-plugin-ui"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "synra-capability",
+ "synra-plugin-api",
+ "synra-protocol",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
