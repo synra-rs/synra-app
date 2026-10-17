@@ -147,12 +147,8 @@ mod wrappers {
 
     /// Opens a plugin's page in its own WebView, under its own origin.
     ///
-    /// ★ **Not registered yet, and that is a contract fact**: `synra-ipc`'s command table does not declare a command for
-    /// opening a page, and `registration.test.ts` refuses a shell that registers one the contract does not. The next step
-    /// is a contract change, not a shell one.
-    ///
-    /// `#[allow(dead_code)]` because nothing calls it yet — the shell builds it and the contract has not named it.
-    #[allow(dead_code)]
+    /// ★ The contract declares it now (`plugin_ui_open` => PluginUi, **Host**), which is what makes registering it legal:
+    /// `registration.test.ts` refuses a shell that registers a name the kernel's table does not carry.
     /// # What is deliberately *not* here
     ///
     /// Every decision is in [`commands::plugin_ui::open_request`] — the address, the label, the token, the record in
@@ -308,6 +304,7 @@ mod wrappers {
             plugins_consent_respond,
             plugins_install,
             plugins_uninstall,
+            plugin_ui_open,
             plugins_audit,
             intent_dispatch,
             intent_list,

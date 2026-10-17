@@ -29,6 +29,9 @@ export const REGISTERED = [
   'plugins_install',
   // ★ Removable, with the data decision passed through rather than defaulted in two places.
   'plugins_uninstall',
+  // ★ The contract declares it (`PluginUi`, **Host**), and this is the only command that creates a WebView. A plugin page
+  // that could call it would be one that can spawn windows, which is not a capability this model grants.
+  'plugin_ui_open',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
