@@ -50,6 +50,8 @@ export const plugins = {
   limitInstances: 'instances',
   limitCalls: 'calls/s',
   limitCallTime: 's per call',
+  /** Files the system would not let go during a removal; the report carries their paths. */
+  leftBehind: (count: number) => `${count} path(s) could not be removed`,
   /** The registry's own index, searched by keyword. */
   catalog: {
     placeholder: 'Search the registry',

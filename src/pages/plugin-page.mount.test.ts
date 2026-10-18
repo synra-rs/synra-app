@@ -162,8 +162,12 @@ describe('the plugins page', () => {
     // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the
     // argument the action layer sends is covered in `pages/plugins/actions.test.ts`, both ways.
     mocks.call.mockImplementation(async (command: string) => {
-      if (command === 'plugins_uninstall')
-        return { ok: true, value: { bytesFreed: 1536, dataKept: false, leftovers: [] } }
+      if (command === 'plugins_uninstall') {
+        return {
+          ok: true,
+          value: { bytesFreed: 1536, dataKept: false, leftovers: ['/tmp/synra/plugins/@acme/hello'] }
+        }
+      }
       return { ok: true, value: [card()] }
     })
     const wrapper = mount(PluginsPage)
@@ -204,6 +208,8 @@ describe('the plugins page', () => {
       removeData: true
     })
     expect(wrapper.text()).toContain(messages.plugins.removedDeleted('Hello', '1.5 KiB'))
+    // ★ And what survived: the row is gone, so the note is the only place a locked directory is reported.
+    expect(wrapper.text()).toContain(messages.plugins.leftBehind(1))
     wrapper.unmount()
   })
 

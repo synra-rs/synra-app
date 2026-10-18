@@ -828,9 +828,16 @@ async function remove(): Promise<void> {
   pluginsStore.forget(plugin.pluginId)
   removing.value = undefined
   const freed = formatBytes(outcome.value.bytesFreed)
-  note.value = deleteData
+  const kept = deleteData
     ? messages.plugins.removedDeleted(plugin.title, freed)
     : messages.plugins.removedKept(plugin.title, freed)
+  // ★ The removal cannot fail on a locked file — the row is already gone — so this sentence is where the user learns that
+  // something survived. The full paths are in the report; the page names the count it can act on. `leftovers` is optional
+  // in the protocol (absent when empty), so the absence is the ordinary case.
+  const leftovers = outcome.value.leftovers ?? []
+  note.value = leftovers.length > 0
+    ? `${kept} ${messages.plugins.leftBehind(leftovers.length)}`
+    : kept
   await load()
 }
 

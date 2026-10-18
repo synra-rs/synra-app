@@ -408,16 +408,15 @@ pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -
         return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     }
-    synra_store::PluginFiles::new(state.paths.clone())
+    let leftovers = synra_store::PluginFiles::new(state.paths.clone())
         .remove(&id.to_string(), remove_data)
         .map_err(internal)?;
     Ok(RemoveReport {
         bytes_freed: artifact.saturating_add(sandbox),
         data_kept: !remove_data,
-        // ★ Empty rather than a list of what failed: `PluginFiles::remove` refuses the whole removal when a directory
-        // will not go, so a partial success is not a state this command can return. A leftover list would be a field that
-        // is always empty, which is the kind of field a reader starts to trust.
-        leftovers: Vec::new(),
+        // ★ What the operating system would not let go. The row is already gone, so the command cannot fail on a locked
+        // file — it reports the path. The page says so beside the freed size; a user who is not told goes looking.
+        leftovers: leftovers.iter().map(|path| path.display().to_string()).collect(),
     })
 }
 
