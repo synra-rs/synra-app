@@ -25,7 +25,7 @@
 | --- | --- |
 | `src/`（前端） | 57 个文件、约 5.8k 行（36 个生产文件 + 21 个测试与夹具） |
 | `src-tauri/src/`（壳） | 17 个文件、约 5.2k 行（14 个生产 + 3 个测试） |
-| 命令 | 契约 41 条 · **注册 30 条** · 其中被调用 10 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
+| 命令 | 契约 41 条 · **注册 33 条** · 其中被调用 10 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
 | 页面 | 4 页（Home / Devices / Plugins / Settings） |
 | 前端 store | 1 / 8（只有 `devices`） |
 

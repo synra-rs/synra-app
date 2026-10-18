@@ -107,6 +107,35 @@ mod wrappers {
         commands::devices::devices_forget(&state, &device_id)
     }
 
+    /// Asks a discovered device to pair, and records it when the other person accepts.
+    #[tauri::command]
+    pub async fn pairing_request(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        device_id: String,
+    ) -> Result<(), IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::pairing::pairing_request(&state, &device_id)).await
+    }
+
+    /// Answers a pairing request that is waiting.
+    #[tauri::command]
+    pub fn pairing_respond(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        request_id: String,
+        accept: bool,
+    ) -> Result<(), IpcError> {
+        commands::pairing::pairing_respond(&state, &request_id, accept)
+    }
+
+    /// Refuses a waiting pairing request. The link stays up, so the dialer may ask again.
+    #[tauri::command]
+    pub fn pairing_cancel(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        request_id: String,
+    ) -> Result<(), IpcError> {
+        commands::pairing::pairing_cancel(&state, &request_id)
+    }
+
     #[tauri::command]
     pub fn plugins_list(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<PluginSnapshot>, IpcError> {
         commands::plugins::plugins_list(&state)
@@ -368,6 +397,9 @@ mod wrappers {
             devices_scan_start,
             devices_scan_cancel,
             devices_forget,
+            pairing_request,
+            pairing_respond,
+            pairing_cancel,
             plugins_list,
             plugins_enable,
             plugins_disable,
@@ -421,6 +453,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
             // does, and a restart would fail to bind a port the old one still holds.
             app.manage(crate::listener::spawn(app.handle()));
+            // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
+            // could ask to pair and the window would look at it and never say so.
+            crate::commands::pairing::watch(app.handle().clone());
             Ok(())
         })
         .invoke_handler(wrappers::handler())

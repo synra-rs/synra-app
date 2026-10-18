@@ -20,6 +20,11 @@ export const REGISTERED = [
   'devices_scan_start',
   'devices_scan_cancel',
   'devices_forget',
+  // Pairing: the request dials the address the scan recorded, the answer travels back over the same link, and the desk
+  // carries a request from the socket thread that received it to the command that answers it.
+  'pairing_request',
+  'pairing_respond',
+  'pairing_cancel',
   'plugins_list',
   'plugins_enable',
   'plugins_disable',
@@ -81,9 +86,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // What is missing is the shell's **network half** — the `DiscoveryService` and `TransportRegistry` that doc 05 §2.1 puts
   // inside the desktop app's in-process kernel. A `.vue` file is not the remaining work, and a reason that says it is
   // sends the next person to the wrong file.
-  pairing_request: 'the shell has no pairing desk and no link to raise a prompt over',
-  pairing_respond: 'the shell has no pairing desk and no link to answer on',
-  pairing_cancel: 'the shell has no pairing desk and no link to cancel',
   // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the
   // intent board behind AppState", which was false — the board was already in the state. What was missing was the
   // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
