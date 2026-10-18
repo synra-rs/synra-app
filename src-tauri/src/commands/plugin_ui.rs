@@ -150,7 +150,40 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
     Ok(serde_json::Value::Array(targets))
 }
 
-/// The script a plugin page is started with: its identity, and the token `ready()` will present.
+/// The façade a plugin page runs: built by `pnpm run build:facade`, embedded here.
+///
+/// # Why the built file is committed
+///
+/// Because a Rust build must not need Node. The alternative — generating it in the Rust build — would make `cargo check`
+/// depend on pnpm, and a contributor without the frontend toolchain could not compile the shell. The file is generated
+/// and checked instead: `scripts/check-shapes.ts` rebuilds it and fails if it disagrees with this one, so it cannot drift
+/// from `src/ipc/injection/bootstrap.ts` without a red gate.
+const FACADE: &str = include_str!("../../inject/facade.js");
+
+/// The facts the shell writes into a plugin page before any of its own scripts run.
+///
+/// # Why a JSON object rather than a series of assignments
+///
+/// Because the façade reads **all** of it, and a missing field would leave a namespace answering `undefined` — the exact
+/// class of failure the injected-surface tests exist to prevent. Serialising one struct means the Rust side and
+/// `InjectionSeed` in `bootstrap.ts` are one shape, and a change to either is visible as a diff to the other.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InjectionSeed<'a> {
+    label: &'a str,
+    token: String,
+    plugin_id: &'a str,
+    granted: &'a [String],
+    denied_capabilities: &'a [String],
+    locale: &'a str,
+    dark_mode: bool,
+    sdk_version: &'a str,
+    platform: &'a str,
+    host_kind: &'a str,
+    app_version: &'a str,
+}
+
+/// The script a plugin page is started with: the seed, then the façade that reads it.
 ///
 /// # Why the token is a **string**
 ///
@@ -158,21 +191,53 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
 /// token that validates for nobody, and the failure would look like "the page never became ready" rather than like a
 /// rounding error.
 ///
-/// # Why `Object.freeze`
+/// # Why `Object.freeze` before the façade runs
 ///
-/// The page runs someone else's code. A mutable global is one a script can rewrite before the injected client reads it, so
-/// the object is frozen at the moment it is created and the client closes over the values rather than re-reading them.
+/// The page runs someone else's code. A mutable seed is one a script can rewrite before the façade reads it — and a page
+/// that can rewrite its own `granted` list can make `env.can` answer true for a capability the user refused. The façade
+/// copies the values into its closure, so later writes to the global would not affect it either.
 ///
-/// # Why the label is safe to interpolate
+/// # Why the façade is appended rather than imported
 ///
-/// Tauri's WebView labels are its own identifiers (alphanumeric, `-`, `_`, `/`, `:`); this function is called with one the
-/// shell created, never with anything a page supplied. The token is a number formatted here. Nothing else goes in.
-#[must_use]
-pub fn initialization_script(label: &str, token: u128) -> String {
-    format!(
-        "Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze({{ label: {label:?}, token: {:?} }}));",
-        token.to_string()
-    )
+/// Because an initialization script has no module loader: Tauri evaluates one script before the page's own, and an
+/// `import()` would resolve after the plugin's first line has already run. The built file is an IIFE, so it executes in
+/// place and `window.synra` exists by the time the page's code starts.
+///
+/// # Errors
+///
+/// [`ErrorCode::Internal`] if the seed cannot be serialised, which for these field types cannot happen — and is an error
+/// rather than an `unwrap` because the workspace denies the panic.
+fn initialization_script(facade: &str, seed: &InjectionSeed<'_>) -> Result<String, IpcError> {
+    let json = serde_json::to_string(seed).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
+    })?;
+    Ok(format!(
+        "Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze({json}));\n{facade}"
+    ))
+}
+
+/// The platform name the plugin contract uses.
+///
+/// # Why an unknown platform is a refusal
+///
+/// Because the client's `Platform` is a closed union of five values, and a sixth name would be a value a plugin's type
+/// says is impossible. A plugin that branches on the platform would take the `default` path on a machine this host does
+/// not have a name for — a plausible wrong answer, which is worse than "this page cannot open here".
+fn platform_name() -> Result<&'static str, IpcError> {
+    Ok(match std::env::consts::OS {
+        "windows" => "windows",
+        "macos" => "macos",
+        "linux" => "linux",
+        "android" => "android",
+        "ios" => "ios",
+        other => {
+            return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "platform": other,
+                "reason": "the plugin contract has no name for this platform",
+            })))
+        }
+    })
 }
 
 /// What the shell needs in order to open one plugin page.
@@ -224,16 +289,19 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
     // ★ The grants the page will hold, read from the decisions the user actually made. An empty set here made every
     // page powerless no matter what it had been granted — `env.can` would answer false for everything, and a gate built
     // on the session would refuse calls the user had allowed.
-    let granted: Vec<String> = state
-        .db()
-        .plugin_grants(id.as_str())
-        .map_err(|error| {
-            IpcError::unknown(ErrorCode::Internal)
-                .with_params(serde_json::json!({"detail": error.to_string()}))
-        })?
-        .into_iter()
+    let decisions = state.db().plugin_grants(id.as_str()).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
+    })?;
+    let granted: Vec<String> = decisions
+        .iter()
         .filter(|row| row.granted)
-        .map(|row| row.capability)
+        .map(|row| row.capability.clone())
+        .collect();
+    let denied: Vec<String> = decisions
+        .iter()
+        .filter(|row| !row.granted)
+        .map(|row| row.capability.clone())
         .collect();
     let grants = synra_capability::CapabilitySet::parse_all(granted.iter().map(String::as_str)).map_err(|error| {
         // A decision the user made names a capability this build cannot parse, so the page's permissions are unknown.
@@ -253,12 +321,53 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
         uuid::Uuid::new_v4().as_u128(),
         now,
     );
+
+    // ★ The environment the page's façade answers from. These are the host's facts, decided once, before the page
+    // loads: a round trip to learn something the shell already holds is a round trip that can fail, and a render that has
+    // to await `env.platform()` is a render that cannot branch synchronously.
+    let config = super::config::config_get(state)?;
+    let locale = config
+        .values
+        .get("ui.locale")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("en")
+        .to_owned();
+    let dark_mode = config.values.get("ui.theme").and_then(serde_json::Value::as_str) == Some("dark");
+    // The host the plugin was built against, which is what `env.sdkVersion()` answers; `min` is the compatibility floor,
+    // and reporting it would tell the plugin it was built against an older host than it was.
+    let sdk_version = manifest
+        .sdk
+        .preferred
+        .clone()
+        .unwrap_or_else(|| manifest.sdk.min.clone());
+    let platform = platform_name()?;
+    let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
+        "mobile"
+    }
+    else {
+        "desktop"
+    };
+
+    let seed = InjectionSeed {
+        label: &label,
+        token: nonce.to_string(),
+        plugin_id: id.as_str(),
+        granted: &granted,
+        denied_capabilities: &denied,
+        locale: &locale,
+        dark_mode,
+        sdk_version: &sdk_version,
+        platform,
+        host_kind,
+        app_version: env!("CARGO_PKG_VERSION"),
+    };
+    let script = initialization_script(FACADE, &seed)?;
+
     state.hosted_ui.lock().insert(
         label.clone(),
         crate::state::HostedUi { plugin_id: id, version: manifest.version, nonce, ready: false },
     );
 
-    let script = initialization_script(&label, nonce);
     Ok(OpenRequest { label, url, script })
 }
 

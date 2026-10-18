@@ -1,14 +1,18 @@
 import { antfu } from '@antfu/eslint-config'
 
 export default antfu({
-  // ★ Two build outputs, both ignored, both for the same reason.
+  // ★ Three build outputs, all ignored, all for the same reason.
   //
   // `dist` is the Tauri shell's `frontendDist` and `src-tauri/gen` is what `tauri-build` generates on every compile of
   // the shell — so `src-tauri/gen` appears the moment anyone builds the shell, and `dist` the moment anyone builds the
   // interface. Without these, `pnpm run build` followed by `pnpm run lint` fails with thousands of errors in generated
   // files, which reads as "the build produced bad code" and is only "lint is reading a build artefact". The ordering
   // hides it: a fresh checkout lints clean and the failure lands on whoever happened to build first.
-  ignores: ['dist', 'src-tauri/target', 'src-tauri/gen'],
+  //
+  // `src-tauri/inject/facade.js` is the plugin-page façade: `pnpm run build:facade` writes it, the shell embeds it with
+  // `include_str!`, and `scripts/check-shapes.ts` rebuilds it to prove the committed copy is current. It is minified
+  // output, so linting it can only report the minifier's style.
+  ignores: ['dist', 'src-tauri/target', 'src-tauri/gen', 'src-tauri/inject'],
 
   rules: {
     'style/comma-dangle': ['warn', 'never']

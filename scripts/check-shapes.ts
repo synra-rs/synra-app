@@ -18,10 +18,13 @@
  * and importing it at runtime is what the check is partly about.
  */
 
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+
+import { build } from 'vite'
 
 const here = fileURLToPath(new URL('..', import.meta.url))
 const clientTypes = join(here, '..', 'synra-js', 'packages', 'protocol', 'src')
@@ -721,12 +724,60 @@ async function checkCommandArguments(): Promise<void> {
   }
 }
 
+/**
+ * 7. The committed façade is what its source builds.
+ *
+ * ★ Why this check exists.
+ *
+ * `src-tauri/inject/facade.js` is generated from `src/ipc/injection/bootstrap.ts` and then **embedded in the shell with
+ * `include_str!`** — so a stale copy is not a cosmetic problem: it is the code a plugin page actually runs, and the
+ * source it was built from would be fiction. The file is committed because a Rust build must not need Node; this check is
+ * what makes the commit honest.
+ *
+ * The comparison is on the rebuilt bytes, not on a hash a script could forget to update: a build is the only thing that
+ * proves the two agree.
+ */
+async function checkFacadeIsFresh(): Promise<void> {
+  const committed = join(here, 'src-tauri', 'inject', 'facade.js')
+  const directory = await mkdtemp(join(tmpdir(), 'synra-facade-'))
+  const normalise = (text: string): string => text.replaceAll('\r\n', '\n')
+
+  try {
+    await build({
+      root: here,
+      configFile: join(here, 'vite.inject.config.ts'),
+      // The output goes somewhere disposable: on a good day the build proves the committed file, and on a bad day it
+      // proves nothing but must not have rewritten the file it is checking.
+      build: { outDir: directory, emptyOutDir: true },
+      logLevel: 'silent'
+    })
+    const rebuilt = normalise(await readFile(join(directory, 'facade.js'), 'utf8'))
+    const current = normalise(await readFile(committed, 'utf8'))
+    if (rebuilt !== current) {
+      failures.push({
+        check: 'facade-fresh',
+        detail: 'src-tauri/inject/facade.js does not match its source — run `pnpm run build:facade`'
+      })
+    }
+    else {
+      notes.push('facade: the committed façade is what `src/ipc/injection/bootstrap.ts` builds')
+    }
+  }
+  catch (cause) {
+    failures.push({ check: 'facade-fresh', detail: `the façade could not be rebuilt: ${String(cause)}` })
+  }
+  finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
 await checkCommandNames()
 await checkCommandArguments()
 await checkFakeIsQuarantined()
+await checkFacadeIsFresh()
 
 for (const note of notes) {
   console.log(`  · ${note}`)

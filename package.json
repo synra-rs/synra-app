@@ -6,7 +6,8 @@
   "description": "The Synra application: the Tauri shell and the host interface",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "pnpm run build:facade && vue-tsc -b && vite build",
+    "build:facade": "vite build --config vite.inject.config.ts",
     "check": "vue-tsc -b && pnpm run shapes",
     "shapes": "esno scripts/check-shapes.ts",
     "test": "vitest run --passWithNoTests",

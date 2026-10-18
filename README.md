@@ -42,14 +42,16 @@
   intents / settings）按事件更新；配对、传输、插件、配置、扫描都有发布点。
 - **网络那一半在窗口里**：`discovery.rs` 扫、`listener.rs` 收、`transfers.rs` 与 `sync_run.rs` 拨号发；
   插件页有自己的 origin（`synra-plugin://`）、令牌与初始化脚本。
-- 验证：`pnpm test` 179 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm build` 通过、`pnpm shapes` 守卫通过；
-  Rust 侧 164 条。
+- **插件页有 `window.synra`**：`src/ipc/injection/bootstrap.ts` 构建成 `src-tauri/inject/facade.js`
+  （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`；`device.list` 已经走 `plugin_ui_rpc`。
+  生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
+- 验证：`pnpm test` 184 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
+  Rust 侧 171 条。
 
 ### 还没有的（下一步就是这些）
 
-1. **插件页的注入对象还没有被装进页面**：`plugin_ui_rpc` 与 `device.list` 已经可用，但初始化脚本只放了 label 与 token，
-   没有代码用它们构造 `createInjection(context)` —— `injection/` 目前只在测试里被调用。所以插件作者拿到页面时
-   仍然没有 `window.synra`。其余方法（storage / network / transfer / clipboard / self）在表面上，但以 `unsupported` 拒绝。
+1. **插件页的其余能力**：`window.synra` 已经注入，但 storage / network / transfer / clipboard / self 仍在方法表面上、
+   以 `unsupported` 拒绝；`plugin_ui_rpc` 目前只实现了 `device.list`。
 2. **插件窗口的收尾**：`plugin_ui_open` 没有前端入口（插件卡上没有「打开」按钮），导航范围限制（`on_navigation`）未做，
    每窗口 CSP 受 Tauri 2.12 限制只能继承全局策略。
 3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。
@@ -107,9 +109,10 @@ synra-app/
 
 ```powershell
 pnpm install
-pnpm test            # vitest（169 条；默认 node 环境，四个页面各有一个 jsdom 挂载测试）
-pnpm build           # vue-tsc -b + vite build
-pnpm shapes          # 注入面 / 命令名 / 类型唯一性等 7 条守卫
+pnpm test             # vitest（184 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
+pnpm run build:facade # 生成 src-tauri/inject/facade.js —— Rust 侧 include_str! 它
+pnpm build            # vue-tsc -b + vite build
+pnpm shapes           # 8 条守卫（含 facade-fresh：重建门面并逐字节比较）
 
 pnpm tauri dev       # 真正跑起来：需要 WebView2（Windows）+ Rust 1.90+
 ```

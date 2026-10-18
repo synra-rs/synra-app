@@ -266,18 +266,91 @@ fn a_path_that_leaves_the_bundle_is_refused() {
 }
 
 #[test]
-fn the_initialization_script_carries_the_label_and_a_string_token() {
-    // ★ The token is quoted, and that is the assertion worth having: `u128::MAX` is not representable as a JavaScript
-    // number, and a script that emitted it bare would round — the page would then present a token that validates for
-    // nobody, and the symptom would look like "the page never became ready".
-    let script = super::initialization_script("page-1", u128::MAX);
+fn the_initialization_script_carries_a_frozen_seed_and_then_the_facade() {
+    // ★ Three properties in one string:
+    //   * the token is quoted, because `u128::MAX` is not representable as a JavaScript number and a bare one would
+    //     round — the page would present a token that validates for nobody;
+    //   * the seed is frozen **before** the façade runs, so a script on the page cannot rewrite its own grants;
+    //   * the façade is appended rather than imported, because an initialization script has no module loader.
+    let seed = super::InjectionSeed {
+        label: "page-1",
+        token: u128::MAX.to_string(),
+        plugin_id: "@acme/hello",
+        granted: &["log:*".to_owned()],
+        denied_capabilities: &[],
+        locale: "zh-CN",
+        dark_mode: true,
+        sdk_version: "0.1.0",
+        platform: "linux",
+        host_kind: "desktop",
+        app_version: "9.9.9",
+    };
 
-    assert!(script.contains("\"page-1\""), "the label, quoted");
+    let script = super::initialization_script("/* facade */", &seed).expect("a script");
+
+    assert!(script.starts_with("Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze("));
+    assert!(script.contains("\"label\":\"page-1\""), "the label, quoted");
     assert!(
-        script.contains(&format!("{:?}", u128::MAX.to_string())),
+        script.contains(&format!("\"token\":{:?}", u128::MAX.to_string())),
         "the token as a **string**, so no digits are lost"
     );
-    assert!(script.starts_with("Object.freeze("), "the page gets a frozen object, not a mutable global");
+    assert!(script.contains("\"granted\":[\"log:*\"]"), "the decisions travel with the seed");
+    assert!(script.ends_with("/* facade */"), "the façade runs after the seed, in the same script");
+}
+
+#[test]
+fn opening_a_page_writes_the_environment_the_facade_answers_from() {
+    // ★ The facts a plugin asks synchronously — platform, host kind, SDK version, locale, dark mode — are decided here,
+    // before the page loads. A missing one would leave a namespace answering `undefined`, which is the failure class the
+    // injected-surface tests exist to prevent.
+    let (_root, state) = installed_with_ui();
+    state
+        .db()
+        .record_grants(
+            ID,
+            &[("log:*".to_owned(), true), ("network:fetch".to_owned(), false)],
+            crate::testing::FIXED_NOW_MS,
+            "sha256-manifest",
+        )
+        .expect("decisions");
+    // The settings the user chose.
+    super::super::config::config_set(
+        &state,
+        &synra_ipc::ConfigPatch {
+            set: [
+                ("ui.locale".to_owned(), serde_json::json!("zh-CN")),
+                ("ui.theme".to_owned(), serde_json::json!("dark")),
+            ]
+            .into_iter()
+            .collect(),
+            unset: Vec::new(),
+        },
+    )
+    .expect("settings");
+
+    let request = super::open_request(&state, ID).expect("it has a UI");
+
+    for expected in [
+        "\"pluginId\":\"@synra-plugin/chat\"",
+        "\"granted\":[\"log:*\"]",
+        "\"deniedCapabilities\":[\"network:fetch\"]",
+        "\"locale\":\"zh-CN\"",
+        "\"darkMode\":true",
+        // The fixture declares `sdk.min = 1.0.0` and no `preferred`, so the floor is what the host reports.
+        "\"sdkVersion\":\"1.0.0\"",
+        "\"hostKind\":\"desktop\"",
+        "\"appVersion\":\"",
+    ] {
+        assert!(request.script.contains(expected), "the seed is missing {expected}: {}", request.script);
+    }
+    // ★ And the façade itself is in the script, after the seed. Without it the page would have a seed and no client —
+    // which is the state this whole round exists to end.
+    assert!(request.script.contains("window.__SYNRA_PLUGIN__"), "the façade reads the seed");
+    assert!(
+        request.script.contains("window.synra"),
+        "the façade publishes the client: {}",
+        &request.script[..request.script.len().min(200)]
+    );
 }
 
 #[test]
