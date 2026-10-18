@@ -38,11 +38,18 @@ use crate::state::AppState;
 #[must_use]
 pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellation> {
     let state = app.state::<Arc<AppState>>();
+    // ★ **Once**, and into a local, before anything else touches the identity.
+    //
+    // This was a self-deadlock: `Host::new(state.identity.lock().clone(), local_of(&state))` holds the guard from the first
+    // argument until the end of the statement — Rust keeps a temporary alive across the whole expression — and `local_of`
+    // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
+    // loaded, and the only sign was a white screen with discovery's log above it.
+    let identity = state.identity.lock().clone();
     // Binding can fail for reasons a user can act on — another copy of this application already holding the port — and a failure
     // here must not stop the window from appearing. The command that needs a link reports its own refusal; this one only logs.
     let host = Arc::new(Mutex::new(synra_core::Host::new(
-        state.identity.lock().clone(),
-        local_of(&state),
+        identity.clone(),
+        local_of(&identity),
     )));
 
     let port = match synra_core::listener::bind(&mut host.lock(), 0) {
@@ -111,8 +118,10 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
 }
 
 /// What this device says about itself on the wire.
-fn local_of(state: &AppState) -> synra_core::peer::LocalPeer {
-    let identity = state.identity.lock();
+///
+/// It takes the identity rather than the state: a version that locked the state would be the second caller of a lock its own caller
+/// already holds, and `parking_lot`'s mutex is not reentrant. Passing the value makes that impossible to write by accident.
+fn local_of(identity: &synra_core::identity::Identity) -> synra_core::peer::LocalPeer {
     synra_core::peer::LocalPeer::new(
         identity.device_id,
         identity.display_name.clone(),
