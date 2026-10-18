@@ -619,3 +619,43 @@ fn finishing_an_incoming_transfer_closes_its_row_and_announces_it() {
         "the panel is not told the transfer ended: {events:?}"
     );
 }
+
+#[test]
+fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
+    // ★ The receiving half of the transfer metrics, tested where the decision lives rather than through a socket: an
+    // aborted transfer is still a transfer (the user asked "did it arrive"), but the size histogram describes files that
+    // arrived, so it contributes none.
+    use synra_observe::metrics::Value;
+
+    let state = crate::testing::state();
+    super::record_received(&state, "attachment", 512, Some(std::time::Duration::from_millis(4)), true);
+    super::record_received(&state, "plugin-bundle", 1_024, Some(std::time::Duration::from_millis(8)), false);
+
+    let snapshot = state.metrics.snapshot();
+    assert_eq!(
+        snapshot.get("transfers_total{kind=attachment,outcome=aborted}"),
+        Some(&Value::Counter(1)),
+        "an aborted transfer is still counted"
+    );
+    assert_eq!(
+        snapshot.get("transfers_total{kind=plugin-bundle,outcome=received}"),
+        Some(&Value::Counter(1)),
+        "a received bundle is counted as one"
+    );
+    assert_eq!(
+        snapshot.get("transfer_bytes{kind=attachment}"),
+        None,
+        "an aborted transfer has no size"
+    );
+    match snapshot.get("transfer_bytes{kind=plugin-bundle}") {
+        Some(Value::Histogram(histogram)) => {
+            assert_eq!(histogram.count, 1);
+            assert_eq!(histogram.sum, 1_024.0);
+        }
+        other => panic!("expected a size histogram, got {other:?}"),
+    }
+    assert!(
+        snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
+        "an abort still took time from its first progress event"
+    );
+}

@@ -116,7 +116,16 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // ★ The kernel's own half, not a second implementation of it. The daemon has used this function since it
             // learned to record what arrives; the window used to record only "the peer holds this", return nothing, and
             // leave the sender waiting out its deadline for a result nobody sent.
+            // ★ When each inbound transfer was first seen. The finish callback knows the size but not when it started, and
+            // the progress callback is the only place that knows the first block arrived; one map shared by both closes
+            // that gap. A transfer that aborts before any progress has no start, and records no duration rather than one
+            // measured from a guess.
+            let inbound_started: Arc<
+                Mutex<std::collections::HashMap<synra_protocol::ids::TransferId, std::time::Instant>>,
+            > = Arc::new(Mutex::new(std::collections::HashMap::new()));
+
             let finished_state = Arc::clone(&db_state);
+            let finished_started = Arc::clone(&inbound_started);
             let finished: synra_core::listener::FinishedCallback = Arc::new(
                 move |transfer: &synra_core::listener::FinishedTransfer| {
                     // ★ The bytes are a `.synra` package now, so receiving one is **installing** it: the same pipeline the
@@ -150,6 +159,18 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     if let Some(transfer_id) = transfer.transfer_id {
                         crate::commands::transfers::complete_received(&finished_state, transfer_id);
                     }
+                    // ★ The receiving half's measurement, beside the row it closes. The kind comes from the same fact
+                    // the install branch above used, so a bundle is counted as a bundle.
+                    let started = transfer
+                        .transfer_id
+                        .and_then(|transfer_id| finished_started.lock().remove(&transfer_id));
+                    crate::commands::transfers::record_received(
+                        &finished_state,
+                        if transfer.bundle.is_some() { "plugin-bundle" } else { "attachment" },
+                        transfer.byte_length,
+                        started.map(|started| started.elapsed()),
+                        false,
+                    );
                     outcome
                 },
             );
@@ -157,19 +178,36 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // The peer's name is looked up once per connection and kept: a per-block query would be a database read for
             // every 64 KiB, and a row that showed an identifier for the first block and a name for the second would look
             // like two devices.
-            let progress_state = Arc::clone(&db_state);            let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
+            let progress_state = Arc::clone(&db_state);
+            let progress_started = Arc::clone(&inbound_started);
+            let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
                 Arc::new(Mutex::new(std::collections::HashMap::new()));
             let progress: Arc<synra_core::listener::ProgressCallback> = Arc::new(move |event| {
                 // ★ A sender's abort is the last event of a transfer that produced no file. The row is removed rather than
                 // marked completed: nothing arrived, and a "completed" row for a file that does not exist is a lie the
                 // panel would keep until the next restart.
                 if event.aborted {
+                    // ★ Counted before the row goes: "someone sent and it did not land" is a transfer, and the size is
+                    // deliberately not recorded — this histogram describes files that arrived.
+                    let started = progress_started.lock().remove(&event.progress.transfer_id);
+                    crate::commands::transfers::record_received(
+                        &progress_state,
+                        if event.progress.bundle.is_some() { "plugin-bundle" } else { "attachment" },
+                        event.progress.received_bytes,
+                        started.map(|started| started.elapsed()),
+                        true,
+                    );
                     crate::commands::transfers::withdraw_received(
                         &progress_state,
                         event.progress.transfer_id,
                     );
                     return;
                 }
+                // The first event for a transfer is its start; later blocks leave the time alone.
+                progress_started
+                    .lock()
+                    .entry(event.progress.transfer_id)
+                    .or_insert_with(std::time::Instant::now);
                 let key = event.peer.to_string();
                 let name = {
                     let mut names = names.lock();

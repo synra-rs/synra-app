@@ -514,20 +514,13 @@ impl SendOutcome {
     }
 }
 
-/// Records one started attempt: its result, how long it took, and — only when it delivered — how large it was.
+/// Records one outbound attempt: its result, how long it took, and — only when it delivered — how large it was.
 ///
 /// # Why `transfer_bytes` only on delivery
 ///
 /// The histogram answers "how large are the files this device sends". A cancelled or failed transfer never moved the
 /// whole file, so recording the planned size would describe bytes that never went. The attempt itself is in
 /// `transfers_total{kind, outcome}` and the time it cost is in `transfer_duration_ms`.
-///
-/// # Why the names are the daemon's
-///
-/// The daemon writes `transfer_bytes{kind}` and `transfer_duration_ms{kind}`, so the same transfer must not be called
-/// something else by the other host. `transfers_total` adds `outcome` because the daemon deliberately left it out — its
-/// exits are not funnelled, and a counter written on the success path alone would answer the wrong question.
-#[allow(clippy::cast_precision_loss)]
 fn record_send(
     state: &crate::state::AppState,
     kind: &str,
@@ -535,21 +528,85 @@ fn record_send(
     elapsed: std::time::Duration,
     outcome: SendOutcome,
 ) {
+    record_attempt(
+        state,
+        kind,
+        total_bytes,
+        Some(elapsed),
+        outcome.as_str(),
+        outcome == SendOutcome::Delivered,
+    );
+}
+
+/// Records one inbound attempt, as the receiving half saw it.
+///
+/// # Why an aborted transfer records no size
+///
+/// For the same reason a cancelled send does not: the size histogram describes files that arrived. The attempt is still
+/// counted (`outcome=aborted`), because "someone sent and it did not land" is the fact the user is asking about.
+///
+/// # Why the elapsed time is optional
+///
+/// The listener learns a transfer started from its first progress event. An abort that arrives before that event has no
+/// start to subtract, and inventing a zero would put a transfer that never moved into the latency distribution.
+///
+/// ★ The only caller is the listener, which is compiled only into the shell build (`tauri-shell`). The no-default build
+/// still has this function because its unit test runs there, so it is dead code **in that build only** — allowed here
+/// rather than hidden behind a `cfg(test)` that would make the function untestable from the shell's own module.
+#[cfg_attr(not(feature = "tauri-shell"), allow(dead_code))]
+pub(crate) fn record_received(
+    state: &crate::state::AppState,
+    kind: &str,
+    byte_length: u64,
+    elapsed: Option<std::time::Duration>,
+    aborted: bool,
+) {
+    record_attempt(
+        state,
+        kind,
+        byte_length,
+        elapsed,
+        if aborted { "aborted" } else { "received" },
+        !aborted,
+    );
+}
+
+/// The shape both directions share.
+///
+/// # Why the names are the daemon's
+///
+/// The daemon writes `transfer_bytes{kind}` and `transfer_duration_ms{kind}`, so the same transfer must not be called
+/// something else by the other host. `transfers_total` adds `outcome` because the daemon deliberately left it out — its
+/// exits are not funnelled, and a counter written on the success path alone would answer the wrong question.
+#[allow(clippy::cast_precision_loss)]
+fn record_attempt(
+    state: &crate::state::AppState,
+    kind: &str,
+    byte_length: u64,
+    elapsed: Option<std::time::Duration>,
+    outcome: &str,
+    record_bytes: bool,
+) {
     state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
         "transfers_total",
         [
             ("kind".to_owned(), kind.to_owned()),
-            ("outcome".to_owned(), outcome.as_str().to_owned()),
+            ("outcome".to_owned(), outcome.to_owned()),
         ],
     ));
-    state.metrics.histogram_observe(
-        &synra_observe::metrics::SeriesKey::new("transfer_duration_ms", [("kind".to_owned(), kind.to_owned())]),
-        elapsed.as_secs_f64() * 1_000.0,
-    );
-    if outcome == SendOutcome::Delivered {
+    if let Some(elapsed) = elapsed {
+        state.metrics.histogram_observe(
+            &synra_observe::metrics::SeriesKey::new(
+                "transfer_duration_ms",
+                [("kind".to_owned(), kind.to_owned())],
+            ),
+            elapsed.as_secs_f64() * 1_000.0,
+        );
+    }
+    if record_bytes {
         state.metrics.histogram_observe(
             &synra_observe::metrics::SeriesKey::new("transfer_bytes", [("kind".to_owned(), kind.to_owned())]),
-            total_bytes as f64,
+            byte_length as f64,
         );
     }
 }
