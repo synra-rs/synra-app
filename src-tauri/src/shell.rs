@@ -20,11 +20,11 @@
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use synra_ipc::DiagExportResult;
 use synra_store::{Paths, SynraDb};
 use tauri::Manager;
 
 use crate::commands;
-use crate::commands::diag::DiagExportResult;
 use crate::state::AppState;
 
 // ─────────────────────────────────────────────────────────────────────────────

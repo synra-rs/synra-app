@@ -7,29 +7,13 @@
 //! which is which will spend a day reading a log that was never in it. So the exclusions are not a property of the
 //! command — they are written into the artefact.
 
-use synra_ipc::{DiagExportOptions, IpcError};
+use synra_ipc::{DiagExportOptions, DiagExportResult, IpcError};
 use synra_observe::diagnostics::{
     BundlePlan, BundleSection, BundleSources, DeviceRecord, EnvSummary, PluginRecord,
 };
 use synra_protocol::ErrorCode;
 
 use crate::state::AppState;
-
-/// Where a bundle is written, and what it holds.
-///
-/// The answer rather than a bare path, because "here is your file" is not usable on its own: a user who has just agreed
-/// to share their configuration needs to be able to see what was in it before they send it to anybody, and `included`
-/// and `excluded` are what let them do that without opening the file in an editor.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiagExportResult {
-    /// The file that was written.
-    pub path: String,
-    /// Which sections it holds.
-    pub included: Vec<String>,
-    /// Which sections were left out, and why the user agreed to that.
-    pub excluded: Vec<String>,
-}
 
 
 /// What the loaded plugin set knows about each installed plugin.

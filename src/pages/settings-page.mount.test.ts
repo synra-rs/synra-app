@@ -365,4 +365,38 @@ describe('the settings page', () => {
     })
     wrapper.unmount()
   })
+
+  it('exports a diagnostic bundle and shows what it holds', async () => {
+    // ★ The bundle is the one result a user has to read back: a path alone says nothing about whether the audit trail
+    // went in, and the two optional sections are exactly the ones that name things they might not mean to share.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_export: {
+        path: 'C:/data/synra-diagnostics.json',
+        included: ['environment', 'config'],
+        excluded: ['audit trail: not requested']
+      }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const boxes = wrapper.findAllComponents({ name: 'ACheckbox' })
+    expect(boxes.length, 'the two optional sections are not drawn').toBeGreaterThanOrEqual(2)
+    await boxes[0]?.vm.$emit('update:checked', true)
+
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.settings.diagnostics.export)
+    expect(button, 'the export button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('diag_export', {
+      options: { includeAudit: true, includeDebugLogs: false }
+    })
+    expect(wrapper.text()).toContain('C:/data/synra-diagnostics.json')
+    expect(wrapper.text()).toContain(messages.settings.diagnostics.included('environment, config'))
+    expect(wrapper.text()).toContain(messages.settings.diagnostics.excluded('audit trail: not requested'))
+    wrapper.unmount()
+  })
 })

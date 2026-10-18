@@ -224,6 +224,60 @@
         </AButton>
       </div>
     </section>
+
+    <!--
+      ★ The bundle is the one thing on this page whose result the user has to *read back*: a file path alone says nothing
+      about whether the audit trail went in. The two optional sections are checkboxes rather than defaults because both
+      name things the user might not have meant to share.
+    -->
+    <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.diagnostics.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.diagnostics.detail }}
+      </p>
+      <div class="stack gap-1">
+        <ACheckbox
+          :checked="exportAudit"
+          @update:checked="(checked) => (exportAudit = checked)"
+        >
+          {{ messages.settings.diagnostics.audit }}
+        </ACheckbox>
+        <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.auditDetail }}</span>
+      </div>
+      <div class="stack gap-1">
+        <ACheckbox
+          :checked="exportDebug"
+          @update:checked="(checked) => (exportDebug = checked)"
+        >
+          {{ messages.settings.diagnostics.debug }}
+        </ACheckbox>
+        <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.debugDetail }}</span>
+      </div>
+      <div v-if="exportDebug" class="row gap-2">
+        <span class="text-sm">{{ messages.settings.diagnostics.lines }}</span>
+        <AInputNumber
+          :value="exportLines"
+          :min="1"
+          :max="10000"
+          :precision="0"
+          @update:value="(value) => (exportLines = typeof value === 'number' ? value : 1)"
+        />
+      </div>
+      <div class="row gap-2">
+        <AButton :loading="exporting" @click="exportDiagnostics">
+          {{ messages.settings.diagnostics.export }}
+        </AButton>
+      </div>
+      <div v-if="exported" class="stack gap-1">
+        <span class="text-xs text-ink-dim font-mono">{{ exported.path }}</span>
+        <span class="text-xs">{{ messages.settings.diagnostics.included(exported.included.join(', ')) }}</span>
+        <span v-if="exported.excluded.length > 0" class="text-xs text-ink-dim">
+          {{ messages.settings.diagnostics.excluded(exported.excluded.join('; ')) }}
+        </span>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -243,9 +297,10 @@
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
-import type { ConfigSnapshot, IdentitySnapshot, MetricsSnapshot, MetricValue, SeriesKey, SuggestedAction } from '@synra/protocol'
+import type { ConfigSnapshot, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, SeriesKey, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
+  Checkbox as ACheckbox,
   Descriptions as ADescriptions,
   Empty as AEmpty,
   Input as AInput,
@@ -366,6 +421,39 @@ async function saveRetention(): Promise<void> {
   savingRetention.value = false
   if (!answer.ok)
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
+
+/** Whether the bundle carries the audit trail; it names the plugins the user runs, so it is off until asked for. */
+const exportAudit = ref(false)
+
+/** Whether it carries debug lines; the section most likely to hold something the user did not mean to share. */
+const exportDebug = ref(false)
+
+/** How many log lines to include when debug lines are on. */
+const exportLines = ref(200)
+
+/** Whether a bundle is being written. */
+const exporting = ref(false)
+
+/** What the last bundle holds, so a user can check it did not include more than they agreed to. */
+const exported = ref<DiagExportResult | undefined>(undefined)
+
+/** Writes a diagnostic bundle, and shows the path and the section list it wrote. */
+async function exportDiagnostics(): Promise<void> {
+  exporting.value = true
+  error.value = undefined
+  const options = {
+    includeAudit: exportAudit.value,
+    includeDebugLogs: exportDebug.value,
+    ...(exportDebug.value ? { logLines: exportLines.value } : {})
+  }
+  const answer = await kernel.call<DiagExportResult>('diag_export', { options })
+  exporting.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  exported.value = answer.value
 }
 
 /** The device being un-trusted, so its button can say so. */

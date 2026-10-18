@@ -101,6 +101,9 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   transfer_list: undefined,
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
   plugins_publishers: undefined,
+  // `One`, with the option bag the wrapper requires: the page builds it, and a fake that ignored it would answer a shape
+  // the page could not have produced.
+  diag_export: { options: { includeAudit: false, includeDebugLogs: false } },
   // `Unit`: the answer has no shape to hold a caller to, which is the claim this entry makes alongside the declaration.
   plugins_audit_clear: { pluginId: '@acme/hello' },
   plugins_update: { pluginId: '@acme/hello' },

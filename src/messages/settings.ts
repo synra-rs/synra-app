@@ -51,6 +51,19 @@ export const settings = {
     detail: 'Recorded plugin calls are kept for this many days, then removed the next time the kernel starts.',
     save: 'Save'
   },
+  /** What a user sends when something is wrong, and the two optional sections that need a decision. */
+  diagnostics: {
+    title: 'Diagnostics',
+    detail: 'A bundle of this device\u2019s environment, configuration, devices and plugins, for whoever is helping you. The audit trail and debug logs are opt-in, and the file records what it contains.',
+    audit: 'Include the audit trail',
+    auditDetail: 'It names the plugins you run.',
+    debug: 'Include debug log lines',
+    debugDetail: 'They are the most likely to contain something you did not mean to share.',
+    lines: 'Log lines',
+    export: 'Export diagnostics',
+    included: (sections: string): string => `Includes: ${sections}`,
+    excluded: (sections: string): string => `Left out: ${sections}`
+  },
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',

@@ -69,7 +69,8 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
-  plugins_request_registry_search: ['query']
+  plugins_request_registry_search: ['query'],
+  diag_export: ['options']
 }
 
 /**
@@ -152,6 +153,14 @@ export class FakeKernel implements Bridge {
       case 'plugins_audit_clear':
         // `Unit`: the shell answers nothing on success, and the page replaces its list with the empty state itself.
         return null
+      case 'diag_export':
+        // `One`: a path and the two section lists. A fake that answered `null` would make the result panel untestable in
+        // the dev build, and the shape here is the one `DiagExportResult` declares.
+        return {
+          path: 'synra-diagnostics.json',
+          included: ['environment', 'config', 'devices', 'plugins'],
+          excluded: []
+        }
       case 'plugins_publisher_decide':
         return {}
       case 'plugins_preview':
