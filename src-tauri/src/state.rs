@@ -96,6 +96,12 @@ pub struct AppState {
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 
+    /// The desktop platform: the clipboard, the browser and notifications.
+    ///
+    /// ★ One instance, shared with the plugin host. The platform keeps per-instance state — the notification limiter —
+    /// so a page calling through a second instance would get a second hourly allowance for the same user.
+    pub platform: Arc<synra_platform::CommandPlatform>,
+
     /// The shell's own metrics, filled by the plugin gate.
     ///
     /// ★ Why the shell holds one, which is the same story as the log ring below.
@@ -207,6 +213,7 @@ impl AppState {
                 synra_protocol::session::SessionTimeouts::default().pairing,
             )),
             started_at_ms: now_ms,
+            platform: Arc::new(synra_platform::CommandPlatform::new()),
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
             log: None,
             events: Arc::new(synra_core::bus::EventBus::new()),

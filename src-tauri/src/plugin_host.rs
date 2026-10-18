@@ -23,6 +23,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use synra_capability::CapabilitySet;
+use synra_platform::Platform as _;
 use synra_plugin_host::host_calls::{CallError, Host};
 use synra_protocol::ids::PluginId;
 use synra_store::SynraDb;
@@ -34,10 +35,10 @@ pub struct DesktopHost {
     db: Arc<Mutex<SynraDb>>,
     /// The desktop, over `synra-platform`'s command runner.
     ///
-    /// ★ The piece that was implemented, tested and unreachable. It opens URLs, reveals paths, reads and writes the
-    /// clipboard, shows notifications and simulates a key chord — each of them behind the guard, so a malformed URL is
-    /// refused before anything is launched.
-    platform: synra_platform::CommandPlatform,
+    /// ★ Shared with `AppState` and not owned here. The platform keeps per-instance state — the notification limiter is
+    /// the one that matters — and a host with its own copy would let a plugin page's `platform.notify` use an allowance
+    /// the headless half had already spent, or the other way round.
+    platform: Arc<synra_platform::CommandPlatform>,
     /// One fetcher per plugin, and the hosts it was built for.
     ///
     /// ★ Why a cache rather than one client per call: a client holds the plugin's **in-flight count**, so a client built per
@@ -56,11 +57,20 @@ type FetchClients = std::collections::HashMap<PluginId, (Vec<String>, Arc<synra_
 
 impl DesktopHost {
     /// A host over the shell's own state.
+    ///
+    /// ★ Kept for tests and for a host that has no `AppState`; a shell uses [`DesktopHost::with_platform`] so the host and
+    /// `plugin_ui_rpc` share one platform.
     #[must_use]
     pub fn new(db: Arc<Mutex<SynraDb>>) -> Self {
+        Self::with_platform(db, Arc::new(synra_platform::CommandPlatform::default()))
+    }
+
+    /// A host over the state, using the platform the rest of the shell uses.
+    #[must_use]
+    pub fn with_platform(db: Arc<Mutex<SynraDb>>, platform: Arc<synra_platform::CommandPlatform>) -> Self {
         Self {
             db,
-            platform: synra_platform::CommandPlatform::default(),
+            platform,
             fetch_clients: Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -227,7 +237,8 @@ impl Host for DesktopHost {
     fn platform_capabilities(&self) -> Vec<String> {
         // What this desktop can actually do rather than what a build might — `synra-platform` answers for the machine it
         // is running on, and inventing a list here would be a promise this shell cannot keep.
-        synra_platform::Platform::supported_actions(&self.platform)
+        self.platform
+            .supported_actions()
             .iter()
             .map(|action| action.capability().to_owned())
             .collect()
@@ -264,7 +275,6 @@ impl Host for DesktopHost {
         action: &str,
         argument: &str,
     ) -> Result<Option<String>, CallError> {
-        use synra_platform::Platform as _;
         // A notification carries a title and a body separated by the contract's own delimiter, which is the shape
         // `host_calls` builds when it sends one.
         let outcome = match action {

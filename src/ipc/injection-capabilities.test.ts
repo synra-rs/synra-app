@@ -25,8 +25,9 @@ describe('what the host advertises and what it does', () => {
   for (const feature of FEATURES) {
     it(`\`${feature}\` is advertised exactly when the call works`, async () => {
       // The grants that remove "denied" from the picture, so what is left is "the host cannot do this yet" and not
-      // "this plugin was not allowed".
-      const synra = createInjection(context({ granted: ['device.pick', 'clipboard_read'] }))
+      // "this plugin was not allowed". The capability names are the manifest's (`platform:read-clipboard`), not the
+      // method's (`clipboard.read`) — the two vocabularies are different on purpose.
+      const synra = createInjection(context({ granted: ['device.pick', 'platform:read-clipboard'] }))
       const advertised = synra.env.hostSupports(feature)
 
       const failure = await CALLS[feature](synra).then(
@@ -59,9 +60,14 @@ describe('capabilities the plugin was refused', () => {
     await expect(synra.clipboard.read()).rejects.toMatchObject({ code: 'capability_denied' })
   })
 
-  it('clipboard.read is refused as unsupported with the grant, because no command exists', async () => {
-    const synra = createInjection(context({ granted: ['clipboard_read'] }))
-    await expect(synra.clipboard.read()).rejects.toMatchObject({ code: 'unsupported' })
+  it('clipboard.read names the capability, not the method', async () => {
+    // ★ The spelling the manifest declares. The old check said `clipboard_read`, which appears in no manifest and no
+    // capability table — a page that declared the real capability was still denied.
+    const synra = createInjection(context({ granted: ['platform:write-clipboard'] }))
+    await expect(synra.clipboard.read()).rejects.toMatchObject({
+      code: 'capability_denied',
+      details: { capability: 'platform:read-clipboard' }
+    })
   })
 
   it('device.pick is refused as denied without the grant', async () => {

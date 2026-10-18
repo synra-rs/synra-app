@@ -27,5 +27,7 @@ export const BACKED: Readonly<Record<ClientFeature, boolean>> = {
   'transfer.onProgress': true,
   'device.pick': false,
   'network.fetch': false,
-  'clipboard.read': false
+  // ★ True since the clipboard went over the plugin channel: the call reaches `platform:read-clipboard` and the
+  // platform runner. An empty clipboard is `''`, not a refusal — the ordinary case must not be a `catch`.
+  'clipboard.read': true
 }

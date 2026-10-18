@@ -41,11 +41,10 @@ import { createEnvNamespace } from './env'
 import { isSynraErrorValue } from './errors'
 import { createEventNamespace } from './event'
 import { createLogNamespace } from './log'
+import { createClipboardNamespace, createPlatformNamespace } from './platform'
 import { createStorageNamespace } from './storage'
 import {
-  createClipboardNamespace,
   createNetworkNamespace,
-  createPlatformNamespace,
   createSelfNamespace,
   createTransferNamespace
 } from './unsupported-namespaces'
@@ -78,8 +77,8 @@ export function createInjection(context: InjectionContext): SynraClient {
     storage: createStorageNamespace(context),
     network: createNetworkNamespace(),
     transfer: createTransferNamespace(),
-    platform: createPlatformNamespace(),
-    clipboard: createClipboardNamespace(granted),
+    platform: createPlatformNamespace(context),
+    clipboard: createClipboardNamespace(context),
     self: createSelfNamespace(),
     isSynraError: (value: unknown): value is SynraError => isSynraErrorValue(value),
     isCode: (value: unknown, code: ErrorCode) => isSynraErrorValue(value) && value.code === code,

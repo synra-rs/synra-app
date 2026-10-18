@@ -19,6 +19,7 @@
 use crate::state::AppState;
 use synra_capability::Capability;
 use synra_ipc::{IpcError, PluginUiOp};
+use synra_platform::Platform as _;
 use synra_plugin_ui::ValidatedSession;
 use synra_protocol::ErrorCode;
 use synra_protocol::ids::PluginId;
@@ -127,6 +128,10 @@ pub fn plugin_ui_rpc(
         PluginUiOp::StorageDelete => storage_delete(state, &session, &plugin_id, args),
         PluginUiOp::StorageKeys => storage_keys(state, &session, &plugin_id, args),
         PluginUiOp::StorageQuota => storage_quota(state, &session, &plugin_id),
+        PluginUiOp::ClipboardRead => clipboard_read(state, &session),
+        PluginUiOp::ClipboardWrite => clipboard_write(state, &session, args),
+        PluginUiOp::PlatformOpenUrl => platform_open_url(state, &session, args),
+        PluginUiOp::PlatformNotify => platform_notify(state, &session, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "method": method,
             "reason": "the operation is on the plugin surface and this build does not implement it",
@@ -323,6 +328,90 @@ fn storage_quota(
         "usedBytes": used,
         "maxBytes": storage_limit(state, plugin),
     }))
+}
+
+// ── The desktop: clipboard, browser, notifications ─────────────────────────────────────────────
+//
+// ★ Why these go through `AppState.platform` rather than constructing a platform per call.
+//
+// `CommandPlatform` carries per-instance state — the notification limiter is the one that matters — so a fresh instance
+// per call would hand a plugin a second hourly allowance for the same user. The host and this channel share one.
+
+/// The error code a refused platform action carries.
+///
+/// # Why the mapping is explicit rather than a `From`
+///
+/// Because `PlatformError`'s vocabulary is the platform's and `ErrorCode`'s is the wire's, and the two disagree on the
+/// two cases a plugin acts on: a rate limit tells it to wait, a quota tells it to stop asking, and an oversized value
+/// tells it to send less. A mechanical conversion would collapse them into "internal" and lose exactly the part a
+/// plugin could recover from.
+fn platform_error(error: synra_platform::PlatformError) -> IpcError {
+    use synra_platform::PlatformError;
+
+    match error {
+        PlatformError::RateLimited { remaining_ms, .. } => {
+            IpcError::unknown(ErrorCode::RateLimited)
+                .with_params(serde_json::json!({"retryAfterMs": remaining_ms}))
+        }
+        PlatformError::QuotaExceeded { used, limit, .. } => IpcError::unknown(ErrorCode::RateLimited)
+            .with_params(serde_json::json!({"quota": "platform", "used": used, "limit": limit})),
+        PlatformError::TooLong { field, len, max } => {
+            IpcError::unknown(ErrorCode::PayloadTooLarge)
+                .with_params(serde_json::json!({"field": field, "len": len, "max": max}))
+        }
+        PlatformError::Unsupported(what) => IpcError::unknown(ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"reason": what})),
+        // A refused URL or path is the caller's argument: the scheme, the credentials or the shape of it.
+        PlatformError::BadUrl { reason, .. } => IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": "url", "reason": reason.to_string()})),
+        PlatformError::BadPath { reason, .. } => IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": "path", "reason": reason.to_string()})),
+        other => internal(other),
+    }
+}
+
+/// The clipboard, read through the platform runner.
+fn clipboard_read(state: &AppState, session: &ValidatedSession) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "platform:read-clipboard", "clipboard.read")?;
+    let text = state.platform.read_clipboard().map_err(platform_error)?;
+    Ok(text.map_or(serde_json::Value::Null, serde_json::Value::String))
+}
+
+/// The clipboard, written through the platform runner.
+fn clipboard_write(
+    state: &AppState,
+    session: &ValidatedSession,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "platform:write-clipboard", "clipboard.write")?;
+    let text = string_arg(args, "text")?;
+    state.platform.write_clipboard(text).map_err(platform_error)?;
+    Ok(serde_json::Value::Null)
+}
+
+/// A URL in the user's browser, after the platform's own scheme checks.
+fn platform_open_url(
+    state: &AppState,
+    session: &ValidatedSession,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "platform:open-url", "platform.openUrl")?;
+    let url = string_arg(args, "url")?;
+    state.platform.open_url(url).map_err(platform_error)?;
+    Ok(serde_json::Value::Null)
+}
+
+/// A visible notification, subject to the platform's hourly ceiling.
+fn platform_notify(
+    state: &AppState,
+    session: &ValidatedSession,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "platform:notify", "platform.notify")?;
+    let title = string_arg(args, "title")?;
+    let body = string_arg(args, "body")?;
+    state.platform.notify(title, body).map_err(platform_error)?;
+    Ok(serde_json::Value::Null)
 }
 
 /// The façade a plugin page runs: built by `pnpm run build:facade`, embedded here.

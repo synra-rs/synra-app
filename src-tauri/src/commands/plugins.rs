@@ -466,7 +466,10 @@ mod tests {
     /// The backend answers from a table rather than compiling Wasm: what is being tested is the shell's command — the
     /// source it accepts, the report it returns and the row that lands — and the pipeline behind it has its own tests.
     fn with_engine(state: crate::state::AppState) -> crate::state::AppState {
-        let host = std::sync::Arc::new(crate::plugin_host::DesktopHost::new(std::sync::Arc::clone(&state.db)));
+        let host = std::sync::Arc::new(crate::plugin_host::DesktopHost::with_platform(
+            std::sync::Arc::clone(&state.db),
+            std::sync::Arc::clone(&state.platform),
+        ));
         let backend =
             synra_plugin_host::Backend::new(std::sync::Arc::new(synra_plugin_host::ScriptedBackend::new()));
         state.with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(

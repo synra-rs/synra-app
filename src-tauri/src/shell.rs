@@ -692,7 +692,10 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
             // `PluginSet::new` took an engine alone when this line was written and takes a host as well now. The second
             // argument is not a detail: an instance with no session refuses every host call, which is what made the
             // capability gate inert, and requiring the host is what made that state unrepresentable.
-            let host = Arc::new(crate::plugin_host::DesktopHost::new(Arc::clone(&state.db)));
+            let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
+                Arc::clone(&state.db),
+                Arc::clone(&state.platform),
+            ));
             let backend = synra_plugin_host::Backend::new(Arc::new(engine));
             // ★ The same question the daemon asks, for the same reason: an engine that cannot enforce what this
             // host will ask of it must not run third-party code at all.
