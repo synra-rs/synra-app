@@ -132,9 +132,9 @@ pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<In
     // The database guard is scoped to the call rather than held while the report is built: this mutex is not reentrant,
     // and a `plugins_list` inside the same breadth would be a hang rather than an error.
     let outcome = {
-        let db = state.db();
+        let mut db = state.db();
         synra_core::install::from_directory(
-            &db,
+            &mut db,
             set.backend(),
             &state.paths.plugins_dir(),
             std::path::Path::new(path),
