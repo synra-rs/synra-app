@@ -103,6 +103,40 @@ pub fn plugins_consent_respond(
     Ok(card)
 }
 
+/// Installs a `.synra` package a peer sent, with this shell's engine.
+///
+/// # Why the backend is cloned before the install
+///
+/// Because the plugin set's lock is shared with every command that asks about plugins, and an install compiles an
+/// artifact. Holding it across that read is a window in which the whole interface waits for one package; cloning the
+/// handle costs an `Arc` and releases the lock before any work starts.
+///
+/// # Errors
+///
+/// A sentence naming the stage that refused, because the caller sends it back to the peer as the sync result.
+///
+/// ★ `tauri-shell` only, because its only caller is the listener, which is the shell's.
+#[cfg(feature = "tauri-shell")]
+pub(crate) fn install_package(
+    state: &AppState,
+    db: &mut synra_store::SynraDb,
+    archive: &std::path::Path,
+) -> Result<synra_core::install::Installed, String> {
+    let backend = state.plugins.as_ref().map(|set| set.lock().backend().clone());
+    let Some(backend) = backend else {
+        return Err("this shell has no plugin engine, so it cannot install a package".to_owned());
+    };
+    synra_core::install::from_package(
+        db,
+        &backend,
+        &state.paths.plugins_dir(),
+        archive,
+        synra_store::sqlite::now_ms(),
+        synra_plugin_host::verify::HostFacts::desktop(),
+    )
+    .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
+}
+
 /// Installs a plugin from a directory, through the checks, and reports what the user has to be told.
 ///
 /// # Why the shell installs rather than the kernel

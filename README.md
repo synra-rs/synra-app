@@ -59,7 +59,8 @@
    500 ms 轮询）已经做了；退出路径（`ExitRequested`，托盘 Quit 也走它）会取消 listener 与 discovery 的 token。
    **还没有**：`events` / `pairing` 两个转发线程的显式取消（它们不持有 socket，随进程结束带走）。
 4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
-   接收端仍然只写 `plugins` 行而不解包（包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。
+   发送侧把已安装目录打成 `.synra`（跳过已解包的 `ui/`），接收侧（窗口与 daemon 都是）先 `install::from_package`
+   走完整校验与落盘，再 `record_received` 写历史与对端状态；安装失败时回 `refused` 而不是声称已装。
 5. **接收端的接受/拒绝**：入站传输的接受与逐块进度已经写进同一张表，但任何已配对设备的附件仍直接落 inbox，
    还没有 `file.transfer.request` 的询问步骤。
 

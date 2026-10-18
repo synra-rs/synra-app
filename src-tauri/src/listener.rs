@@ -119,9 +119,31 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             let finished_state = Arc::clone(&db_state);
             let finished: synra_core::listener::FinishedCallback = Arc::new(
                 move |transfer: &synra_core::listener::FinishedTransfer| {
+                    // ★ The bytes are a `.synra` package now, so receiving one is **installing** it: the same pipeline the
+                    // install command runs, over the archive the peer sent. `record_received` then writes the history and
+                    // the sync state — and its plugin-row insert fails harmlessly, because the installer already made one
+                    // with a version attached.
                     let outcome = {
-                        let db = finished_state.db();
-                        synra_core::plugin_sync::record_received(&db, transfer)
+                        let mut db = finished_state.db();
+                        match &transfer.bundle {
+                            Some(plugin_id) => match crate::commands::plugins::install_package(
+                                &finished_state,
+                                &mut db,
+                                &transfer.path,
+                            ) {
+                                Ok(_) => synra_core::plugin_sync::record_received(&db, transfer),
+                                Err(error) => Some(synra_core::plugin_sync::SyncOutcome::refused(
+                                    plugin_id.clone(),
+                                    synra_core::plugin_sync::SyncSessionId::new(
+                                        transfer
+                                            .sync_session_id
+                                            .map_or_else(String::new, |session| session.to_string()),
+                                    ),
+                                    error,
+                                )),
+                            },
+                            None => synra_core::plugin_sync::record_received(&db, transfer),
+                        }
                     };
                     // ★ And the row this side opened when the proposal arrived. The receiving half of a transfer has no
                     // worker to remove it; without this the panel would show a transfer as arriving for ever.

@@ -80,17 +80,41 @@ pub fn plugins_sync_run(state: &crate::state::AppState, plan: &SyncPlanDto) -> R
         })));
     }
 
+    // ★ The package, not the bare artifact: the receiver unpacks a `.synra` and runs the installer over it, so what it
+    // gets has the manifest, the signature and the UI zip beside the Wasm. It is built once for this round rather than
+    // once per device: the bytes are the same, and packaging is a read of the whole plugin directory.
+    let archive_dir = state.paths.cache_dir().join("plugin-sync");
+    std::fs::create_dir_all(&archive_dir).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": format!("{}: {error}", archive_dir.display())}))
+    })?;
+    let archive = archive_dir.join(format!(
+        "{}-{}.synra",
+        plan.plugin_id.as_str().replace(['/', '\\'], "_"),
+        active.version
+    ));
+    synra_core::install::package_directory(&state.paths.plugin_dir(plan.plugin_id.as_str()), &archive)
+        .map_err(|refusal| {
+            IpcError::unknown(refusal.code()).with_params(serde_json::json!({
+                "stage": refusal.stage,
+                "reason": refusal.reason,
+            }))
+        })?;
+
     let mut report = SyncReport { updated: 0, unchanged: 0, failures: Vec::new() };
     for target in &plan.targets {
         if !target.needs_artifact {
             report.unchanged += 1;
             continue;
         }
-        match send_to(state, target.device_id, &plan.plugin_id, &active, &path) {
+        match send_to(state, target.device_id, &plan.plugin_id, &active, &archive) {
             Ok(()) => report.updated += 1,
             Err(error) => report.failures.push(SyncFailure { device_id: target.device_id, error }),
         }
     }
+    // The package was this call's to make and to remove; a leftover would be a copy of a plugin in the cache directory
+    // that nothing will ever delete.
+    let _ = std::fs::remove_file(&archive);
     Ok(report)
 }
 
