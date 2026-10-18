@@ -78,14 +78,19 @@
                 <!--
                   The same command for both directions: an outgoing transfer stops its worker, an incoming one leaves the
                   identifier for the listener, which is the only writer to that link.
+                  ★ Asked first: a cancel throws away bytes that may be most of a file, and a button a slip of the mouse
+                  can press is a button that will be pressed by mistake.
                 -->
-                <AButton
-                  size="small"
-                  :loading="cancelling === transfer.transferId"
-                  @click="cancelTransfer(transfer)"
+                <APopconfirm
+                  :title="messages.home.inFlight.confirm"
+                  :ok-text="messages.home.inFlight.abandon"
+                  :cancel-text="messages.home.inFlight.keep"
+                  @confirm="cancelTransfer(transfer)"
                 >
-                  {{ messages.home.inFlight.cancel }}
-                </AButton>
+                  <AButton size="small" :loading="cancelling === transfer.transferId">
+                    {{ messages.home.inFlight.cancel }}
+                  </AButton>
+                </APopconfirm>
               </div>
             </div>
             <!--
@@ -155,7 +160,7 @@
  * worth looking at.
  */
 import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'

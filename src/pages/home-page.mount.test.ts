@@ -126,6 +126,13 @@ describe('the home page', () => {
     await cancel?.trigger('click')
     await flushPromises()
 
+    // ★ Asked first: the click only opens the question, and the bytes are still moving until "Abandon" is pressed.
+    expect(mocks.call).not.toHaveBeenCalledWith('transfer_cancel', expect.anything())
+    const question = wrapper.findComponent({ name: 'APopconfirm' })
+    expect(question.exists()).toBe(true)
+    await question.vm.$emit('confirm')
+    await flushPromises()
+
     expect(mocks.call).toHaveBeenCalledWith('transfer_cancel', { transferId: transfer.transferId })
     wrapper.unmount()
   })

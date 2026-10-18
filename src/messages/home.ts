@@ -28,6 +28,9 @@ export const home = {
     empty: 'Nothing is on its way to another device.',
     action: 'Choose a device',
     cancel: 'Cancel',
+    confirm: 'Abandon this transfer?',
+    abandon: 'Abandon',
+    keep: 'Keep sending',
     progress: '{done} of {total}'
   },
 
