@@ -46,8 +46,8 @@
       </h2>
 
       <!--
-        The reason a control does nothing appears on the control itself, not as a paragraph: the switch writes and the
-        theme select does not, and a page-wide "nothing works yet" sentence would be false for one of the two.
+        The reason a control does nothing appears where the control would be, not as a page-wide paragraph: the switch
+        writes, and the theme row says why there is no second choice.
       -->
       <div class="stack gap-3">
         <div v-for="key in KEYS" :key="key" class="row-between gap-4">
@@ -69,10 +69,11 @@
           />
 
           <!--
-              A select with no options: the set of themes is the kernel's to name, and a list we wrote here would be
-              this page inventing values it does not own. Disabled, it shows the value it was given and nothing else.
+              ★ One theme, and the sentence says so. A select with no options looked like a control the page had failed
+              to fill; `ui.theme` is a record the kernel keeps and plugins read, not a preference this device can change
+              (28 §6 R22). The value itself is printed above.
             -->
-          <ASelect v-else :value="preferenceValue(key)" disabled class="w-fit" />
+          <span v-else class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
         </div>
       </div>
     </section>
@@ -189,7 +190,6 @@ import {
   Empty as AEmpty,
   Input as AInput,
   List as AList,
-  Select as ASelect,
   Switch as ASwitch
 } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -200,8 +200,7 @@ import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
-/** The keys this page knows about, in the order they are shown. */
-const KEYS = ['theme', 'autoSyncPlugins'] as const
+/** The keys this page knows about, in the order they are shown. */const KEYS = ['theme', 'autoSyncPlugins'] as const
 
 type PreferenceKey = typeof KEYS[number]
 
@@ -220,17 +219,6 @@ const identity = ref<IdentitySnapshot | undefined>(undefined)
  */
 function configKey(key: PreferenceKey): string {
   return `ui.${key}`
-}
-
-/**
- * The kernel's answer for a key, as a select can show it.
- *
- * A select holds scalars, and the kernel's bag is `unknown`, so anything that is not one is passed to the control as
- * "no value" rather than stringified into a value this page made up.
- */
-function preferenceValue(key: PreferenceKey): string | number | undefined {
-  const value = settings.value(configKey(key))
-  return typeof value === 'string' || typeof value === 'number' ? value : undefined
 }
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */

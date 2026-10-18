@@ -27,6 +27,8 @@ export const settings = {
     theme: 'Theme',
     autoSyncPlugins: 'Update plugins automatically'
   },
+  /** Why the theme row has no control, where a control would be. */
+  themeFixed: 'One palette ships with the host; plugins read this value rather than choosing another.',
   /**
    * The devices this one accepts files from without asking. The list is the consequence of a choice made at the prompt,
    * and removing a row here is how that choice is taken back.
