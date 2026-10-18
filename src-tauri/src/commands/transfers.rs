@@ -366,6 +366,9 @@ pub fn send_over_with(
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
+    let started = std::time::Instant::now();
+    let kind = row.kind.clone();
+    let total_bytes = row.total_bytes;
     let transfer_id = row.transfer_id;
     let identity = state.identity.lock().clone();
     let now_ms = unix_millis();
@@ -379,13 +382,16 @@ pub fn send_over_with(
     ) {
         Ok(dialled) => dialled,
         Err(error) => {
+            // ★ A dial that never connected is still an attempt, and the one a user most wants counted: it is the failure
+            // that happens before any block moves. `send_ready_since` records the other exits.
+            record_send(state, &kind, total_bytes, started.elapsed(), SendOutcome::Failed);
             finish_transfer(state, transfer_id);
             return Err(IpcError::unknown(ErrorCode::TransferFailed)
                 .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()})));
         }
     };
     let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
-    send_ready_with(state, to, &mut link, sender, row, cancel)
+    send_ready_since(state, to, &mut link, sender, row, cancel, started)
 }
 
 /// Moves the blocks over a link that is already connected, and reports each one.
@@ -416,9 +422,25 @@ pub fn send_ready_with(
     state: &crate::state::AppState,
     to: synra_protocol::ids::DeviceId,
     link: &mut synra_core::link::PeerLink,
+    sender: synra_core::transfer::TransferSender,
+    row: TransferSnapshot,
+    cancel: Option<&synra_core::supervisor::Cancellation>,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    send_ready_since(state, to, link, sender, row, cancel, std::time::Instant::now())
+}
+
+/// The body both entries share.
+///
+/// `started` is when the attempt began — before the dial when there is one, so `transfer_duration_ms` covers the whole
+/// attempt rather than only the block loop. A caller that already has a link passes `Instant::now()`.
+fn send_ready_since(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    link: &mut synra_core::link::PeerLink,
     mut sender: synra_core::transfer::TransferSender,
     mut row: TransferSnapshot,
     cancel: Option<&synra_core::supervisor::Cancellation>,
+    started: std::time::Instant,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
@@ -444,10 +466,14 @@ pub fn send_ready_with(
             }
         },
     );
-    if matches!(
-        &outcome,
-        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled))
-    ) {
+    let ended = match &outcome {
+        Ok(()) => SendOutcome::Delivered,
+        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled)) => SendOutcome::Cancelled,
+        Err(_) => SendOutcome::Failed,
+    };
+    record_send(state, &row.kind, row.total_bytes, started.elapsed(), ended);
+
+    if ended == SendOutcome::Cancelled {
         // ★ The peer is told, not merely dropped. A sender that closes without an abort sees its blocks stop arriving and
         // waits out its own transfer window; an abort ends the round on both sides.
         let _ = synra_core::abort(
@@ -464,6 +490,68 @@ pub fn send_ready_with(
         IpcError::unknown(ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}))
     })
+}
+
+/// Why an outbound transfer ended, as the metric label spells it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SendOutcome {
+    /// Every block reached the link.
+    Delivered,
+    /// The user stopped it before the loop finished.
+    Cancelled,
+    /// The link refused a block, or the loop failed.
+    Failed,
+}
+
+impl SendOutcome {
+    /// The label `transfers_total{outcome}` carries.
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Delivered => "delivered",
+            Self::Cancelled => "cancelled",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// Records one started attempt: its result, how long it took, and — only when it delivered — how large it was.
+///
+/// # Why `transfer_bytes` only on delivery
+///
+/// The histogram answers "how large are the files this device sends". A cancelled or failed transfer never moved the
+/// whole file, so recording the planned size would describe bytes that never went. The attempt itself is in
+/// `transfers_total{kind, outcome}` and the time it cost is in `transfer_duration_ms`.
+///
+/// # Why the names are the daemon's
+///
+/// The daemon writes `transfer_bytes{kind}` and `transfer_duration_ms{kind}`, so the same transfer must not be called
+/// something else by the other host. `transfers_total` adds `outcome` because the daemon deliberately left it out — its
+/// exits are not funnelled, and a counter written on the success path alone would answer the wrong question.
+#[allow(clippy::cast_precision_loss)]
+fn record_send(
+    state: &crate::state::AppState,
+    kind: &str,
+    total_bytes: u64,
+    elapsed: std::time::Duration,
+    outcome: SendOutcome,
+) {
+    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
+        "transfers_total",
+        [
+            ("kind".to_owned(), kind.to_owned()),
+            ("outcome".to_owned(), outcome.as_str().to_owned()),
+        ],
+    ));
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new("transfer_duration_ms", [("kind".to_owned(), kind.to_owned())]),
+        elapsed.as_secs_f64() * 1_000.0,
+    );
+    if outcome == SendOutcome::Delivered {
+        state.metrics.histogram_observe(
+            &synra_observe::metrics::SeriesKey::new("transfer_bytes", [("kind".to_owned(), kind.to_owned())]),
+            total_bytes as f64,
+        );
+    }
 }
 
 /// Why a block could not be sent: the link refused it, or the user stopped the transfer.

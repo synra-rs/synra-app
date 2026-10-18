@@ -209,6 +209,26 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
     );
     assert!(state.transfers.is_empty(), "and the row is gone");
 
+    // ★ The attempt is measured where every start converges, so the panel's number and the diagnostic bundle's answer the
+    // same question. The size is the file's, and only a delivered transfer contributes one.
+    let snapshot = state.metrics.snapshot();
+    assert_eq!(
+        snapshot.get("transfers_total{kind=attachment,outcome=delivered}"),
+        Some(&synra_observe::metrics::Value::Counter(1)),
+        "the delivered attempt is counted"
+    );
+    match snapshot.get("transfer_bytes{kind=attachment}") {
+        Some(synra_observe::metrics::Value::Histogram(histogram)) => {
+            assert_eq!(histogram.count, 1);
+            assert_eq!(histogram.sum, 2.0 * f64::from(synra_core::transfer::DEFAULT_CHUNK_SIZE));
+        }
+        other => panic!("expected a size histogram, got {other:?}"),
+    }
+    assert!(
+        snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
+        "the attempt's time is recorded"
+    );
+
     let _ = std::fs::remove_file(path);
 }
 
@@ -249,6 +269,21 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
         other => panic!("expected an abort, got {other:?}"),
     }
     assert!(state.transfers.is_empty(), "and the row is gone");
+
+    // ★ A cancelled attempt is counted as one, and it contributes **no size**: the histogram answers "how large are the
+    // files this device sends", and a file that never left has no answer there. The time is still recorded, because the
+    // attempt really happened.
+    let snapshot = state.metrics.snapshot();
+    assert_eq!(
+        snapshot.get("transfers_total{kind=attachment,outcome=cancelled}"),
+        Some(&synra_observe::metrics::Value::Counter(1)),
+        "the cancelled attempt is counted"
+    );
+    assert_eq!(
+        snapshot.get("transfer_bytes{kind=attachment}"),
+        None,
+        "no bytes were delivered, so no size is recorded"
+    );
 
     let _ = std::fs::remove_file(path);
 }
