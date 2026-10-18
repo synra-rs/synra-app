@@ -689,24 +689,68 @@ fn store_document(
 /// it once and be right, and the alternative is a directory that grows with every registry this device ever tried.
 const DOCUMENT_CACHE_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 
-/// Removes cached documents nobody has read for a month, returning how many went.
+/// How many bytes the cached documents may occupy.
+///
+/// ★ A packument is small and a static index is smaller, so this ceiling is generous for a person with a handful of
+/// registries and a wall for a script that asks about thousands. Time alone was not enough: documents with an `ETag` and no
+/// `max-age` never expire, and a month is a long time to hold every one of them.
+const DOCUMENT_CACHE_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Removes cached documents nobody has read for a month, then the oldest ones until the directory fits its ceiling.
 ///
 /// A failure to prune is a diagnostic, not a reason to refuse to start; the caller ignores the count.
 pub fn prune_documents(state: &AppState, now: i64) -> usize {
-    let Ok(entries) = std::fs::read_dir(state.paths.cache_dir().join("registry-documents")) else {
+    prune_directory(
+        &state.paths.cache_dir().join("registry-documents"),
+        now,
+        DOCUMENT_CACHE_MAX_BYTES,
+    )
+}
+
+/// The prune itself, with the ceiling as an argument so a test can use a small one.
+fn prune_directory(directory: &std::path::Path, now: i64, max_bytes: u64) -> usize {
+    let Ok(entries) = std::fs::read_dir(directory) else {
         return 0;
     };
     let cutoff = now.saturating_sub(DOCUMENT_CACHE_TTL_MS);
     let mut removed = 0;
+    let mut kept: Vec<(std::path::PathBuf, u64, i64)> = Vec::new();
+
     for entry in entries.flatten() {
         let path = entry.path();
-        let modified = entry
-            .metadata()
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let modified = meta
+            .modified()
             .ok()
-            .and_then(|meta| meta.modified().ok())
             .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX));
-        if modified.is_some_and(|modified| modified < cutoff) && std::fs::remove_file(&path).is_ok() {
+            .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX))
+            .unwrap_or_default();
+        if modified < cutoff {
+            if std::fs::remove_file(&path).is_ok() {
+                removed += 1;
+            }
+            continue;
+        }
+        kept.push((path, meta.len(), modified));
+    }
+
+    let mut total: u64 = kept.iter().map(|(_, size, _)| *size).sum();
+    if total <= max_bytes {
+        return removed;
+    }
+    // Oldest first: the document a device has not read for longest is the one a refetch costs least to be wrong about.
+    kept.sort_by_key(|(_, _, modified)| *modified);
+    for (path, size, _) in kept {
+        if total <= max_bytes {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(size);
             removed += 1;
         }
     }
@@ -1128,6 +1172,13 @@ mod tests {
         headers
     }
 
+    /// Sets a file's modification time, so a test can make it look old.
+    fn set_modified(path: &std::path::Path, at_ms: i64) {
+        let file = std::fs::File::options().write(true).open(path).expect("the file");
+        let time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(u64::try_from(at_ms).expect("a positive time"));
+        file.set_times(std::fs::FileTimes::new().set_modified(time)).expect("an mtime");
+    }
+
     #[test]
     fn a_document_survives_the_process_that_fetched_it() {
         // ★ The point of the disk copy is the next process: validators and body together, so it can revalidate instead of
@@ -1200,6 +1251,30 @@ mod tests {
 
         assert_eq!(removed, 0);
         assert!(path.exists());
+    }
+
+    #[test]
+    fn the_oldest_documents_are_dropped_when_the_cache_is_too_large() {
+        // ★ Time alone leaves a script that asks about thousands of registries in one month with a directory of thousands of
+        // documents. The oldest go first, and only until the ceiling is met.
+        let directory =
+            std::env::temp_dir().join(format!("synra-registry-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a directory");
+        let now = synra_store::sqlite::now_ms();
+        let oldest = directory.join("oldest.json");
+        let newest = directory.join("newest.json");
+        std::fs::write(&oldest, b"0123456789").expect("an old file");
+        std::fs::write(&newest, b"0123456789").expect("a new file");
+        set_modified(&oldest, now - 1_000_000);
+        set_modified(&newest, now);
+
+        let removed = super::prune_directory(&directory, now, 10);
+
+        assert_eq!(removed, 1);
+        assert!(!oldest.exists(), "the oldest document is the one that went");
+        assert!(newest.exists());
+        let _ = std::fs::remove_dir_all(&directory);
     }
 
     #[test]
