@@ -48,6 +48,19 @@ fn discovery(state: &crate::AppState) -> Discovery {
 }
 
 #[test]
+fn a_deliberate_exit_asks_the_worker_to_stop() {
+    // ★ The token is the whole mechanism: the worker is a loop on another thread, and the only thing a shutdown can share
+    // with it is a value it reads each turn. Asserted here because `stop` is what the `ExitRequested` arm calls — a
+    // method that cancelled a token nothing else held would look identical and do nothing.
+    let state = crate::testing::state();
+    let discovery = discovery(&state);
+
+    assert!(!discovery.is_stopped(), "a worker that started has not been asked to stop");
+    discovery.stop();
+    assert!(discovery.is_stopped(), "the worker was not asked to stop");
+}
+
+#[test]
 fn what_discovery_hears_reaches_the_list_the_devices_screen_reads() {
     // ★ The whole reason the shell hosts the sockets itself.
     //

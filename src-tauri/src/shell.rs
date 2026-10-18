@@ -563,6 +563,11 @@ pub fn run_window() -> Result<(), String> {
         .build(tauri::generate_context!())
         .map_err(|error| format!("the window could not be opened: {error}"))?;
     app.run(|app, event| {
+        // ★ Every deliberate exit passes here, including the tray's Quit: asking the background workers to stop before
+        // the process ends is what closes the listener's port and lets the current discovery turn finish its write.
+        if let tauri::RunEvent::ExitRequested { .. } = &event {
+            stop_background(app);
+        }
         if let tauri::RunEvent::WindowEvent {
             label,
             event: tauri::WindowEvent::CloseRequested { api, .. },
@@ -579,6 +584,26 @@ pub fn run_window() -> Result<(), String> {
         }
     });
     Ok(())
+}
+
+/// Asks every worker that outlives the window to stop.
+///
+/// # Why one function
+///
+/// Because a shutdown that lists its workers by hand is one that forgets the next worker somebody starts. The listener
+/// and discovery are the two that own a socket; both are asked here, and a new one belongs in this list with them.
+fn stop_background(app: &tauri::AppHandle) {
+    // The listener's token is managed rather than held by `AppState`, because it is created after the state is managed.
+    if let Some(managed) = app.try_state::<Option<synra_core::supervisor::Cancellation>>()
+        && let Some(cancel) = managed.inner().as_ref()
+    {
+        cancel.cancel();
+    }
+    if let Some(state) = app.try_state::<std::sync::Arc<AppState>>()
+        && let Some(discovery) = state.discovery.as_ref()
+    {
+        discovery.stop();
+    }
 }
 
 /// The entry point Android calls, and only there.

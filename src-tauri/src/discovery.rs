@@ -64,6 +64,11 @@ pub struct Discovery {
     service: Arc<Mutex<DiscoveryService>>,
     /// When a caller asked for a scan, as a wall-clock millisecond the worker compares against now.
     on_demand: Arc<AtomicI64>,
+    /// The supervisor's shutdown token, so a deliberate exit can stop the worker.
+    ///
+    /// ★ The token rather than the handle: `run_task` joins on the token, and the supervisor is what waits when a caller
+    /// wants a report on the shutdown. This shell has no such report, so it keeps the one value the worker actually reads.
+    stop: synra_core::supervisor::Cancellation,
 }
 
 impl std::fmt::Debug for Discovery {
@@ -103,7 +108,11 @@ impl Discovery {
         // nothing here has to hold one alive. What a *handle* would be for is a report on the task — and this shell's
         // diagnostics do not report on tasks yet. A field nobody reads is a field that drifts, so the handle goes with the
         // report that would use it.
+        //
+        // The shutdown token **is** kept now: a deliberate exit asks the worker to stop before the process ends, which is
+        // what makes the sockets close and the last sighting written rather than cut off mid-turn.
         let supervisor = Arc::new(Supervisor::new(started_at_ms));
+        let stop = supervisor.cancellation();
         // Registered before it is run, because `run_task` refuses a task its supervisor does not know — the registry doing
         // its job: a task that ran unregistered is one no shutdown report would ever mention. `TaskSpec::service` is the
         // ordinary criticality, which is what a loop that lives as long as the process is.
@@ -137,7 +146,21 @@ impl Discovery {
         })
         .map_err(|error| format!("the discovery worker did not start: {error}"))?;
 
-        Ok(Self { service, on_demand })
+        Ok(Self { service, on_demand, stop })
+    }
+
+    /// Asks the worker to stop, for a deliberate exit.
+    ///
+    /// The worker also stops when the process ends; asking first is what closes the sockets and lets the current turn
+    /// finish its write, which is the difference between a shutdown and a disappearance.
+    pub fn stop(&self) {
+        self.stop.cancel();
+    }
+
+    /// Whether the worker has been asked to stop.
+    #[must_use]
+    pub fn is_stopped(&self) -> bool {
+        self.stop.is_cancelled()
     }
 
     /// The address the responder is bound to, for the log line that says whether this device can be found.

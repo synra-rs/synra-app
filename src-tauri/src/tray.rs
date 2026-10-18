@@ -19,7 +19,6 @@
 //! module is the wiring, and its failures are reported rather than raised: a machine whose tray is unavailable (some Linux
 //! desktops without an indicator host) must still get its window.
 
-use tauri::Manager as _;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
@@ -45,17 +44,9 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match action_for(event.id().as_ref()) {
             Some(TrayAction::Show) => show_main(app),
-            Some(TrayAction::Quit) => {
-                // ★ Ask the listener to stop before the process ends. The exit would release the port anyway, but a
-                // restart that races the old process for its own port is exactly what the token exists to prevent — and
-                // asking first is the whole of "graceful" on this side.
-                if let Some(managed) = app.try_state::<Option<synra_core::supervisor::Cancellation>>()
-                    && let Some(cancel) = managed.inner().as_ref()
-                {
-                    cancel.cancel();
-                }
-                app.exit(0);
-            }
+            // ★ The stopping itself is in `shell::run_window`'s `ExitRequested` arm. One place that asks every
+            // background worker to stop is a place that cannot forget one when another is added.
+            Some(TrayAction::Quit) => app.exit(0),
             None => {}
         })
         .on_tray_icon_event(|tray, event| {
