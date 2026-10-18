@@ -20,6 +20,11 @@ export const devices = {
   emptyAction: 'Scan for devices',
   paired: 'Paired',
   unpaired: 'Not paired',
+  pair: 'Pair',
+  pairingTitle: 'Pairing request',
+  pairingCode: 'Compare this code on both screens',
+  pairingAccept: 'Accept',
+  pairingDecline: 'Decline',
   online: 'Reachable',
   offline: 'Not reachable'
 } as const

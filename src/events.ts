@@ -28,6 +28,7 @@ import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
+import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
 
@@ -109,6 +110,19 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   })
   dispatcher.on('transferFinished', (event) => {
     intents.apply(event)
+  })
+
+  // ★ A pairing request arrives while the user may be on any screen, so it goes to a store rather than to the page: the peer's
+  // connection is waiting for an answer, and a prompt that vanished on navigation would leave it waiting out its window.
+  const pairing = usePairingStore()
+  dispatcher.on('pairingRequested', (event) => {
+    pairing.announce(event.payload)
+  })
+  // Resolved carries no card, so the list is re-read: a device that has just become paired is a row this store cannot derive
+  // from the event alone, and inventing one would be a second answer to what the kernel owns.
+  dispatcher.on('pairingResolved', (event) => {
+    pairing.settle(event.payload.requestId)
+    void reread(client, devices, dispatcher)
   })
 
   const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
