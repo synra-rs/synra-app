@@ -133,7 +133,12 @@ describe('the plugins page', () => {
           explanation: 'this plugin is over its limits, so it is running at a reduced quota',
           callsAdmitted: 10,
           callsRefused: 3,
-          usage: {}
+          usage: {
+            maxMemoryBytes: 64 * 1024 * 1024,
+            maxInstances: 4,
+            hostCallsPerSec: 20,
+            callTimeoutMs: 5_000
+          }
         }
       })]
     })
@@ -143,6 +148,12 @@ describe('the plugins page', () => {
 
     expect(wrapper.text()).toContain(messages.plugins.healthLabel('degraded'))
     expect(wrapper.text()).toContain('running at a reduced quota')
+    // ★ The quota's own numbers, not a second opinion: the rung says how the plugin is doing, these say what it may do.
+    // A report with no quota shows no Limits row at all, which the fixture above would catch if the row always rendered.
+    expect(wrapper.text()).toContain(messages.plugins.limits)
+    expect(wrapper.text()).toContain('64.0 MiB')
+    expect(wrapper.text()).toContain('20 calls/s')
+    expect(wrapper.text()).toContain('5 s per call')
     wrapper.unmount()
   })
 

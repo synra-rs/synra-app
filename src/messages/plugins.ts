@@ -44,6 +44,12 @@ export const plugins = {
     /** The action's trace, which a bug report can quote for `synra logs --trace`. */
     trace: 'trace'
   },
+  /** The quota a plugin is held to, as the numbers a user can read on its card. */
+  limits: 'Limits',
+  limitMemory: 'memory',
+  limitInstances: 'instances',
+  limitCalls: 'calls/s',
+  limitCallTime: 's per call',
   /** The registry's own index, searched by keyword. */
   catalog: {
     placeholder: 'Search the registry',

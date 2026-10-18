@@ -273,6 +273,16 @@
                   {{ plugin.publisher }}
                 </dd>
               </div>
+              <!-- ★ Four of the quota's numbers, when the report carries a quota. The rung and the sentence say how the
+                   plugin is doing; these say what it is allowed to do, which is the other half of the same question. -->
+              <div v-if="healthLimits(plugin.health)" class="row gap-1">
+                <dt class="m-0 text-ink-dim">
+                  {{ messages.plugins.limits }}
+                </dt>
+                <dd class="m-0">
+                  {{ healthLimits(plugin.health) }}
+                </dd>
+              </div>
             </dl>
 
             <p v-if="plugin.description" class="m-0 text-sm text-ink-dim">
@@ -758,6 +768,42 @@ const removeData = ref(false)
 function askRemove(plugin: PluginSnapshot): void {
   removeData.value = false
   removing.value = plugin
+}
+
+/**
+ * The quota a health report carries, as the few numbers worth showing.
+ *
+ * `usage` is the quota as JSON so the DTO does not freeze a field list that the quota layer owns; this reads the four a
+ * user can act on and shows nothing when the report has none — an empty "Limits" row would be a label with no fact.
+ */
+function healthLimits(health: PluginSnapshot['health']): string {
+  if (health === undefined)
+    return ''
+  const usage = health.usage
+  if (typeof usage !== 'object' || usage === null)
+    return ''
+  const number = (key: string): number | undefined => {
+    const value = (usage as Record<string, unknown>)[key]
+    return typeof value === 'number' ? value : undefined
+  }
+  const parts: string[] = []
+  const memory = number('maxMemoryBytes')
+  if (memory) {
+    parts.push(`${formatBytes(memory)} ${messages.plugins.limitMemory}`)
+  }
+  const instances = number('maxInstances')
+  if (instances) {
+    parts.push(`${instances} ${messages.plugins.limitInstances}`)
+  }
+  const calls = number('hostCallsPerSec')
+  if (calls) {
+    parts.push(`${calls} ${messages.plugins.limitCalls}`)
+  }
+  const timeout = number('callTimeoutMs')
+  if (timeout) {
+    parts.push(`${timeout / 1000} ${messages.plugins.limitCallTime}`)
+  }
+  return parts.join(' · ')
 }
 
 /**
