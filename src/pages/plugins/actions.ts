@@ -62,9 +62,10 @@ export interface AuditEntry {
 /** What a plugin actually did, most recent first. */
 export async function audit(kernel: KernelClient, pluginId: string, limit = 20): Promise<Outcome<readonly AuditEntry[]>> {
   const answer = await kernel.call<AuditEntry[]>('plugins_audit', { pluginId, limit })
-  // ★ Reversed because the command answers a **tail** of the ring, oldest first: `audit_for` reports the order the calls
-  // happened in, and the caller asking "what has it been doing lately" reads from the other end.
-  return answer.ok ? { ok: true, value: [...answer.value].reverse() } : { ok: false, failure: failureOf(answer.error) }
+  // ★ No reversal: the command reads `plugin_audit` with `ORDER BY at_ms DESC, id DESC`, so its answer is already the
+  // order a reader wants. The old copy was reversed because it was a tail of the in-memory ring, which reports oldest
+  // first — a copy is still there, but nothing reads it.
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
 /** Forgets one plugin's audit history. */

@@ -247,6 +247,10 @@ impl AppState {
     // ★ One prune per construction, not per request: a cache whose files are never removed is a directory that grows with
     // every registry this device ever asked about. A failure to prune is a diagnostic, not a reason to refuse to start.
     crate::commands::registry::prune_documents(&state, now_ms);
+
+    // ★ And the audit table gets the same treatment for the same reason: the sink writes a row on every gated call, and
+    // nothing in this shell swept them. The retention rule is the design's seven days; see `prune_audit`.
+    crate::commands::plugins::prune_audit(&state, now_ms);
     Ok(state)
     }
 

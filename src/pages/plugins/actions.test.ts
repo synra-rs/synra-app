@@ -101,12 +101,13 @@ describe('the audit call', () => {
       expect(outcome.failure.code).toBe('capability_denied')
   })
 
-  it('shows the newest call first', async () => {
-    // The command answers oldest first, because "the last `limit`" is a slice of the ring; a caller reading a trail wants
-    // the other end. Reversing here keeps the page from sorting a list whose order is already known.
+  it('keeps the newest-first order the command answers in', async () => {
+    // ★ The command reads the table with `ORDER BY at_ms DESC, id DESC`, so the newest call is already first. This used to
+    // be reversed in the page because the ring answered oldest first; keeping that flip would now show the oldest call of
+    // the page at the top.
     const { client: kernel } = client([
-      { atMs: 1, capability: 'log:*', allowed: true },
-      { atMs: 2, capability: 'network:fetch', allowed: false, reason: 'denied' }
+      { atMs: 2, capability: 'network:fetch', allowed: false, reason: 'denied' },
+      { atMs: 1, capability: 'log:*', allowed: true }
     ])
 
     const outcome = await audit(kernel, '@acme/hello')

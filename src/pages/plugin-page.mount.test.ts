@@ -395,12 +395,12 @@ describe('the plugins page', () => {
       if (command === 'plugins_publishers')
         return { ok: true, value: [] }
       if (command === 'plugins_audit') {
-        // Oldest first, as `audit_for` answers: the page is what reverses it for a reader.
+        // Newest first, as the table's `ORDER BY at_ms DESC, id DESC` answers: the page draws the list as it arrives.
         return {
           ok: true,
           value: [
-            { atMs: 1_700_000_000_000, capability: 'log:write', allowed: true },
-            { atMs: 1_700_000_001_000, capability: 'network:fetch', allowed: false, reason: 'denied' }
+            { atMs: 1_700_000_001_000, capability: 'network:fetch', allowed: false, reason: 'denied' },
+            { atMs: 1_700_000_000_000, capability: 'log:write', allowed: true }
           ]
         }
       }

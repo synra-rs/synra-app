@@ -617,63 +617,97 @@ pub(crate) fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
 /// Because a settings screen shows what a plugin has been doing **lately**, and the interesting end of a trail is the
 /// recent one. `limit` of zero returns nothing, which is what a caller asking for nothing gets.
 ///
+/// # ★ Why this reads the table rather than the ring
+///
+/// The ring is this process's last ten thousand calls; the table is the history. Both hosts install an audit sink
+/// ([`crate::plugin_host::audit_sink`]) that writes every drained record, so the table is a **superset** of the ring —
+/// it carries the calls from before the last restart. Reading the ring would answer "nothing" on a fresh start even though
+/// the user can still see yesterday's refusals in a diagnostic bundle, and the design's whole reason for the durable half
+/// is that "recent activity" survives a restart.
+///
+/// It also stops needing a plugin engine: the trail outlives the engine, so a build without one can still answer what
+/// this database recorded.
+///
 /// # Errors
 ///
-/// [`IpcError`] when this build has no plugin engine, which is a different answer from "this plugin has done nothing".
+/// [`IpcError`] when the table cannot be read.
 #[allow(clippy::result_large_err)]
 pub fn plugins_audit(
     state: &AppState,
     plugin_id: &PluginId,
     limit: u32,
 ) -> Result<Vec<AuditEntryDto>, IpcError> {
-    let set = state.plugin_set()?;
-    let entries = set.lock().audit_for(plugin_id);
-    // Taken from the end: `audit_for` answers oldest first, and a caller asking for `limit` lines wants the tail.
-    let take = usize::try_from(limit).unwrap_or(usize::MAX);
-    let start = entries.len().saturating_sub(take);
-    // ★ `get` rather than indexing: `start` is `len - take`, which cannot exceed the length, but an index expression is a
-    // panic waiting for the day that reasoning stops holding — and this workspace denies `indexing_slicing` so the compiler
-    // asks for the safer spelling.
-    Ok(entries.get(start..).unwrap_or_default().iter().map(entry_card).collect())
+    let records = state
+        .db()
+        .audit_trail_for(plugin_id.as_str(), limit)
+        .map_err(internal)?;
+    Ok(records.iter().map(record_card).collect())
 }
 
 /// Forgets one plugin's audit history.
 ///
-/// # Why the caller is the only one who can clear it
+/// # Why the durable rows and the ring
 ///
-/// The ring lives in this process, so the trail a user is looking at is the trail this command removes. There is no
-/// durable copy to clear: `plugin_audit` exists in the schema, but nothing reads it and nothing has written to it since
-/// the sink was added — so claiming to clear "the audit" beyond this process would be a promise the command cannot keep.
-/// When a reader of that table lands, it belongs here, in the same call.
+/// They are two copies of one trail. Clearing only the table would let the diagnostics bundle — which reads the ring —
+/// resurrect what the user just deleted; clearing only the ring would bring the rows back on the next read. A build
+/// without an engine has no ring, so that half is skipped rather than refused.
 ///
 /// # Errors
 ///
-/// [`IpcError`] when this build has no plugin engine. The same answer as [`plugins_audit`] rather than a silent success:
-/// a build that cannot say what a plugin did cannot truthfully say it forgot it.
+/// [`IpcError`] when the table refuses the delete. The ring cannot fail.
+#[allow(clippy::result_large_err)]
 pub fn plugins_audit_clear(state: &AppState, plugin_id: &PluginId) -> Result<(), IpcError> {
-    let set = state.plugin_set()?;
-    set.lock().clear_audit(plugin_id);
+    if let Ok(set) = state.plugin_set() {
+        set.lock().clear_audit(plugin_id);
+    }
+    state.db().forget_audit_for(plugin_id.as_str()).map_err(internal)?;
     Ok(())
+}
+
+/// How long a recorded call is kept.
+///
+/// ★ The design names a config key, `audit_retention_days` (default 7), and this build's settings catalogue does not
+/// register it — so the default is the rule until the key exists. The daemon already prunes by the same number.
+const AUDIT_RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// Forgets recorded calls older than the retention window, and answers how many went.
+///
+/// Called once per [`AppState`](crate::state::AppState), like the registry document prune: a table that only grows costs
+/// more than the history is worth, and no request should have to remember to sweep it.
+pub(crate) fn prune_audit(state: &AppState, now_ms: i64) -> usize {
+    match state.db().forget_audit_before(now_ms.saturating_sub(AUDIT_RETENTION_MS)) {
+        Ok(removed) => removed,
+        Err(error) => {
+            // A failure to prune is a diagnostic, not a reason to refuse to start.
+            eprintln!("synra: recorded calls could not be pruned: {error}");
+            0
+        }
+    }
 }
 
 /// One recorded call, as the interface shows it.
 ///
-/// ★ The DTO has a `trace_id` and the record does not.
+/// ★ The row stores the outcome's **name**, so this has to read it back. [`AuditOutcome::from_stable_name`] is that
+/// parser, and it lives beside `as_str` so the table's spelling has one definition rather than two.
 ///
-/// `AuditEntry` carries when, who, against which capability and how it ended — and no trace, because the ring is
-/// written by the session that made the call and the session is not given one. So this is always `None`, and it is
-/// `None` because there is nothing to put there rather than because the lookup failed. Recorded here rather than
-/// invented, and it is a gap in the *record*, not in this mapping.
-fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
+/// A name this build does not know is reported rather than guessed at: `allowed: false` with the name as the reason.
+/// Presenting an outcome from a newer build as "allowed" is the one answer that could hide a refusal.
+///
+/// ★ The DTO has a `trace_id` and the row does not. The ring has no trace either — the session that made the call is not
+/// given one — so this is always `None` because there is nothing to put there, not because a lookup failed.
+fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
+    let outcome = synra_observe::audit::AuditOutcome::from_stable_name(&record.outcome);
     AuditEntryDto {
-        at_ms: entry.at_ms,
-        capability: entry.capability.to_string(),
-        allowed: entry.outcome.was_allowed(),
-        // The outcome's stable name, for a refusal only. An allowed call has no reason to give, and a sentence written
-        // here would be the shell describing the kernel's own decision.
-        reason: entry.outcome.is_refusal().then(|| entry.outcome.as_str().to_owned()),
-        elapsed_ms: entry.elapsed_ms,
-        // See the note above: the record has no trace.
+        at_ms: record.at_ms,
+        capability: record.capability.clone(),
+        allowed: outcome.is_some_and(synra_observe::audit::AuditOutcome::was_allowed),
+        // The outcome's stable name, for a refusal only. An allowed call has no reason to give.
+        reason: match outcome {
+            Some(outcome) if outcome.is_refusal() => Some(outcome.as_str().to_owned()),
+            Some(_) => None,
+            None => Some(record.outcome.clone()),
+        },
+        elapsed_ms: record.elapsed_ms.and_then(|elapsed| u64::try_from(elapsed).ok()),
         trace_id: None,
     }
 }
@@ -681,9 +715,9 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 #[cfg(test)]
 mod tests {
     use super::{
-        entry_card, plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update,
-        plugins_consent_respond, plugins_install, plugins_list, plugins_preview, plugins_publisher_decide,
-        plugins_publishers,
+        plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update, plugins_consent_respond,
+        plugins_install, plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit,
+        record_card,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -1535,67 +1569,95 @@ mod tests {
         assert!(with_page.hybrid, "this manifest has both halves");
     }
 
+    /// A recorded row, filled in with the fields the mapping reads.
+    fn row(plugin: &str, capability: &str, outcome: &str, at_ms: i64) -> synra_store::records::AuditRecord {
+        synra_store::records::AuditRecord {
+            plugin_id: plugin.to_owned(),
+            capability: capability.to_owned(),
+            outcome: outcome.to_owned(),
+            at_ms,
+            elapsed_ms: Some(7),
+        }
+    }
+
     #[test]
-    fn an_audit_entry_is_mapped_from_the_record_rather_than_re_derived() {
-        // ★ What this command is responsible for.
-        //
-        // The ring's own read and write are tested where they live: `synra-observe` bounds and queries it, and
-        // `synra-core` drains a session's record into it. What is left here is the mapping, and the mapping is where a
-        // wrong answer would look right — an allowed call reported with a reason, or a refusal reported as allowed.
-        let allowed = entry_card(&synra_observe::audit::AuditEntry::new(
-            1_700_000_000_000,
-            PluginId::parse(ID).expect("a plugin id"),
-            synra_capability::Capability::parse("log:info").expect("a capability"),
-            synra_observe::audit::AuditOutcome::Allowed,
-            Some(7),
-        ));
+    fn a_recorded_call_is_mapped_from_its_row() {
+        // ★ What this command is responsible for. The table's own read is tested where it lives; what is left here is the
+        // mapping, and a wrong mapping looks right — an allowed call reported with a reason, or a refusal reported as
+        // allowed.
+        let allowed = record_card(&row(ID, "log:info", "allowed", 1_700_000_000_000));
         assert_eq!(allowed.capability, "log:info");
         assert!(allowed.allowed);
         assert_eq!(allowed.elapsed_ms, Some(7));
-        // ★ An allowed call has no reason to give. A sentence here would be the shell describing the kernel's
-        // own decision, and it would read as a complaint about a call that worked.
-        assert_eq!(allowed.reason, None);
+        assert_eq!(allowed.reason, None, "an allowed call has no reason to give");
 
-        let denied = entry_card(&synra_observe::audit::AuditEntry::new(
-            1_700_000_000_001,
-            PluginId::parse(ID).expect("a plugin id"),
-            synra_capability::Capability::parse("device:list").expect("a capability"),
-            synra_observe::audit::AuditOutcome::Denied,
-            None,
-        ));
+        let denied = record_card(&row(ID, "device:list", "denied", 1_700_000_000_001));
         assert!(!denied.allowed);
         // The outcome's stable name, which the interface translates — not a sentence written here.
         assert_eq!(denied.reason.as_deref(), Some("denied"));
-        // And always `None`: the record carries no trace, which is a gap in the *record* rather than in this mapping.
+        // And always `None`: the row carries no trace, which is a gap in the *record* rather than in this mapping.
         assert_eq!(denied.trace_id, None);
+
+        // ★ "Permitted by the gate, failed in the operation" is not a refusal — `AuditOutcome::was_allowed` says so, and a
+        // mapping that compared the name against `"allowed"` would draw this call as blocked.
+        let failed = record_card(&row(ID, "network:fetch", "failed", 1_700_000_000_002));
+        assert!(failed.allowed, "the gate permitted this call");
+        assert_eq!(failed.reason, None);
+
+        // A name from a newer build is reported rather than guessed at: presenting it as allowed could hide a refusal.
+        let unknown = record_card(&row(ID, "device:list", "from-a-newer-build", 1_700_000_000_003));
+        assert!(!unknown.allowed);
+        assert_eq!(unknown.reason.as_deref(), Some("from-a-newer-build"));
     }
 
     #[test]
-    fn without_an_engine_the_audit_command_says_so_rather_than_answering_with_nothing() {
-        // ★ The rule every command in this module shares: it either answers or says why it cannot.
-        //
-        // "This plugin has done nothing" and "this build cannot run plugins, so there is no trail to read" look the same
-        // on a screen — an empty list — and a user acts on them differently. The fixture has no engine, so this is the
-        // case that can be asserted here; the empty-but-real trail is covered by the mapping test above, which drives an
-        // entry through `entry_card` rather than through a ring this fixture cannot fill.
+    fn the_audit_reads_the_trail_that_outlives_the_engine() {
+        // ★ The fixture has no engine, and that must not matter: the table is written by whichever host ran the call, so a
+        // build that cannot run plugins can still answer what this database recorded. The old `Unsupported` answer was
+        // true only while the in-memory ring was the whole trail.
         let state = crate::testing::state();
+        state.db().record_audit(&row(ID, "device:list", "allowed", 5_000)).expect("recorded");
 
-        let refused = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10)
-            .expect_err("this fixture has no engine");
+        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10).expect("read");
 
-        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].capability, "device:list");
+        assert_eq!(rows[0].at_ms, 5_000);
     }
 
     #[test]
-    fn without_an_engine_clearing_the_audit_says_so_rather_than_succeeding_silently() {
-        // ★ A success from a build that cannot read the trail would tell the user their history is gone when there was no
-        // ring to clear and no engine to own one. Same refusal as the read, for the same reason.
+    fn clearing_forgets_the_durable_rows_and_leaves_another_plugin() {
+        // The same rule as the ring, now on the copy that survives a restart.
         let state = crate::testing::state();
+        state.db().record_audit(&row(ID, "device:list", "allowed", 5_000)).expect("recorded");
+        state.db().record_audit(&row("@acme/other", "log:info", "allowed", 6_000)).expect("recorded");
 
-        let refused = plugins_audit_clear(&state, &PluginId::parse(ID).expect("a plugin id"))
-            .expect_err("this fixture has no engine");
+        plugins_audit_clear(&state, &PluginId::parse(ID).expect("a plugin id")).expect("cleared");
 
-        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+        assert_eq!(state.db().audit_count().expect("counted"), 1);
+        assert!(
+            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10)
+                .expect("read")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn old_calls_are_pruned_and_recent_ones_kept() {
+        // ★ The table is written on every gated call and nothing in this shell swept it, so a long-running install would
+        // grow it for ever. The design's retention is seven days; `audit_retention_days` is not in this build's settings
+        // catalogue yet, so the default is the rule.
+        let state = crate::testing::state();
+        let day = 24 * 60 * 60 * 1_000;
+        let now = 30 * day;
+        state.db().record_audit(&row(ID, "device:list", "allowed", now - 10 * day)).expect("recorded");
+        state.db().record_audit(&row(ID, "device:list", "allowed", now - 2 * day)).expect("recorded");
+
+        assert_eq!(prune_audit(&state, now), 1);
+
+        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10).expect("read");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].at_ms, now - 2 * day, "the recent call stayed");
     }
 
     #[test]
