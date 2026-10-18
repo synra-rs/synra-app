@@ -354,11 +354,15 @@ fn run_install(
         }
     };
     let installed = outcome.map_err(|refusal| {
+        // ★ The stage the pipeline stopped at, as the label — the refusal already names it, so "installs fail at verify"
+        // is a question the recorder can answer without reading a log. A success has one stage, `complete`.
+        record_install(state, refusal.stage, "refused");
         IpcError::unknown(refusal.code()).with_params(serde_json::json!({
             "stage": refusal.stage,
             "reason": refusal.reason,
         }))
     })?;
+    record_install(state, "complete", "ok");
     // ★ The set's lock is released before anything reads it again.
     //
     // `announce` asks the set what is loaded, and this mutex is not reentrant: holding it across the call was a
@@ -781,6 +785,21 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
     }
 }
 
+/// Records one finished install pipeline, labelled with where it ended.
+///
+/// `stage` is the refusal's own stable name (`source`, `manifest`, `verify`, …) or `complete`; `result` is `ok` or
+/// `refused`. One sample per attempt, not per step: what the counter answers is "where do installs stop", and a step
+/// that succeeded before a later one refused would otherwise make every attempt look like a pass.
+fn record_install(state: &AppState, stage: &str, result: &str) {
+    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
+        "plugin_install_total",
+        [
+            ("result".to_owned(), result.to_owned()),
+            ("stage".to_owned(), stage.to_owned()),
+        ],
+    ));
+}
+
 /// The bytes under a directory, or zero when it cannot be read.
 ///
 /// ★ Errors become zero rather than failing the list: a size is a diagnostic, and a plugin whose sandbox is unreadable is
@@ -803,9 +822,9 @@ fn directory_size(root: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_RETENTION_KEY, plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update,
-        plugins_consent_respond, plugins_install, plugins_list, plugins_preview, plugins_publisher_decide,
-        plugins_publishers, prune_audit, record_card,
+        AUDIT_RETENTION_KEY, install_directory, plugins_audit, plugins_audit_clear, plugins_catalog_search,
+        plugins_check_update, plugins_consent_respond, plugins_install, plugins_list, plugins_preview,
+        plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -977,6 +996,28 @@ mod tests {
             .expect("a row");
         assert!(!row.enabled, "installing must not switch it on");
         assert!(!row.trusted, "installing must not trust it");
+        // ★ And the pipeline's one counter: the report says it worked, the recorder says the same. A success is the
+        // `complete` stage — the refusal stages only appear when something stopped.
+        assert_eq!(
+            state.metrics.snapshot().get("plugin_install_total{result=ok,stage=complete}"),
+            Some(&synra_observe::metrics::Value::Counter(1))
+        );
+    }
+
+    #[test]
+    fn a_refused_install_is_counted_with_the_stage_that_refused_it() {
+        // ★ The interesting half: a counter that only counts successes says "installs are fine" while every attempt is
+        // refused at `source`. The stage is the refusal's own name, the same one its `IpcError` params carry.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+
+        let error = install_directory(&state, &root.path().join("not-a-package")).expect_err("refused");
+
+        assert_eq!(error.params["stage"], "source");
+        assert_eq!(
+            state.metrics.snapshot().get("plugin_install_total{result=refused,stage=source}"),
+            Some(&synra_observe::metrics::Value::Counter(1))
+        );
     }
 
     #[test]
