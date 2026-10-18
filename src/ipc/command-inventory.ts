@@ -47,7 +47,8 @@ export const REGISTERED = [
   'transfer_list',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
-  // Planning a sync: reads paired devices, the active version and the last synced state; dials nothing.
+  // Planning a sync: asks every paired device what it holds (one small request/response) and records the answers, so the plan
+  // is about now rather than about the last bundle that happened to move.
   'plugins_sync_plan',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
@@ -75,17 +76,14 @@ export const REGISTERED = [
  * the wait is different in each group and a reader deserves to know which.
  */
 export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
-  // ★ These three groups used to say the shell was one wiring job away, and it is not.
+  // ★ The network half this comment used to name is here now — the shell listens (`listener.rs`), dials for pairing and for
+  // transfers, and asks peers what they hold for a sync plan. What is still missing is not a transport but the code that
+  // acts on a plan: no runner sends a plugin bundle, and the contract's name for that is `plugins_sync_run`.
   //
-  // Pairing said "needs the pairing desk wired to a Tauri command" — but there is **no desk in this shell at all**
-  // (nothing here names `PairingDesk` outside a test name), and a desk with no link would have nothing to raise a prompt
-  // over. Transfers said "the kernel sends, but no UI starts a transfer", which describes the *daemon*: this shell has no
-  // transport, no `synra-transfer` or `synra-net` dependency, and its own plugin host answers `transfer-send` with
-  // `notImplemented`. Sync moves bytes over links, so it needs the same missing half.
+  // Pairing said "needs the pairing desk wired to a Tauri command" — and the desk is in `AppState` now, answered from a
+  // command while the request waits on a socket thread. Transfers said the same sort of thing; all four are registered.
   //
-  // What is missing is the shell's **network half** — the `DiscoveryService` and `TransportRegistry` that doc 05 §2.1 puts
-  // inside the desktop app's in-process kernel. A `.vue` file is not the remaining work, and a reason that says it is
-  // sends the next person to the wrong file.
+  // What remains is per command below, and each reason says which layer is missing rather than pointing at a whole half.
   // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the
   // intent board behind AppState", which was false — the board was already in the state. What was missing was the
   // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
@@ -105,7 +103,7 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_update: 'no updater exists',
   // ★ These two are also waiting on the missing network half, not just on a caller. Sync moves bytes over links, so with
   // no transport in this shell a planner would plan a transfer that could not happen.
-  plugins_sync_run: 'the shell has no transport, and no caller for the runner either',
+  plugins_sync_run: 'no runner sends a bundle, and no caller for one either',
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel: the token is injected and `ready` is registered, so what is missing is the page itself.
   plugin_ui_rpc: 'the token injection exists; the synra-plugin:// handler that would serve a page does not'

@@ -283,11 +283,12 @@ mod wrappers {
         commands::plugins::plugins_audit(&state, &plugin_id, limit)
     }
 
-    /// Plans the sync of one plugin to every paired device.
+    /// Asks each paired device what it holds, and answers what would have to be sent.
     ///
-    /// Reads the tables and dials nothing: a plan is a statement about data, and asking each peer would make the panel wait for
-    /// the slowest one.
-    #[tauri::command]
+    /// ★ `(async)`, because the asking is one dial per device: the body runs on the sync thread pool rather than on the
+    /// thread that received the invoke, so the window keeps painting while the peers answer. Same attribute and same
+    /// reason as `devices_scan_start`.
+    #[tauri::command(async)]
     pub fn plugins_sync_plan(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
