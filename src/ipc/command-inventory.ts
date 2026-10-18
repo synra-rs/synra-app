@@ -50,6 +50,9 @@ export const REGISTERED = [
   // Planning a sync: asks every paired device what it holds (one small request/response) and records the answers, so the plan
   // is about now rather than about the last bundle that happened to move.
   'plugins_sync_plan',
+  // ★ Running the plan: one dial and one transfer per device that needs the artifact, and the receiver's answer decides
+  // what `sync_records` is allowed to say. A device that could not be reached is a report entry, not a failed command.
+  'plugins_sync_run',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
   // ★ And the fifth, which the interface had been pretending existed: `HomePage.vue`'s "received" panel called
@@ -101,9 +104,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_catalog_search: 'no catalog client is wired',
   plugins_check_update: 'no update checker exists',
   plugins_update: 'no updater exists',
-  // ★ These two are also waiting on the missing network half, not just on a caller. Sync moves bytes over links, so with
-  // no transport in this shell a planner would plan a transfer that could not happen.
-  plugins_sync_run: 'no runner sends a bundle, and no caller for one either',
   plugins_request_registry_search: 'no registry search is wired',
   // The plugin UI channel: the token is injected and `ready` is registered, so what is missing is the page itself.
   plugin_ui_rpc: 'the token injection exists; the synra-plugin:// handler that would serve a page does not'

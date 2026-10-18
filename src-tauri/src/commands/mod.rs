@@ -21,8 +21,10 @@ pub mod intent;
 pub mod plugin_ui;
 pub mod pairing;
 pub mod plugins;
-/// The transfers in flight: the registry the worker writes and  ransfer_list reads.
+/// Planning a sync: which devices are missing this device's plugin, asked of the devices themselves.
 pub mod sync_plan;
+/// Running a plan: sending the artifact and recording what each receiver says it now holds.
+pub mod sync_run;
 pub mod transfers;
 
 // ★ These are re-exports, not an inventory.
@@ -33,7 +35,7 @@ pub mod transfers;
 // and be wrong.
 //
 // **The inventory is not here.** It is `main.rs`'s `generate_handler!`, and `src/ipc/registration.test.ts` is what checks
-// that list against the 40 commands the kernel declares. This is a convenience re-export kept complete so it cannot
+// that list against the 41 commands the kernel declares. This is a convenience re-export kept complete so it cannot
 // mislead, and the place to look for "what does the shell implement" is that test.
 pub use config::{config_get, config_set};
 pub use devices::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot};
@@ -41,3 +43,5 @@ pub use diag::{diag_export, diag_logs_tail, diag_metrics};
 pub use identity::{identity_get, identity_set_display_name};
 pub use intent::{intent_cancel, intent_decide, intent_dispatch, intent_list, intent_snapshot};
 pub use plugins::{plugins_audit, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list};
+pub use sync_plan::plugins_sync_plan;
+pub use sync_run::plugins_sync_run;

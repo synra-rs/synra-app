@@ -296,6 +296,19 @@ mod wrappers {
         commands::sync_plan::plugins_sync_plan(&state, &plugin_id)
     }
 
+    /// Sends the artifact a plan marked as needed, and reports what each device answered.
+    ///
+    /// ★ `(async)` for the same reason as the plan: one dial and one transfer per device. A receiver that says it did not
+    /// install the package becomes an entry in the report rather than an error, so one unreachable device does not stop
+    /// the others.
+    #[tauri::command(async)]
+    pub fn plugins_sync_run(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plan: synra_ipc::dto::SyncPlanDto,
+    ) -> Result<synra_ipc::dto::SyncReport, IpcError> {
+        commands::sync_run::plugins_sync_run(&state, &plan)
+    }
+
     // ★ The four that had no implementation until the orchestration moved out of the daemon binary.
     //
     // The reason recorded against them used to be "needs the intent board behind AppState", which was false: the board
@@ -415,6 +428,7 @@ mod wrappers {
             transfer_list,
             plugins_audit,
             plugins_sync_plan,
+            plugins_sync_run,
             intent_dispatch,
             intent_list,
             intent_snapshot,

@@ -380,7 +380,10 @@ fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::
 }
 
 /// The wall clock, in milliseconds, as the counts this module reports are measured.
-fn unix_millis() -> u64 {
+///
+/// Visible to the other command modules because they report the same kind of timestamps and a second copy is a second
+/// place for "milliseconds" to become seconds.
+pub(crate) fn unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0_u64, |elapsed| elapsed.as_millis() as u64)
