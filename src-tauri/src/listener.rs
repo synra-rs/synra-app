@@ -299,6 +299,44 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             let should_cancel: Arc<synra_core::listener::CancelCallback> =
                 Arc::new(move |id: &str| cancels.lock().remove(id));
 
+            // ★ The window is a dispatch target too: a peer that chose this device sends `INTENT_INVOKE` here, and the
+            // answer has to go back on this connection. The daemon had this callback first; without it here, a remote
+            // action aimed at the window was counted and dropped — the sender stayed "dispatching" for ever.
+            let kernel_state = Arc::clone(&db_state);
+            let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> = Arc::new(
+                move |envelope: &synra_protocol::envelope::Envelope| {
+                    use synra_core::listener::KernelEventOutcome;
+                    use synra_protocol::event::events;
+                    let board = Arc::clone(&kernel_state.board);
+                    let Some(plugins) = kernel_state.plugins.as_ref().map(Arc::clone) else {
+                        return KernelEventOutcome::Refused(
+                            "this window has no plugin engine, so it cannot run the action".to_owned(),
+                        );
+                    };
+                    let now = synra_store::sqlite::now_ms();
+                    let local = kernel_state.identity.lock().device_id;
+                    match envelope.event.as_str() {
+                        events::INTENT_INVOKE => {
+                            match synra_core::dispatch::orchestrate::accept_remote(
+                                &plugins, &board, local, envelope, now,
+                            ) {
+                                Ok(Some(reply)) => KernelEventOutcome::Reply(Box::new(reply)),
+                                // The same request twice with the first copy still running: the first copy answers.
+                                Ok(None) => KernelEventOutcome::Handled,
+                                Err(error) => KernelEventOutcome::Refused(error.to_string()),
+                            }
+                        }
+                        events::INTENT_CANCEL => {
+                            match synra_core::dispatch::orchestrate::accept_cancel(&board, envelope) {
+                                Ok(_) => KernelEventOutcome::Handled,
+                                Err(error) => KernelEventOutcome::Refused(error.to_string()),
+                            }
+                        }
+                        _ => KernelEventOutcome::Ignored,
+                    }
+                },
+            );
+
             synra_core::listener::serve_with(
                 &host,
                 &thread_cancel,
@@ -309,6 +347,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 &progress,
                 &offer,
                 &should_cancel,
+                &on_kernel_events,
             );
         })
         .map_or_else(
