@@ -1222,6 +1222,70 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
 }
 
 #[test]
+fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() {
+    // ★ The managed entry is the one the Tauri command uses. `finish` hands the upload to a worker and answers its id; the
+    // dial (to a dead address) happens afterwards, so a failure arrives as a removed row rather than as a paused command.
+    let (_root, state) = crate::testing::file_state();
+    let token = hosted_page_with(&state, &["file:transfer:send"]);
+    let device = synra_protocol::ids::DeviceId::new();
+    state
+        .db()
+        .pair_device(&synra_store::Paired {
+            device_id: device.to_string(),
+            display_name: "Study PC".to_owned(),
+            platform: "windows".to_owned(),
+            features: "[]".to_owned(),
+            link_token: "unused-here".to_owned(),
+            address: Some("127.0.0.1:1".to_owned()),
+            paired_at_ms: 1_000,
+        })
+        .expect("a paired device");
+    let state = std::sync::Arc::new(state);
+
+    let begun = super::plugin_ui_rpc_arc(
+        &state,
+        &token,
+        "transfer.begin",
+        &serde_json::json!({"to": device.to_string(), "fileName": "a.bin", "totalBytes": 2}),
+    )
+    .expect("the upload begins");
+    let upload = begun
+        .get("uploadId")
+        .and_then(|value| value.as_str())
+        .expect("an upload id")
+        .to_owned();
+    super::plugin_ui_rpc_arc(
+        &state,
+        &token,
+        "transfer.chunk",
+        &serde_json::json!({"uploadId": upload, "data": "aGk="}),
+    )
+    .expect("the chunk is appended");
+
+    let finished = super::plugin_ui_rpc_arc(
+        &state,
+        &token,
+        "transfer.finish",
+        &serde_json::json!({"uploadId": upload}),
+    )
+    .expect("finish answers before the dial");
+    assert!(finished.get("transferId").is_some(), "an id, not a completed send");
+
+    // The worker fails against port 1 and removes its row; the test waits for that rather than for a fixed sleep.
+    for _ in 0..200 {
+        if state.transfers.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(state.transfers.is_empty(), "the failed send left no row");
+    assert!(
+        !state.paths.cache_dir().join("plugin-transfers").read_dir().map(|entries| entries.count() > 0).unwrap_or(false),
+        "the upload's files were left in the cache"
+    );
+}
+
+#[test]
 fn a_chunked_transfer_the_page_never_finishes_uses_no_send() {
     // ★ Beginning and aborting is the "page went away" path: the host must not dial anything, and the only thing left is
     // that the upload is gone.

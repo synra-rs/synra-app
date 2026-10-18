@@ -85,6 +85,31 @@ pub fn plugin_ui_rpc(
     method: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, IpcError> {
+    dispatch(state, None, token, method, args)
+}
+
+/// [`plugin_ui_rpc`], with the managed state so a chunked transfer can finish on a worker.
+///
+/// # Why the two entries exist
+///
+/// Because only the Tauri command owns an `Arc<AppState>`, and a finished upload's send has to outlive the call. Everything
+/// else is shared; the difference is one optional reference that only `transfer.finish` uses.
+pub fn plugin_ui_rpc_arc(
+    state: &std::sync::Arc<AppState>,
+    token: &str,
+    method: &str,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    dispatch(state, Some(state), token, method, args)
+}
+
+fn dispatch(
+    state: &AppState,
+    arc: Option<&std::sync::Arc<AppState>>,
+    token: &str,
+    method: &str,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
     let refused = || {
         IpcError::unknown(ErrorCode::CapabilityDenied)
             .with_params(serde_json::json!({"reason": "this page holds no live session"}))
@@ -138,7 +163,7 @@ pub fn plugin_ui_rpc(
         PluginUiOp::TransferSend => transfer_send(state, &session, args),
         PluginUiOp::TransferBegin => transfer_begin(state, &session, args),
         PluginUiOp::TransferChunk => transfer_chunk(state, &session, args),
-        PluginUiOp::TransferFinish => transfer_finish(state, &session, args),
+        PluginUiOp::TransferFinish => transfer_finish(state, arc, &session, args),
         PluginUiOp::TransferAbort => transfer_abort(state, &session, args),
         PluginUiOp::TransferStatus => transfer_status(state, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
@@ -846,6 +871,7 @@ fn transfer_chunk(
 /// Finishes a chunked transfer: checks the size, sends it, and removes the page's file.
 fn transfer_finish(
     state: &AppState,
+    arc: Option<&std::sync::Arc<AppState>>,
     session: &ValidatedSession,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, IpcError> {
@@ -863,6 +889,32 @@ fn transfer_finish(
             "totalBytes": upload.total,
             "reason": "the file ended before the size the page declared",
         })));
+    }
+
+    // ★ With the managed state, the send starts on a worker and this answers now — the same contract as the desktop's
+    // `transfer_send_file`. The worker also owns the upload's file and directory, so nothing is left in the cache.
+    if let Some(arc) = arc {
+        let (address, sender, row) = match super::transfers::prepare_file_send(
+            state,
+            upload.to,
+            &upload.path.to_string_lossy(),
+        ) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                discard_upload(&upload);
+                return Err(error);
+            }
+        };
+        let transfer_id = super::transfers::start_send(
+            arc,
+            upload.to,
+            address,
+            sender,
+            row,
+            Some(upload.path),
+            Some(upload.directory),
+        );
+        return Ok(serde_json::json!({"transferId": transfer_id.to_string()}));
     }
 
     let outcome = super::transfers::transfer_send_file(

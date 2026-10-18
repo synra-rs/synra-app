@@ -70,11 +70,11 @@ describe('transfer', () => {
       args: { uploadId: 'UPLOAD1' }
     })
 
-    // ★ The kernel forgets a finished transfer; the page still has an id and wants its outcome.
+    // ★ The call answers when the bytes are handed to the sender, so the state here is "on its way", not "arrived".
     await expect(synra.transfer.status(id)).resolves.toMatchObject({
       transferId: ID,
-      state: 'completed',
-      receivedBytes: 5,
+      state: 'transferring',
+      receivedBytes: 0,
       totalBytes: 5
     })
   })
@@ -161,7 +161,7 @@ describe('transfer', () => {
     expect(seen).toHaveLength(1)
   })
 
-  it('replays the final state to a listener that attached after the send', async () => {
+  it('replays what it knows to a listener that attached after the send', async () => {
     const { bridge: seam } = channel({
       'transfer.begin': { uploadId: 'UPLOAD1' },
       'transfer.chunk': {},
@@ -175,7 +175,7 @@ describe('transfer', () => {
     await Promise.resolve()
 
     expect(seen).toEqual([
-      { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, ratio: 1 }
+      { transferId: ID, state: 'transferring', receivedBytes: 0, totalBytes: 2, ratio: 0 }
     ])
   })
 })

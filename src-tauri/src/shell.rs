@@ -247,7 +247,7 @@ mod wrappers {
         method: String,
         args: serde_json::Value,
     ) -> Result<serde_json::Value, IpcError> {
-        commands::plugin_ui::plugin_ui_rpc(&state, &token, &method, &args)
+        commands::plugin_ui::plugin_ui_rpc_arc(state.inner(), &token, &method, &args)
     }
 
     /// Opens a plugin's page in its own WebView, under its own origin.

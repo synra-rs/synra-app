@@ -499,6 +499,7 @@ pub fn start_send(
     sender: synra_core::transfer::TransferSender,
     row: TransferSnapshot,
     temp: Option<std::path::PathBuf>,
+    cleanup_dir: Option<std::path::PathBuf>,
 ) -> synra_protocol::ids::TransferId {
     let transfer_id = row.transfer_id;
     let cancel = synra_core::supervisor::Cancellation::new();
@@ -518,12 +519,56 @@ pub fn start_send(
             if let Some(path) = temp {
                 let _ = std::fs::remove_file(path);
             }
+            if let Some(directory) = cleanup_dir {
+                // ★ A directory, not a recursive delete: the worker knows the one file it was given and the directory
+                // the uploader made for it. `remove_dir` refuses if anything else is inside, which is the right answer.
+                let _ = std::fs::remove_dir(directory);
+            }
         });
     if spawned.is_err() {
         // The row was announced before the thread existed; without this it would stay "queued" for ever.
         finish_transfer(state, transfer_id);
     }
     transfer_id
+}
+
+/// Opens a file and builds the row a send starts from.
+///
+/// # Why this is separate from starting the thread
+///
+/// Because the page's chunked `transfer.finish` and the desktop's `transfer_send_file` both need exactly this pair, and a
+/// second copy would be a second place for "the row's file name is the path's last component" to be forgotten.
+///
+/// # Errors
+///
+/// [`ErrorCode::Unsupported`] for an unknown device, [`ErrorCode::InvalidArgument`] for a file that cannot be planned.
+pub fn prepare_file_send(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    path: &str,
+) -> Result<
+    (std::net::SocketAddr, synra_core::transfer::TransferSender, TransferSnapshot),
+    IpcError,
+> {
+    use synra_protocol::ErrorCode;
+
+    let address = address_of(state, to)?;
+    let sender = synra_core::transfer::TransferSender::open(
+        std::path::Path::new(path),
+        synra_core::transfer::DEFAULT_CHUNK_SIZE,
+    )
+    .map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })?;
+    let planned = sender.request();
+
+    let now_ms = synra_core::host::millis_reading(unix_millis());
+    let mut row = snapshot_from(&planned, (to, &to.to_string()), "queued", now_ms);
+    row.file_name = std::path::Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_owned(), |name| name.to_string_lossy().into_owned());
+    Ok((address, sender, row))
 }
 
 /// Prepares and starts a file send, answering the transfer's identifier.
@@ -535,26 +580,8 @@ pub fn transfer_send_file_start(
     state: &std::sync::Arc<crate::state::AppState>,
     request: &synra_ipc::dto::SendFileRequest,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-    use synra_protocol::ErrorCode;
-
-    let address = address_of(state, request.to)?;
-    let sender = synra_core::transfer::TransferSender::open(
-        std::path::Path::new(&request.path),
-        synra_core::transfer::DEFAULT_CHUNK_SIZE,
-    )
-    .map_err(|error| {
-        IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"path": request.path, "reason": error.to_string()}))
-    })?;
-    let planned = sender.request();
-
-    let now_ms = synra_core::host::millis_reading(unix_millis());
-    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
-    row.file_name = std::path::Path::new(&request.path)
-        .file_name()
-        .map_or_else(|| request.path.clone(), |name| name.to_string_lossy().into_owned());
-
-    Ok(start_send(state, request.to, address, sender, row, None))
+    let (address, sender, row) = prepare_file_send(state, request.to, &request.path)?;
+    Ok(start_send(state, request.to, address, sender, row, None, None))
 }
 
 /// Prepares and starts a text send, answering the transfer's identifier.
@@ -594,7 +621,7 @@ pub fn transfer_send_text_start(
     let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
     row.kind = "attachment".to_owned();
 
-    Ok(start_send(state, request.to, address, sender, row, Some(path)))
+    Ok(start_send(state, request.to, address, sender, row, Some(path), None))
 }
 
 /// The row a receiver reports while a transfer arrives.

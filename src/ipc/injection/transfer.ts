@@ -140,10 +140,13 @@ export function createTransferNamespace(context: InjectionContext): TransferName
         }
         const answer = await call<{ readonly transferId: string }>('transfer.finish', { uploadId })
         const transferId = answer.transferId as TransferId
+        // ★ The call answers when the bytes have been handed to the sender, not when the peer has them: the worker owns
+        // the transfer from here. `status` and `onProgress` are how a page learns how it ended — the final state is not
+        // known yet, and inventing `completed` here would be the lie this cache exists to avoid.
         known.set(answer.transferId, {
           transferId,
-          state: 'completed',
-          receivedBytes: request.file.size,
+          state: 'transferring',
+          receivedBytes: 0,
           totalBytes: request.file.size
         })
         return transferId
