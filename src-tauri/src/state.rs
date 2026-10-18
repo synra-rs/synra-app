@@ -167,6 +167,11 @@ pub struct AppState {
     /// Written by the worker that moves the chunks, read by `transfer_list`. A registry rather than a read from the link: a
     /// transfer outlives the frame that started it, so the interface has to be able to ask between two of them.
     pub transfers: crate::commands::transfers::Transfers,
+    /// Inbound transfers whose receiver asked to cancel.
+    ///
+    /// ★ A command cannot send the abort: the listener's connection thread is the only writer to that link, and a second
+    /// writer would race it. The command leaves the identifier here, and the loop consumes it between messages.
+    pub inbound_cancels: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
 /// One plugin page this shell opened, as the window that opened it knows it.
@@ -229,6 +234,7 @@ impl AppState {
             ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
             hosted_ui: Mutex::new(std::collections::HashMap::new()),
             transfers: crate::commands::transfers::Transfers::new(),
+            inbound_cancels: Arc::new(Mutex::new(std::collections::HashSet::new())),
         })
     }
 

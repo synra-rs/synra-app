@@ -222,10 +222,11 @@ pub fn transfer_list(state: &crate::state::AppState) -> Vec<TransferSnapshot> {
 /// answering "done" would leave it believing it stopped something. The refusal names the identifier so a stale panel can
 /// correct itself by re-reading.
 ///
-/// # What it does not do yet
+/// # What it does for a transfer arriving
 ///
-/// It does not tell the peer. A cancellation is a frame, and the link that would carry it is what the worker is for; today
-/// this stops the shell's own record, which is the part the progress panel reads.
+/// Nothing immediate: the listener's connection thread owns that link, so the identifier is left in
+/// [`crate::state::AppState::inbound_cancels`] and consumed between messages. The loop sends the abort, removes the
+/// partial file and reports an `aborted` progress event, which is what withdraws the row.
 pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Result<(), IpcError> {
     let id = transfer_id.parse::<TransferId>().map_err(|error| {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
@@ -236,19 +237,24 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
         return Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
     }
-    // ★ The worker is asked to stop **before** its row is removed: the loop checks the token between blocks, and a token
-    // taken out after the forget would still be found by the worker's next check — but the order also means a cancel that
-    // races the last block cannot resurrect a row nobody asked to keep.
-    state.transfers.stop(&id);
-    // ★ The file this shell created for the transfer goes with it. A cancel that only removed the row would leave a message
-    // on disk that nobody will ever send and nothing will ever delete.
-    if let Some(path) = state.transfers.forget(&id) {
-        let _ = std::fs::remove_file(path);
+    // ★ Two directions, two mechanisms. An outgoing transfer has a worker holding a cancellation token; an incoming one
+    // has a connection thread that owns the link, so the command can only leave the identifier where that loop will look.
+    if state.transfers.stop(&id) {
+        // ★ The file this shell created for the transfer goes with it. A cancel that only removed the row would leave a
+        // message on disk that nobody will ever send and nothing will ever delete.
+        if let Some(path) = state.transfers.forget(&id) {
+            let _ = std::fs::remove_file(path);
+        }
+        // ★ The panel learns without asking. `TransferFinished` removes the row in the intents store, and without this a
+        // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every
+        // other command here was fixed for.
+        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id: id });
     }
-    // ★ The panel learns without asking. `TransferFinished` removes the row in the intents store, and without this a
-    // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every other
-    // command here was fixed for.
-    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id: id });
+    else {
+        // The row stays: the listener has not seen the request yet, and removing it here would make the interface forget a
+        // transfer that is still running. It goes when the listener's abort reaches the progress callback.
+        state.inbound_cancels.lock().insert(id.to_string());
+    }
     Ok(())
 }
 

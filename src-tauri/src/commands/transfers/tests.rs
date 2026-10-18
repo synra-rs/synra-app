@@ -111,10 +111,34 @@ fn cancelling_a_transfer_that_is_not_in_flight_is_refused() {
 }
 
 #[test]
+fn cancelling_an_incoming_transfer_leaves_the_abort_to_the_listener() {
+    // ★ A command cannot send the abort: the listener's connection thread is the only writer to that link. The row stays
+    // until that thread has actually told the sender, which is why the command only leaves the identifier behind.
+    let state = crate::testing::state();
+    let id = TransferId::new();
+    let mut receive = snapshot(id, "receiving");
+    receive.direction = "receive".to_owned();
+    state.transfers.record(receive);
+
+    super::transfer_cancel(&state, &id.to_string()).expect("the cancel is accepted");
+
+    assert!(
+        state.inbound_cancels.lock().contains(&id.to_string()),
+        "the listener was not told to cancel"
+    );
+    assert!(
+        state.transfers.list().iter().any(|transfer| transfer.transfer_id == id),
+        "the row was withdrawn before the sender was told"
+    );
+}
+
+#[test]
 fn cancelling_a_transfer_that_is_in_flight_drops_it() {
     let state = crate::testing::state();
     let id = TransferId::new();
     state.transfers.record(snapshot(id, "active"));
+    // ★ A worker is what makes it outgoing; without a token the command has no way to tell it from an incoming transfer.
+    state.transfers.track_cancel(id, synra_core::supervisor::Cancellation::new());
     let subscriber = state.events.subscribe();
 
     super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
@@ -238,6 +262,7 @@ fn cancelling_a_transfer_removes_the_file_it_created() {
     std::fs::write(&path, b"a message").expect("a file");
     let id = TransferId::new();
     state.transfers.record_with_temp(snapshot(id, "active"), path.clone());
+    state.transfers.track_cancel(id, synra_core::supervisor::Cancellation::new());
     let subscriber = state.events.subscribe();
 
     super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");

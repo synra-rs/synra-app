@@ -157,8 +157,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // The peer's name is looked up once per connection and kept: a per-block query would be a database read for
             // every 64 KiB, and a row that showed an identifier for the first block and a name for the second would look
             // like two devices.
-            let progress_state = Arc::clone(&db_state);
-            let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
+            let progress_state = Arc::clone(&db_state);            let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
                 Arc::new(Mutex::new(std::collections::HashMap::new()));
             let progress: Arc<synra_core::listener::ProgressCallback> = Arc::new(move |event| {
                 // ★ A sender's abort is the last event of a transfer that produced no file. The row is removed rather than
@@ -256,6 +255,10 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 },
             );
 
+            let cancels = Arc::clone(&db_state.inbound_cancels);
+            let should_cancel: Arc<synra_core::listener::CancelCallback> =
+                Arc::new(move |id: &str| cancels.lock().remove(id));
+
             synra_core::listener::serve_with(
                 &host,
                 &thread_cancel,
@@ -265,6 +268,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 &finished,
                 &progress,
                 &offer,
+                &should_cancel,
             );
         })
         .map_or_else(
