@@ -81,6 +81,11 @@ pub struct AppState {
     /// they are comparing a bundle from before a change with one from after it — and a name built from the second
     /// would silently put the second file on top of the first.
     pub bundles_written: AtomicU64,
+    /// The host the listener serves, once it has bound a port.
+    ///
+    /// Set before with_discovery_or_report, because the announcement has to carry the port peers should **dial** — the
+    /// listener's — and a device that announced the discovery port would be one whose pairing always dialled the wrong service.
+    pub listener: Option<(Arc<Mutex<synra_core::Host>>, u16)>,
     /// The pairing desk: the requests waiting for a person, and the answers going back.
     ///
     /// ★ Held **here** rather than inside the listener, and that is what makes pairing work at all: a request arrives on a
@@ -196,6 +201,7 @@ impl AppState {
             scanning: Arc::new(Mutex::new(None)),
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
+            listener: None,
             pairing: Arc::new(synra_core::pairing::PairingDesk::new(
                 local_id,
                 synra_protocol::session::SessionTimeouts::default().pairing,

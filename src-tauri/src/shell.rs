@@ -565,6 +565,9 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
     let mut state = with_plugins_or_refuse(state);
+    // ★ Bind the listener **before** discovery, so the announcement can carry the port a peer should dial. The order is the
+    // whole fix: announcing the discovery port meant every pairing dialled the responder, which accepts datagrams and not links.
+    state = crate::listener::bind(state);
     // ★ And the half the shell never had: its own discovery. Started before the log so a bind failure is reported through
     // the log if one is running, and its failure is not fatal — see the function.
     state = with_discovery_or_report(state);

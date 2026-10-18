@@ -31,13 +31,20 @@ use tauri::Manager as _;
 
 use crate::state::AppState;
 
-/// Starts the listener, and answers the token that stops it.
+/// Binds the port this device is reachable on, and records it in the state.
 ///
-/// The token is returned rather than dropped so a caller can stop the listener on the way out. A thread whose token is thrown away
-/// is one that can only be stopped by killing the process.
+/// # Why this is separate from [`spawn`]
+///
+/// Because discovery announces the port a peer should **dial**, and it starts before the window is managed. Binding first is what
+/// lets the announcement carry the listener's port rather than the discovery responder's — the difference between a peer reaching
+/// this device and a peer reaching a service that only answers datagrams.
+///
+/// # What a failed bind costs
+///
+/// The reachability, and nothing else. The window opens, the scan works, and `pairing_request` reports the failure of a dial rather
+/// than the interface losing itself.
 #[must_use]
-pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellation> {
-    let state = app.state::<Arc<AppState>>();
+pub fn bind(mut state: AppState) -> AppState {
     // ★ **Once**, and into a local, before anything else touches the identity.
     //
     // This was a self-deadlock: `Host::new(state.identity.lock().clone(), local_of(&state))` holds the guard from the first
@@ -45,19 +52,37 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
     // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
     // loaded, and the only sign was a white screen with discovery's log above it.
     let identity = state.identity.lock().clone();
-    // Binding can fail for reasons a user can act on — another copy of this application already holding the port — and a failure
-    // here must not stop the window from appearing. The command that needs a link reports its own refusal; this one only logs.
     let host = Arc::new(Mutex::new(synra_core::Host::new(
         identity.clone(),
         local_of(&identity),
     )));
 
-    let port = match synra_core::listener::bind(&mut host.lock(), 0) {
-        Ok(address) => address.port(),
+    let bound = {
+        let mut guard = host.lock();
+        synra_core::listener::bind(&mut guard, 0).map(|address| address.port())
+    };
+
+    match bound {
+        Ok(port) => {
+            state.listener = Some((host, port));
+        }
         Err(error) => {
             eprintln!("synra: the listener could not bind a port: {error}");
-            return None;
         }
+    }
+    state
+}
+
+/// Starts the listener, and answers the token that stops it.
+///
+/// The token is returned rather than dropped so a caller can stop the listener on the way out. A thread whose token is thrown away
+/// is one that can only be stopped by killing the process.
+#[must_use]
+pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellation> {
+    let state = app.state::<Arc<AppState>>();
+    let Some((host, port)) = state.listener.clone() else {
+        eprintln!("synra: no port was bound, so this window cannot be reached");
+        return None;
     };
 
     let cancel = synra_core::supervisor::Cancellation::new();
