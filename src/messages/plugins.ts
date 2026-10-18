@@ -115,6 +115,19 @@ export const plugins = {
   removeDetail: (title: string): string =>
     `Removing ${title} deletes its installed files. Its data \u2014 settings, indexes and anything it stored \u2014 stays on disk unless you choose to delete it.`,
   removeDeleteData: 'Also delete its data',
+  /**
+   * The quota ladder, in the words the card shows.
+   *
+   * `good` is not drawn — a card that announced "running normally" on every plugin would be a card whose warnings stopped
+   * standing out — but the label exists so the three drawn rungs are named in one place rather than in the template.
+   */
+  healthLabel: (health: string): string => health === 'overreaching'
+    ? 'Asking more often than its limits allow'
+    : health === 'degraded'
+      ? 'Running at a reduced quota'
+      : health === 'faulted'
+        ? 'Disabled after repeated refusals'
+        : 'Running normally',
   /** The directory the checkbox would delete, so the user can see it before agreeing. */
   removeDataPath: (path: string): string => `Data folder: ${path}`,
   removedKept: (title: string, freed: string): string => `${title} was removed; ${freed} freed, and its data was kept.`,

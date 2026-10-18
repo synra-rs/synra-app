@@ -235,6 +235,19 @@
               </ATag>
             </div>
 
+            <!--
+              ★ The rung, when it is not `good`. A plugin that is over its limits is still `enabled` and may even be
+              `running`; the state tag does not tell that story, so the health line does — and it is the sentence the
+              quota itself produced, not a second opinion written here.
+            -->
+            <AAlert
+              v-if="plugin.health && plugin.health.health !== 'good'"
+              :type="plugin.health.health === 'faulted' ? 'error' : 'warning'"
+              :message="messages.plugins.healthLabel(plugin.health.health)"
+              :description="plugin.health.explanation"
+              show-icon
+            />
+
             <dl class="m-0 row flex-wrap gap-4 text-xs">
               <div class="row gap-1">
                 <dt class="m-0 text-ink-dim">

@@ -122,6 +122,30 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('warns when a loaded plugin is over its limits', async () => {
+    // ★ The health rung, which the shell used to leave as `None` for every card. A degraded plugin is still `enabled` and
+    // may still say `running`, so the state tag cannot tell this story — the warning and the quota's own sentence do.
+    mocks.call.mockResolvedValue({
+      ok: true,
+      value: [card({
+        health: {
+          health: 'degraded',
+          explanation: 'this plugin is over its limits, so it is running at a reduced quota',
+          callsAdmitted: 10,
+          callsRefused: 3,
+          usage: {}
+        }
+      })]
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.plugins.healthLabel('degraded'))
+    expect(wrapper.text()).toContain('running at a reduced quota')
+    wrapper.unmount()
+  })
+
   it('asks about the data in a dialog before removing a plugin', async () => {
     // ★ The destructive half of removal: the command always accepted `removeData`, and the page sent `false` without ever
     // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the

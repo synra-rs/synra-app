@@ -20,7 +20,7 @@
 
 use synra_ipc::{
     AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError,
-    PluginSnapshot, RemoveReport, UpdateInfo,
+    PluginHealthDto, PluginSnapshot, RemoveReport, UpdateInfo,
 };
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
@@ -567,12 +567,11 @@ fn snapshot(
         // ★ Read from the manifest's page entry rather than from `hybrid`: a UI-only plugin has a page and no headless
         // half, and `plugin_ui_open` can open it — the card has to know that before it draws the button.
         has_ui: manifest.as_ref().is_some_and(|manifest| manifest.runtime.ui.is_some()),
-        // ★ `None` rather than a zeroed reading.
-        //
-        // The host has not observed this plugin yet, so it has no usage to report. A snapshot full of zeros would be
-        // indistinguishable from a plugin that genuinely never uses anything — and those two need different reactions
-        // from a user deciding whether to keep it.
-        health: None,
+        // ★ `None` for a plugin this process has not loaded, and the real report for one it has. A zeroed reading would be
+        // indistinguishable from a plugin that genuinely never uses anything — and those two need different reactions from
+        // a user deciding whether to keep it. Until this line, the field was `None` for *every* card: the contract had a
+        // health shape and the window never filled it, so a plugin degraded by its own refusals looked ordinary.
+        health: health_card(state, &row.plugin_id),
         // ★ What the plugin **asks for**, so the consent prompt has something to ask about. `granted` and `denied` are
         // both empty before the user answers, and a prompt that had to derive its list from them would have nothing to
         // show — which is why this field exists rather than the interface reading the manifest itself.
@@ -591,6 +590,31 @@ fn snapshot(
         // Checking for an update is a network operation, and a list that made one would block the settings screen on
         // every open. The design document has a separate command for it; this one answers from what is on disk.
         update: None,
+    }
+}
+
+/// A plugin's quota report, shaped for the card.
+///
+/// `None` when this process has not loaded the plugin: "never observed" and "observed and fine" are different facts, and a
+/// card that showed a zeroed report would be claiming the second while meaning the first.
+fn health_card(state: &AppState, plugin_id: &str) -> Option<PluginHealthDto> {
+    let report = state.plugin_set().ok()?.lock().report_of(plugin_id)?;
+    Some(health_dto(&report))
+}
+
+/// The mapping from the engine's report to the contract's shape.
+///
+/// Split from [`health_card`] so the arithmetic and the field names can be asserted without a loaded plugin: the engine's
+/// report is a stable type, and a test can build one.
+fn health_dto(report: &synra_plugin_host::quota::QuotaReport) -> PluginHealthDto {
+    PluginHealthDto {
+        health: report.health.clone(),
+        explanation: report.explanation.clone(),
+        calls_admitted: report.admitted,
+        calls_refused: report.refused,
+        // The quota in force, as JSON: it is a shape the interface shows but never reasons about, so mirroring its fields
+        // in the contract would be a second definition to keep in step.
+        usage: serde_json::to_value(&report.quota).unwrap_or(serde_json::Value::Null),
     }
 }
 
@@ -2106,6 +2130,38 @@ mod tests {
             state.paths.plugin_sandbox_dir(ID).display().to_string(),
             "the card names the sandbox the removal deletes"
         );
+        // A shell with no engine has observed nothing, which is not the same as "healthy".
+        assert!(card.health.is_none(), "no engine, no report");
+    }
+
+    #[test]
+    fn a_loaded_plugins_card_carries_its_health() {
+        // ★ The field the contract has always had and the shell never filled: every card said `None`, so a plugin the
+        // quota had degraded looked exactly like one that had never run. The report comes from the same budget the gate
+        // counts into, so this also proves the card and the gate are looking at one object.
+        let (_root, state) = installed();
+        let state = with_engine(state);
+        {
+            let set = state.plugin_set().expect("an engine");
+            let mut set = set.lock();
+            set.load(synra_core::dispatch::PluginSpec {
+                id: PluginId::parse(ID).expect("an id"),
+                version: "1.0.0".to_owned(),
+                wasm: b"\0asm\x01\0\0\0".to_vec(),
+                grants: synra_capability::CapabilitySet::new(),
+                policy: synra_plugin_host::InstancePolicy::Stateless,
+                limit: 1,
+                quota: synra_plugin_host::quota::Quota::default(),
+            })
+            .expect("loads");
+        }
+
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        let health = card.health.as_ref().expect("a loaded plugin has a report");
+        assert_eq!(health.health, "good");
+        assert_eq!(health.calls_admitted, 0);
+        assert!(!health.usage.is_null(), "the quota in force is carried");
     }
 
     #[test]
