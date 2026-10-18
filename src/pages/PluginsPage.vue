@@ -19,6 +19,31 @@
          look for a fault in a plugin that is behaving exactly as designed. -->
     <AAlert v-if="note" type="success" :message="note" closable @close="note = undefined" />
 
+    <!--
+      The question a signed package asks next, shown right after the install that produced it. It is deliberately not a
+      modal: the plugin is off, nothing is running, and the fingerprint is something a person compares at their own pace.
+    -->
+    <AAlert v-if="pendingPublisher" type="info" show-icon :message="messages.plugins.publisherPrompt.title">
+      <template #description>
+        <div class="stack gap-2">
+          <span class="text-sm">{{ messages.plugins.publisherPrompt.detail }}</span>
+          <span class="truncate font-mono text-xs">{{ pendingPublisher.fingerprint }}</span>
+          <span class="row gap-2">
+            <AButton
+              size="small"
+              :loading="deciding === pendingPublisher.id"
+              @click="trustPendingPublisher"
+            >
+              {{ messages.plugins.publisherPrompt.trust }}
+            </AButton>
+            <AButton size="small" @click="pendingPublisher = undefined">
+              {{ messages.plugins.publisherPrompt.later }}
+            </AButton>
+          </span>
+        </div>
+      </template>
+    </AAlert>
+
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
@@ -340,6 +365,18 @@ const publishers = ref<readonly PublisherRow[]>([])
 /** The publisher whose decision is being written. */
 const deciding = ref<string | undefined>(undefined)
 
+/** The signing key of the package just installed, when it has not been decided yet. */
+const pendingPublisher = ref<{ id: string, fingerprint: string } | undefined>(undefined)
+
+/** Trusts the key the install just showed, and closes the prompt. */
+async function trustPendingPublisher(): Promise<void> {
+  const pending = pendingPublisher.value
+  if (!pending)
+    return
+  await decidePublisher(pending.id, 'trusted')
+  pendingPublisher.value = undefined
+}
+
 onMounted(load)
 
 /** Reads the installed plugins and the publishers this device has met. */
@@ -364,15 +401,17 @@ async function load(): Promise<void> {
   else {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
   }
-  if (publisherAnswer.ok && Array.isArray(publisherAnswer.value)) {
-    publishers.value = publisherAnswer.value
-  }
-  else if (answer.ok) {
-    error.value = {
-      code: publisherAnswer.error.code,
-      message: publisherAnswer.error.message,
-      actions: publisherAnswer.error.actions
+  if (!publisherAnswer.ok) {
+    if (answer.ok) {
+      error.value = {
+        code: publisherAnswer.error.code,
+        message: publisherAnswer.error.message,
+        actions: publisherAnswer.error.actions
+      }
     }
+  }
+  else if (Array.isArray(publisherAnswer.value)) {
+    publishers.value = publisherAnswer.value
   }
 }
 
@@ -539,5 +578,14 @@ async function install(): Promise<void> {
   note.value = messages.plugins.installedSwitchedOff
   installPath.value = ''
   await load()
+
+  // ★ Asked after the list is re-read, so a key the user already trusted (or a package with no signature) does not
+  // produce a second prompt. The fingerprint is the one the install verified, not one parsed here from the package.
+  const signed = outcome.value
+  const known = signed.publisherId
+    ? publishers.value.find(publisher => publisher.publisherId === signed.publisherId)
+    : undefined
+  if (signed.publisherId && signed.fingerprint && known?.trust !== 'trusted')
+    pendingPublisher.value = { id: signed.publisherId, fingerprint: signed.fingerprint }
 }
 </script>

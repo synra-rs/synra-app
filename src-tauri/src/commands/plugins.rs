@@ -264,6 +264,8 @@ pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<In
         version: installed.version,
         warnings: installed.warnings,
         enabled: false,
+        publisher_id: installed.signed_by.as_ref().map(|publisher| publisher.publisher_id.clone()),
+        fingerprint: installed.signed_by.as_ref().map(|publisher| publisher.fingerprint.clone()),
     })
 }
 

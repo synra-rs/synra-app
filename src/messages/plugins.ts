@@ -17,6 +17,13 @@ export const plugins = {
     trust: 'Trust key',
     revoke: 'Revoke key'
   },
+  /** The question an install of a signed package asks next. */
+  publisherPrompt: {
+    title: 'This package was signed',
+    detail: 'Compare this fingerprint with the one the publisher gave you. Trusting the key is a decision about future packages from it.',
+    trust: 'Trust this key',
+    later: 'Not now'
+  },
   /**
    * ★ This said "See what a plugin is". There is no screen with that answer — the explanation lives in the
    * documentation site, and this window cannot open it (`default-src 'self'`, and the plugin facade's
