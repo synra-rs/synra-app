@@ -450,6 +450,16 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain('tcp_port_available')
     expect(wrapper.text()).toContain(messages.settings.diagnostics.probeStatus('warn'))
     expect(wrapper.text()).toContain('include this report')
+
+    // ★ The summary is counts, not a colour: a report of twelve rows is one sentence until something fails. Then the
+    // filter hides exactly the passes, which is the difference between "nothing to do" and "nothing worth reading".
+    expect(wrapper.text()).toContain(messages.settings.diagnostics.probesSummary(1, 1, 0))
+    const filter = wrapper.findAllComponents({ name: 'ACheckbox' }).at(-1)
+    expect(filter, 'the only-problems filter is missing').toBeDefined()
+    await filter?.vm.$emit('update:checked', true)
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('tcp_port_available')
+    expect(wrapper.text()).toContain('wasm_backend')
     wrapper.unmount()
   })
 })

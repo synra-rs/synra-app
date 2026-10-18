@@ -291,9 +291,17 @@
           <AButton :loading="probing" @click="runProbes">
             {{ messages.settings.diagnostics.probes }}
           </AButton>
+          <span v-if="probeReport" class="text-xs text-ink-dim">{{ probesSummary }}</span>
         </div>
+        <ACheckbox
+          v-if="probeReport"
+          :checked="onlyProblems"
+          @update:checked="(checked) => (onlyProblems = checked)"
+        >
+          {{ messages.settings.diagnostics.onlyProblems }}
+        </ACheckbox>
         <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
-          <li v-for="result in probeReport.results" :key="result.name" class="stack gap-1">
+          <li v-for="result in visibleProbes" :key="result.name" class="stack gap-1">
             <div class="row items-center gap-2">
               <ATag :color="probeColor(result.status)">
                 {{ messages.settings.diagnostics.probeStatus(result.status) }}
@@ -505,6 +513,20 @@ const probeReport = ref<ProbeReportDto | undefined>(undefined)
 
 /** Whether the probes are running. */
 const probing = ref(false)
+
+/** Whether the list hides the passes: a report is useful as one line until something fails. */
+const onlyProblems = ref(false)
+
+/** Counts by status, read from the report rather than stored beside it — one source for both. */
+const probesSummary = computed(() => {
+  const results = probeReport.value?.results ?? []
+  const count = (status: string): number => results.filter(result => result.status === status).length
+  return messages.settings.diagnostics.probesSummary(count('ok'), count('warn'), count('fail'))
+})
+
+/** The rows the list draws: the whole report, or only the non-passing ones. */
+const visibleProbes = computed(() => (probeReport.value?.results ?? [])
+  .filter(result => !onlyProblems.value || result.status !== 'ok'))
 
 /** A tag colour per status: the words are the same, the colour is what makes a failing report findable. */
 function probeColor(status: string): string {

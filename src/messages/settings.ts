@@ -67,6 +67,10 @@ export const settings = {
     probes: 'Run checks',
     probesDetail: 'Checks the ports, the data folder, the clock and the runtime this device would need in order to start.',
     probeStatus: (status: string): string => status === 'ok' ? 'OK' : status === 'warn' ? 'Warning' : 'Failed',
+    /** Counts by status, so a report of twelve results is one line before it is twelve. */
+    probesSummary: (ok: number, warn: number, fail: number): string =>
+      `${ok} OK \u00B7 ${warn} warning${warn === 1 ? '' : 's'} \u00B7 ${fail} failed`,
+    onlyProblems: 'Only problems',
     /** The shell's own recent log, for a user who wants to see it before exporting. */
     logs: 'Recent log',
     logsEmpty: 'The log is empty.'
