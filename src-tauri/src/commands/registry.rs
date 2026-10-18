@@ -982,6 +982,10 @@ fn download(
         return Err(synra_ipc::IpcError::unknown(code)
             .with_params(serde_json::json!({"tarball": chosen.dist.tarball, "reason": reason})));
     };
+    // ★ The declared digest is checked **before** anything is unpacked. The packument is a claim by the same server that
+    // served the bytes; without this comparison a mirror that answered with other bytes would be installed as the
+    // published package. A document with no integrity string is refused rather than trusted: there is nothing to compare.
+    verify_tarball(chosen.dist.integrity.as_deref(), &chosen.dist.tarball, &bytes)?;
 
     let directory = state
         .paths
@@ -997,6 +1001,42 @@ fn download(
         }))
     })?;
     Ok(PackageDir { directory, files })
+}
+
+/// Checks the bytes a mirror served against the digest the document declares.
+///
+/// # Why a helper rather than an inline check
+///
+/// Because "what happens when the document carries no digest" is a decision, and the decision has to be testable without a
+/// network. A missing digest is not a reason to skip the check — a publisher that cannot state one has not said which
+/// bytes are theirs — so it is refused with the same shape as a mismatch.
+fn verify_tarball(
+    declared: Option<&str>,
+    tarball: &str,
+    bytes: &[u8],
+) -> Result<(), synra_ipc::IpcError> {
+    let Some(declared) = declared else {
+        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(
+            serde_json::json!({
+                "tarball": tarball,
+                "reason": "the registry's entry carries no integrity string, and bytes nothing vouches for are not installed",
+            }),
+        ));
+    };
+    synra_plugin_host::registry::check_integrity(tarball, declared, bytes)
+        .map(|_| ())
+        .map_err(|failure| {
+        use synra_plugin_host::registry::FetchFailure;
+        let code = match failure {
+            FetchFailure::IntegrityMismatch { .. } => ErrorCode::IntegrityMismatch,
+            FetchFailure::Network { .. } => ErrorCode::DeviceOffline,
+            _ => ErrorCode::Unsupported,
+        };
+        synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
+            "tarball": tarball,
+            "reason": failure.to_string(),
+        }))
+    })
 }
 
 /// Installs the version a registry offers, through the same pipeline a directory install uses.
@@ -1102,6 +1142,7 @@ pub fn install_from_source(
 mod tests {
     use super::publisher_mismatch;
     use std::collections::BTreeMap;
+    use synra_protocol::error::ErrorCode;
 
     #[test]
     fn a_relative_tarball_is_resolved_against_the_index() {
@@ -1125,6 +1166,27 @@ mod tests {
         // author did not mean to publish.
         assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "../secret.tgz").is_err());
         assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "").is_err());
+    }
+
+    #[test]
+    fn a_tarball_without_integrity_is_refused() {
+        // ★ No digest is not "skip the check": there is nothing to compare the bytes with, and installing them would be
+        // trusting whatever answered the connection.
+        let error = super::verify_tarball(None, "https://registry.example/x.tgz", b"bytes")
+            .expect_err("nothing to verify against");
+        assert_eq!(error.code, ErrorCode::Unsupported);
+    }
+
+    #[test]
+    fn a_tarball_must_match_the_declared_digest() {
+        let bytes = b"the published tarball";
+        let declared = synra_core::ObjectDigest::of(bytes).as_sri().to_string();
+        super::verify_tarball(Some(&declared), "https://registry.example/x.tgz", bytes)
+            .expect("the bytes match");
+
+        let error = super::verify_tarball(Some(&declared), "https://registry.example/x.tgz", b"other bytes")
+            .expect_err("a mismatch is refused");
+        assert_eq!(error.code, ErrorCode::IntegrityMismatch);
     }
 
     #[test]

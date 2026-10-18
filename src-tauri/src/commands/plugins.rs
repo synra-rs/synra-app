@@ -932,6 +932,14 @@ mod tests {
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
         let address = listener.local_addr().expect("an address");
         let base = format!("http://{address}");
+        let archive = tgz(&[
+            ("package/manifest.json", manifest.as_slice()),
+            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+        ]);
+        // ★ The document declares the digest of the bytes it points at, and the install checks them: a fake registry with
+        // no integrity is now refused before anything is unpacked, which is the property the test below would hide if
+        // this one omitted it.
+        let integrity = synra_core::ObjectDigest::of(&archive).as_sri().to_string();
         let document = serde_json::json!({
             "name": "@acme/hello",
             "dist-tags": { "latest": "1.0.0" },
@@ -939,16 +947,12 @@ mod tests {
                 "1.0.0": {
                     "name": "@acme/hello",
                     "version": "1.0.0",
-                    "dist": { "tarball": format!("{base}/pkg.tgz") },
+                    "dist": { "tarball": format!("{base}/pkg.tgz"), "integrity": integrity },
                     "synra": manifest_json
                 }
             }
         })
         .to_string();
-        let archive = tgz(&[
-            ("package/manifest.json", manifest.as_slice()),
-            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
-        ]);
         std::thread::spawn(move || {
             for _ in 0..3 {
                 let Ok(mut stream) = listener.accept().map(|(stream, _)| stream) else { return };
@@ -1273,6 +1277,7 @@ mod tests {
             ("package/manifest.json", manifest.as_slice()),
             ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
         ]);
+        let integrity = synra_core::ObjectDigest::of(&archive).as_sri().to_string();
 
         let (second, second_count) = serve(move |line: &str| {
             if line.contains("pkg.tgz") {
@@ -1300,7 +1305,7 @@ mod tests {
                     "name": "@acme/hello",
                     "version": "1.0.0",
                     // On the first mirror, whose `/pkg.tgz` is a 404; the second mirror serves the same path.
-                    "dist": { "tarball": format!("{first}/pkg.tgz") }
+                    "dist": { "tarball": format!("{first}/pkg.tgz"), "integrity": integrity }
                 }
             }
         })
@@ -1381,6 +1386,7 @@ mod tests {
             ("package/manifest.json", manifest.as_slice()),
             ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
         ]);
+        let integrity = synra_core::ObjectDigest::of(&archive).as_sri().to_string();
 
         let document = Arc::new(Mutex::new(String::new()));
         let served = Arc::clone(&document);
@@ -1403,6 +1409,8 @@ mod tests {
                 "version": "1.0.0",
                 // Relative to the index's own URL: the client resolves it, so the author need not know the bucket.
                 "tarball": "pkg.tgz",
+                // And the digest of the bytes it names; without one the install refuses before unpacking.
+                "integrity": integrity,
                 "manifest": manifest_json
             }]
         })
