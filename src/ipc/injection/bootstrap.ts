@@ -65,6 +65,13 @@ export interface InjectionSeed {
   readonly hostKind: HostKind
   /** The host application's version. */
   readonly appVersion: string
+  /**
+   * What this **platform** can do, in the client's own spelling (`open_url`, `notify`, …).
+   *
+   * ★ Not the grants: a platform can support an action the user refused, and the page says different things in each
+   * case. This is the answer `env.platformSupports` reads, decided before the page loads so a render can use it.
+   */
+  readonly platformCapabilities: readonly string[]
 }
 
 /**
@@ -86,7 +93,8 @@ export function inject(seed: InjectionSeed, bridge: Bridge): SynraClient {
     sdkVersion: seed.sdkVersion,
     platform: seed.platform,
     hostKind: seed.hostKind,
-    appVersion: seed.appVersion
+    appVersion: seed.appVersion,
+    platformCapabilities: seed.platformCapabilities
   }
   const client = createInjection(context)
   // ★ The global is declared `readonly` in `@synra/client` (the host does not expect anyone to replace it), so the

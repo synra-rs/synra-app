@@ -56,16 +56,23 @@ describe('what the host says about itself', () => {
 
 describe('the three "can"s mean three different things', () => {
   it('can answers about the grant', () => {
-    const synra = createInjection(context({ granted: ['clipboard_read'] }))
-    expect(synra.env.can('clipboard_read')).toBe(true)
-    expect(synra.env.can('clipboard_write')).toBe(false)
+    const synra = createInjection(context({ granted: ['platform:read-clipboard'] }))
+    expect(synra.env.can('platform:read-clipboard')).toBe(true)
+    expect(synra.env.can('platform:write-clipboard')).toBe(false)
   })
 
   it('platformSupports answers about the platform, never the grant', () => {
-    const granted = createInjection(context({ granted: ['clipboard_read'] }))
-    const refused = createInjection(context({ granted: [] }))
-    expect(granted.env.platformSupports('clipboard_read'))
-      .toBe(refused.env.platformSupports('clipboard_read'))
+    // ★ Three contexts, and the grant is deliberately the opposite of what a reader might expect: the one that was
+    // granted and the one that was refused answer **the same**, and the one whose platform does not support it answers
+    // false. A table derived from `granted` would flip the first two.
+    const granted = createInjection(context({ granted: ['platform:read-clipboard'], platformCapabilities: ['clipboard_read'] }))
+    const refused = createInjection(context({ granted: [], platformCapabilities: ['clipboard_read'] }))
+    const elsewhere = createInjection(context({ platformCapabilities: [] }))
+
+    expect(granted.env.platformSupports('clipboard_read')).toBe(true)
+    expect(refused.env.platformSupports('clipboard_read')).toBe(true)
+    expect(elsewhere.env.platformSupports('clipboard_read')).toBe(false)
+    expect(elsewhere.env.platformSupports('notify')).toBe(false)
   })
 
   it('hostSupports answers about the host version', () => {

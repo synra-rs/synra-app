@@ -290,6 +290,7 @@ fn the_initialization_script_keeps_the_seed_in_the_wrapper_and_calls_the_facade(
         platform: "linux",
         host_kind: "desktop",
         app_version: "9.9.9",
+        platform_capabilities: vec!["open_url".to_owned()],
     };
 
     let script = super::initialization_script("/* facade */", &seed).expect("a script");
@@ -304,6 +305,10 @@ fn the_initialization_script_keeps_the_seed_in_the_wrapper_and_calls_the_facade(
         "the token as a **string**, so no digits are lost"
     );
     assert!(script.contains("\"granted\":[\"log:*\"]"), "the decisions travel with the seed");
+    assert!(
+        script.contains("\"platformCapabilities\":[\"open_url\"]"),
+        "the platform's answer travels with the seed: {script}"
+    );
     assert!(script.contains("/* facade */"), "the facade is inline");
     assert!(script.contains("SynraInjection.boot(seed);"), "and it is called with the seed");
     assert!(
@@ -354,6 +359,10 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
         "\"sdkVersion\":\"1.0.0\"",
         "\"hostKind\":\"desktop\"",
         "\"appVersion\":\"",
+        // ★ The platform's own answer, not a constant: `supported_actions` decides it, and on a desktop it always
+        // includes opening a URL.
+        "\"platformCapabilities\":[",
+        "\"open_url\"",
     ] {
         assert!(request.script.contains(expected), "the seed is missing {expected}: {}", request.script);
     }
@@ -864,6 +873,22 @@ fn the_fetch_codes_reach_the_interface_unchanged() {
             "the host's own message is lost: {wire}"
         );
     }
+}
+
+#[test]
+fn a_platform_action_is_named_the_way_the_client_names_it() {
+    // ★ Two vocabularies, on purpose: `platform:read-clipboard` is the permission the manifest declares, and
+    // `clipboard_read` is what `env.platformSupports` takes. Passing one where the other belongs would answer `false`
+    // for every action on a host that supports all of them — the exact bug this mapping exists to prevent.
+    use synra_platform::PlatformAction as Action;
+
+    assert_eq!(super::platform_capability(Action::OpenUrl), Some("open_url"));
+    assert_eq!(super::platform_capability(Action::OpenPath), Some("open_path"));
+    assert_eq!(super::platform_capability(Action::RevealPath), Some("reveal_path"));
+    assert_eq!(super::platform_capability(Action::SimulateKeys), Some("simulate_keys"));
+    assert_eq!(super::platform_capability(Action::ReadClipboard), Some("clipboard_read"));
+    assert_eq!(super::platform_capability(Action::WriteClipboard), Some("clipboard_write"));
+    assert_eq!(super::platform_capability(Action::Notify), Some("notify"));
 }
 
 #[test]

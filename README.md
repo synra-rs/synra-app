@@ -46,8 +46,8 @@
   （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`（seed 是包装函数的参数，不在全局 —— token
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
-- 验证：`pnpm test` 208 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 192 条。
+- 验证：`pnpm test` 209 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
+  Rust 侧 193 条。
 
 ### 还没有的（下一步就是这些）
 
@@ -110,7 +110,7 @@ synra-app/
 
 ```powershell
 pnpm install
-pnpm test             # vitest（208 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
+pnpm test             # vitest（209 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
 pnpm run build:facade # 生成 src-tauri/inject/facade.js —— Rust 侧 include_str! 它
 pnpm build            # vue-tsc -b + vite build
 pnpm shapes           # 8 条守卫（含 facade-fresh：重建门面并逐字节比较）

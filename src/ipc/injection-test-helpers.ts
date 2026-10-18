@@ -50,6 +50,9 @@ export function context(overrides: Partial<InjectionContext> = {}): InjectionCon
     platform: 'linux',
     hostKind: 'desktop',
     appVersion: '0.1.0',
+    // ★ Empty by default: a test that cares about `env.platformSupports` passes the list it is asserting about, and a
+    // default of "everything" would make the tests pass on a host that supports nothing.
+    platformCapabilities: [],
     ...overrides
   }
 }

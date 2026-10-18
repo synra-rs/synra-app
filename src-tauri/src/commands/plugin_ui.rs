@@ -652,6 +652,38 @@ struct InjectionSeed<'a> {
     platform: &'a str,
     host_kind: &'a str,
     app_version: &'a str,
+    /// The platform actions this host has, in the client's own spelling.
+    ///
+    /// ★ Separate from `granted`: this is the platform's answer ("can this machine show a notification?"), not the
+    /// user's ("may this plugin show one?"). `env.platformSupports` is synchronous so a render can disable a button, so
+    /// the list is decided before the page loads rather than asked for later.
+    platform_capabilities: Vec<String>,
+}
+
+/// The client's name for a platform action.
+///
+/// # Why this is not `PlatformAction::capability`
+///
+/// Because they are different vocabularies on purpose: `platform:notify` is the permission the manifest declares and the
+/// gate checks, while `notify` is the name `env.platformSupports` takes (the contract's `PlatformCapability` union). A
+/// page asking "can this host notify?" is asking about the machine, not about its grant, and passing one spelling where
+/// the other belongs would answer `false` for every action on a host that supports all of them.
+fn platform_capability(action: synra_platform::PlatformAction) -> Option<&'static str> {
+    use synra_platform::PlatformAction;
+
+    Some(match action {
+        PlatformAction::OpenUrl => "open_url",
+        PlatformAction::OpenPath => "open_path",
+        PlatformAction::RevealPath => "reveal_path",
+        PlatformAction::SimulateKeys => "simulate_keys",
+        PlatformAction::ReadClipboard => "clipboard_read",
+        PlatformAction::WriteClipboard => "clipboard_write",
+        PlatformAction::Notify => "notify",
+        // `PlatformAction` is `non_exhaustive`: an action added to the platform before the client names it is left out of
+        // the answer rather than guessed at. `env.platformSupports` then says `false`, which is the safe default for a
+        // button — a capability this page does not know how to ask about is not one to offer.
+        _ => return None,
+    })
 }
 
 /// The script a plugin page is started with: the facade inside a function, with the seed as its argument.
@@ -844,6 +876,15 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
     else {
         "desktop"
     };
+    // ★ The platform's own answer, taken once. `supported_actions` is the askable list rather than a guess: it leaves
+    // out `simulate_keys` when the policy forbids it, so a button built on this answer cannot offer something the host
+    // would refuse.
+    let platform_capabilities: Vec<String> = state
+        .platform
+        .supported_actions()
+        .into_iter()
+        .filter_map(|action| platform_capability(action).map(str::to_owned))
+        .collect();
 
     let seed = InjectionSeed {
         label: &label,
@@ -857,6 +898,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
         platform,
         host_kind,
         app_version: env!("CARGO_PKG_VERSION"),
+        platform_capabilities,
     };
     let script = initialization_script(FACADE, &seed)?;
 

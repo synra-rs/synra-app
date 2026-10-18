@@ -67,4 +67,12 @@ export interface InjectionContext {
   readonly hostKind: HostKind
   /** The host application's version, not the SDK's. */
   readonly appVersion: string
+  /**
+   * What this platform can do, in the client's `PlatformCapability` spelling.
+   *
+   * ★ A field rather than an answer derived from `platform`: the same OS can differ by build (a Linux desktop with no
+   * notification daemon, a policy that forbids simulating keys), and `env.platformSupports` has to answer about **this**
+   * host. It is a list the host decided before the page loaded, for the same reason as `locale`.
+   */
+  readonly platformCapabilities: readonly string[]
 }

@@ -27,6 +27,7 @@ function seed(overrides: Partial<InjectionSeed> = {}): InjectionSeed {
     platform: 'linux',
     hostKind: 'desktop',
     appVersion: '9.9.9',
+    platformCapabilities: ['open_url', 'notify'],
     ...overrides
   }
 }
@@ -41,6 +42,15 @@ describe('injecting the façade into a plugin page', () => {
 
     expect(window.synra).toBe(client)
     expect(client.env.platform()).toBe('linux')
+  })
+
+  it('answers platformSupports from the seed rather than from a guess', () => {
+    // ★ The list is the host's own answer, carried in the seed because the method is synchronous. A façade that returned
+    // a constant would tell every plugin its host supports everything — or nothing.
+    const client = inject(seed({ platformCapabilities: ['notify'] }), bridge())
+
+    expect(client.env.platformSupports('notify')).toBe(true)
+    expect(client.env.platformSupports('open_url')).toBe(false)
   })
 
   it('boots the entry the initialization script calls', () => {
