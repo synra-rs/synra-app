@@ -12,7 +12,7 @@ import type { InjectionSeed } from './injection/bootstrap'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { bridge } from './injection-test-helpers'
-import { inject } from './injection/bootstrap'
+import { boot, inject } from './injection/bootstrap'
 
 function seed(overrides: Partial<InjectionSeed> = {}): InjectionSeed {
   return {
@@ -41,6 +41,15 @@ describe('injecting the façade into a plugin page', () => {
 
     expect(window.synra).toBe(client)
     expect(client.env.platform()).toBe('linux')
+  })
+
+  it('boots the entry the initialization script calls', () => {
+    // ★ `boot` is what `SynraInjection.boot(seed)` resolves to in the page. It constructs the Tauri bridge, which loads
+    // its API lazily — so this call builds the façade and touches nothing that jsdom cannot answer.
+    const client = boot(seed())
+
+    expect(window.synra).toBe(client)
+    expect(client.env.hostKind()).toBe('desktop')
   })
 
   it('answers the environment from the seed rather than from the machine', () => {

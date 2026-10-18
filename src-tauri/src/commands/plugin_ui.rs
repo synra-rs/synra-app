@@ -183,7 +183,7 @@ struct InjectionSeed<'a> {
     app_version: &'a str,
 }
 
-/// The script a plugin page is started with: the seed, then the façade that reads it.
+/// The script a plugin page is started with: the facade inside a function, with the seed as its argument.
 ///
 /// # Why the token is a **string**
 ///
@@ -191,17 +191,20 @@ struct InjectionSeed<'a> {
 /// token that validates for nobody, and the failure would look like "the page never became ready" rather than like a
 /// rounding error.
 ///
-/// # Why `Object.freeze` before the façade runs
+/// # Why the seed is an argument rather than a global
 ///
-/// The page runs someone else's code. A mutable seed is one a script can rewrite before the façade reads it — and a page
-/// that can rewrite its own `granted` list can make `env.can` answer true for a capability the user refused. The façade
-/// copies the values into its closure, so later writes to the global would not affect it either.
+/// The design document's rule is that the token lives in a closure, not on an object. A `window.__SYNRA_PLUGIN__` would
+/// be readable by any script the plugin's page includes — an analytics bundle, a dependency with a bad day — and a token
+/// that can be read is a session that can be used from somewhere else. Here the seed is the wrapper function's
+/// parameter: it exists only for the lifetime of the call, the facade copies what it needs, and nothing can look it up
+/// afterwards. A page script can still *use* `window.synra`, which is the intended surface.
 ///
-/// # Why the façade is appended rather than imported
+/// # Why the facade is inline rather than imported
 ///
 /// Because an initialization script has no module loader: Tauri evaluates one script before the page's own, and an
-/// `import()` would resolve after the plugin's first line has already run. The built file is an IIFE, so it executes in
-/// place and `window.synra` exists by the time the page's code starts.
+/// `import()` would resolve after the plugin's first line has already run. The built file is an IIFE, so `var
+/// SynraInjection` is a local of the wrapper and `SynraInjection.boot(seed)` runs in place — `window.synra` exists by
+/// the time the page's code starts.
 ///
 /// # Errors
 ///
@@ -213,7 +216,7 @@ fn initialization_script(facade: &str, seed: &InjectionSeed<'_>) -> Result<Strin
             .with_params(serde_json::json!({"detail": error.to_string()}))
     })?;
     Ok(format!(
-        "Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze({json}));\n{facade}"
+        "(function(seed){{{facade}\nSynraInjection.boot(seed);}})({json});"
     ))
 }
 

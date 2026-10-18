@@ -43,7 +43,8 @@
 - **网络那一半在窗口里**：`discovery.rs` 扫、`listener.rs` 收、`transfers.rs` 与 `sync_run.rs` 拨号发；
   插件页有自己的 origin（`synra-plugin://`）、令牌与初始化脚本。
 - **插件页有 `window.synra`**：`src/ipc/injection/bootstrap.ts` 构建成 `src-tauri/inject/facade.js`
-  （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`；`device.list` 已经走 `plugin_ui_rpc`。
+  （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`（seed 是包装函数的参数，不在全局 —— token
+  按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 184 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
   Rust 侧 171 条。

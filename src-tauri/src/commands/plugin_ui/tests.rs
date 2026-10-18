@@ -266,12 +266,13 @@ fn a_path_that_leaves_the_bundle_is_refused() {
 }
 
 #[test]
-fn the_initialization_script_carries_a_frozen_seed_and_then_the_facade() {
+fn the_initialization_script_keeps_the_seed_in_the_wrapper_and_calls_the_facade() {
     // ★ Three properties in one string:
     //   * the token is quoted, because `u128::MAX` is not representable as a JavaScript number and a bare one would
     //     round — the page would present a token that validates for nobody;
-    //   * the seed is frozen **before** the façade runs, so a script on the page cannot rewrite its own grants;
-    //   * the façade is appended rather than imported, because an initialization script has no module loader.
+    //   * the seed is the **wrapper function's argument**, not a global, so a script on the page cannot read the token
+    //     or rewrite its own grants;
+    //   * the facade is inline rather than imported, because an initialization script has no module loader.
     let seed = super::InjectionSeed {
         label: "page-1",
         token: u128::MAX.to_string(),
@@ -288,14 +289,22 @@ fn the_initialization_script_carries_a_frozen_seed_and_then_the_facade() {
 
     let script = super::initialization_script("/* facade */", &seed).expect("a script");
 
-    assert!(script.starts_with("Object.freeze(window.__SYNRA_PLUGIN__ = Object.freeze("));
+    assert!(
+        script.starts_with("(function(seed){"),
+        "the seed is a parameter of the wrapper: {script}"
+    );
     assert!(script.contains("\"label\":\"page-1\""), "the label, quoted");
     assert!(
         script.contains(&format!("\"token\":{:?}", u128::MAX.to_string())),
         "the token as a **string**, so no digits are lost"
     );
     assert!(script.contains("\"granted\":[\"log:*\"]"), "the decisions travel with the seed");
-    assert!(script.ends_with("/* facade */"), "the façade runs after the seed, in the same script");
+    assert!(script.contains("/* facade */"), "the facade is inline");
+    assert!(script.contains("SynraInjection.boot(seed);"), "and it is called with the seed");
+    assert!(
+        !script.contains("__SYNRA_PLUGIN__"),
+        "the seed must not be reachable through a global: {script}"
+    );
 }
 
 #[test]
@@ -343,13 +352,17 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
     ] {
         assert!(request.script.contains(expected), "the seed is missing {expected}: {}", request.script);
     }
-    // ★ And the façade itself is in the script, after the seed. Without it the page would have a seed and no client —
-    // which is the state this whole round exists to end.
-    assert!(request.script.contains("window.__SYNRA_PLUGIN__"), "the façade reads the seed");
+    // ★ And the façade itself is in the script, called with the seed. Without it the page would have a seed and no
+    // client — which is the state this whole round exists to end.
+    assert!(request.script.contains("SynraInjection.boot(seed);"), "the façade is called with the seed");
     assert!(
         request.script.contains("window.synra"),
         "the façade publishes the client: {}",
         &request.script[..request.script.len().min(200)]
+    );
+    assert!(
+        !request.script.contains("__SYNRA_PLUGIN__"),
+        "the token must not be reachable through a global"
     );
 }
 

@@ -9,16 +9,22 @@
  *
  * # How it reaches the page
  *
- * The shell reads the built file (`src-tauri/inject/facade.js`, produced by `pnpm run build:facade`) and prepends it to
- * the window's initialization script, after a JSON object named `__SYNRA_PLUGIN__`. Tauri evaluates initialization
- * scripts **before any of the page's own scripts**, so `window.synra` exists by the time the plugin's first line runs —
- * which is the promise `@synra/client`'s documentation makes.
+ * The shell reads the built file (`src-tauri/inject/facade.js`, produced by `pnpm run build:facade`) and puts it inside a
+ * function it writes into the window's initialization script:
  *
- * # Why the seed is frozen
+ * ```js
+ * (function (seed) { …the façade…; SynraInjection.boot(seed) })({ …the seed… });
+ * ```
  *
- * The page runs somebody else's code. `Object.freeze` is applied by the shell before this file runs, and this file reads
- * the values **once** while building the context; nothing re-reads the global later. A mutable seed would let a script
- * rewrite the capabilities its own page holds and then call `env.can` against the rewritten set.
+ * Tauri evaluates initialization scripts **before any of the page's own scripts**, so `window.synra` exists by the time
+ * the plugin's first line runs — which is the promise `@synra/client`'s documentation makes.
+ *
+ * # Why the seed is an argument and not a global
+ *
+ * The design document's rule is that the token lives in a closure, not on an object. A global `__SYNRA_PLUGIN__` would
+ * be readable by any script the plugin's page includes — an analytics bundle, a dependency with a bad day — and a token
+ * that can be read is a session that can be used from somewhere else. As the wrapper's parameter it exists only inside
+ * the closure that builds the façade, and the façade copies it; nothing re-reads it later.
  */
 
 import type { SynraClient } from '@synra/client'
@@ -61,13 +67,6 @@ export interface InjectionSeed {
   readonly appVersion: string
 }
 
-declare global {
-  interface Window {
-    /** Written by the shell's initialization script before this file runs. */
-    readonly __SYNRA_PLUGIN__?: InjectionSeed
-  }
-}
-
 /**
  * Builds the façade over a bridge and publishes it on `window.synra`.
  *
@@ -96,10 +95,12 @@ export function inject(seed: InjectionSeed, bridge: Bridge): SynraClient {
   return client
 }
 
-// ★ The page is a plugin page, or it is not. When the seed is absent this file does nothing rather than inventing a
-// façade: a client with empty capabilities would answer every `env.can` false and every call with a refusal from a host
-// that was never asked.
-const seed = window.__SYNRA_PLUGIN__
-if (seed !== undefined) {
-  inject(seed, new TauriKernel())
+/**
+ * The entry the shell's initialization script calls: the real Tauri bridge, and the seed it passed as an argument.
+ *
+ * The seed is a parameter of the wrapper the shell writes, not a global — see this file's header for why. By the time
+ * this runs, the page still has no scripts of its own; `window.synra` is in place before the plugin's first line.
+ */
+export function boot(seed: InjectionSeed): SynraClient {
+  return inject(seed, new TauriKernel())
 }
