@@ -71,7 +71,8 @@ pub struct CachedDocument {
 }
 
 /// How a registry answers "what versions exist?".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 enum Kind {
     /// An npm-compatible registry: a packument at `{origin}/{id}`.
     Npm,
@@ -468,12 +469,20 @@ fn packument_with_base(
         // An entry whose `max-age` has run out is not sent back as a conditional candidate — the host said how long it
         // was good for, and asking it to revalidate something this side already knows is stale would be a second opinion.
         let now = synra_store::sqlite::now_ms();
-        let cached = state
+        let mut cached = state
             .registry_cache
             .lock()
             .get(&url)
             .filter(|entry| entry.expires_at_ms.is_none_or(|expires| expires > now))
             .cloned();
+        // ★ A miss in this process is not a miss on this device: the previous run may have written the document and its
+        // validators. Reading it back turns "open the app, check every plugin" from N fetches into N conditional requests.
+        if cached.is_none()
+            && let Some(loaded) = load_document(state, &url, base.kind, now)
+        {
+            state.registry_cache.lock().insert(url.clone(), loaded.clone());
+            cached = Some(loaded);
+        }
         let mut request = get(&url);
         if let Some(entry) = &cached {
             if let Some(etag) = &entry.etag {
@@ -538,6 +547,9 @@ fn packument_with_base(
                         expires_at_ms,
                     },
                 );
+                // ★ The validators are what make the disk copy useful: without them the next process would have to fetch the
+                // body again to learn whether it changed.
+                store_document(state, &url, base.kind, &response.body, &response.headers, expires_at_ms);
                 return Ok(RegistryDocument {
                     base: base.clone(),
                     packument: document,
@@ -569,6 +581,106 @@ fn packument_with_base(
         "reason": reason,
         "tried": bases.len(),
     })))
+}
+
+/// The on-disk form of a cached document, with the validators that let it be revalidated rather than re-fetched.
+///
+/// ★ The raw body is stored, not a parsed `Packument`: a format change in the parser then fails at load time (and the file
+/// is discarded) instead of silently reading a shape this build no longer means. The version field makes that failure the
+/// explicit case rather than a coincidence.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedDocument {
+    /// The format version; anything else is ignored.
+    version: u32,
+    /// The URL it came from, so a hash collision cannot serve the wrong document.
+    url: String,
+    /// Which document the body is.
+    kind: Kind,
+    /// The `ETag` the host answered with.
+    #[serde(default)]
+    etag: Option<String>,
+    /// The `Last-Modified` the host answered with.
+    #[serde(default)]
+    last_modified: Option<String>,
+    /// When it should be re-read, when the host said.
+    #[serde(default)]
+    expires_at_ms: Option<i64>,
+    /// The body exactly as it arrived.
+    body: String,
+}
+
+/// The cache format this build writes and reads.
+const DOCUMENT_CACHE_VERSION: u32 = 1;
+
+/// Where one URL's cached document lives.
+fn document_cache_path(state: &AppState, url: &str) -> std::path::PathBuf {
+    use sha2::Digest as _;
+
+    let digest = sha2::Sha256::digest(url.as_bytes());
+    let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    state.paths.cache_dir().join("registry-documents").join(format!("{name}.json"))
+}
+
+/// Reads a cached document back, if it is this build's format, this URL's, and still fresh.
+fn load_document(state: &AppState, url: &str, kind: Kind, now: i64) -> Option<CachedDocument> {
+    let path = document_cache_path(state, url);
+    let text = std::fs::read_to_string(&path).ok()?;
+    let persisted: PersistedDocument = serde_json::from_str(&text).ok()?;
+    if persisted.version != DOCUMENT_CACHE_VERSION || persisted.url != url || persisted.kind != kind {
+        return None;
+    }
+    if persisted.expires_at_ms.is_some_and(|expires| expires <= now) {
+        // Expired: the file is not evidence about the present, and leaving it would grow the cache forever.
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+    let (document, publishers) = match kind {
+        Kind::Npm => (Packument::parse(&persisted.body).ok()?, std::collections::BTreeMap::new()),
+        Kind::Static => {
+            let index = synra_registry::parse_static_index(&persisted.body).ok()?;
+            (index.document, index.publishers)
+        }
+    };
+    Some(CachedDocument {
+        etag: persisted.etag,
+        last_modified: persisted.last_modified,
+        document,
+        publishers,
+        expires_at_ms: persisted.expires_at_ms,
+    })
+}
+
+/// Writes a document to the cache.
+///
+/// A cache write that fails is a slower next start, not a failed install, so the error is dropped rather than surfaced.
+fn store_document(
+    state: &AppState,
+    url: &str,
+    kind: Kind,
+    body: &str,
+    headers: &std::collections::BTreeMap<String, String>,
+    expires_at_ms: Option<i64>,
+) {
+    let persisted = PersistedDocument {
+        version: DOCUMENT_CACHE_VERSION,
+        url: url.to_owned(),
+        kind,
+        etag: headers.get("etag").cloned(),
+        last_modified: headers.get("last-modified").cloned(),
+        expires_at_ms,
+        body: body.to_owned(),
+    };
+    let Ok(text) = serde_json::to_string(&persisted) else {
+        return;
+    };
+    let path = document_cache_path(state, url);
+    if let Some(parent) = path.parent()
+        && std::fs::create_dir_all(parent).is_err()
+    {
+        return;
+    }
+    let _ = std::fs::write(&path, text);
 }
 
 /// The lifetime a `Cache-Control` header grants, in milliseconds.
@@ -968,5 +1080,83 @@ mod tests {
         assert_eq!(publisher_mismatch(&publishers, Some("@other"), Some("CD34")), None);
         assert_eq!(publisher_mismatch(&publishers, Some("@acme"), None), None);
         assert_eq!(publisher_mismatch(&publishers, None, Some("AB12")), None);
+    }
+
+    fn static_document() -> String {
+        serde_json::json!({
+            "name": "@acme/hello",
+            "latest": "1.0.0",
+            "publishers": { "@acme": "AB12" },
+            "versions": [{ "version": "1.0.0", "tarball": "hello.tgz" }]
+        })
+        .to_string()
+    }
+
+    fn headers() -> BTreeMap<String, String> {
+        let mut headers = BTreeMap::new();
+        headers.insert("etag".to_owned(), "\"v1\"".to_owned());
+        headers
+    }
+
+    #[test]
+    fn a_document_survives_the_process_that_fetched_it() {
+        // ★ The point of the disk copy is the next process: validators and body together, so it can revalidate instead of
+        // downloading the same document again.
+        let (_root, state) = crate::testing::file_state();
+        let url = "https://bucket.example/plugins/@acme/hello.json";
+        super::store_document(
+            &state,
+            url,
+            super::Kind::Static,
+            &static_document(),
+            &headers(),
+            None,
+        );
+
+        let loaded = super::load_document(&state, url, super::Kind::Static, 0).expect("loaded");
+
+        assert_eq!(loaded.etag.as_deref(), Some("\"v1\""));
+        assert_eq!(loaded.document.latest().expect("a latest").version, "1.0.0");
+        assert_eq!(loaded.publishers.get("@acme").map(String::as_str), Some("AB12"));
+    }
+
+    #[test]
+    fn an_expired_document_is_removed_rather_than_served() {
+        let (_root, state) = crate::testing::file_state();
+        let url = "https://bucket.example/plugins/@acme/hello.json";
+        super::store_document(
+            &state,
+            url,
+            super::Kind::Static,
+            &static_document(),
+            &headers(),
+            Some(10),
+        );
+
+        assert!(super::load_document(&state, url, super::Kind::Static, 11).is_none());
+        assert!(!super::document_cache_path(&state, url).exists(), "the stale file is gone");
+    }
+
+    #[test]
+    fn a_document_of_another_format_is_ignored() {
+        // ★ A future format is not this format. Ignoring it (and refetching) is right; parsing it as if it were the same
+        // shape is how a cache turns into a bug that looks like a registry problem.
+        let (_root, state) = crate::testing::file_state();
+        let url = "https://bucket.example/plugins/@acme/hello.json";
+        super::store_document(
+            &state,
+            url,
+            super::Kind::Static,
+            &static_document(),
+            &headers(),
+            None,
+        );
+        let path = super::document_cache_path(&state, url);
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the file")).expect("JSON");
+        value["version"] = serde_json::json!(999);
+        std::fs::write(&path, value.to_string()).expect("the changed file");
+
+        assert!(super::load_document(&state, url, super::Kind::Static, 0).is_none());
     }
 }
