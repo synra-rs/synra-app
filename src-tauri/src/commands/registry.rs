@@ -524,19 +524,20 @@ fn packument_with_base(
                         (index.document, index.publishers)
                     }
                 };
-                if base.kind == Kind::Static {
-                    let expires_at_ms = max_age_ms(&response.headers).map(|age| now.saturating_add(age));
-                    state.registry_cache.lock().insert(
-                        url.clone(),
-                        CachedDocument {
-                            etag: response.headers.get("etag").cloned(),
-                            last_modified: response.headers.get("last-modified").cloned(),
-                            document: document.clone(),
-                            publishers: publishers.clone(),
-                            expires_at_ms,
-                        },
-                    );
-                }
+                // ★ An npm packument is cached too: the validators are the host's, and a check-update that hits `304`
+                // costs one round trip instead of re-parsing a document that has not changed. `publishers` is empty for
+                // npm, which is the honest value — only a static directory makes that claim.
+                let expires_at_ms = max_age_ms(&response.headers).map(|age| now.saturating_add(age));
+                state.registry_cache.lock().insert(
+                    url.clone(),
+                    CachedDocument {
+                        etag: response.headers.get("etag").cloned(),
+                        last_modified: response.headers.get("last-modified").cloned(),
+                        document: document.clone(),
+                        publishers: publishers.clone(),
+                        expires_at_ms,
+                    },
+                );
                 return Ok(RegistryDocument {
                     base: base.clone(),
                     packument: document,
