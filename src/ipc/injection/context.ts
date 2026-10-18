@@ -34,6 +34,13 @@ export interface InjectionContext {
    * ready", which is not a fact a host can check.
    */
   readonly label: string
+  /**
+   * The session token the host issued for this page, as a decimal string.
+   *
+   * ★ A string, not a number: the token is a `u128` and JavaScript numbers are exact only to 2^53, so a number would
+   * silently lose its low digits and validate for nobody. `plugin_ui_rpc` accepts the decimal form and parses it.
+   */
+  readonly token: string
   /** The capabilities this plugin was granted. */
   readonly granted: readonly string[]
   /** The capabilities it was refused, which is the list a plugin may still ask about. */

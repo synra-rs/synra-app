@@ -37,6 +37,8 @@ export function context(overrides: Partial<InjectionContext> = {}): InjectionCon
     pluginId: 'com.example.notes',
     // A label the host would have made for a page: it is what plugin_ui_ready is called with.
     label: 'plugin-com.example.notes',
+    // The token the same page was issued, in the decimal form `plugin_ui_rpc` accepts.
+    token: '123456789012345678901234567890',
     granted: [],
     deniedCapabilities: [],
     locale: 'zh-CN',

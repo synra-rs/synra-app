@@ -28,32 +28,21 @@ export function createDeviceNamespace(
   granted: ReadonlySet<string>
 ): DeviceNamespace {
   return {
-    // ★ The only namespace that answers from the kernel today.
+    // ★ The only namespace that answers from the kernel today — and it answers through the plugin channel, not through
+    // the host's own commands. `devices_snapshot` is a **Host** command; a plugin page reaching it would be the exact
+    // separation `command.rs` says the two interfaces exist to prevent. `plugin_ui_rpc` takes the token, checks the
+    // session and returns the four fields a plugin may see.
     list: async (): Promise<DeviceTarget[]> => {
-      const snapshot = await context.bridge
-        .invoke('devices_snapshot')
+      const targets = await context.bridge
+        .invoke('plugin_ui_rpc', { token: context.token, method: 'device.list', args: {} })
         // ★ A kernel refusal stays a refusal.
         //
         // Swallowing it and returning an empty list would be the worst of both: the author's `try` never fires, the
-        // picker shows "no devices", and the real reason — a refused command, a wedged store — is nowhere.
+        // picker shows "no devices", and the real reason — a refused token, a wedged store — is nowhere.
         .catch((reason: unknown) => {
           throw asSynraError(reason)
-        }) as {
-        readonly devices?: readonly {
-          readonly deviceId: string
-          readonly displayName: string
-          readonly platform: string
-          readonly online: boolean
-        }[]
-      }
-      return (snapshot.devices ?? [])
-        .filter(card => card.online)
-        .map(card => ({
-          deviceId: card.deviceId as DeviceId,
-          displayName: card.displayName,
-          platform: card.platform as DeviceTarget['platform'],
-          online: card.online
-        }))
+        }) as DeviceTarget[]
+      return targets.filter(target => target.online)
     },
     send: async () => {
       throw unsupported('device.send')

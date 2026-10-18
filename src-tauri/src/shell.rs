@@ -232,6 +232,20 @@ mod wrappers {
         commands::plugin_ui::plugin_ui_ready(&state, &label)
     }
 
+    /// Answers one call from a plugin page.
+    ///
+    /// `(async)` because this is the one command whose operations may do I/O — a network fetch, a transfer — and the
+    /// plugin page that called it is not the window that must keep painting.
+    #[tauri::command(async)]
+    pub fn plugin_ui_rpc(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        token: String,
+        method: String,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, IpcError> {
+        commands::plugin_ui::plugin_ui_rpc(&state, &token, &method, &args)
+    }
+
     /// Opens a plugin's page in its own WebView, under its own origin.
     ///
     /// ★ The contract declares it now (`plugin_ui_open` => PluginUi, **Host**), which is what makes registering it legal:
@@ -422,6 +436,7 @@ mod wrappers {
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,
+            plugin_ui_rpc,
             transfer_cancel,
             transfer_send_file,
             transfer_send_text,

@@ -135,6 +135,41 @@ fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
 }
 
 #[test]
+fn opening_a_page_issues_the_grants_the_user_allowed() {
+    // ★ The page's permissions are the decisions the user made, not an empty set. `open_request` used to issue with
+    // `CapabilitySet::new()` — so every page was powerless no matter what it had been granted, and `env.can` would answer
+    // false for a capability the user had approved.
+    let (_root, state) = installed_with_ui();
+    state
+        .db()
+        .record_grants(
+            ID,
+            &[("log:*".to_owned(), true), ("network:fetch".to_owned(), false)],
+            crate::testing::FIXED_NOW_MS,
+            "sha256-manifest",
+        )
+        .expect("decisions");
+    let request = super::open_request(&state, ID).expect("it has a UI");
+    let entry = state.hosted_ui.lock().get(&request.label).cloned().expect("recorded");
+    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+
+    let session = state
+        .ui_sessions
+        .validate(
+            entry.nonce,
+            &synra_protocol::ids::PluginId::parse(ID).expect("an id"),
+            "1.0.0",
+            now,
+        )
+        .expect("a live session");
+
+    let allowed = synra_capability::Capability::parse("log:write").expect("a capability");
+    let refused = synra_capability::Capability::parse("network:fetch").expect("a capability");
+    assert!(session.grants().contains(&allowed), "a granted family did not reach the session");
+    assert!(!session.grants().contains(&refused), "a refused capability reached the session");
+}
+
+#[test]
 fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
     // ★ The refusal a caller can act on: "install it".
     let state = crate::testing::state();
@@ -266,4 +301,105 @@ fn a_session_that_expired_is_refused() {
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
     let marked = state.hosted_ui.lock().get("page-3").map(|entry| entry.ready);
     assert_eq!(marked, Some(false), "and it is not marked ready");
+}
+
+// ── The plugin page's call channel ───────────────────────────────────────────────────────────────
+
+/// A page the host opened, and the token it was issued, in the decimal form the page presents.
+fn hosted_page(state: &crate::AppState) -> String {
+    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+    let nonce = state.ui_sessions.issue_with(
+        &plugin_id(),
+        "1.0.0",
+        CapabilitySet::new(),
+        123_456_789_012_345_678_901_234_567_890_u128,
+        now,
+    );
+    state.hosted_ui.lock().insert(
+        "page-rpc".to_owned(),
+        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce, ready: false },
+    );
+    nonce.to_string()
+}
+
+#[test]
+fn a_token_that_is_not_a_number_is_an_argument_error() {
+    let state = crate::testing::state();
+
+    let refused = super::plugin_ui_rpc(&state, "not-a-number", "device.list", &serde_json::json!({}))
+        .expect_err("a token is a decimal number");
+
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+}
+
+#[test]
+fn a_token_no_hosted_page_holds_is_refused() {
+    // ★ The check that makes the token the credential: the state knows a page exists (another one), and this token is
+    // still refused — so "some page exists" is not what is being checked.
+    let state = crate::testing::state();
+    let _other = hosted_page(&state);
+
+    let refused = super::plugin_ui_rpc(&state, "42", "device.list", &serde_json::json!({}))
+        .expect_err("that token belongs to no page");
+
+    assert_eq!(refused.code, ErrorCode::CapabilityDenied);
+}
+
+#[test]
+fn an_unknown_method_is_refused_by_name() {
+    let state = crate::testing::state();
+    let token = hosted_page(&state);
+
+    let refused = super::plugin_ui_rpc(&state, &token, "device.explode", &serde_json::json!({}))
+        .expect_err("that is not an operation");
+
+    assert_eq!(refused.code, ErrorCode::Unsupported);
+    assert_eq!(refused.params.get("method").and_then(|value| value.as_str()), Some("device.explode"));
+}
+
+#[test]
+fn a_method_on_the_surface_with_no_body_is_unsupported() {
+    // ★ Addressable, not implemented. The alternative — an empty list or a resolved promise — would be a host that
+    // claims to store something and does not.
+    let state = crate::testing::state();
+    let token = hosted_page(&state);
+
+    let refused = super::plugin_ui_rpc(&state, &token, "storage.get", &serde_json::json!({"key": "x"}))
+        .expect_err("storage is not built here");
+
+    assert_eq!(refused.code, ErrorCode::Unsupported);
+}
+
+#[test]
+fn device_list_answers_the_four_fields_a_plugin_may_see() {
+    let (_root, state) = crate::testing::file_state();
+    state
+        .db()
+        .pair_device(&synra_store::Paired {
+            device_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            display_name: "Laptop".to_owned(),
+            platform: "linux".to_owned(),
+            features: "[]".to_owned(),
+            link_token: String::new(),
+            // No address and no session: the card is offline, which is a field the plugin sees rather than a reason the
+            // device is hidden.
+            address: None,
+            paired_at_ms: crate::testing::FIXED_NOW_MS,
+        })
+        .expect("a paired device");
+    let token = hosted_page(&state);
+
+    let answer = super::plugin_ui_rpc(&state, &token, "device.list", &serde_json::json!({}))
+        .expect("a list");
+    let devices = answer.as_array().expect("a bare array");
+
+    assert_eq!(devices.len(), 1, "{answer}");
+    assert_eq!(devices[0]["deviceId"], "11111111-1111-4111-8111-111111111111");
+    assert_eq!(devices[0]["displayName"], "Laptop");
+    assert_eq!(devices[0]["platform"], "linux");
+    assert_eq!(devices[0]["online"], false);
+    // ★ The reduced shape, not the host's card: a plugin may not receive an address seen on the network, a blocked flag
+    // or a transfer summary.
+    assert!(devices[0].get("address").is_none(), "the plugin received the host's card: {answer}");
+    assert!(devices[0].get("transfer").is_none(), "the plugin received the host's card: {answer}");
 }

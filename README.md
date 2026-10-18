@@ -25,7 +25,7 @@
 | --- | --- |
 | `src/`（前端） | 72 个文件、约 6.8k 行（42 个生产文件 + 30 个测试与夹具） |
 | `src-tauri/src/`（壳） | 30 个文件、约 8.1k 行（21 个生产 + 9 个测试） |
-| 命令 | 契约 41 条 · **注册 34 条** · 其中被调用 10 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
+| 命令 | 契约 41 条 · **注册 35 条** · 其中被调用 11 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
 | 页面 | 4 页（Home / Devices / Plugins / Settings） |
 | 前端 store | 5 / 8（devices / pairing / plugins / intents / settings） |
 
@@ -47,9 +47,9 @@
 
 ### 还没有的（下一步就是这些）
 
-1. **`plugin_ui_rpc`**：插件页的调用通道还没注册，所以 `window.synra` 的存储 / 网络 / 传输 / 剪贴板命名空间仍以
-   `unsupported` 拒绝。另外**注入对象还没有被装进插件页**：初始化脚本只放了 label 与 token，没有代码用它们构造
-   `createInjection(context)` —— `injection/` 目前只在测试里被调用。
+1. **插件页的注入对象还没有被装进页面**：`plugin_ui_rpc` 与 `device.list` 已经可用，但初始化脚本只放了 label 与 token，
+   没有代码用它们构造 `createInjection(context)` —— `injection/` 目前只在测试里被调用。所以插件作者拿到页面时
+   仍然没有 `window.synra`。其余方法（storage / network / transfer / clipboard / self）在表面上，但以 `unsupported` 拒绝。
 2. **插件窗口的收尾**：`plugin_ui_open` 没有前端入口（插件卡上没有「打开」按钮），导航范围限制（`on_navigation`）未做，
    每窗口 CSP 受 Tauri 2.12 限制只能继承全局策略。
 3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。

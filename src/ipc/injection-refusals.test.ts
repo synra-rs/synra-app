@@ -104,19 +104,24 @@ describe('subscriptions', () => {
 })
 
 describe('device.list', () => {
-  it('answers with the online devices the kernel named', async () => {
-    const answering = bridge({
-      invoke: vi.fn(async () => ({
-        devices: [
-          { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true },
-          { deviceId: 'b', displayName: 'Laptop', platform: 'windows', online: false }
-        ]
-      }))
-    })
-    const synra = createInjection(context({ bridge: answering }))
+  it('asks the plugin channel with its token and answers with the online devices', async () => {
+    // ★ The channel, not just the answer. `devices_snapshot` is a *host* command; a plugin page reaching it would be the
+    // separation the two interfaces exist to prevent. The method, the token and the empty args are the whole call.
+    const invoke = vi.fn(async () => [
+      { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true },
+      { deviceId: 'b', displayName: 'Laptop', platform: 'windows', online: false }
+    ])
+    const ctx = context({ bridge: bridge({ invoke }) })
+    const synra = createInjection(ctx)
+
     await expect(synra.device.list()).resolves.toEqual([
       { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true }
     ])
+    expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
+      token: ctx.token,
+      method: 'device.list',
+      args: {}
+    })
   })
 
   // ★ A refusal stays a refusal.

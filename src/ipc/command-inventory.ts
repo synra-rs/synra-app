@@ -39,6 +39,10 @@ export const REGISTERED = [
   'plugin_ui_open',
   // The page's own report, checked against the session the host issued for it.
   'plugin_ui_ready',
+  // ★ The plugin page's one call channel: a token the host issued, then a method from the surface `PluginUiOp` names.
+  // `device.list` is the first operation with a body; everything else on the surface refuses with `unsupported` until it
+  // is built, rather than answering an empty list.
+  'plugin_ui_rpc',
   // The transfers in flight. The registry is filled by the two send commands as they move blocks; an **inbound** transfer is
   // driven by the listener and is not reported in this list yet.
   'transfer_cancel',
@@ -104,9 +108,7 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   plugins_catalog_search: 'no catalog client is wired',
   plugins_check_update: 'no update checker exists',
   plugins_update: 'no updater exists',
-  plugins_request_registry_search: 'no registry search is wired',
-  // The plugin UI channel: the token is injected and `ready` is registered, so what is missing is the page itself.
-  plugin_ui_rpc: 'the token injection exists; the synra-plugin:// handler that would serve a page does not'
+  plugins_request_registry_search: 'no registry search is wired'
 }
 
 /**

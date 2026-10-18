@@ -117,6 +117,11 @@ tokio = { version = "1", features = [
   "macros"
 ] }
 tauri = { version = "2", optional = true, features = [] }
+# ★ The UI session's nonce. `synra-plugin-ui` deliberately takes it from the caller, because the *only* thing standing
+# between a plugin page and another plugin's grants is that the value is unguessable — and a counter (what
+# `issue_placeholder` uses, and what `open_request` used to call) is not. A v4 UUID gives 122 random bits, enough for a
+# token that expires in minutes; the type is a u128 either way.
+uuid = { version = "1", features = [ "v4" ] }
 
 [build-dependencies]
 
