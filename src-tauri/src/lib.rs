@@ -59,6 +59,7 @@ pub mod events;
 pub mod listener;
 pub mod plugin_host;
 pub mod state;
+pub mod tray_menu;
 
 // ★ The window, and only when there is one to build.
 //
@@ -66,6 +67,10 @@ pub mod state;
 // `tauri` entering the graph of the build that runs the tests. See the module's own documentation.
 #[cfg(feature = "tauri-shell")]
 pub mod shell;
+
+// ★ The tray needs an event loop, so it is behind the same gate as the window; [`tray_menu`] holds the part that does not.
+#[cfg(feature = "tauri-shell")]
+pub mod tray;
 
 #[cfg(test)]
 mod testing;

@@ -500,6 +500,12 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
             // could ask to pair and the window would look at it and never say so.
             crate::commands::pairing::watch(app.handle().clone());
+            // ★ The tray, and it is reported rather than fatal: the window is the application, and a desktop without an
+            // indicator host (some Linux setups) must still get one. What it buys is the second way back to a window and
+            // a **deliberate** way out — see `run_window`, where closing the window hides it instead of ending the process.
+            if let Err(error) = crate::tray::install(app.handle()) {
+                eprintln!("synra: the tray icon could not be installed: {error}");
+            }
             Ok(())
         })
         .invoke_handler(wrappers::handler())
@@ -507,13 +513,36 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
 
 /// Builds and runs the window, reporting what stopped it rather than unwinding.
 ///
+/// # Why closing the window hides it
+///
+/// Because this shell is a kernel: a listener on a port, transfers in flight, a plugin set loaded. Closing a window is how
+/// a desktop application is put away, not how one is ended, and the two are not the same gesture for a program that other
+/// devices can reach. The tray's **Quit** is the deliberate exit; the close button asks the window to go away.
+///
 /// # Errors
 ///
 /// A message saying what stopped it.
 pub fn run_window() -> Result<(), String> {
-    builder()
-        .run(tauri::generate_context!())
-        .map_err(|error| format!("the window could not be opened: {error}"))
+    let app = builder()
+        .build(tauri::generate_context!())
+        .map_err(|error| format!("the window could not be opened: {error}"))?;
+    app.run(|app, event| {
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } = event
+            && label == "main"
+        {
+            // ★ Before the hide, not after: the request is the window's decision, and hiding a window whose close was
+            // not prevented would be hiding one that is already going.
+            api.prevent_close();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.hide();
+            }
+        }
+    });
+    Ok(())
 }
 
 /// The entry point Android calls, and only there.
