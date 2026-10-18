@@ -106,6 +106,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   diag_export: { options: { includeAudit: false, includeDebugLogs: false } },
   // `Many`: a bare array, which is what the arity says the payload is.
   diag_logs_tail: { lines: 100 },
+  diag_probes: undefined,
   // `Unit`: the answer has no shape to hold a caller to, which is the claim this entry makes alongside the declaration.
   plugins_audit_clear: { pluginId: '@acme/hello' },
   plugins_update: { pluginId: '@acme/hello' },
@@ -132,7 +133,7 @@ const MAYBE_COMMAND = 'plugins_check_update'
 const KNOWN_DIVERGENCE = 'devices_scan_start'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 46
+const DECLARED_COMMANDS = 47
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

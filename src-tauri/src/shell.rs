@@ -537,6 +537,17 @@ mod wrappers {
         commands::diag::diag_export(&state, &options)
     }
 
+    /// Runs the startup probes and answers them.
+    ///
+    /// ★ No arguments: the questions are fixed and the answers are about this machine, not about what the caller wants
+    /// to know. A filter parameter would let a page hide a failing probe by not asking for it.
+    #[tauri::command]
+    pub fn diag_probes(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<synra_ipc::ProbeReportDto, IpcError> {
+        commands::diag::diag_probes(&state)
+    }
+
     /// The tail of the shell's own log.
     ///
     /// `lines: Option<u32>` rather than an options struct, because there is one option. A struct for a single count
@@ -610,6 +621,7 @@ mod wrappers {
             config_get,
             config_set,
             diag_export,
+            diag_probes,
             diag_logs_tail,
             diag_metrics,
         ]

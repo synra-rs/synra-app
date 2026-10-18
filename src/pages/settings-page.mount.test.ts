@@ -422,4 +422,34 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain('synra: discovery bound')
     wrapper.unmount()
   })
+
+  it('runs the startup probes on request and shows each result', async () => {
+    // ★ On request, not on mount: the probes bind ports and touch the disk, and a settings page that ran them on every
+    // visit would be doing work the user did not ask for. The assertion above the click is what holds that.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_probes: {
+        results: [
+          { name: 'tcp_port_available', status: 'ok', detail: 'a free port was found' },
+          { name: 'wasm_backend', status: 'warn', detail: 'this host did not read the runtime', suggestion: 'include this report' }
+        ]
+      }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(mocks.call).not.toHaveBeenCalledWith('diag_probes')
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.settings.diagnostics.probes)
+    expect(button, 'the probe button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('diag_probes')
+    expect(wrapper.text()).toContain('tcp_port_available')
+    expect(wrapper.text()).toContain(messages.settings.diagnostics.probeStatus('warn'))
+    expect(wrapper.text()).toContain('include this report')
+    wrapper.unmount()
+  })
 })

@@ -164,6 +164,19 @@ export class FakeKernel implements Bridge {
       case 'diag_logs_tail':
         // `Many`: a bare array of lines. Empty is an answer too — the page has its own sentence for it.
         return []
+      case 'diag_probes':
+        // `One`: the report the page renders. Two statuses, so a caller that ignored `status` still sees both branches.
+        return {
+          results: [
+            { name: 'tcp_port_available', status: 'ok', detail: 'a free port was found' },
+            {
+              name: 'wasm_backend',
+              status: 'warn',
+              detail: 'this host did not read the runtime',
+              suggestion: 'include this report when asking for help'
+            }
+          ]
+        }
       case 'plugins_publisher_decide':
         return {}
       case 'plugins_preview':

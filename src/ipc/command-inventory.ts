@@ -81,6 +81,7 @@ export const REGISTERED = [
   'config_get',
   'config_set',
   'diag_export',
+  'diag_probes',
   'diag_logs_tail',
   // ★ And the metrics command, which came up the same way the log tail did: the gate has counted into a `RingRecorder`
   // since it learned to count, and what was missing here was a sink behind `AppState` rather than the command itself.

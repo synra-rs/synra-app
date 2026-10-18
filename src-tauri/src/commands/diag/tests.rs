@@ -8,7 +8,7 @@
 
 use serde_json::Value;
 
-use super::{DiagExportResult, diag_export, diag_metrics};
+use super::{DiagExportResult, diag_export, diag_metrics, diag_probes};
 use crate::testing;
 
 fn options() -> synra_ipc::DiagExportOptions {
@@ -506,5 +506,24 @@ fn what_the_gate_counts_is_what_the_command_reports() {
     assert!(
         labels.iter().any(|pair| pair[0] == "capability" && pair[1] == "device:send:*"),
         "{found}"
+    );
+}
+
+#[test]
+fn the_window_asks_the_same_probe_questions_the_cli_does() {
+    // ★ The statuses depend on the machine running the test, so they are not asserted. What is assertable is that the
+    // window asks the same questions: a report missing `tcp_port_available` would be a different diagnostic from the one
+    // `synra doctor` prints, and the two are supposed to be the same evidence.
+    let state = testing::state();
+
+    let report = diag_probes(&state).expect("the probes run");
+
+    let names: Vec<&str> = report.results.iter().map(|result| result.name.as_str()).collect();
+    for expected in ["tcp_port_available", "data_dir_writable", "webview_version"] {
+        assert!(names.contains(&expected), "missing {expected} in {names:?}");
+    }
+    assert!(
+        report.results.iter().all(|result| ["ok", "warn", "fail"].contains(&result.status.as_str())),
+        "a status outside the contract's three words"
     );
 }

@@ -63,6 +63,10 @@ export const settings = {
     export: 'Export diagnostics',
     included: (sections: string): string => `Includes: ${sections}`,
     excluded: (sections: string): string => `Left out: ${sections}`,
+    /** The startup probes: what this device would need in order to start. */
+    probes: 'Run checks',
+    probesDetail: 'Checks the ports, the data folder, the clock and the runtime this device would need in order to start.',
+    probeStatus: (status: string): string => status === 'ok' ? 'OK' : status === 'warn' ? 'Warning' : 'Failed',
     /** The shell's own recent log, for a user who wants to see it before exporting. */
     logs: 'Recent log',
     logsEmpty: 'The log is empty.'

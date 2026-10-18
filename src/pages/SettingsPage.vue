@@ -279,6 +279,34 @@
       </div>
 
       <!--
+        ★ Run on request, not on mount: the probes bind ports, write a file and read the clock, so running them on every
+        visit would make navigating to settings do work the user did not ask for. The section explains what it checks
+        because a user deciding whether to press it needs to know it is not a network test.
+      -->
+      <div class="stack gap-2">
+        <p class="m-0 text-xs text-ink-dim">
+          {{ messages.settings.diagnostics.probesDetail }}
+        </p>
+        <div class="row items-center gap-2">
+          <AButton :loading="probing" @click="runProbes">
+            {{ messages.settings.diagnostics.probes }}
+          </AButton>
+        </div>
+        <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
+          <li v-for="result in probeReport.results" :key="result.name" class="stack gap-1">
+            <div class="row items-center gap-2">
+              <ATag :color="probeColor(result.status)">
+                {{ messages.settings.diagnostics.probeStatus(result.status) }}
+              </ATag>
+              <span class="text-xs font-mono">{{ result.name }}</span>
+            </div>
+            <span class="text-xs text-ink-dim">{{ result.detail }}</span>
+            <span v-if="result.suggestion" class="text-xs">{{ result.suggestion }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <!--
         ★ The log is read on demand, like the plugin audit: a page that read it on mount would hold a copy that goes stale
         while the user is looking at it, and a log can be the largest thing this page ever asks for. Opening the section
         is the request; closing it leaves what was read on screen, because the lines are still what the shell wrote.
@@ -312,7 +340,7 @@
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
-import type { ConfigSnapshot, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, SeriesKey, SuggestedAction } from '@synra/protocol'
+import type { ConfigSnapshot, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
   Checkbox as ACheckbox,
@@ -321,7 +349,8 @@ import {
   Input as AInput,
   InputNumber as AInputNumber,
   List as AList,
-  Switch as ASwitch
+  Switch as ASwitch,
+  Tag as ATag
 } from 'ant-design-vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
@@ -469,6 +498,30 @@ async function exportDiagnostics(): Promise<void> {
     return
   }
   exported.value = answer.value
+}
+
+/** The probes' last report, or undefined before the user has asked for one. */
+const probeReport = ref<ProbeReportDto | undefined>(undefined)
+
+/** Whether the probes are running. */
+const probing = ref(false)
+
+/** A tag colour per status: the words are the same, the colour is what makes a failing report findable. */
+function probeColor(status: string): string {
+  return status === 'ok' ? 'green' : status === 'warn' ? 'orange' : 'red'
+}
+
+/** Runs the probes on request: they bind ports and touch the disk, so they are not part of loading the page. */
+async function runProbes(): Promise<void> {
+  probing.value = true
+  error.value = undefined
+  const answer = await kernel.call<ProbeReportDto>('diag_probes')
+  probing.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  probeReport.value = answer.value
 }
 
 /** The shell's recent log, once the section is opened. */
