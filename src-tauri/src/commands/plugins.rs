@@ -392,31 +392,22 @@ fn run_install(
 /// `PluginNotInstalled` when no row has that identifier, and `Internal` when the store or the filesystem refuses.
 pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -> Result<RemoveReport, IpcError> {
     let id = parse(plugin_id)?;
-    // ★ Measured **before** the removal: after `remove_dir_all` there is nothing left to measure, and a size read then
-    // would be a zero dressed as a measurement. Both directories count — the artifact goes either way, the sandbox only
-    // when the user asked for it — and the report's `bytes_freed` is the total, because that is the number a person
-    // freeing space cares about.
-    let artifact = directory_size(&state.paths.plugin_dir(&id.to_string()));
-    let sandbox = if remove_data {
-        directory_size(&state.paths.plugin_sandbox_dir(&id.to_string()))
-    }
-    else {
-        0
-    };
     let removed = state.db().remove_plugin(&id.to_string()).map_err(internal)?;
     if !removed {
         return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     }
-    let leftovers = synra_store::PluginFiles::new(state.paths.clone())
+    // ★ The store measures before and after: `bytes_freed` is what is no longer on disk, not what was there before a
+    // locked directory survived. The count beside `leftovers` is the number a user reading "freed" is owed.
+    let removal = synra_store::PluginFiles::new(state.paths.clone())
         .remove(&id.to_string(), remove_data)
         .map_err(internal)?;
     Ok(RemoveReport {
-        bytes_freed: artifact.saturating_add(sandbox),
+        bytes_freed: removal.bytes_freed,
         data_kept: !remove_data,
         // ★ What the operating system would not let go. The row is already gone, so the command cannot fail on a locked
         // file — it reports the path. The page says so beside the freed size; a user who is not told goes looking.
-        leftovers: leftovers.iter().map(|path| path.display().to_string()).collect(),
+        leftovers: removal.leftovers.iter().map(|path| path.display().to_string()).collect(),
     })
 }
 
