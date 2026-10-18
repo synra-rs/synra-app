@@ -142,7 +142,9 @@ fn send_to(
         now_ms,
     )
     .map_err(|error| failed(format!("the dial failed: {error}")))?;
-    let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+    let mut link = dialled
+        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .with_metrics(std::sync::Arc::clone(&state.metrics));
 
     // ★ The session is named here, by the side that starts the round: two devices pushing at the same moment would each
     // invent one the other has never heard of, and no result could be matched to a round.

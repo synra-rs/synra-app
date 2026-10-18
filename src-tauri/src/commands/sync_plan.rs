@@ -138,7 +138,11 @@ fn ask(state: &crate::state::AppState, at: &str, to: DeviceId) -> Result<PluginL
         now_ms,
     )
     .map_err(|error| error.to_string())?;
-    let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+    let mut link = dialled
+        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        // Same recorder as every other dial: the byte counters are per link, so a link that skips it is one the panel
+        // cannot describe.
+        .with_metrics(std::sync::Arc::clone(&state.metrics));
     // ★ The same figure the listener uses for "how long may a peer take to speak". A shorter one here would call a slow device
     // offline while it was still answering; a longer one would make the panel wait for a device that is gone.
     link.set_read_timeout(Some(HELLO_TIMEOUT));

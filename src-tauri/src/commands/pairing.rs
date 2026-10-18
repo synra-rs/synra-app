@@ -83,7 +83,9 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<(), IpcError
         IpcError::unknown(ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"deviceId": device_id, "detail": error.to_string()}))
     })?;
-    let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+    let mut link = dialled
+        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .with_metrics(std::sync::Arc::clone(&state.metrics));
 
     let request_id = RequestId::new();
     let envelope = synra_core::messaging::pair_request(

@@ -390,7 +390,10 @@ pub fn send_over_with(
                 .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()})));
         }
     };
-    let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
+    let mut link = dialled
+        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        // ★ The byte counters live on the link; without this the shell would own a recorder nothing on its dials wrote to.
+        .with_metrics(std::sync::Arc::clone(&state.metrics));
     send_ready_since(state, to, &mut link, sender, row, cancel, started)
 }
 
