@@ -375,6 +375,8 @@ struct RegistryDocument {
     packument: Packument,
     /// Publisher id to fingerprint, from a static index; empty for an npm registry.
     publishers: std::collections::BTreeMap<String, String>,
+    /// The static index's own URL, which a relative tarball is resolved against.
+    index_url: Option<String>,
 }
 
 /// The packument for one package.
@@ -489,12 +491,13 @@ fn packument_with_base(
                 if let Some(mut entry) = cached {
                     if let Some(age) = max_age_ms(&response.headers) {
                         entry.expires_at_ms = Some(now.saturating_add(age));
-                        state.registry_cache.lock().insert(url, entry.clone());
+                        state.registry_cache.lock().insert(url.clone(), entry.clone());
                     }
                     return Ok(RegistryDocument {
                         base: base.clone(),
                         packument: entry.document,
                         publishers: entry.publishers,
+                        index_url: Some(url.clone()),
                     });
                 }
                 last = Some((
@@ -524,7 +527,7 @@ fn packument_with_base(
                 if base.kind == Kind::Static {
                     let expires_at_ms = max_age_ms(&response.headers).map(|age| now.saturating_add(age));
                     state.registry_cache.lock().insert(
-                        url,
+                        url.clone(),
                         CachedDocument {
                             etag: response.headers.get("etag").cloned(),
                             last_modified: response.headers.get("last-modified").cloned(),
@@ -538,6 +541,7 @@ fn packument_with_base(
                     base: base.clone(),
                     packument: document,
                     publishers,
+                    index_url: (base.kind == Kind::Static).then(|| url.clone()),
                 });
             }
             Ok(response) if retryable(response.status) => {
@@ -652,6 +656,38 @@ pub fn preview(
     })
 }
 
+/// Resolves a static index's tarball reference against the document's own URL.
+///
+/// Absolute URLs pass through; a path is joined to the index's directory, and a leading `/` to its origin. `..` is
+/// refused rather than normalised: an index that climbs out of its own directory is asking to fetch something the author
+/// did not mean to publish.
+fn resolve_tarball(index_url: &str, tarball: &str) -> Result<String, String> {
+    if tarball.starts_with("https://") || tarball.starts_with("http://") {
+        return Ok(tarball.to_owned());
+    }
+    if tarball.is_empty() {
+        return Err("the index names an empty tarball path".to_owned());
+    }
+    if tarball.split('/').any(|segment| segment == "..") {
+        return Err("the tarball path must not contain `..`".to_owned());
+    }
+    if tarball.starts_with('/') {
+        let origin = index_url
+            .split_once("://")
+            .map(|(scheme, rest)| {
+                let authority = rest.split('/').next().unwrap_or_default();
+                format!("{scheme}://{authority}")
+            })
+            .ok_or_else(|| "the index URL is not absolute".to_owned())?;
+        return Ok(format!("{origin}{tarball}"));
+    }
+    let directory = index_url
+        .rsplit_once('/')
+        .map(|(directory, _)| directory)
+        .ok_or_else(|| "the index URL is not absolute".to_owned())?;
+    Ok(format!("{directory}/{tarball}"))
+}
+
 /// A tarball extracted under the cache, and the files it wrote so they can be removed without a recursive delete.
 struct PackageDir {
     directory: std::path::PathBuf,
@@ -690,25 +726,35 @@ fn download(
     bases: &[Base],
     source: &Base,
     chosen: &synra_registry::Version,
+    index_url: Option<&str>,
 ) -> Result<PackageDir, synra_ipc::IpcError> {
-    let tarball = &chosen.dist.tarball;
     let mut candidates = Vec::new();
     if source.kind == Kind::Static {
-        // ★ A static index names a full URL, and the bytes may be on a CDN beside the bucket. The address is checked for
-        // scheme and host like any registry, but not tied to the index's origin — the index is the author's document, and
-        // the same document also names the manifest and the digest the signature covers.
-        let base = split_url(tarball, Kind::Static).map_err(|_| {
+        // ★ A static index may name a tarball relative to itself: the author who uploads files usually does not know the
+        // bucket's public URL, and a relative name is resolved against the document that carried it. An absolute URL is
+        // still allowed — the bytes may be on a CDN — and is checked for scheme and host like any registry.
+        let tarball = match index_url {
+            Some(index_url) => resolve_tarball(index_url, &chosen.dist.tarball).map_err(|reason| {
+                synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                    "tarball": chosen.dist.tarball,
+                    "reason": reason,
+                }))
+            })?,
+            None => chosen.dist.tarball.clone(),
+        };
+        let base = split_url(&tarball, Kind::Static).map_err(|_| {
             synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
                 "tarball": tarball,
                 "reason": "the static index names a tarball that is not an https:// or http:// URL",
             }))
         })?;
-        candidates.push((base, tarball.clone()));
+        candidates.push((base, tarball));
     }
     else {
         // ★ An npm tarball is fetched from the mirror that served the packument, or from another **configured** mirror by
         // the same path. A packument that points at an origin nobody configured is asking for a fetch this device never
         // agreed to.
+        let tarball = &chosen.dist.tarball;
         let path = tarball.strip_prefix(&source.origin).ok_or_else(|| {
             synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
                 "tarball": tarball,
@@ -747,7 +793,7 @@ fn download(
     let Some(bytes) = body else {
         let (code, reason) = last.unwrap_or((ErrorCode::Internal, "no mirror served the tarball".to_owned()));
         return Err(synra_ipc::IpcError::unknown(code)
-            .with_params(serde_json::json!({"tarball": tarball, "reason": reason})));
+            .with_params(serde_json::json!({"tarball": chosen.dist.tarball, "reason": reason})));
     };
 
     let directory = state
@@ -759,7 +805,7 @@ fn download(
         // The extractor removes what it wrote; this removes the now-empty root it created.
         let _ = std::fs::remove_dir(&directory);
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-            "tarball": tarball,
+            "tarball": chosen.dist.tarball,
             "reason": error.to_string(),
         }))
     })?;
@@ -780,7 +826,7 @@ pub fn install(
     let registry = packument_with_base(state, plugin_id)?;
     let chosen = choose(&registry.packument, plugin_id, version)?;
 
-    let package = download(state, &bases, &registry.base, chosen)?;
+    let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
     let outcome = crate::commands::plugins::install_directory(state, package.path());
     package.cleanup();
     let mut report = outcome?;
@@ -828,7 +874,7 @@ pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcErr
             "reason": "the registry has no `latest` tag for it",
         }))
     })?;
-    let package = download(state, &bases, &registry.base, chosen)?;
+    let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
     let outcome = crate::commands::plugins::update_directory(state, package.path());
     package.cleanup();
     outcome
@@ -869,6 +915,30 @@ pub fn install_from_source(
 mod tests {
     use super::publisher_mismatch;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_relative_tarball_is_resolved_against_the_index() {
+        assert_eq!(
+            super::resolve_tarball("https://bucket.example/plugins/@acme/hello.json", "hello.tgz"),
+            Ok("https://bucket.example/plugins/@acme/hello.tgz".to_owned())
+        );
+        assert_eq!(
+            super::resolve_tarball("https://bucket.example/plugins/@acme/hello.json", "/x/hello.tgz"),
+            Ok("https://bucket.example/x/hello.tgz".to_owned())
+        );
+        assert_eq!(
+            super::resolve_tarball("https://cdn.example/x.json", "https://other.example/y.tgz"),
+            Ok("https://other.example/y.tgz".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_relative_tarball_may_not_climb_out_of_its_directory() {
+        // ★ `..` is refused rather than normalised: an index that walks out of its own directory is asking for a fetch the
+        // author did not mean to publish.
+        assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "../secret.tgz").is_err());
+        assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "").is_err());
+    }
 
     #[test]
     fn a_directory_key_that_matches_is_silent() {

@@ -1183,7 +1183,8 @@ mod tests {
             "publishers": { "@acme": "AB12 CD34 EF56 7890" },
             "versions": [{
                 "version": "1.0.0",
-                "tarball": format!("{base}/pkg.tgz"),
+                // Relative to the index's own URL: the client resolves it, so the author need not know the bucket.
+                "tarball": "pkg.tgz",
                 "manifest": manifest_json
             }]
         })
