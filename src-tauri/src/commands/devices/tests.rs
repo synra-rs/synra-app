@@ -329,6 +329,13 @@ fn an_active_scan_without_a_discovery_worker_is_refused_rather_than_reported_as_
     assert!(reason.contains("discovery sockets"), "the refusal names what is missing: {reason}");
     // And nothing was left in the snapshot claiming a scan is under way.
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
+    // ★ "Why can this device not find anything" is a question the metrics answer: the refusal is a scan that could not run,
+    // and the daemon writes the same label for its own refusal.
+    assert_eq!(
+        state.metrics.snapshot().get("scans_total{result=unavailable}"),
+        Some(&synra_observe::metrics::Value::Counter(1)),
+        "the refusal is counted rather than only returned"
+    );
 }
 
 #[test]
@@ -381,6 +388,17 @@ fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers
     assert!(published.load(Ordering::Relaxed), "and the worker was asked to look now");
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None, "and it is over when it answers");
     assert_eq!(deadline.load(Ordering::Relaxed), 0, "with the deadline released, so nothing keeps broadcasting");
+
+    // ★ The scan is measured where it runs. An empty test network found nothing, and "found nothing" is still an
+    // observation — a histogram with no observations would be a shape rather than a measurement.
+    use synra_observe::metrics::Value;
+    let snapshot = state.metrics.snapshot();
+    assert_eq!(snapshot.get("scans_total{result=ran}"), Some(&Value::Counter(1)));
+    match snapshot.get("candidates_found") {
+        Some(Value::Histogram(histogram)) => assert_eq!(histogram.count, 1),
+        other => panic!("expected a candidates histogram, got {other:?}"),
+    }
+    assert!(snapshot.get("scan_duration_ms").is_some(), "the scan's time is recorded");
 }
 
 #[test]

@@ -125,6 +125,9 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     }
 
     let Some(discovery) = &state.discovery else {
+        // ★ Counted before the refusal: "why can this device not find anything" is a question the metric answers, and a
+        // scan that never ran is exactly the case a user hits on a machine with no usable network.
+        count_scan(state, "unavailable");
         return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(serde_json::json!({
             "reason": "this window could not bind the discovery sockets, so it cannot look for devices: a machine with \
                 no network, a firewall and a sandbox all produce this. The devices already known are still listed — ask \
@@ -146,7 +149,18 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     // snapshot: the discovered count is the database's answer, not this function's, and inventing one here would be a
     // second source for it.
     state.publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(running)));
+    // ★ Reset before the scan and read after it: the counter is "what this scan heard", not "what this process has ever
+    // heard", and a value left over from the previous scan would make the second one look more successful than it was.
+    let started = std::time::Instant::now();
+    discovery.reset_sightings();
     discovery.scan(budget);
+    let found = discovery.sightings();
+    count_scan(state, "ran");
+    observe_candidates(state, found);
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new("scan_duration_ms", []),
+        started.elapsed().as_secs_f64() * 1_000.0,
+    );
     // Cleared before the answer, because the scan this records is over. This is also the field's whole meaning: a finished
     // scan recorded as a running one is what disabled the Scan button and drew the bar that could not move.
     *state.scanning.lock() = None;
@@ -154,6 +168,25 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     announce_cards(state);
 
     Ok(scan_id)
+}
+
+/// Counts one scan by how it ended, with the daemon's own label spelling (`ran` / `unavailable`).
+fn count_scan(state: &AppState, result: &str) {
+    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
+        "scans_total",
+        [("result".to_owned(), result.to_owned())],
+    ));
+}
+
+/// Records how many devices one scan found.
+///
+/// A histogram rather than a counter: the interesting question is the distribution ("this network usually has three"),
+/// which a total cannot answer.
+#[allow(clippy::cast_precision_loss)]
+fn observe_candidates(state: &AppState, found: u64) {
+    state
+        .metrics
+        .histogram_observe(&synra_observe::metrics::SeriesKey::new("candidates_found", []), found as f64);
 }
 
 /// Announces every device the kernel currently knows, one card at a time.

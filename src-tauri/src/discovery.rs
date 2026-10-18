@@ -45,6 +45,21 @@ use synra_store::{Seen, SynraDb};
 /// so the loop reports what it saw and the host decides what to say.
 pub type Announce = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// The device identifiers one scan heard, deduplicated.
+///
+/// Shared between the worker (which inserts) and the command (which resets and reads): a device announces more than once
+/// inside the protocol's scan window, and `candidates_found` asks how many devices answered rather than how many packets
+/// arrived.
+pub(crate) type Sightings = Arc<Mutex<std::collections::HashSet<String>>>;
+
+/// Records one device the worker accepted into the scan's set.
+///
+/// A free function because the worker closure holds the [`Sightings`] handle rather than a [`Discovery`]: the worker starts
+/// before the struct exists, and handing it the whole struct would be handing it the sockets it is already running.
+pub(crate) fn note_sighting(sightings: &Sightings, device_id: &str) {
+    sightings.lock().insert(device_id.to_owned());
+}
+
 /// How often the wait loop looks at the clock.
 ///
 /// Not a deadline for anything: the whole wait is bounded by the protocol's scan window, and this is only how often the
@@ -64,6 +79,12 @@ pub struct Discovery {
     service: Arc<Mutex<DiscoveryService>>,
     /// When a caller asked for a scan, as a wall-clock millisecond the worker compares against now.
     on_demand: Arc<AtomicI64>,
+    /// What the most recent scan heard, so the command can report it. Reset by the caller before it asks for a scan.
+    ///
+    /// ★ A **set** rather than a count, because a device announces more than once inside one scan window and the question
+    /// `candidates_found` asks is "how many devices answered", not "how many packets arrived". The daemon reads the same
+    /// question from `host.discovery().len()`, which is also a set.
+    sightings: Sightings,
     /// The supervisor's shutdown token, so a deliberate exit can stop the worker.
     ///
     /// ★ The token rather than the handle: `run_task` joins on the token, and the supervisor is what waits when a caller
@@ -124,6 +145,8 @@ impl Discovery {
         // believed it was discovering while no thread existed is the failure this module is about.
         let worker = Arc::clone(&service);
         let deadline = Arc::clone(&on_demand);
+        let sightings: Sightings = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let counted = Arc::clone(&sightings);
         run_task(&supervisor, &TaskId::new("discovery.udp"), move |cancel| {
             synra_core::worker::run_recording(
                 &worker,
@@ -138,6 +161,8 @@ impl Discovery {
                     // ★ Every device the table accepted is announced, and only those: `record` skips a sighting whose write
                     // failed, so a device the kernel could not remember is not one the window is told about.
                     for device_id in record(&db, candidates) {
+                        // The set deduplicates the repeats inside one scan; the same identifier twice is one device.
+                        note_sighting(&counted, &device_id);
                         announce(&device_id);
                     }
                 },
@@ -146,7 +171,7 @@ impl Discovery {
         })
         .map_err(|error| format!("the discovery worker did not start: {error}"))?;
 
-        Ok(Self { service, on_demand, stop })
+        Ok(Self { service, on_demand, stop, sightings })
     }
 
     /// Asks the worker to stop, for a deliberate exit.
@@ -179,6 +204,16 @@ impl Discovery {
     #[must_use]
     pub fn on_demand(&self) -> Arc<AtomicI64> {
         Arc::clone(&self.on_demand)
+    }
+
+    /// Forgets what the previous scan heard, for the scan that is about to run.
+    pub(crate) fn reset_sightings(&self) {
+        self.sightings.lock().clear();
+    }
+
+    /// How many distinct devices the current (or last) scan recorded.
+    pub(crate) fn sightings(&self) -> u64 {
+        u64::try_from(self.sightings.lock().len()).unwrap_or(u64::MAX)
     }
 
     /// Asks the worker to look now, and waits out the window the protocol gives one scan.

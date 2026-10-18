@@ -17,7 +17,7 @@ use synra_protocol::discovery::TrustLevel;
 use synra_protocol::ids::DeviceId;
 use synra_protocol::session::PlatformKind;
 
-use super::{Discovery, record};
+use super::{Discovery, note_sighting, record};
 use crate::commands::devices::devices_snapshot;
 
 /// A device id that is shaped like one, so nothing here accidentally tests id parsing.
@@ -45,6 +45,19 @@ fn candidate() -> Candidate {
 fn discovery(state: &crate::AppState) -> Discovery {
     Discovery::start(state.announcement(1), 0, Arc::clone(&state.db), state.host.clone(), 0, Arc::new(|_: &str| {}))
         .expect("the sockets are free")
+}
+
+#[test]
+fn a_scan_counts_devices_rather_than_packets() {
+    // ★ The set is what makes `candidates_found` mean "devices that answered". A device announces more than once inside the
+    // scan window, and a plain counter would report two for one machine — while the daemon, which reads a set, reports one.
+    let sightings: super::Sightings = Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
+
+    note_sighting(&sightings, "aaaa");
+    note_sighting(&sightings, "aaaa");
+    note_sighting(&sightings, "bbbb");
+
+    assert_eq!(sightings.lock().len(), 2, "the repeat is the same device, not a second candidate");
 }
 
 #[test]
