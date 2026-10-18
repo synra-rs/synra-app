@@ -894,6 +894,105 @@ mod tests {
         assert!(found[0].installed, "the fixture is installed");
     }
 
+    /// A tiny HTTP server for the registry tests: answers each request from `handler`, and counts what it served.
+    fn serve(
+        handler: impl Fn(&str) -> (u16, Vec<u8>) + Send + 'static,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{BufRead, BufReader, Write as _};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+        let address = listener.local_addr().expect("an address");
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&served);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let _ = counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
+                let mut first = String::new();
+                let _ = reader.read_line(&mut first);
+                let (status, body) = handler(&first);
+                let reason = if status == 200 { "OK" } else { "Not Found" };
+                let head = format!(
+                    "HTTP/1.1 {status} {reason}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(&body);
+            }
+        });
+        (format!("http://{address}"), served)
+    }
+
+    #[test]
+    fn a_mirror_that_fails_is_followed_by_the_next_one() {
+        // ★ The first mirror serves the packument and then refuses its own tarball; the second serves the same path. The
+        // install must succeed, and the second mirror must have been asked — a client that retried the first one only
+        // would pass a test that only counted the install.
+        use std::sync::{Arc, Mutex};
+
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
+        let archive = tgz(&[
+            ("package/manifest.json", manifest.as_slice()),
+            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+        ]);
+
+        let (second, second_count) = serve(move |line: &str| {
+            if line.contains("pkg.tgz") {
+                (200, archive.clone())
+            }
+            else {
+                (404, Vec::new())
+            }
+        });
+        let document = Arc::new(Mutex::new(String::new()));
+        let served_document = Arc::clone(&document);
+        let (first, first_count) = serve(move |line: &str| {
+            if line.contains("%2F") {
+                (200, served_document.lock().expect("the document").clone().into_bytes())
+            }
+            else {
+                (404, Vec::new())
+            }
+        });
+        *document.lock().expect("the document") = serde_json::json!({
+            "name": "@acme/hello",
+            "dist-tags": { "latest": "1.0.0" },
+            "versions": {
+                "1.0.0": {
+                    "name": "@acme/hello",
+                    "version": "1.0.0",
+                    // On the first mirror, whose `/pkg.tgz` is a 404; the second mirror serves the same path.
+                    "dist": { "tarball": format!("{first}/pkg.tgz") }
+                }
+            }
+        })
+        .to_string();
+
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!([first, second]), 1_000)
+            .expect("the mirrors are configured");
+
+        let report = plugins_install(
+            &state,
+            &InstallSourceDto::Registry {
+                plugin_id: PluginId::try_from("@acme/hello".to_owned()).expect("a plugin id"),
+                version: None,
+            },
+        )
+        .expect("the second mirror completes the install");
+
+        assert_eq!(report.version, "1.0.0");
+        assert!(first_count.load(std::sync::atomic::Ordering::Relaxed) >= 1, "the first mirror was not asked");
+        assert!(
+            second_count.load(std::sync::atomic::Ordering::Relaxed) >= 1,
+            "the second mirror was never asked"
+        );
+    }
+
     /// A manifest declaring the two capabilities the consent tests decide about.
     ///
     /// The shape is the one `synra-plugin-api`'s own fixture uses, because a hand-written manifest that drifted from it

@@ -51,6 +51,7 @@ pub const REGISTRY_KEY: &str = "plugins.registry";
 const MAX_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024 + 1;
 
 /// A registry address, split into what the guard and the URLs need.
+#[derive(Debug, Clone)]
 struct Base {
     /// `scheme://authority`, without a trailing slash.
     origin: String,
@@ -60,8 +61,12 @@ struct Base {
     secure: bool,
 }
 
-/// The configured registry, or a refusal naming the key.
-fn base(state: &AppState) -> Result<Base, synra_ipc::IpcError> {
+/// The configured registries, in the order they are tried.
+///
+/// The key holds either one URL or an array of mirrors; an array is tried in order, and only for failures that another
+/// mirror could plausibly fix (16 §4.2). A verification failure never falls back — it is not a network problem, and
+/// retrying it somewhere else would be skipping the check the design exists to keep.
+fn bases(state: &AppState) -> Result<Vec<Base>, synra_ipc::IpcError> {
     let rows = state.db().config().map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"detail": error.to_string()}))
@@ -71,11 +76,34 @@ fn base(state: &AppState) -> Result<Base, synra_ipc::IpcError> {
             "why": format!("no registry is configured; set `{REGISTRY_KEY}` to its base URL first"),
         })));
     };
-    let url: String = serde_json::from_str(&row.value).map_err(|error| {
+    let value: serde_json::Value = serde_json::from_str(&row.value).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"field": REGISTRY_KEY, "reason": error.to_string()}))
     })?;
-    split_url(url.trim())
+    let urls: Vec<String> = match value {
+        serde_json::Value::String(url) => vec![url],
+        serde_json::Value::Array(items) => items
+            .iter()
+            .filter_map(|item| item.as_str().map(str::to_owned))
+            .collect(),
+        _ => {
+            return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"field": REGISTRY_KEY, "reason": "it must be a URL or an array of URLs"}),
+            ));
+        }
+    };
+    let parsed: Vec<Base> = urls
+        .iter()
+        .map(|url| url.trim())
+        .filter(|url| !url.is_empty())
+        .map(split_url)
+        .collect::<Result<_, _>>()?;
+    if parsed.is_empty() {
+        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+            "why": format!("`{REGISTRY_KEY}` names no registry"),
+        })));
+    }
+    Ok(parsed)
 }
 
 /// Splits a base URL into its scheme, authority and host.
@@ -111,6 +139,52 @@ fn split_url(url: &str) -> Result<Base, synra_ipc::IpcError> {
         None => format!("{}://{}", if secure { "https" } else { "http" }, host),
     };
     Ok(Base { origin, host, secure })
+}
+
+/// Whether another mirror could plausibly fix this status.
+///
+/// ★ 404 and 429 are the design's two (16 §4.2), plus the gateway-shaped 5xx. A 401 or a 403 is a decision the registry
+/// made about this client, and asking a second registry the same question would not change it.
+fn retryable(status: u16) -> bool {
+    matches!(status, 404 | 408 | 429 | 500..=599)
+}
+
+/// Fetches one path from the first mirror that answers usefully, returning the mirror and the response.
+fn get_text(
+    bases: &[Base],
+    path: &str,
+    what: &str,
+) -> Result<(Base, synra_fetch::Response), synra_ipc::IpcError> {
+    let mut last: Option<(ErrorCode, String)> = None;
+    for base in bases {
+        let url = format!("{}{path}", base.origin);
+        match client(base).fetch(&get(&url)) {
+            Ok(response) if (200..300).contains(&response.status) => return Ok((base.clone(), response)),
+            Ok(response) if retryable(response.status) => {
+                last = Some((
+                    ErrorCode::Unsupported,
+                    format!("{url} answered {}", response.status),
+                ));
+            }
+            Ok(response) => {
+                return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                    serde_json::json!({
+                        "url": url,
+                        "status": response.status,
+                        "reason": format!("{what} refused the request"),
+                    }),
+                ));
+            }
+            Err(refusal) => {
+                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+            }
+        }
+    }
+    let (code, reason) = last.unwrap_or((ErrorCode::Unsupported, format!("no registry serves {what}")));
+    Err(synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
+        "reason": reason,
+        "tried": bases.len(),
+    })))
 }
 
 /// The guarded HTTP client for one registry.
@@ -180,7 +254,7 @@ const DEFAULT_SEARCH_RESULTS: u32 = 20;
 ///
 /// `Unsupported` when no registry is configured, and a fetch refusal's own code for a network problem.
 pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>, synra_ipc::IpcError> {
-    let base = base(state)?;
+    let bases = bases(state)?;
     let text = query.query.trim();
     let scope = if text.is_empty() {
         "keywords:synra-plugin".to_owned()
@@ -189,23 +263,8 @@ pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>
         format!("keywords:synra-plugin {text}")
     };
     let limit = query.limit.unwrap_or(DEFAULT_SEARCH_RESULTS).clamp(1, MAX_SEARCH_RESULTS);
-    let url = format!(
-        "{}/-/v1/search?text={}&size={limit}",
-        base.origin,
-        encode(&scope)
-    );
-    let response = client(&base).fetch(&get(&url)).map_err(|refusal| {
-        synra_ipc::IpcError::unknown(refusal.code).with_params(serde_json::json!({
-            "url": url,
-            "reason": refusal.message,
-        }))
-    })?;
-    if !(200..300).contains(&response.status) {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "status": response.status,
-            "reason": "the registry does not serve a search endpoint",
-        })));
-    }
+    let path = format!("/-/v1/search?text={}&size={limit}", encode(&scope));
+    let (_, response) = get_text(&bases, &path, "the search endpoint")?;
     let parsed: SearchResponse = serde_json::from_str(&response.body).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"reason": error.to_string()}))
@@ -257,27 +316,25 @@ fn encode(text: &str) -> String {
 /// `Unsupported` when no registry is configured, `InvalidArgument` when the registry does not serve the package or serves
 /// something that is not a packument, and a fetch refusal's own code for a network problem.
 pub fn packument(state: &AppState, plugin_id: &str) -> Result<Packument, synra_ipc::IpcError> {
-    let base = base(state)?;
-    let url = format!("{}/{}", base.origin, plugin_id.replace('/', "%2F"));
-    let response = client(&base)
-        .fetch(&get(&url))
-        .map_err(|refusal| {
-            synra_ipc::IpcError::unknown(refusal.code).with_params(serde_json::json!({
-                "url": url,
-                "reason": refusal.message,
-            }))
-        })?;
-    if !(200..300).contains(&response.status) {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-            "pluginId": plugin_id,
-            "status": response.status,
-            "reason": "the registry does not serve that package",
-        })));
-    }
-    Packument::parse(&response.body).map_err(|error| {
+    Ok(packument_with_base(state, plugin_id)?.1)
+}
+
+/// The packument and the mirror that served it.
+///
+/// The mirror matters because the tarball it names may only be on its origin; the install uses it to decide which other
+/// mirrors may serve the same path.
+fn packument_with_base(
+    state: &AppState,
+    plugin_id: &str,
+) -> Result<(Base, Packument), synra_ipc::IpcError> {
+    let bases = bases(state)?;
+    let path = format!("/{}", plugin_id.replace('/', "%2F"));
+    let (base, response) = get_text(&bases, &path, "the package")?;
+    let document = Packument::parse(&response.body).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
-    })
+    })?;
+    Ok((base, document))
 }
 
 /// The version a document names, by tag or by string.
@@ -385,44 +442,59 @@ impl PackageDir {
 /// Downloads the chosen version's tarball and opens it into a fresh cache directory.
 fn download(
     state: &AppState,
-    base: &Base,
+    bases: &[Base],
+    source: &Base,
     chosen: &synra_registry::Version,
 ) -> Result<PackageDir, synra_ipc::IpcError> {
     let tarball = &chosen.dist.tarball;
-    // ★ Same origin only: a packument that points a package at another host is asking for a fetch nobody configured, and
-    // following it would make the registry's answer a capability.
-    if !tarball.starts_with(&base.origin) {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+    // ★ A tarball is fetched from the mirror that served the packument, or from another **configured** mirror by the same
+    // path. A packument that points at an origin nobody configured is asking for a fetch this device never agreed to.
+    let path = tarball.strip_prefix(&source.origin).ok_or_else(|| {
+        synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "tarball": tarball,
-            "reason": format!("the tarball is not on the configured registry ({})", base.origin),
-        })));
-    }
-    let response = client(base).fetch_bytes(&get(tarball)).map_err(|refusal| {
-        synra_ipc::IpcError::unknown(refusal.code).with_params(serde_json::json!({
-            "url": tarball,
-            "reason": refusal.message,
+            "reason": format!("the tarball is not on a configured registry ({})", source.origin),
         }))
     })?;
-    if !(200..300).contains(&response.status) {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({
-            "url": tarball,
-            "status": response.status,
-            "reason": "the tarball could not be downloaded",
-        })));
+    let mut candidates = vec![(source.clone(), tarball.clone())];
+    for other in bases {
+        if other.origin != source.origin {
+            candidates.push((other.clone(), format!("{}{}", other.origin, path)));
+        }
     }
+
+    let mut last: Option<(ErrorCode, String)> = None;
+    let mut body: Option<Vec<u8>> = None;
+    for (base, url) in &candidates {
+        match client(base).fetch_bytes(&get(url)) {
+            Ok(response) if (200..300).contains(&response.status) => {
+                body = Some(response.body);
+                break;
+            }
+            Ok(response) if retryable(response.status) => {
+                last = Some((ErrorCode::Unsupported, format!("{url} answered {}", response.status)));
+            }
+            Ok(response) => {
+                return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                    serde_json::json!({"url": url, "status": response.status, "reason": "the tarball was refused"}),
+                ));
+            }
+            Err(refusal) => {
+                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+            }
+        }
+    }
+    let Some(bytes) = body else {
+        let (code, reason) = last.unwrap_or((ErrorCode::Internal, "no mirror served the tarball".to_owned()));
+        return Err(synra_ipc::IpcError::unknown(code)
+            .with_params(serde_json::json!({"tarball": tarball, "reason": reason})));
+    };
 
     let directory = state
         .paths
         .cache_dir()
         .join("registry")
         .join(uuid::Uuid::new_v4().to_string());
-    let files = extract_tgz(
-        &response.body,
-        &directory,
-        Some("package"),
-        ArchiveLimits::default(),
-    )
-    .map_err(|error| {
+    let files = extract_tgz(&bytes, &directory, Some("package"), ArchiveLimits::default()).map_err(|error| {
         // The extractor removes what it wrote; this removes the now-empty root it created.
         let _ = std::fs::remove_dir(&directory);
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
@@ -443,11 +515,11 @@ pub fn install(
     plugin_id: &str,
     version: Option<&str>,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
-    let base = base(state)?;
-    let document = packument(state, plugin_id)?;
+    let bases = bases(state)?;
+    let (source, document) = packument_with_base(state, plugin_id)?;
     let chosen = choose(&document, plugin_id, version)?;
 
-    let package = download(state, &base, chosen)?;
+    let package = download(state, &bases, &source, chosen)?;
     let outcome = crate::commands::plugins::install_directory(state, package.path());
     package.cleanup();
     outcome
