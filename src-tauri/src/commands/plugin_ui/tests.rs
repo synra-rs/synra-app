@@ -865,3 +865,141 @@ fn the_fetch_codes_reach_the_interface_unchanged() {
         );
     }
 }
+
+// ── The plugin's own actions ────────────────────────────────────────────────────────────────────
+
+/// A state whose plugin is loaded, has declared one action, and whose backend answers `actions.invoke` with `answer`.
+///
+/// The script is keyed by the call's **payload**, so `args_json` must be what `self.invoke` will serialise: an action
+/// asked for without arguments arrives as `null`, not as `{}`.
+fn action_page(answer: synra_plugin_host::Scripted, args_json: &str)
+    -> (crate::testing::Root, crate::AppState, String, Arc<ScriptedBackend>) {
+    let (root, state) = crate::testing::file_state();
+    let plugin = plugin_id();
+    state
+        .db()
+        .insert_plugin(plugin.as_str(), true, true, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .expect("a plugin row");
+    state
+        .db()
+        .record_plugin_action(plugin.as_str(), "send", Some(r#"{"type":"object"}"#), Some("Send a message"))
+        .expect("a declaration");
+
+    let backend = Arc::new(ScriptedBackend::new());
+    backend.script(
+        &synra_plugin_host::Work::InvokeAction { name: "send".to_owned(), args_json: args_json.to_owned() },
+        answer,
+    );
+    let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
+        Arc::clone(&state.db),
+        Arc::clone(&state.platform),
+    ));
+    let mut set = synra_core::dispatch::PluginSet::new(Backend::new(backend.clone()), host);
+    set.load(synra_core::dispatch::PluginSpec {
+        id: plugin,
+        version: "1.0.0".to_owned(),
+        wasm: b"\0asm\x01\0\0\0".to_vec(),
+        grants: CapabilitySet::new(),
+        policy: synra_plugin_host::InstancePolicy::Stateless,
+        limit: 4,
+        quota: synra_plugin_host::quota::Quota::default(),
+    })
+    .expect("the plugin loads");
+
+    let state = state.with_plugins(Arc::new(Mutex::new(set)));
+    let token = hosted_page(&state);
+    (root, state, token, backend)
+}
+
+#[test]
+fn the_actions_a_plugin_declared_are_listed_with_their_schema() {
+    // ★ `args` is parsed rather than a JSON string inside JSON: the contract's `ActionDescriptor` declares it as
+    // `unknown`, and a page rendering a form should not have to parse a string it was handed inside an object.
+    let (_root, state, token, _backend) = action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
+
+    let answer = super::plugin_ui_rpc(&state, &token, "self.actions", &serde_json::json!({}))
+        .expect("the list");
+
+    assert_eq!(
+        answer,
+        serde_json::json!([{
+            "name": "send",
+            "args": {"type": "object"},
+            "description": "Send a message",
+        }])
+    );
+}
+
+#[test]
+fn an_action_runs_on_the_headless_half() {
+    let (_root, state, token, backend) =
+        action_page(synra_plugin_host::Scripted::Ok(r#"{"sent":true}"#.to_owned()), r#"{"to":"bob"}"#);
+
+    let answer = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "self.invoke",
+        &serde_json::json!({"action": "send", "args": {"to": "bob"}}),
+    )
+    .expect("the call");
+
+    assert_eq!(answer, serde_json::json!({"sent": true}));
+    assert_eq!(backend.calls(), 1, "the headless half was not run");
+}
+
+#[test]
+fn an_action_this_plugin_never_declared_is_refused_before_the_call() {
+    // ★ The ownership check the design asks for. `Work::InvokeAction` carries a name and nothing about who declared
+    // it; without this lookup a page could name any action, which is one plugin driving another through a token it was
+    // given for itself.
+    let (_root, state, token, backend) = action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
+
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "self.invoke",
+        &serde_json::json!({"action": "delete-everything"}),
+    )
+    .expect_err("that action is not this plugin's");
+
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("action"));
+    assert_eq!(backend.calls(), 0, "an undeclared action reached the headless half");
+}
+
+#[test]
+fn a_structured_failure_keeps_the_code_the_plugin_chose() {
+    let (_root, state, token, _backend) = action_page(synra_plugin_host::Scripted::Failed {
+        code: "device_offline".to_owned(),
+        message: "the other end is away".to_owned(),
+    }, "null");
+
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "self.invoke",
+        &serde_json::json!({"action": "send"}),
+    )
+    .expect_err("the plugin refused");
+
+    assert_eq!(refused.code, ErrorCode::DeviceOffline);
+    assert_eq!(
+        refused.params.get("reason").and_then(|value| value.as_str()),
+        Some("the other end is away")
+    );
+}
+
+#[test]
+fn a_call_that_ran_out_of_time_is_a_plugin_timeout() {
+    let (_root, state, token, _backend) = action_page(synra_plugin_host::Scripted::Timeout, "null");
+
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "self.invoke",
+        &serde_json::json!({"action": "send"}),
+    )
+    .expect_err("the call timed out");
+
+    assert_eq!(refused.code, ErrorCode::PluginTimeout);
+}

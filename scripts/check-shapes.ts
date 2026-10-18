@@ -237,10 +237,16 @@ async function checkCommandNames(): Promise<void> {
 
   // Every string this repository passes as a command. The names appear as the first argument of `call` and in the
   // method table below, and both are `'name'` literals.
+  //
+  // ★ The receiver is part of the pattern, and `self.invoke` is why. The first version matched any `.call(`/`.invoke(`
+  // with a lowercase literal and read `synra.self.invoke('clear')` — a **plugin action**, not a command — as a call to a
+  // command the kernel does not declare. Naming the seam (`kernel`, `client`, the injected `bridge`) is the rule the
+  // check actually means: those are the only objects whose call names are commands. The type argument is allowed because
+  // `kernel.call<DevicesSnapshot>('devices_snapshot')` is the ordinary form.
   const called = new Set<string>()
   for (const file of await sources(join(here, 'src'))) {
     const text = await readFile(file, 'utf8')
-    for (const match of text.matchAll(/\b(?:call|invoke)\(\s*'([a-z][a-z0-9_]*)'/g)) {
+    for (const match of text.matchAll(/\b(?:kernel|client|bridge)\.(?:call|invoke)\s*(?:<[^()]*>\s*)?\(\s*'([a-z][a-z0-9_]*)'/g)) {
       if (match[1] !== undefined)
         called.add(match[1])
     }

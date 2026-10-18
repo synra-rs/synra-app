@@ -133,6 +133,8 @@ pub fn plugin_ui_rpc(
         PluginUiOp::PlatformOpenUrl => platform_open_url(state, &session, args),
         PluginUiOp::PlatformNotify => platform_notify(state, &session, args),
         PluginUiOp::NetworkFetch => network_fetch(state, &plugin_id, args),
+        PluginUiOp::SelfActions => self_actions(state, &plugin_id),
+        PluginUiOp::SelfInvoke => self_invoke(state, &plugin_id, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "method": method,
             "reason": "the operation is on the plugin surface and this build does not implement it",
@@ -432,20 +434,35 @@ fn platform_notify(
 /// the protocol's `capability_denied` (snake case). Both reach this function, and an unmapped code would become
 /// `Internal` — the one answer that tells a plugin nothing it can act on.
 fn call_error(error: &synra_plugin_host::host_calls::CallError) -> IpcError {
-    let code = match error.code {
-        "capabilityDenied" | "capability_denied" => ErrorCode::CapabilityDenied,
-        "badArgument" | "invalid_argument" => ErrorCode::InvalidArgument,
-        "hostNotAllowed" | "host_not_allowed" => ErrorCode::HostNotAllowed,
-        "ipNotAllowed" | "ip_not_allowed" => ErrorCode::IpNotAllowed,
-        "schemeNotAllowed" | "scheme_not_allowed" => ErrorCode::SchemeNotAllowed,
-        "redirectBlocked" | "redirect_blocked" => ErrorCode::RedirectBlocked,
-        "responseTooLarge" | "response_too_large" => ErrorCode::ResponseTooLarge,
-        "timeout" => ErrorCode::Timeout,
-        "rateLimited" | "rate_limited" => ErrorCode::RateLimited,
-        "unknownFunction" | "unsupported" => ErrorCode::Unsupported,
-        _ => ErrorCode::Internal,
-    };
-    IpcError::unknown(code).with_params(serde_json::json!({"reason": error.message}))
+    IpcError::unknown(ipc_code(error.code)).with_params(serde_json::json!({"reason": error.message}))
+}
+
+/// The protocol code for a host-call refusal's wire string.
+///
+/// # Why both spellings
+///
+/// `CallError::CAPABILITY_DENIED` is `capabilityDenied` (the host-call vocabulary), while a fetch guard's refusal uses
+/// the protocol's `capability_denied` (snake case). Both reach this function, and an unmapped code would become
+/// `Internal` — the one answer that tells a plugin nothing it can act on.
+fn ipc_code(wire: &str) -> ErrorCode {
+    match wire {
+        "capabilityDenied" | "capability_denied" => return ErrorCode::CapabilityDenied,
+        "badArgument" | "invalid_argument" => return ErrorCode::InvalidArgument,
+        "hostNotAllowed" | "host_not_allowed" => return ErrorCode::HostNotAllowed,
+        "ipNotAllowed" | "ip_not_allowed" => return ErrorCode::IpNotAllowed,
+        "schemeNotAllowed" | "scheme_not_allowed" => return ErrorCode::SchemeNotAllowed,
+        "redirectBlocked" | "redirect_blocked" => return ErrorCode::RedirectBlocked,
+        "responseTooLarge" | "response_too_large" => return ErrorCode::ResponseTooLarge,
+        "timeout" => return ErrorCode::Timeout,
+        "rateLimited" | "rate_limited" => return ErrorCode::RateLimited,
+        "unknownFunction" | "unsupported" => return ErrorCode::Unsupported,
+        _ => {}
+    }
+
+    // ★ The rest are already in the protocol's own spelling: a plugin's `Failed` carries "one of the kernel's stable
+    // error codes", and `ErrorCode` is the type that defines them. Parsing the string through it means a code added to
+    // the protocol reaches this function without a second list to keep in step — and an unknown one is still `Internal`.
+    serde_json::from_value::<ErrorCode>(serde_json::Value::String(wire.to_owned())).unwrap_or(ErrorCode::Internal)
 }
 
 /// One request through the host's fetcher.
@@ -502,6 +519,106 @@ fn network_fetch(
         .fetch(plugin, &request.to_string())
         .map_err(|error| call_error(&error))?;
     serde_json::from_str(&answer).map_err(internal)
+}
+
+// ── The plugin's own actions ────────────────────────────────────────────────────────────────────
+//
+// ★ The two halves of "UI asks headless to do it". The design's reason is the direction of trust: the UI half is a page
+// in a WebView, which the kernel cannot interrupt; the headless half is Wasm, which it can. So a high-risk capability is
+// reached by asking the headless half, and this channel is the asking.
+//
+// The check that makes it safe is **the action belongs to this plugin**: the page holds a token for one plugin, and the
+// name it passes is looked up in that plugin's declaration table. Without that lookup a page could name any action and
+// the call would be one plugin driving another.
+
+/// The host every plugin instance reaches, with the set's lock released.
+fn host_of(state: &AppState) -> Result<std::sync::Arc<dyn synra_plugin_host::host_calls::Host>, IpcError> {
+    let set = state.plugin_set()?;
+    let guard = set.lock();
+    Ok(std::sync::Arc::clone(guard.host()))
+}
+
+/// The actions this plugin declared, as `ActionDescriptor[]`.
+fn self_actions(state: &AppState, plugin: &PluginId) -> Result<serde_json::Value, IpcError> {
+    let host = host_of(state)?;
+    let answer = host.action_list(plugin).map_err(|error| call_error(&error))?;
+    serde_json::from_str(&answer).map_err(internal)
+}
+
+/// Calls one of this plugin's own actions on its headless half.
+fn self_invoke(
+    state: &AppState,
+    plugin: &PluginId,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    let action = string_arg(args, "action")?;
+    let arguments = args.get("args").cloned().unwrap_or(serde_json::Value::Null);
+
+    // ★ The ownership check, before the call rather than inside it. `Work::InvokeAction` names an action and nothing
+    // about which plugin declared it; a name that this plugin never declared would reach its `actions.invoke` export
+    // anyway — and the design's rule is that the kernel validates it belongs to this plugin, so the check is here.
+    let declared = state.db().plugin_actions(plugin.as_str()).map_err(internal)?;
+    if !declared.iter().any(|row| row.name == action) {
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+            "field": "action",
+            "reason": "this plugin has not declared that action",
+        })));
+    }
+
+    let now_ms = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+    let outcome = {
+        let set = state.plugin_set()?;
+        let mut guard = set.lock();
+        let budget = guard
+            .quota(plugin)
+            .map_or_else(|| synra_plugin_host::CallBudget::from_quota(&synra_plugin_host::quota::Quota::default()), |quota| {
+                synra_plugin_host::CallBudget::from_quota(&quota)
+            });
+        guard
+            .call(
+                plugin,
+                &synra_plugin_host::Work::InvokeAction { name: action.to_owned(), args_json: arguments.to_string() },
+                budget,
+                now_ms,
+            )
+            .map_err(plugin_set_error)?
+    };
+
+    match outcome {
+        // The contract says `unknown`, and the payload is a JSON string; a plugin that returned invalid JSON is handing
+        // back text, and the honest reading of that is a string rather than an error the page cannot act on.
+        synra_plugin_host::CallOutcome::Ok(payload) => Ok(
+            serde_json::from_str(&payload).unwrap_or(serde_json::Value::String(payload)),
+        ),
+        synra_plugin_host::CallOutcome::Failed { code, message } => {
+            Err(IpcError::unknown(ipc_code(&code)).with_params(serde_json::json!({"reason": message})))
+        }
+        synra_plugin_host::CallOutcome::Timeout { after } => Err(IpcError::unknown(ErrorCode::PluginTimeout)
+            .with_params(serde_json::json!({"afterMs": after.as_millis()}))),
+        other => Err(IpcError::unknown(ErrorCode::PluginTrapped)
+            .with_params(serde_json::json!({"reason": format!("{other:?}")}))),
+    }
+}
+
+/// The IPC answer for a set that would not make the call.
+///
+/// # Why these are not all `internal`
+///
+/// Because the fixes differ: a plugin that is not loaded in this shell is a property of this build, an instance limit is
+/// "try again", and an engine refusal is a bug or a bad artifact. Collapsing them to `internal` would make the page's
+/// `catch` unable to say which.
+fn plugin_set_error(error: synra_core::dispatch::PluginSetError) -> IpcError {
+    use synra_core::dispatch::PluginSetError;
+
+    match &error {
+        PluginSetError::NotLoaded { id } => IpcError::unknown(ErrorCode::Unsupported).with_params(
+            serde_json::json!({"pluginId": id.to_string(), "reason": "the plugin is not loaded in this shell"}),
+        ),
+        PluginSetError::AtInstanceLimit { id } => IpcError::unknown(ErrorCode::RateLimited).with_params(
+            serde_json::json!({"pluginId": id.to_string(), "reason": "the plugin is at its instance limit"}),
+        ),
+        _ => internal(error),
+    }
 }
 
 /// The façade a plugin page runs: built by `pnpm run build:facade`, embedded here.

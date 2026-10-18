@@ -33,8 +33,6 @@ describe('what the host cannot do yet', () => {
         synra.transfer.send({ to: 'peer', file: new Blob(['x']), fileName: 'a.txt' })
     },
     { name: 'transfer.status', call: async synra => synra.transfer.status('t1') },
-    { name: 'self.invoke', call: async synra => synra.self.invoke('doThing') },
-    { name: 'self.actions', call: async synra => synra.self.actions() },
     { name: 'event.emit', call: async synra => synra.event.emit('_plugin.com.example.notes.thing') }
   ]
 

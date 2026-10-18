@@ -43,11 +43,9 @@ import { createEventNamespace } from './event'
 import { createLogNamespace } from './log'
 import { createNetworkNamespace } from './network'
 import { createClipboardNamespace, createPlatformNamespace } from './platform'
+import { createSelfNamespace } from './self'
 import { createStorageNamespace } from './storage'
-import {
-  createSelfNamespace,
-  createTransferNamespace
-} from './unsupported-namespaces'
+import { createTransferNamespace } from './unsupported-namespaces'
 
 export type { HostKind, InjectionContext } from './context'
 
@@ -79,7 +77,7 @@ export function createInjection(context: InjectionContext): SynraClient {
     transfer: createTransferNamespace(),
     platform: createPlatformNamespace(context),
     clipboard: createClipboardNamespace(context),
-    self: createSelfNamespace(),
+    self: createSelfNamespace(context),
     isSynraError: (value: unknown): value is SynraError => isSynraErrorValue(value),
     isCode: (value: unknown, code: ErrorCode) => isSynraErrorValue(value) && value.code === code,
     // ★ The narrowing one, and it is not a spelling of `isCode`.

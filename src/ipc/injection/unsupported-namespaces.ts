@@ -1,21 +1,15 @@
 /**
- * The namespaces this build cannot answer: transfer and self.
+ * The namespace this build cannot answer: transfer.
  *
- * # Why each of them is here rather than absent
+ * # Why it is here rather than absent
  *
- * Each needs a kernel operation that does not exist in this build, and each refuses with `unsupported` rather than
- * returning an empty list, a fake id or a resolved promise. Those arrive with the operations.
+ * It needs a kernel operation that does not exist in this build, and it refuses with `unsupported` rather than returning
+ * an empty list, a fake id or a resolved promise. That arrives with the operation.
  *
- * They are one file because they are one decision — the method exists so a missing one is never `TypeError: not a
- * function`, and the refusal names the feature.
+ * The method exists so a missing one is never `TypeError: not a function`, and the refusal names the feature.
  */
 
-import type {
-  ActionDescriptor,
-  SelfNamespace,
-  TransferNamespace,
-  TransferProgress
-} from '@synra/client'
+import type { TransferNamespace, TransferProgress } from '@synra/client'
 import type { TransferId } from '@synra/protocol'
 
 import { unsupported } from './errors'
@@ -35,18 +29,6 @@ export function createTransferNamespace(): TransferNamespace {
     // one-argument signature and then never call anything — the shape that compiles and silently does nothing.
     onProgress: (_id: TransferId, _handler: (progress: TransferProgress) => void) => () => {
       // A no-op unsubscribe, returned for the guarantee above.
-    }
-  }
-}
-
-/** The self namespace: the plugin's own actions and its self-invoke. */
-export function createSelfNamespace(): SelfNamespace {
-  return {
-    invoke: async () => {
-      throw unsupported('self.invoke')
-    },
-    actions: async (): Promise<ActionDescriptor[]> => {
-      throw unsupported('self.actions')
     }
   }
 }
