@@ -17,6 +17,13 @@
       <span class="text-ink-dim"> · </span>
       <span class="font-mono">{{ prompt.fileName }}</span>
     </span>
+    <!--
+      The preference is applied to **accept** only: a refusal says something about this file, not about the device. The
+      checkbox is not pre-checked, because silence is not a policy.
+    -->
+    <ACheckbox v-model:checked="always">
+      {{ messages.transfers.prompt.always }}
+    </ACheckbox>
     <div class="row gap-2">
       <AButton size="small" :loading="busy" @click="answer(true)">
         {{ messages.transfers.prompt.accept }}
@@ -30,7 +37,7 @@
 
 <script setup lang="ts">
 import type { TransferSnapshot } from '@synra/protocol'
-import { Button as AButton } from 'ant-design-vue'
+import { Button as AButton, Checkbox as ACheckbox } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -54,6 +61,9 @@ const prompt = computed<TransferSnapshot | undefined>(() =>
 /** The answer is in flight; a second click would be a second answer to a question that is being settled. */
 const busy = ref(false)
 
+/** Whether this answer should also silence later prompts from the same device. */
+const always = ref(false)
+
 async function answer(accept: boolean): Promise<void> {
   const current = prompt.value
   if (!current || busy.value)
@@ -61,7 +71,13 @@ async function answer(accept: boolean): Promise<void> {
   busy.value = true
   // The row leaves through `transferFinished`, which the kernel publishes when the waiting connection has its answer —
   // not from here, where a failed command would remove a prompt the user still has to answer.
-  await kernel.call<null>('transfer_respond', { transferId: current.transferId, accept })
+  await kernel.call<null>('transfer_respond', {
+    transferId: current.transferId,
+    accept,
+    remember: accept && always.value
+  })
+  // The next prompt starts unchecked: a preference someone set for one device is not a default for every device.
+  always.value = false
   busy.value = false
 }
 </script>

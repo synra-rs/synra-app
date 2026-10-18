@@ -41,10 +41,18 @@ pub struct Pending {
     pub started_at_ms: i64,
 }
 
+#[derive(Debug)]
+struct WaitingEntry {
+    /// `Some(answer)` once someone has answered, `None` while still waiting.
+    answer: Option<bool>,
+    /// The device that asked, kept so an answer can remember it.
+    peer: String,
+}
+
 #[derive(Debug, Default)]
 struct Waiting {
-    /// `Some(answer)` once someone has answered, `None` while still waiting.
-    answers: HashMap<String, Option<bool>>,
+    /// One entry per transfer.
+    answers: HashMap<String, WaitingEntry>,
 }
 
 /// The transfers waiting for an answer.
@@ -76,12 +84,19 @@ impl TransferDesk {
         timeout: Duration,
     ) -> bool {
         let mut waiting = self.waiting.lock();
-        waiting.answers.insert(pending.transfer_id.clone(), None);
+        waiting.answers.insert(
+            pending.transfer_id.clone(),
+            WaitingEntry { answer: None, peer: pending.peer.clone() },
+        );
         announce();
 
         let deadline = Instant::now() + timeout;
         loop {
-            if let Some(answer) = waiting.answers.get(&pending.transfer_id).copied().flatten() {
+            if let Some(answer) = waiting
+                .answers
+                .get(&pending.transfer_id)
+                .and_then(|entry| entry.answer)
+            {
                 waiting.answers.remove(&pending.transfer_id);
                 return answer;
             }
@@ -103,8 +118,8 @@ impl TransferDesk {
         let answered = {
             let mut waiting = self.waiting.lock();
             match waiting.answers.get_mut(transfer_id) {
-                Some(slot) => {
-                    *slot = Some(accept);
+                Some(entry) => {
+                    entry.answer = Some(accept);
                     true
                 }
                 None => false,
@@ -116,6 +131,19 @@ impl TransferDesk {
             self.changed.notify_all();
         }
         answered
+    }
+
+    /// The device waiting for an answer to this transfer, if one is.
+    ///
+    /// Used to remember a sender when the user chooses "always accept": the peer is part of the question, and a `respond`
+    /// that only carried the answer would have lost it.
+    #[must_use]
+    pub fn peer_of(&self, transfer_id: &str) -> Option<String> {
+        self.waiting
+            .lock()
+            .answers
+            .get(transfer_id)
+            .map(|entry| entry.peer.clone())
     }
 
     /// How many questions are waiting, for a diagnostic or a test.
@@ -157,6 +185,23 @@ mod tests {
         assert!(desk.respond("one", false), "the question is waiting");
         assert!(!asked.join().expect("the thread"), "the answer was refused");
         assert_eq!(desk.waiting(), 0, "the answered question is gone");
+    }
+
+    #[test]
+    fn the_peer_is_available_while_the_question_waits() {
+        // ★ "Always accept this device" needs the device, and the answer alone does not carry one. The desk keeps it with
+        // the question rather than the caller remembering a second map.
+        let desk = Arc::new(TransferDesk::new());
+        let waiter = Arc::clone(&desk);
+        let question = pending("with-peer");
+        let asked = thread::spawn(move || waiter.ask(&question, || {}, Duration::from_secs(5)));
+        while desk.waiting() == 0 {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(desk.peer_of("with-peer"), Some("peer".to_owned()));
+        assert!(desk.respond("with-peer", true));
+        assert!(asked.join().expect("the thread"));
+        assert_eq!(desk.peer_of("with-peer"), None, "the answered question is gone");
     }
 
     #[test]

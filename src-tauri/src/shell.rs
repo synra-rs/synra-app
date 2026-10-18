@@ -189,8 +189,9 @@ mod wrappers {
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         transfer_id: String,
         accept: bool,
+        remember: Option<bool>,
     ) -> Result<(), IpcError> {
-        commands::transfers::transfer_respond(&state, &transfer_id, accept)
+        commands::transfers::transfer_respond(&state, &transfer_id, accept, remember)
     }
 
     /// Sends a file to a paired device, and answers the transfer it started.

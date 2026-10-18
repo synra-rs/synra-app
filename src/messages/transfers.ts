@@ -9,6 +9,7 @@ export const transfers = {
     title: 'A device wants to send a file',
     detail: 'Nothing is stored until you answer.',
     accept: 'Accept',
-    reject: 'Reject'
+    reject: 'Reject',
+    always: 'Always accept from this device'
   }
 } as const

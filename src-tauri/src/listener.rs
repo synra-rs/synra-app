@@ -197,6 +197,14 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     if !matches!(incoming.request.kind, synra_protocol::session::TransferKind::Attachment) {
                         return OfferDecision::Accept;
                     }
+                    // ★ A sender the user chose to keep accepting is not asked about again. The check is before anything
+                    // is announced, so a remembered device does not flash a prompt on its way past.
+                    if crate::commands::transfers::auto_accept_peer(
+                        &offer_state,
+                        &incoming.peer.to_string(),
+                    ) {
+                        return OfferDecision::Accept;
+                    }
                     let now = synra_store::sqlite::now_ms();
                     let peer_name = offer_state
                         .db()

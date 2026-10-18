@@ -717,6 +717,11 @@ pub fn withdraw_offer(state: &crate::state::AppState, transfer_id: TransferId) {
 
 /// Answers the prompt for an incoming transfer.
 ///
+/// # The `remember` flag
+///
+/// `Remember` is written **before** the answer is delivered, so the very next transfer from the same device finds the
+/// preference. A refusal is never remembered: "no" is about this file, not about the device.
+///
 /// # Errors
 ///
 /// [`ErrorCode::InvalidArgument`] when the identifier does not parse, and [`ErrorCode::TransferFailed`] when no prompt is
@@ -725,11 +730,18 @@ pub fn transfer_respond(
     state: &crate::state::AppState,
     transfer_id: &str,
     accept: bool,
+    remember: Option<bool>,
 ) -> Result<(), IpcError> {
     let id = transfer_id.parse::<TransferId>().map_err(|error| {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}))
     })?;
+    if accept
+        && remember.unwrap_or(false)
+        && let Some(peer) = state.transfer_desk.peer_of(&id.to_string())
+    {
+        remember_peer(state, &peer);
+    }
     if state.transfer_desk.respond(&id.to_string(), accept) {
         return Ok(());
     }
@@ -737,6 +749,43 @@ pub fn transfer_respond(
         "transferId": transfer_id,
         "reason": "it is not waiting for an answer",
     })))
+}
+
+/// The configuration key holding the devices this one accepts without asking.
+const ACCEPT_FROM_KEY: &str = "transfers.acceptFrom";
+
+/// The devices this one accepts without asking.
+fn accepted_senders(state: &crate::state::AppState) -> Vec<String> {
+    state
+        .db()
+        .config()
+        .ok()
+        .and_then(|rows| rows.into_iter().find(|row| row.key == ACCEPT_FROM_KEY))
+        .and_then(|row| serde_json::from_str::<Vec<String>>(&row.value).ok())
+        .unwrap_or_default()
+}
+
+/// Whether the user has chosen to accept everything from this device.
+///
+/// A sender that is not listed is asked about, which is the default and the only state a fresh install has.
+#[must_use]
+pub fn auto_accept_peer(state: &crate::state::AppState, peer: &str) -> bool {
+    accepted_senders(state).iter().any(|accepted| accepted == peer)
+}
+
+/// Remembers a device the user chose to accept without asking.
+///
+/// Stored under one configuration key as a JSON array of device ids, so the settings screen can show (and one day remove)
+/// it without a table of its own. A write that fails is silent: the answer still settles the current transfer, and the
+/// next one asks again — the failure mode of a preference is another prompt, not a lost file.
+fn remember_peer(state: &crate::state::AppState, peer: &str) {
+    let mut accepted = accepted_senders(state);
+    if accepted.iter().any(|known| known == peer) {
+        return;
+    }
+    accepted.push(peer.to_owned());
+    let value = serde_json::to_value(&accepted).unwrap_or_else(|_| serde_json::json!([]));
+    let _ = state.db().set_config(ACCEPT_FROM_KEY, &value, synra_store::sqlite::now_ms());
 }
 
 /// Announces a received transfer as completed and retires its row.
