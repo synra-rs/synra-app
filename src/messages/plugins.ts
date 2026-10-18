@@ -6,6 +6,9 @@
 export const plugins = {
   title: 'Plugins',
   empty: 'No plugin is installed.',
+  /** The filter above the installed list; it matches the id, the title and the description. */
+  filterPlaceholder: 'Filter installed plugins',
+  noMatch: 'No installed plugin matches that filter.',
   /**
    * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher
    * id signed with a different key is not the publisher a user trusted.

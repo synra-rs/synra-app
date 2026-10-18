@@ -226,6 +226,24 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('filters the installed list by what a person remembers', async () => {
+    // ★ A filter over the installed list, not a registry search: this shell has no registry client, and a box that
+    // promised the catalogue would be a box that cannot deliver. Matched on title here; the id and description are the
+    // other two arms of the same predicate.
+    mocks.call.mockResolvedValue({
+      ok: true,
+      value: [card(), card({ pluginId: '@acme/other', title: 'Other' })]
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="Filter installed plugins"]').setValue('other')
+    expect(wrapper.text()).toContain('Other')
+    expect(wrapper.text()).not.toContain('Hello')
+    wrapper.unmount()
+  })
+
   it('draws the store, so a card that arrived by event reaches the screen', async () => {
     // ★ The page stopped holding a copy of the list: it reads the store, and `src/events.ts` writes it. This asserts the
     // join — a card put in the store by something other than the page's own read still reaches the DOM.

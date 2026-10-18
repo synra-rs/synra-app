@@ -59,6 +59,18 @@
       somewhere else. It said "this screen cannot install anything yet" while that was true; leaving the sentence behind
       would be the kind of comment that outlives its fact and sends the next reader looking for a missing feature.
     -->
+    <!--
+      A filter over what is installed, not a catalogue search: this shell has no registry client, and a box that looked
+      like one would promise results it cannot fetch (16 §4). It matches the id, the title and the description, because
+      those are the three things a person remembers about a plugin.
+    -->
+    <AInput
+      v-if="plugins.length > 0"
+      v-model:value="query"
+      :placeholder="messages.plugins.filterPlaceholder"
+      allow-clear
+    />
+
     <AEmpty v-if="plugins?.length === 0" :description="messages.plugins.empty">
       <template #image>
         <!--
@@ -74,12 +86,14 @@
       </AButton>
     </AEmpty>
 
+    <AEmpty v-else-if="visible.length === 0" :description="messages.plugins.noMatch" />
+
     <!--
       A plugin is a substantial object — a name, three machine facts, a description, two permission lists and possibly
       an update — so each one is a list item with several lines rather than a card (R26). The lines are labelled
       separately instead of joined by separators, which is the shape R21 retires.
     -->
-    <AList v-else :data-source="installed">
+    <AList v-else :data-source="visible">
       <template #renderItem="{ item: plugin }">
         <AList.Item>
           <div class="w-full stack gap-3">
@@ -343,6 +357,21 @@ const selection = reactive<Record<string, string[]>>({})
  * copy is made when the list changes rather than on every render.
  */
 const installed = computed(() => [...plugins.value])
+
+/** The filter the user typed, matched against id, title and description. */
+const query = ref('')
+
+/** What the list draws: the installed plugins the filter keeps. */
+const visible = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  if (needle === '')
+    return installed.value
+  return installed.value.filter(plugin =>
+    plugin.pluginId.toLowerCase().includes(needle)
+    || plugin.title.toLowerCase().includes(needle)
+    || (plugin.description ?? '').toLowerCase().includes(needle)
+  )
+})
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
