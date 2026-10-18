@@ -470,11 +470,18 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
     let snapshot = diag_metrics(&state).expect("metrics");
     let value = serde_json::to_value(&snapshot).expect("serialises");
 
-    // ★ The command answers with the one sample a shell can have before it has done anything: `db_size_bytes` is
-    // sampled from the database file at read time, and a database exists from the first migration. The rule under test —
-    // answer rather than refuse, and invent nothing — is unchanged; the assertion now says exactly what the answer holds.
-    assert_eq!(value["values"].as_array().map(Vec::len), Some(1), "{value}");
-    assert_eq!(value["values"][0]["key"]["name"], "db_size_bytes", "{value}");
+    // ★ The command answers with the samples a shell can have before it has done anything: `db_size_bytes` is sampled
+    // from the database file, and `uptime_seconds` from the monotonic start — a database and a running process exist from
+    // the first migration. The rule under test — answer rather than refuse, and invent nothing — is unchanged; the
+    // assertion now says exactly what the answer holds.
+    let values = value["values"].as_array().expect("the sample list");
+    assert_eq!(values.len(), 2, "{value}");
+    let names: Vec<&str> = values
+        .iter()
+        .filter_map(|sample| sample["key"]["name"].as_str())
+        .collect();
+    assert!(names.contains(&"db_size_bytes"), "{value}");
+    assert!(names.contains(&"uptime_seconds"), "{value}");
 }
 
 #[test]

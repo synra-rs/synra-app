@@ -327,6 +327,9 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
         &synra_observe::metrics::SeriesKey::new("db_size_bytes", []),
         i64::try_from(size).unwrap_or(i64::MAX),
     );
+    // ★ Uptime is sampled here for the same reason the sizes are: nothing else knows when the shell started, and a
+    // counter advanced by the delta keeps the series monotonic across every read.
+    state.record_uptime(state.uptime().as_secs());
     Ok(state.metrics.snapshot())
 }
 

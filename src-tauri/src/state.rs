@@ -102,6 +102,14 @@ pub struct AppState {
     pub uploads: crate::commands::plugin_ui::Uploads,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
+    /// A monotonic start, for the uptime metric.
+    ///
+    /// ★ Separate from `started_at_ms` because that one is the caller's wall clock — fixed in tests, and adjustable by
+    /// the user between two reads. Uptime is the question "how long has this shell been up", and a clock correction must
+    /// not make it jump backwards.
+    pub started: std::time::Instant,
+    /// The uptime last added to the counter, so each read adds only the delta.
+    pub uptime_reported: Mutex<u64>,
 
     /// The desktop platform: the clipboard, the browser and notifications.
     ///
@@ -239,6 +247,8 @@ impl AppState {
             transfer_desk: Arc::new(crate::transfer_desk::TransferDesk::new()),
             uploads: crate::commands::plugin_ui::Uploads::new(),
             started_at_ms: now_ms,
+            started: std::time::Instant::now(),
+            uptime_reported: Mutex::new(0),
             platform: Arc::new(synra_platform::CommandPlatform::new()),
             metrics,
             log: None,
@@ -255,9 +265,34 @@ impl AppState {
     crate::commands::registry::prune_documents(&state, now_ms);
 
     // ★ And the audit table gets the same treatment for the same reason: the sink writes a row on every gated call, and
-    // nothing in this shell swept them. The retention rule is the design's seven days; see `prune_audit`.
+    // nothing in this shell swept them. The retention window is configured (`audit.retentionDays`), defaulting to the
+    // design's seven days; see `prune_audit`.
     crate::commands::plugins::prune_audit(&state, now_ms);
     Ok(state)
+    }
+
+    /// How long this shell has been running.
+    #[must_use]
+    pub fn uptime(&self) -> std::time::Duration {
+        self.started.elapsed()
+    }
+
+    /// Adds the seconds since the last sample to `uptime_seconds`.
+    ///
+    /// ★ A delta rather than a set. `uptime_seconds` is a counter by design, and a read that overwrote it with the whole
+    /// uptime would grow with the number of panel refreshes instead of with time. The first call adds the whole elapsed
+    /// time, which is what a process that ran before anyone asked should report.
+    pub fn record_uptime(&self, seconds: u64) {
+        // The lock is dropped before the counter is touched: `counter_add` takes its own lock, and two locks held in one
+        // order here would be a second order somewhere else waiting to deadlock.
+        let delta = {
+            let mut last = self.uptime_reported.lock();
+            let delta = seconds.saturating_sub(*last);
+            *last = seconds;
+            delta
+        };
+        self.metrics
+            .counter_add(&synra_observe::metrics::SeriesKey::new("uptime_seconds", []), delta);
     }
 
     /// Publishes an event for the interface, and answers with its sequence number.
@@ -421,5 +456,18 @@ mod tests {
             Some(&Value::Counter(1)),
             "the host's frame counter is the shell's recorder"
         );
+    }
+
+    #[test]
+    fn uptime_is_added_as_a_delta_rather_than_the_whole_value_again() {
+        // ★ A counter set to the whole uptime on every read would grow with the number of refreshes, not with time. The
+        // second sample says "four more seconds have passed", so the total is 14, not 24 — an assertion that only checked
+        // one read would pass whichever way the arithmetic went.
+        let state = crate::testing::state();
+
+        state.record_uptime(10);
+        state.record_uptime(14);
+
+        assert_eq!(state.metrics.snapshot().get("uptime_seconds"), Some(&Value::Counter(14)));
     }
 }
