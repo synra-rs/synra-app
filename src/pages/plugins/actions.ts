@@ -14,7 +14,7 @@
  * is described.
  */
 
-import type { CatalogItem, InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 
@@ -66,10 +66,15 @@ export interface InstallPreview {
 /** Searches the registry's index, scoped by the kernel to packages that declare the plugin keyword. */
 export async function searchCatalog(
   client: KernelClient,
-  query: string
+  query: string,
+  options: { readonly offset?: number, readonly sort?: CatalogSort } = {}
 ): Promise<Outcome<readonly CatalogItem[]>> {
   const answer = await client.call<readonly CatalogItem[]>('plugins_catalog_search', {
-    query: { query }
+    query: {
+      query,
+      ...(options.offset === undefined ? {} : { offset: options.offset }),
+      ...(options.sort === undefined ? {} : { sort: options.sort })
+    }
   })
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }

@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use synra_core::network::{IpPolicy, NetworkGuard};
 use synra_fetch::{Client, Limits as FetchLimits, Request};
-use synra_ipc::dto::{CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto};
+use synra_ipc::dto::{CatalogItem, CatalogQuery, CatalogSort, InstallPreviewDto, InstallReport, InstallSourceDto};
 use synra_protocol::ErrorCode;
 use synra_protocol::PluginId;
 use synra_registry::{Limits as ArchiveLimits, Packument, Version, extract_tgz};
@@ -263,7 +263,8 @@ pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>
         format!("keywords:synra-plugin {text}")
     };
     let limit = query.limit.unwrap_or(DEFAULT_SEARCH_RESULTS).clamp(1, MAX_SEARCH_RESULTS);
-    let path = format!("/-/v1/search?text={}&size={limit}", encode(&scope));
+    let offset = query.offset.unwrap_or(0);
+    let path = format!("/-/v1/search?text={}&size={limit}&from={offset}", encode(&scope));
     let (_, response) = get_text(&bases, &path, "the search endpoint")?;
     let parsed: SearchResponse = serde_json::from_str(&response.body).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
@@ -274,7 +275,7 @@ pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>
         .plugins()
         .map(|rows| rows.into_iter().map(|row| row.plugin_id).collect())
         .unwrap_or_default();
-    Ok(parsed
+    let mut items: Vec<CatalogItem> = parsed
         .objects
         .into_iter()
         .filter_map(|object| {
@@ -292,8 +293,15 @@ pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>
                 installed: installed.contains(&package.name),
             })
         })
-        .take(limit as usize)
-        .collect())
+        .collect();
+    // ★ Sorting happens here because npm's index has no `sort` parameter: relevance is whatever order it returned, and
+    // name is a comparison this side can make honestly. A sort the response cannot support is not offered (see
+    // `CatalogSort`), rather than silently returning relevance under another name.
+    if query.sort == Some(CatalogSort::Name) {
+        items.sort_by_key(|item| item.title.to_lowercase());
+    }
+    items.truncate(limit as usize);
+    Ok(items)
 }
 
 /// Percent-encodes a query string for a URL.

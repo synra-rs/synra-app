@@ -861,6 +861,7 @@ mod tests {
         let address = listener.local_addr().expect("an address");
         let base = format!("http://{address}");
         let body = r#"{"objects":[
+            {"package":{"name":"@acme/zeta","version":"2.0.0","publisher":{"username":"acme"}}},
             {"package":{"name":"@acme/hello","version":"1.0.0","description":"Hello","publisher":{"username":"acme"}}},
             {"package":{"name":"not a plugin","version":"1.0.0"}}
         ]}"#;
@@ -869,6 +870,8 @@ mod tests {
             let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
             let mut first = String::new();
             let _ = reader.read_line(&mut first);
+            // ★ The page is the parameter npm spells `from`; a client that forgot it would ask for page one forever.
+            assert!(first.contains("from=0"), "the offset was not sent: {first}");
             let head = format!(
                 "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                 body.len()
@@ -883,12 +886,19 @@ mod tests {
 
         let found = plugins_catalog_search(
             &state,
-            &CatalogQuery { query: "hello".to_owned(), registry: None, limit: Some(10) },
+            &CatalogQuery {
+                query: "hello".to_owned(),
+                registry: None,
+                limit: Some(10),
+                offset: Some(0),
+                sort: Some(synra_ipc::dto::CatalogSort::Name),
+            },
         )
         .expect("a search");
 
-        assert_eq!(found.len(), 1, "a name that is not a plugin id is filtered out");
-        assert_eq!(found[0].plugin_id.as_str(), "@acme/hello");
+        assert_eq!(found.len(), 2, "a name that is not a plugin id is filtered out");
+        assert_eq!(found[0].plugin_id.as_str(), "@acme/hello", "name sort puts hello before zeta");
+        assert_eq!(found[1].plugin_id.as_str(), "@acme/zeta");
         assert_eq!(found[0].version, "1.0.0");
         assert_eq!(found[0].publisher, "acme");
         assert!(found[0].installed, "the fixture is installed");

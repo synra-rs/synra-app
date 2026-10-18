@@ -282,6 +282,50 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('loads the next page with the offset it already has', async () => {
+    // ★ A search without a total gives only one signal that more may exist: the last page was full. The offset is the
+    // number already shown, so a result the registry repeats is deduplicated rather than appended twice.
+    const page = (count: number, start: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        pluginId: `@acme/p${start + index}`,
+        title: `P${start + index}`,
+        version: '1.0.0',
+        publisher: 'acme',
+        capabilityCount: 0,
+        installed: false
+      }))
+    mocks.call.mockImplementation(async (command: string, args?: { query?: { offset?: number } }) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_catalog_search') {
+        const offset = args?.query?.offset ?? 0
+        return { ok: true, value: offset === 0 ? page(20, 0) : page(1, 20) }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    await wrapper.find('input[placeholder="Search the registry"]').setValue('p')
+    const search = wrapper.findAll('button').find(button => button.text().includes('Search'))
+    await search?.trigger('click')
+    await flushPromises()
+
+    const more = wrapper.findAll('button').find(button => button.text().includes('Load more'))
+    expect(more).toBeDefined()
+    await more?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_catalog_search', {
+      query: { query: 'p', offset: 20, sort: 'relevance' }
+    })
+    expect(wrapper.text()).toContain('P20')
+    wrapper.unmount()
+  })
+
   it('filters the installed list by what a person remembers', async () => {
     // ★ A filter over the installed list, not a registry search: this shell has no registry client, and a box that
     // promised the catalogue would be a box that cannot deliver. Matched on title here; the id and description are the

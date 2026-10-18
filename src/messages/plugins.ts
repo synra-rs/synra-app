@@ -30,7 +30,11 @@ export const plugins = {
     placeholder: 'Search the registry',
     action: 'Search',
     empty: 'Nothing matched.',
-    preview: 'Preview'
+    preview: 'Preview',
+    sort: 'Order',
+    byRelevance: 'Relevance',
+    byName: 'Name',
+    loadMore: 'Load more'
   },
   /**
    * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher

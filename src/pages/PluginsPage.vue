@@ -35,6 +35,7 @@
           allow-clear
           @press-enter="search"
         />
+        <ASelect v-model:value="searchSort" :options="sortOptions" class="w-fit" />
         <AButton :loading="searching" :disabled="searchText.trim() === ''" @click="search">
           {{ messages.plugins.catalog.action }}
         </AButton>
@@ -56,6 +57,9 @@
           </AList.Item>
         </template>
       </AList>
+      <AButton v-if="hasMore" :loading="searching" block @click="loadMore">
+        {{ messages.plugins.catalog.loadMore }}
+      </AButton>
       <p v-else-if="searched && !searching" class="m-0 text-sm text-ink-dim">
         {{ messages.plugins.catalog.empty }}
       </p>
@@ -408,9 +412,9 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { CatalogItem, InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
+import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
 import type { Failure, InstallPreview } from './plugins/actions'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -706,18 +710,31 @@ const preview = ref<InstallPreview | undefined>(undefined)
 
 /** What the registry's index returned for the last search, and whether one has run. */
 const searchText = ref('')
+const searchSort = ref<CatalogSort>('relevance')
 const searched = ref(false)
 const searching = ref(false)
 const results = ref<CatalogItem[]>([])
 
-/** Searches the configured registry, and says so when nothing matched. */
+/** How many results one page asks for; `hasMore` reads the last page's length against it. */
+const SEARCH_PAGE = 20
+
+/** The sorts the search endpoint can honour, named in the interface's language. */
+const sortOptions = computed(() => [
+  { label: messages.plugins.catalog.byRelevance, value: 'relevance' },
+  { label: messages.plugins.catalog.byName, value: 'name' }
+])
+
+/** Whether the last page was full, which is the only signal a search without a total gives that more may exist. */
+const hasMore = computed(() => results.value.length > 0 && results.value.length % SEARCH_PAGE === 0)
+
+/** Searches the configured registry from the first page, and says so when nothing matched. */
 async function search(): Promise<void> {
   const text = searchText.value.trim()
   if (text === '' || searching.value)
     return
   searching.value = true
   error.value = undefined
-  const outcome = await searchCatalog(kernel, text)
+  const outcome = await searchCatalog(kernel, text, { offset: 0, sort: searchSort.value })
   searching.value = false
   searched.value = true
   if (!outcome.ok) {
@@ -726,6 +743,26 @@ async function search(): Promise<void> {
     return
   }
   results.value = [...outcome.value]
+}
+
+/** Asks for the next page and appends what was not already shown. */
+async function loadMore(): Promise<void> {
+  const text = searchText.value.trim()
+  if (text === '' || searching.value)
+    return
+  searching.value = true
+  error.value = undefined
+  const outcome = await searchCatalog(kernel, text, {
+    offset: results.value.length,
+    sort: searchSort.value
+  })
+  searching.value = false
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  const known = new Set(results.value.map(item => item.pluginId))
+  results.value = [...results.value, ...outcome.value.filter(item => !known.has(item.pluginId))]
 }
 
 /** Opens the permission dialog for a search hit — the same dialog an install by id uses. */

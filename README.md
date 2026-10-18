@@ -46,7 +46,7 @@
   （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`（seed 是包装函数的参数，不在全局 —— token
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
-- 验证：`pnpm test` 229 条（含 24 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
+- 验证：`pnpm test` 230 条（含 25 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
   Rust 侧 222 条。
 
 ### 还没有的（下一步就是这些）
