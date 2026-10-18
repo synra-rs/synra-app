@@ -45,6 +45,12 @@ export const settings = {
     cancelAsk: 'Ask before cancelling',
     cancelAskDetail: 'Confirm before a transfer in flight is abandoned.'
   },
+  /** How long the durable audit trail is kept. The kernel sweeps the table when it starts. */
+  audit: {
+    title: 'Audit history',
+    detail: 'Recorded plugin calls are kept for this many days, then removed the next time the kernel starts.',
+    save: 'Save'
+  },
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',

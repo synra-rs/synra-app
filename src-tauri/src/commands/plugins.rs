@@ -684,18 +684,54 @@ pub fn plugins_audit_clear(state: &AppState, plugin_id: &PluginId) -> Result<(),
     Ok(())
 }
 
-/// How long a recorded call is kept.
+/// The configuration key that sets how long recorded calls are kept, in days.
 ///
-/// ★ The design names a config key, `audit_retention_days` (default 7), and this build's settings catalogue does not
-/// register it — so the default is the rule until the key exists. The daemon already prunes by the same number.
-const AUDIT_RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
+/// The design names the setting `audit_retention_days`; the configuration addresses keys by dotted path, and every other
+/// key this shell reads is camelCase after the first segment (`transfers.confirmCancel`), so this one is spelled the same
+/// way.
+pub(crate) const AUDIT_RETENTION_KEY: &str = "audit.retentionDays";
+
+/// How long a recorded call is kept when nothing says otherwise.
+const DEFAULT_AUDIT_RETENTION_DAYS: u32 = 7;
+
+/// The shortest and longest retention a caller can ask for.
+///
+/// A day is the smallest unit the setting has; ten years is past the point where the table is a diagnostic aid and into
+/// "why is this database a gigabyte". The clamp is here rather than in the screen because a configuration file can be
+/// edited by hand, and a negative or absurd number must not become an arithmetic overflow in the prune.
+const MIN_AUDIT_RETENTION_DAYS: u32 = 1;
+const MAX_AUDIT_RETENTION_DAYS: u32 = 3_650;
+
+/// The configured retention, clamped, or the design's default when the key is absent or unreadable.
+///
+/// # Why an unreadable value is the default rather than a refusal
+///
+/// Because this is read on the start-up path, and a bad setting in a file must not stop the window from opening. The
+/// screen that writes it round-trips `config_get`, so the user sees the stored value; a value this function cannot read is
+/// one the screen cannot have produced.
+fn audit_retention_days(state: &AppState) -> u32 {
+    let stored = {
+        let db = state.db();
+        db.config().ok().and_then(|rows| {
+            rows.into_iter()
+                .find(|row| row.key == AUDIT_RETENTION_KEY)
+                .and_then(|row| serde_json::from_str::<u64>(&row.value).ok())
+        })
+    };
+    match stored {
+        Some(days) => u32::try_from(days).unwrap_or(u32::MAX).clamp(MIN_AUDIT_RETENTION_DAYS, MAX_AUDIT_RETENTION_DAYS),
+        None => DEFAULT_AUDIT_RETENTION_DAYS,
+    }
+}
 
 /// Forgets recorded calls older than the retention window, and answers how many went.
 ///
 /// Called once per [`AppState`](crate::state::AppState), like the registry document prune: a table that only grows costs
 /// more than the history is worth, and no request should have to remember to sweep it.
 pub(crate) fn prune_audit(state: &AppState, now_ms: i64) -> usize {
-    match state.db().forget_audit_before(now_ms.saturating_sub(AUDIT_RETENTION_MS)) {
+    let days = audit_retention_days(state);
+    let window_ms = i64::from(days) * 24 * 60 * 60 * 1_000;
+    match state.db().forget_audit_before(now_ms.saturating_sub(window_ms)) {
         Ok(removed) => removed,
         Err(error) => {
             // A failure to prune is a diagnostic, not a reason to refuse to start.
@@ -735,9 +771,9 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
 #[cfg(test)]
 mod tests {
     use super::{
-        plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update, plugins_consent_respond,
-        plugins_install, plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit,
-        record_card,
+        AUDIT_RETENTION_KEY, plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update,
+        plugins_consent_respond, plugins_install, plugins_list, plugins_preview, plugins_publisher_decide,
+        plugins_publishers, prune_audit, record_card,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -1680,8 +1716,7 @@ mod tests {
     #[test]
     fn old_calls_are_pruned_and_recent_ones_kept() {
         // ★ The table is written on every gated call and nothing in this shell swept it, so a long-running install would
-        // grow it for ever. The design's retention is seven days; `audit_retention_days` is not in this build's settings
-        // catalogue yet, so the default is the rule.
+        // grow it for ever. With no configured window the design's seven days is the rule.
         let state = crate::testing::state();
         let day = 24 * 60 * 60 * 1_000;
         let now = 30 * day;
@@ -1693,6 +1728,55 @@ mod tests {
         let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].at_ms, now - 2 * day, "the recent call stayed");
+    }
+
+    #[test]
+    fn the_retention_window_comes_from_the_configuration() {
+        // ★ The setting existed only as a constant. Reading it is what turns "the design names a key" into the key doing
+        // something: a one-day window has to remove the two-day-old row that the default seven kept in the test above.
+        use synra_store::ConfigChange;
+
+        let state = crate::testing::state();
+        let day = 24 * 60 * 60 * 1_000;
+        let now = 30 * day;
+        state.db().record_audit(&row(ID, "device:list", "allowed", now - 10 * day)).expect("recorded");
+        state.db().record_audit(&row(ID, "device:list", "allowed", now - 2 * day)).expect("recorded");
+        state
+            .db()
+            .apply_config(
+                &[ConfigChange {
+                    key: AUDIT_RETENTION_KEY.to_owned(),
+                    value: Some(serde_json::json!(1)),
+                }],
+                now,
+            )
+            .expect("the setting is written");
+
+        assert_eq!(prune_audit(&state, now), 2, "a one-day window removes both calls");
+    }
+
+    #[test]
+    fn a_retention_outside_the_sane_range_is_clamped_rather_than_trusted() {
+        // ★ The file can be edited by hand, and `0` would delete today's calls — including the refusal the user just
+        // looked at. The clamp is what makes the setting a window rather than a way to empty the table from a typo.
+        use synra_store::ConfigChange;
+
+        let state = crate::testing::state();
+        let day = 24 * 60 * 60 * 1_000;
+        let now = 30 * day;
+        state.db().record_audit(&row(ID, "device:list", "allowed", now)).expect("recorded");
+        state
+            .db()
+            .apply_config(
+                &[ConfigChange {
+                    key: AUDIT_RETENTION_KEY.to_owned(),
+                    value: Some(serde_json::json!(0)),
+                }],
+                now,
+            )
+            .expect("the setting is written");
+
+        assert_eq!(prune_audit(&state, now), 0, "zero becomes the one-day minimum, and today's call stays");
     }
 
     #[test]

@@ -199,6 +199,31 @@
         </AList.Item>
       </AList>
     </section>
+
+    <!--
+      ★ Last, and that is deliberate: every other section here edits a preference the screen owns; this one edits a number
+      the kernel applies when it next starts, so it reads as housekeeping rather than as a control a user watches.
+    -->
+    <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.audit.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.audit.detail }}
+      </p>
+      <div class="row gap-2">
+        <AInputNumber
+          :value="retentionDays"
+          :min="1"
+          :max="3650"
+          :precision="0"
+          @update:value="(value) => (retentionDays = typeof value === 'number' ? value : 1)"
+        />
+        <AButton :loading="savingRetention" @click="saveRetention">
+          {{ messages.settings.audit.save }}
+        </AButton>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -224,6 +249,7 @@ import {
   Descriptions as ADescriptions,
   Empty as AEmpty,
   Input as AInput,
+  InputNumber as AInputNumber,
   List as AList,
   Switch as ASwitch
 } from 'ant-design-vue'
@@ -305,6 +331,39 @@ async function saveCancel(value: boolean): Promise<void> {
     patch: { set: { 'transfers.confirmCancel': value } }
   })
   savingCancel.value = false
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
+
+/**
+ * How many days recorded plugin calls are kept.
+ *
+ * The kernel's key is `audit.retentionDays`; seven is the design's default, and the kernel clamps whatever is stored to a
+ * sane window. This is a buffer over the store for the same reason the registry list is: `ConfigUpdated` overwrites it.
+ */
+const retentionDays = ref(7)
+
+/** Whether that setting is being written. */
+const savingRetention = ref(false)
+
+watch(
+  () => settings.value('audit.retentionDays'),
+  (value) => {
+    retentionDays.value = typeof value === 'number' && Number.isFinite(value) ? value : 7
+  },
+  { immediate: true }
+)
+
+/** Writes the retention window, clamped here so the number in the box is the number that was sent. */
+async function saveRetention(): Promise<void> {
+  savingRetention.value = true
+  error.value = undefined
+  const days = Math.min(3_650, Math.max(1, Math.trunc(retentionDays.value)))
+  retentionDays.value = days
+  const answer = await kernel.call<null>('config_set', {
+    patch: { set: { 'audit.retentionDays': days } }
+  })
+  savingRetention.value = false
   if (!answer.ok)
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }

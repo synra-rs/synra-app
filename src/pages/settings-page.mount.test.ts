@@ -333,4 +333,36 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain(messages.settings.metrics.overflow(3, 2))
     wrapper.unmount()
   })
+
+  it('shows the audit retention and writes a new window', async () => {
+    // ★ The setting existed only as a constant in the kernel. It is a configuration key now, and the screen is where it is
+    // edited — a key no screen writes is a setting the user cannot find.
+    answer({
+      config_get: { values: { 'audit.retentionDays': 30 }, overridden: ['audit.retentionDays'] },
+      identity_get: IDENTITY,
+      config_set: null
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const number = wrapper.findComponent({ name: 'AInputNumber' })
+    expect(number.exists(), 'the retention control is missing').toBe(true)
+    expect(number.props('value'), 'the configured window reaches the box').toBe(30)
+
+    await number.vm.$emit('update:value', 90)
+    await flushPromises()
+
+    // ★ The button next to the box, rather than "the first Save on the page": the registry section has one too, and an
+    // assertion that clicked the wrong one would pass while the setting was never written.
+    const button = number.element.parentElement?.querySelector('button')
+    expect(button, 'the box drew no way to save it').toBeDefined()
+    button?.click()
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'audit.retentionDays': 90 } }
+    })
+    wrapper.unmount()
+  })
 })
