@@ -368,3 +368,77 @@ fn the_list_is_ordered_by_identifier_not_by_arrival() {
     let (first, second) = if one < two { (one, two) } else { (two, one) };
     assert_eq!(ordered, vec![first, second], "sorted by identifier");
 }
+
+// ── Incoming transfers ──────────────────────────────────────────────────────────────────────────
+
+/// A progress step, as the listener reports it.
+fn progress_step(
+    transfer_id: TransferId,
+    bundle: Option<&str>,
+    received: u64,
+    blocks_done: u32,
+) -> synra_core::listener::InboundProgressEvent {
+    synra_core::listener::InboundProgressEvent {
+        peer: DeviceId::new(),
+        progress: synra_core::session::InboundProgress {
+            transfer_id,
+            file_name: "photo.png".to_owned(),
+            bundle: bundle.map(|id| synra_protocol::ids::PluginId::parse(id).expect("a plugin id")),
+            received_bytes: received,
+            total_bytes: 2_048,
+            blocks_done,
+            blocks_total: 4,
+        },
+    }
+}
+
+#[test]
+fn an_incoming_step_becomes_a_receive_row() {
+    // ★ `direction` is the field that makes the panel say "from" rather than "to"; a receiving row without it would be
+    // drawn as a send, which is the one wrong answer a user would act on.
+    let id = TransferId::new();
+
+    let row = super::received_snapshot(&progress_step(id, None, 512, 1), "Study PC", 1_000);
+
+    assert_eq!(row.transfer_id, id);
+    assert_eq!(row.direction, "receive");
+    assert_eq!(row.kind, "attachment");
+    assert_eq!(row.state, "active");
+    assert_eq!(row.peer_name, "Study PC");
+    assert_eq!(row.file_name, "photo.png");
+    assert_eq!(row.received_bytes, 512);
+    assert_eq!(row.total_bytes, 2_048);
+    assert_eq!(row.blocks_done, 1);
+    assert_eq!(row.blocks_total, 4);
+}
+
+#[test]
+fn a_bundle_in_the_making_is_named_as_one() {
+    let row = super::received_snapshot(&progress_step(TransferId::new(), Some("@acme/chat"), 0, 0), "Laptop", 1_000);
+
+    assert_eq!(row.kind, "plugin-bundle");
+}
+
+#[test]
+fn finishing_an_incoming_transfer_closes_its_row_and_announces_it() {
+    // ★ The receiving half of `finish_transfer`: nothing else will remove the row, because a received transfer has no
+    // worker that owns it. The completed snapshot comes first so the panel can draw 100% before the row goes.
+    let state = crate::testing::state();
+    let id = TransferId::new();
+    state.transfers.record(snapshot(id, "active"));
+    let subscriber = state.events.subscribe();
+
+    super::complete_received(&state, id);
+
+    assert!(state.transfers.is_empty(), "the row is gone");
+    let delivery = state.events.take(subscriber).expect("announced");
+    let events = delivery.events();
+    assert!(
+        matches!(events.first(), Some(synra_ipc::event::KernelEvent::TransferUpdated(row)) if row.state == "completed"),
+        "the completed row is not announced first: {events:?}"
+    );
+    assert!(
+        matches!(events.last(), Some(synra_ipc::event::KernelEvent::TransferFinished { transfer_id }) if *transfer_id == id),
+        "the panel is not told the transfer ended: {events:?}"
+    );
+}

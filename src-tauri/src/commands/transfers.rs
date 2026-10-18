@@ -370,11 +370,74 @@ pub fn send_ready(
     })
 }
 
+/// The row a receiver reports while a transfer arrives.
+///
+/// # Why the receiver's row is built here rather than in the listener
+///
+/// Because this module owns the shape the panel draws, and the outgoing path builds its row here too. Two constructors
+/// for one DTO would be two places for a field to be forgotten — and a forgotten `direction` would show an arriving file
+/// as one this device sent.
+#[must_use]
+pub fn received_snapshot(
+    event: &synra_core::listener::InboundProgressEvent,
+    peer_name: &str,
+    started_at_ms: i64,
+) -> TransferSnapshot {
+    let progress = &event.progress;
+    TransferSnapshot {
+        transfer_id: progress.transfer_id,
+        peer_device: event.peer,
+        peer_name: peer_name.to_owned(),
+        direction: "receive".to_owned(),
+        kind: if progress.bundle.is_some() {
+            "plugin-bundle".to_owned()
+        }
+        else {
+            "attachment".to_owned()
+        },
+        state: "active".to_owned(),
+        file_name: progress.file_name.clone(),
+        received_bytes: progress.received_bytes,
+        total_bytes: progress.total_bytes,
+        blocks_done: progress.blocks_done,
+        blocks_total: progress.blocks_total,
+        abort_reason: None,
+        started_at_ms,
+    }
+}
+
+/// Closes the row of a transfer that finished on this side, and tells the interface.
+///
+/// # Why this is one function
+///
+/// Because the two halves must not be separated: a row left in the registry is a transfer the panel shows as still
+/// arriving, and a `TransferFinished` without the removal leaves a row that no later event can clear. The outgoing path
+/// has the same pair in [`finish_transfer`], and this is the receiving half of it.
+pub fn complete_received(
+    state: &crate::state::AppState,
+    transfer_id: synra_protocol::ids::TransferId,
+) {
+    // The registry may not have the row — a transfer whose first blocks arrived before the reporter attached, or one
+    // whose connection ended badly. Finishing it is still right: the announcement is how the panel learns the id is done.
+    if let Some(mut snapshot) = state
+        .transfers
+        .list()
+        .into_iter()
+        .find(|row| row.transfer_id == transfer_id)
+    {
+        snapshot.state = "completed".to_owned();
+        snapshot.received_bytes = snapshot.total_bytes;
+        snapshot.blocks_done = snapshot.blocks_total;
+        announce_transfer(state, snapshot);
+    }
+    finish_transfer(state, transfer_id);
+}
+
 /// Removes a transfer and tells the interface it is over.
 ///
 /// One function because the two halves must not be separated: a row removed without the announcement leaves the panel
 /// showing a transfer that no longer exists, and an announcement without the removal leaves one it can never clear.
-fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::ids::TransferId) {
+pub(crate) fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::ids::TransferId) {
     state.transfers.forget(&transfer_id);
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
 }

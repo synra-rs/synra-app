@@ -116,13 +116,63 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // ★ The kernel's own half, not a second implementation of it. The daemon has used this function since it
             // learned to record what arrives; the window used to record only "the peer holds this", return nothing, and
             // leave the sender waiting out its deadline for a result nobody sent.
+            let finished_state = Arc::clone(&db_state);
             let finished: synra_core::listener::FinishedCallback = Arc::new(
                 move |transfer: &synra_core::listener::FinishedTransfer| {
-                    let db = db_state.db();
-                    synra_core::plugin_sync::record_received(&db, transfer)
+                    let outcome = {
+                        let db = finished_state.db();
+                        synra_core::plugin_sync::record_received(&db, transfer)
+                    };
+                    // ★ And the row this side opened when the proposal arrived. The receiving half of a transfer has no
+                    // worker to remove it; without this the panel would show a transfer as arriving for ever.
+                    if let Some(transfer_id) = transfer.transfer_id {
+                        crate::commands::transfers::complete_received(&finished_state, transfer_id);
+                    }
+                    outcome
                 },
             );
-            synra_core::listener::serve(&host, &thread_cancel, &data_dir, &desk, &router, &finished);
+
+            // The peer's name is looked up once per connection and kept: a per-block query would be a database read for
+            // every 64 KiB, and a row that showed an identifier for the first block and a name for the second would look
+            // like two devices.
+            let progress_state = Arc::clone(&db_state);
+            let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
+                Arc::new(Mutex::new(std::collections::HashMap::new()));
+            let progress: Arc<synra_core::listener::ProgressCallback> = Arc::new(move |event| {
+                let key = event.peer.to_string();
+                let name = {
+                    let mut names = names.lock();
+                    if let Some(name) = names.get(&key) {
+                        name.clone()
+                    }
+                    else {
+                        let looked_up = progress_state
+                            .db()
+                            .paired_devices()
+                            .ok()
+                            .and_then(|devices| devices.into_iter().find(|device| device.device_id == key))
+                            .map_or_else(|| key.clone(), |device| device.display_name);
+                        names.insert(key.clone(), looked_up.clone());
+                        looked_up
+                    }
+                };
+                let snapshot = crate::commands::transfers::received_snapshot(
+                    event,
+                    &name,
+                    synra_store::sqlite::now_ms(),
+                );
+                crate::commands::transfers::announce_transfer(&progress_state, snapshot);
+            });
+
+            synra_core::listener::serve_with(
+                &host,
+                &thread_cancel,
+                &data_dir,
+                &desk,
+                &router,
+                &finished,
+                &progress,
+            );
         })
         .map_or_else(
             |error| {

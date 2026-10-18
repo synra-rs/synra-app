@@ -47,7 +47,7 @@
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 219 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 198 条。
+  Rust 侧 201 条。
 
 ### 还没有的（下一步就是这些）
 
@@ -58,7 +58,8 @@
 3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。
 4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
    接收端仍然只写 `plugins` 行而不解包（包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。
-5. **入站传输的进度**：`transfer_list` 只列本进程发出的传输，`listener` 收到的传输不在这张表里。
+5. **接收端的接受/拒绝**：入站传输的接受与逐块进度已经写进同一张表，但任何已配对设备的附件仍直接落 inbox，
+   还没有 `file.transfer.request` 的询问步骤。
 
 ## 这个仓库装什么
 
