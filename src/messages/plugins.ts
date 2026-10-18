@@ -46,10 +46,20 @@ export const plugins = {
   },
   /** The quota a plugin is held to, as the numbers a user can read on its card. */
   limits: 'Limits',
+  allLimits: 'All limits',
   limitMemory: 'memory',
   limitInstances: 'instances',
   limitCalls: 'calls/s',
-  limitCallTime: 's per call',
+  limitCallTime: 'call timeout',
+  limitStorage: 'storage',
+  limitTransfers: 'open transfers',
+  limitBurst: 'burst',
+  limitEvents: 'events/s',
+  limitNetwork: 'network/s',
+  limitConcurrent: 'network at once',
+  limitSends: 'device sends/s',
+  limitFsOps: 'filesystem ops/s',
+  limitFuel: 'fuel per call',
   /** Files the system would not let go during a removal; the report carries their paths. */
   leftBehind: (count: number) => `${count} path(s) could not be removed`,
   /** The registry's own index, searched by keyword. */

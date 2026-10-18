@@ -285,6 +285,26 @@
               </div>
             </dl>
 
+            <!-- ★ The rest of the quota, behind a disclosure. Four numbers answer "can it work"; the other nine answer
+                 "what exactly did the host decide", and a user who needs them is already looking for this card. A native
+                 `<details>` rather than a popover: it is the same disclosure with no portal to position, and a test can
+                 read the content whether it is open or not. -->
+            <details v-if="quotaRows(plugin.health).length" class="text-xs">
+              <summary class="cursor-pointer text-ink-dim">
+                {{ messages.plugins.allLimits }}
+              </summary>
+              <dl class="m-0 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                <div v-for="row in quotaRows(plugin.health)" :key="row.label" class="row gap-1">
+                  <dt class="m-0 text-ink-dim">
+                    {{ row.label }}
+                  </dt>
+                  <dd class="m-0">
+                    {{ row.value }}
+                  </dd>
+                </div>
+              </dl>
+            </details>
+
             <p v-if="plugin.description" class="m-0 text-sm text-ink-dim">
               {{ plugin.description }}
             </p>
@@ -777,33 +797,60 @@ function askRemove(plugin: PluginSnapshot): void {
  * user can act on and shows nothing when the report has none — an empty "Limits" row would be a label with no fact.
  */
 function healthLimits(health: PluginSnapshot['health']): string {
-  if (health === undefined)
-    return ''
-  const usage = health.usage
-  if (typeof usage !== 'object' || usage === null)
-    return ''
-  const number = (key: string): number | undefined => {
-    const value = (usage as Record<string, unknown>)[key]
-    return typeof value === 'number' ? value : undefined
-  }
   const parts: string[] = []
-  const memory = number('maxMemoryBytes')
+  const memory = quotaNumber(health, 'maxMemoryBytes')
   if (memory) {
     parts.push(`${formatBytes(memory)} ${messages.plugins.limitMemory}`)
   }
-  const instances = number('maxInstances')
+  const instances = quotaNumber(health, 'maxInstances')
   if (instances) {
     parts.push(`${instances} ${messages.plugins.limitInstances}`)
   }
-  const calls = number('hostCallsPerSec')
+  const calls = quotaNumber(health, 'hostCallsPerSec')
   if (calls) {
     parts.push(`${calls} ${messages.plugins.limitCalls}`)
   }
-  const timeout = number('callTimeoutMs')
+  const timeout = quotaNumber(health, 'callTimeoutMs')
   if (timeout) {
-    parts.push(`${timeout / 1000} ${messages.plugins.limitCallTime}`)
+    parts.push(`${timeout / 1000} s ${messages.plugins.limitCallTime}`)
   }
   return parts.join(' · ')
+}
+
+/** One number out of the quota JSON, when it is there and is a number. */
+function quotaNumber(health: PluginSnapshot['health'], key: string): number | undefined {
+  if (health === undefined)
+    return undefined
+  const usage = health.usage
+  if (typeof usage !== 'object' || usage === null)
+    return undefined
+  const value = (usage as Record<string, unknown>)[key]
+  return typeof value === 'number' ? value : undefined
+}
+
+/** Every quota field the report carries, for the disclosure under the summary row. */
+function quotaRows(health: PluginSnapshot['health']): { label: string, value: string }[] {
+  const rows: { label: string, value: string }[] = []
+  const add = (key: string, label: string, format: (value: number) => string = String): void => {
+    const value = quotaNumber(health, key)
+    if (value) {
+      rows.push({ label, value: format(value) })
+    }
+  }
+  add('maxMemoryBytes', messages.plugins.limitMemory, formatBytes)
+  add('maxInstances', messages.plugins.limitInstances)
+  add('maxStorageBytes', messages.plugins.limitStorage, formatBytes)
+  add('maxOpenTransfers', messages.plugins.limitTransfers)
+  add('hostCallsPerSec', messages.plugins.limitCalls)
+  add('hostCallsBurst', messages.plugins.limitBurst)
+  add('eventsPerSec', messages.plugins.limitEvents)
+  add('networkRequestsPerSec', messages.plugins.limitNetwork)
+  add('networkConcurrent', messages.plugins.limitConcurrent)
+  add('deviceSendsPerSec', messages.plugins.limitSends)
+  add('fsOpsPerSec', messages.plugins.limitFsOps)
+  add('callFuel', messages.plugins.limitFuel)
+  add('callTimeoutMs', messages.plugins.limitCallTime, value => `${value / 1000} s`)
+  return rows
 }
 
 /**

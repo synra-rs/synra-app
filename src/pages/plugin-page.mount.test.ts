@@ -136,7 +136,16 @@ describe('the plugins page', () => {
           usage: {
             maxMemoryBytes: 64 * 1024 * 1024,
             maxInstances: 4,
+            maxStorageBytes: 128 * 1024 * 1024,
+            maxOpenTransfers: 3,
             hostCallsPerSec: 20,
+            hostCallsBurst: 40,
+            eventsPerSec: 10,
+            networkRequestsPerSec: 5,
+            networkConcurrent: 2,
+            deviceSendsPerSec: 3,
+            fsOpsPerSec: 7,
+            callFuel: 1_000_000,
             callTimeoutMs: 5_000
           }
         }
@@ -153,7 +162,14 @@ describe('the plugins page', () => {
     expect(wrapper.text()).toContain(messages.plugins.limits)
     expect(wrapper.text()).toContain('64.0 MiB')
     expect(wrapper.text()).toContain('20 calls/s')
-    expect(wrapper.text()).toContain('5 s per call')
+    expect(wrapper.text()).toContain('5 s call timeout')
+    // ★ And the rest behind the disclosure: the four-number row answers "can it work"; these answer "what exactly did
+    // the host decide". The content is in the DOM while the details are closed, which is what makes this readable.
+    expect(wrapper.text()).toContain(messages.plugins.allLimits)
+    expect(wrapper.text()).toContain(messages.plugins.limitStorage)
+    expect(wrapper.text()).toContain('128.0 MiB')
+    expect(wrapper.text()).toContain(messages.plugins.limitFuel)
+    expect(wrapper.text()).toContain('1000000')
     wrapper.unmount()
   })
 
