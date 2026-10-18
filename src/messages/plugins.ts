@@ -112,7 +112,11 @@ export const plugins = {
   /** Removing, and the sentence that says what happens to the user's data. */
   removeAction: 'Remove',
   removeTitle: 'Remove this plugin?',
-  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.',
+  removeDetail: (title: string): string =>
+    `Removing ${title} deletes its installed files. Its data \u2014 settings, indexes and anything it stored \u2014 stays on disk unless you choose to delete it.`,
+  removeDeleteData: 'Also delete its data',
+  removedKept: (title: string): string => `${title} was removed, and its data was kept.`,
+  removedDeleted: (title: string): string => `${title} was removed, and its data was deleted.`,
   /**
    * Opening the plugin's own page.
    *

@@ -106,6 +106,35 @@
       </div>
     </AModal>
 
+    <!--
+      ★ The removal dialog, not a one-line confirm, because there are two outcomes and one of them deletes user data.
+      `get-container="false"` keeps it inside this component instead of teleporting to `body`: the page's own tests can
+      then see the checkbox and the button, and a dialog that is testable is one whose decision is actually asserted.
+
+      The checkbox starts unticked every time the dialog opens: "keep the data" is the reversible answer, and a checkbox
+      that remembered the previous destructive choice would be a dialog that deletes on a second visit by default.
+    -->
+    <AModal
+      :open="removing !== undefined"
+      :title="messages.plugins.removeTitle"
+      :ok-text="messages.plugins.removeAction"
+      :get-container="false"
+      @ok="remove()"
+      @cancel="removing = undefined"
+    >
+      <div class="stack gap-3">
+        <p class="m-0 text-sm">
+          {{ messages.plugins.removeDetail(removing?.title ?? '') }}
+        </p>
+        <ACheckbox
+          :checked="removeData"
+          @update:checked="(checked) => (removeData = checked)"
+        >
+          {{ messages.plugins.removeDeleteData }}
+        </ACheckbox>
+      </div>
+    </AModal>
+
     <!-- Installing is not approving: the sentence says the plugin is off, because a user told only "installed" would
          look for a fault in a plugin that is behaving exactly as designed. -->
     <AAlert v-if="note" type="success" :message="note" closable @close="note = undefined" />
@@ -407,16 +436,9 @@
                 {{ messages.plugins.updateAction }}
               </AButton>
 
-              <APopconfirm
-                :title="messages.plugins.removeTitle"
-                :description="messages.plugins.removeKeepsData"
-                :ok-text="messages.plugins.removeAction"
-                @confirm="remove(plugin)"
-              >
-                <AButton size="small" danger>
-                  {{ messages.plugins.removeAction }}
-                </AButton>
-              </APopconfirm>
+              <AButton size="small" danger @click="askRemove(plugin)">
+                {{ messages.plugins.removeAction }}
+              </AButton>
             </div>
 
             <!--
@@ -512,7 +534,7 @@
  */
 import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
 import type { AuditEntry, Failure } from './plugins/actions'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -693,15 +715,43 @@ async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
 }
 
 /**
- * Removes the plugin, keeping its data.
+ * What to tell the user after an action that reported rather than changed a card: an install, a sync or a removal.
  *
- * `remove_data` is `false` and not a choice here: the confirmation says the data stays, so asking for it to go would
- * contradict the sentence the user just agreed to. A checkbox for the other case belongs in a dialog that can show the
- * path, not in a one-line confirm.
+ * One ref rather than two, because the page shows one note under the form: two would fight for the same line, and a
+ * message that replaced another without being read is a message that was never shown.
  */
-async function remove(plugin: PluginSnapshot): Promise<void> {
+const note = ref<string | undefined>(undefined)
+
+/**
+ * The plugin whose removal is being decided, and whether its data goes with it.
+ *
+ * Two refs beside the list rather than one object, because the dialog opens on one plugin and the checkbox is answered
+ * after it opens: a single object would have to be replaced on every tick, and `removing` is what the template tests.
+ */
+const removing = ref<PluginSnapshot | undefined>(undefined)
+
+/** Whether the removal being decided also deletes the plugin's data. Reset every time the dialog opens. */
+const removeData = ref(false)
+
+/** Opens the removal dialog for one plugin, with the reversible answer preselected. */
+function askRemove(plugin: PluginSnapshot): void {
+  removeData.value = false
+  removing.value = plugin
+}
+
+/**
+ * Removes the plugin, with or without its data.
+ *
+ * The decision is the dialog's, passed through rather than defaulted at the call: `false` here and `false` in the
+ * command's own default would be two places that can disagree with the sentence beside the button.
+ */
+async function remove(): Promise<void> {
+  const plugin = removing.value
+  if (plugin === undefined)
+    return
+  const deleteData = removeData.value
   error.value = undefined
-  const outcome = await uninstall(kernel, plugin.pluginId, false)
+  const outcome = await uninstall(kernel, plugin.pluginId, deleteData)
   if (!outcome.ok) {
     error.value = outcome.failure
     return
@@ -709,19 +759,15 @@ async function remove(plugin: PluginSnapshot): Promise<void> {
   // ★ No event for a removal — there is no card for a plugin that no longer exists — so the store is told directly, then
   // the list is read once. Forgetting here rather than only reloading means the card disappears even if the read fails.
   pluginsStore.forget(plugin.pluginId)
+  removing.value = undefined
+  note.value = deleteData
+    ? messages.plugins.removedDeleted(plugin.title)
+    : messages.plugins.removedKept(plugin.title)
   await load()
 }
 
 /** The plugin whose page is being opened, so its button says so and cannot be pressed twice. */
 const opening = ref<string | undefined>(undefined)
-
-/**
- * What to tell the user after an action that reported rather than changed a card: an install, or a sync.
- *
- * One ref rather than two, because the page shows one note under the form: two would fight for the same line, and a
- * message that replaced another without being read is a message that was never shown.
- */
-const note = ref<string | undefined>(undefined)
 
 /**
  * Opens the plugin's page in its own window.

@@ -159,6 +159,19 @@ describe('the uninstall call', () => {
       removeData: false
     })
   })
+
+  it('sends the destructive half of the decision too', async () => {
+    // ★ The other answer: `removeData: true` is the one that deletes user files, and a page that could only send `false`
+    // made the option unreachable — the command had always accepted it.
+    const { client: kernel, invoke } = client(null)
+
+    await uninstall(kernel, '@acme/hello', true)
+
+    expect(invoke).toHaveBeenCalledWith('plugins_uninstall', {
+      pluginId: '@acme/hello',
+      removeData: true
+    })
+  })
 })
 
 describe('the sync calls', () => {

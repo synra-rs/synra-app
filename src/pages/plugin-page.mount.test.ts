@@ -121,6 +121,50 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('asks about the data in a dialog before removing a plugin', async () => {
+    // ★ The destructive half of removal: the command always accepted `removeData`, and the page sent `false` without ever
+    // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the
+    // argument the action layer sends is covered in `pages/plugins/actions.test.ts`, both ways.
+    mocks.call.mockResolvedValue({ ok: true, value: [card()] })
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    // The card's button, not the dialog's own footer button: the dialog renders (closed) before the list, so a search by
+    // text alone would click the control it is supposed to be opening.
+    const remove = wrapper
+      .findAll('button')
+      .filter(candidate => candidate.classes().includes('ant-btn-dangerous'))
+      .at(-1)
+    expect(remove, 'the remove button is missing').toBeDefined()
+    await remove?.trigger('click')
+    await flushPromises()
+
+    const modal = wrapper
+      .findAllComponents({ name: 'AModal' })
+      .find(candidate => candidate.props('title') === messages.plugins.removeTitle)
+    expect(modal, 'the removal dialog is missing').toBeDefined()
+    expect(modal?.props('open'), 'the dialog did not open').toBe(true)
+    expect(wrapper.text()).toContain(messages.plugins.removeTitle)
+    expect(wrapper.text()).toContain(messages.plugins.removeDeleteData)
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_uninstall', expect.anything())
+
+    const data = wrapper
+      .findAllComponents({ name: 'ACheckbox' })
+      .find(box => box.text().includes(messages.plugins.removeDeleteData))
+    expect(data, 'the delete-data checkbox is missing').toBeDefined()
+    await data?.vm.$emit('update:checked', true)
+
+    await modal?.vm.$emit('ok')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_uninstall', {
+      pluginId: '@acme/hello',
+      removeData: true
+    })
+    expect(wrapper.text()).toContain(messages.plugins.removedDeleted('Hello'))
+    wrapper.unmount()
+  })
+
   it('shows what the plugin asks for, not only what it was given', async () => {
     // The consent checkboxes are built from `requested`; a page that rendered `granted` would show an empty prompt for a
     // plugin nobody had decided about. `granted` is deliberately empty here, so the assertion can only pass through
