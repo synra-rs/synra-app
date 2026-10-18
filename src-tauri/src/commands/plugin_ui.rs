@@ -1244,13 +1244,26 @@ pub fn window_label(id: &synra_protocol::ids::PluginId) -> String {
     format!("plugin-{}", id.as_str().replace('/', "__"))
 }
 
+/// What opening a page decided.
+///
+/// ★ The decision is here rather than in `shell.rs` because the check and the reservation have to happen under one lock:
+/// two fast clicks would otherwise both see no window, both issue a token, and the second would replace the first entry in
+/// `hosted_ui` — leaving the first page holding a nonce no table names.
+#[derive(Debug)]
+pub enum OpenDecision {
+    /// No page is open; the caller builds it with this request.
+    Open(OpenRequest),
+    /// A page is already open (or is being opened); the caller shows the window instead of building one.
+    AlreadyOpen,
+}
+
 /// Prepares the page for one plugin, and records who it belongs to.
 ///
 /// # Errors
 ///
 /// [`ErrorCode::PluginNotInstalled`] when there is no manifest to read, [`ErrorCode::Unsupported`] when the plugin has no
 /// UI half. Both are refusals a caller can act on: the first says "install it", the second says "this one has no window".
-pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, IpcError> {
+pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, IpcError> {
     use synra_protocol::ErrorCode;
 
     let id = super::plugins::parse(plugin_id)?;
@@ -1273,6 +1286,11 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
     });
     let label = window_label(&id);
     let url = format!("synra-plugin://{}/{page}", id.as_str());
+
+    // Fast refusal before the grants are read: a page that is already open is a focus, and nothing below is needed for it.
+    if state.hosted_ui.lock().contains_key(&label) {
+        return Ok(OpenDecision::AlreadyOpen);
+    }
 
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
     // ★ The grants the page will hold, read from the decisions the user actually made. An empty set here made every
@@ -1362,12 +1380,20 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
     };
     let script = initialization_script(FACADE, &seed)?;
 
-    state.hosted_ui.lock().insert(
+    let mut hosted = state.hosted_ui.lock();
+    if let Some(previous) = hosted.insert(
         label.clone(),
         crate::state::HostedUi { plugin_id: id, version: manifest.version, nonce, ready: false },
-    );
+    ) {
+        // A racing open won: its entry is the live one, so put it back and discard the token this call issued. Returning
+        // `AlreadyOpen` is the honest answer — the page the user is looking at is the one to keep.
+        hosted.insert(label.clone(), previous);
+        let _ = state.ui_sessions.revoke(nonce);
+        return Ok(OpenDecision::AlreadyOpen);
+    }
+    drop(hosted);
 
-    Ok(OpenRequest { label, url, script })
+    Ok(OpenDecision::Open(OpenRequest { label, url, script }))
 }
 
 /// One file out of a plugin's extracted UI bundle.

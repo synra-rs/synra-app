@@ -300,7 +300,16 @@ mod wrappers {
             return Ok(());
         }
 
-        let request = commands::plugin_ui::open_request(&state, &plugin_id)?;
+        let request = match commands::plugin_ui::open_request(&state, &plugin_id)? {
+            commands::plugin_ui::OpenDecision::AlreadyOpen => {
+                if let Some(window) = app.get_window(&label) {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                return Ok(());
+            }
+            commands::plugin_ui::OpenDecision::Open(request) => request,
+        };
         let failed = |error: tauri::Error| {
             IpcError::unknown(synra_protocol::ErrorCode::Internal)
                 .with_params(serde_json::json!({ "reason": error.to_string() }))
@@ -326,7 +335,12 @@ mod wrappers {
             // the platform capability exists to make.
             .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
             .build()
-            .map_err(failed)?;
+            .map_err(|error| {
+                // The reservation `open_request` made must not outlive a window that was never built: otherwise every
+                // failed open would leave the plugin permanently "already open" with no window to focus.
+                commands::plugin_ui::forget_window(&state, &request.label);
+                failed(error)
+            })?;
 
         // ★ Closing the window ends the session: the token table is the page's authority, and an entry that outlives the
         // page would let a closed window keep answering. `Destroyed` rather than `CloseRequested` because a close can be

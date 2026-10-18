@@ -3,7 +3,7 @@
 //! The cases worth asserting are the two refusals and one acceptance: a label this shell never hosted, a hosted page whose
 //! token the registry does not know, and a hosted page holding a live session.
 
-use super::plugin_ui_ready;
+use super::{OpenDecision, OpenRequest, plugin_ui_ready};
 use crate::state::HostedUi;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -16,6 +16,29 @@ use synra_protocol::ErrorCode;
 /// A plausible plugin id, so nothing here accidentally tests id parsing.
 fn plugin_id() -> synra_protocol::ids::PluginId {
     synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id")
+}
+
+/// Opens a page that must not be open, as a test's setup.
+fn opened(state: &crate::AppState, plugin_id: &str) -> OpenRequest {
+    match super::open_request(state, plugin_id).expect("a decision") {
+        OpenDecision::Open(request) => request,
+        OpenDecision::AlreadyOpen => panic!("the page was already open"),
+    }
+}
+
+#[test]
+fn a_second_open_is_refused_without_a_second_token() {
+    // ★ The check and the reservation happen under one lock: two fast clicks must not each issue a token, and the second
+    // must not replace the first entry in `hosted_ui`.
+    let (_root, state) = installed_with_ui();
+    let _first = opened(&state, ID);
+    let issued = state.ui_sessions.issued();
+
+    let second = super::open_request(&state, ID).expect("a decision");
+
+    assert!(matches!(second, OpenDecision::AlreadyOpen));
+    assert_eq!(state.ui_sessions.issued(), issued, "no second token");
+    assert_eq!(state.hosted_ui.lock().len(), 1);
 }
 
 #[test]
@@ -122,7 +145,7 @@ fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
     // `dist/index.html` is a path, not a page.
     let (_root, state) = installed_with_ui();
 
-    let request = super::open_request(&state, ID).expect("it has a UI");
+    let request = opened(&state, ID);
 
     assert!(request.url.starts_with("synra-plugin://@synra-plugin/chat/"), "got {}", request.url);
     assert!(request.url.ends_with("/index"), "the entry's stem is the page: {}", request.url);
@@ -154,7 +177,7 @@ fn opening_a_page_issues_the_grants_the_user_allowed() {
             "sha256-manifest",
         )
         .expect("decisions");
-    let request = super::open_request(&state, ID).expect("it has a UI");
+    let request = opened(&state, ID);
     let entry = state.hosted_ui.lock().get(&request.label).cloned().expect("recorded");
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
 
@@ -347,7 +370,7 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
     )
     .expect("settings");
 
-    let request = super::open_request(&state, ID).expect("it has a UI");
+    let request = opened(&state, ID);
 
     for expected in [
         "\"pluginId\":\"@synra-plugin/chat\"",
