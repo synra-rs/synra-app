@@ -31,6 +31,7 @@ const SettingsPage = (await import('./SettingsPage.vue')).default
 const { IDENTITY } = await import('../ipc/fake-kernel-fixtures')
 const { useSettingsStore } = await import('../stores/settings')
 const ErrorNotice = (await import('../components/ErrorNotice.vue')).default
+const { messages } = await import('../messages')
 
 function installBrowserApis(): void {
   window.matchMedia = ((query: string) => ({
@@ -56,11 +57,20 @@ function installBrowserApis(): void {
   globalThis.IntersectionObserver = noop as unknown as typeof IntersectionObserver
 }
 
-/** Answers by command name; anything unlisted is refused, so an unexpected call shows up as a failure. */
+/** An answer for a recorder that has counted nothing, so a test about another section does not have to know about it. */
+const NO_METRICS = { values: [], overflowedTotal: 0, maxSeriesPerMetric: 1_000 }
+
+/**
+ * Answers by command name; anything unlisted is refused, so an unexpected call shows up as a failure.
+ *
+ * ★ `diag_metrics` is seeded rather than left to be refused: the page reads it on mount by design, and a fixture that
+ * refused it would put an error notice on every test here — including the ones asserting something else.
+ */
 function answer(byCommand: Record<string, unknown>) {
+  const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, ...byCommand }
   mocks.call.mockImplementation(async (command: string) =>
-    command in byCommand
-      ? { ok: true, value: byCommand[command] }
+    command in answers
+      ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
   )
 }
@@ -252,11 +262,15 @@ describe('the settings page', () => {
   it('shows the refusal when the configuration cannot be read', async () => {
     // Refused rather than answered: a settings screen that renders defaults when the read failed is showing the user
     // values the kernel never agreed to.
-    mocks.call.mockImplementation(async (command: string) =>
-      command === 'config_get'
-        ? { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
-        : { ok: true, value: IDENTITY }
-    )
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'config_get')
+        return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+      if (command === 'identity_get')
+        return { ok: true, value: IDENTITY }
+      if (command === 'diag_metrics')
+        return { ok: true, value: NO_METRICS }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
 
     const wrapper = mount(SettingsPage)
     await flushPromises()
@@ -266,6 +280,57 @@ describe('the settings page', () => {
     const notice = wrapper.findComponent(ErrorNotice)
     expect(notice.exists()).toBe(true)
     expect(notice.props('code')).toBe('internal')
+    wrapper.unmount()
+  })
+
+  it('draws the metrics the recorder holds, keyed the way the kernel names them', async () => {
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_metrics: {
+        values: [
+          {
+            key: { name: 'host_calls_total', labels: [['plugin', '@acme/hello']] },
+            value: { kind: 'counter', value: 7 }
+          },
+          {
+            key: { name: 'host_call_ms', labels: [] },
+            value: { kind: 'histogram', value: { bounds: [1, 10], buckets: [2, 3, 1], count: 6, sum: 30 } }
+          }
+        ],
+        overflowedTotal: 0,
+        maxSeriesPerMetric: 1_000
+      }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    // ★ The rendered key is the kernel's own spelling (`name{label=value}`), not a page-invented one: a log line, a
+    // diagnostic export and this panel have to name the same series.
+    expect(wrapper.text()).toContain('host_calls_total{plugin=@acme/hello}')
+    expect(wrapper.text()).toContain('7')
+    expect(wrapper.text()).toContain(messages.settings.metrics.histogram(6, '5.00'))
+    wrapper.unmount()
+  })
+
+  it('says when the snapshot is incomplete rather than drawing it as the whole', async () => {
+    // ★ The cap is a real answer about the data ("some series were folded"), not a warning to suppress: a panel that drew
+    // twenty rows and stayed silent would be a panel claiming the recorder holds twenty things.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_metrics: {
+        values: [{ key: { name: 'host_calls_total', labels: [] }, value: { kind: 'counter', value: 1 } }],
+        overflowedTotal: 3,
+        maxSeriesPerMetric: 2
+      }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.settings.metrics.overflow(3, 2))
     wrapper.unmount()
   })
 })

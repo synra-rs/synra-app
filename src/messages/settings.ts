@@ -53,5 +53,21 @@ export const settings = {
     add: 'Add mirror',
     remove: 'Remove',
     save: 'Save'
+  },
+  /**
+   * 本进程记录器的指标。
+   *
+   * 页面不解释数字的含义：指标名与标签是内核的词汇，翻译它们会让同一件事有两个名字。这里只把快照排成行。
+   */
+  metrics: {
+    title: 'Performance',
+    detail: 'Counters, gauges and histograms recorded by this process. The panel re-reads them every few seconds and contains no payload content.',
+    refresh: 'Refresh',
+    empty: 'No metric has been recorded yet.',
+    /** 一个直方图的两个可读数字：多少次观测、平均多少。 */
+    histogram: (count: number, mean: string): string => `${count} samples, mean ${mean}`,
+    /** 有观测被折进 overflow 序列时，快照不再是全集 —— 说出来，而不是画一条看起来完整的列表。 */
+    overflow: (count: number, cap: number): string =>
+      `${count} observations were folded into an overflow series; the cap is ${cap} per metric.`
   }
 } as const

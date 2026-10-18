@@ -4,7 +4,7 @@
       {{ messages.settings.title }}
     </h1>
 
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
+    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="reload" />
 
     <section class="stack gap-3">
       <h2 class="text-base font-medium">
@@ -164,6 +164,41 @@
         </AButton>
       </div>
     </section>
+
+    <!--
+      ★ `diag_metrics` had no caller before this panel, and 18 §4.2 names this panel as one of the three reasons the
+      recorder exists. Each row is the key **as the kernel renders it**, so it can be matched against a log line or a
+      diagnostic export rather than being a second naming scheme.
+    -->
+    <section class="stack gap-3">
+      <div class="row-between gap-4">
+        <h2 class="m-0 text-base font-medium">
+          {{ messages.settings.metrics.title }}
+        </h2>
+        <AButton size="small" :loading="refreshing" @click="refreshMetrics">
+          {{ messages.settings.metrics.refresh }}
+        </AButton>
+      </div>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.metrics.detail }}
+      </p>
+      <!--
+        Read by "is there a snapshot" rather than "is it non-empty": the empty sentence is an answer, and drawing it before
+        the first read would claim the recorder has counted nothing when nobody has asked yet.
+      -->
+      <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-xs text-ink-dim">
+        {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
+      </p>
+      <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
+      <AList v-else-if="metrics" size="small">
+        <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)">
+          <div class="row-between gap-3">
+            <span class="min-w-0 truncate text-xs font-mono">{{ seriesKey(series.key) }}</span>
+            <span class="text-sm font-mono">{{ seriesValue(series.value) }}</span>
+          </div>
+        </AList.Item>
+      </AList>
+    </section>
   </section>
 </template>
 
@@ -183,7 +218,7 @@
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
-import type { ConfigSnapshot, IdentitySnapshot, SuggestedAction } from '@synra/protocol'
+import type { ConfigSnapshot, IdentitySnapshot, MetricsSnapshot, MetricValue, SeriesKey, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
   Descriptions as ADescriptions,
@@ -192,7 +227,7 @@ import {
   List as AList,
   Switch as ASwitch
 } from 'ant-design-vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
@@ -371,7 +406,78 @@ async function save(key: PreferenceKey, value: boolean): Promise<void> {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
+/** How often the recorder is re-read while this page is open. */
+const METRICS_POLL_MS = 5_000
+
+/** The last metric snapshot, if one has been read. `undefined` means "not asked yet", which is not "empty". */
+const metrics = ref<MetricsSnapshot | undefined>(undefined)
+
+/** Whether the Refresh button's read is in flight. Polling does not set it: the button is not what is happening. */
+const refreshing = ref(false)
+
+/**
+ * Reads the recorder's snapshot.
+ *
+ * It does **not** clear `error` first: a poll is not a user action, and clearing the notice every few seconds would make
+ * a refusal disappear while its cause is still there.
+ */
+async function loadMetrics(): Promise<void> {
+  const answer = await kernel.call<MetricsSnapshot>('diag_metrics')
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  metrics.value = answer.value
+}
+
+/** Reads it now, for the button. */
+async function refreshMetrics(): Promise<void> {
+  refreshing.value = true
+  await loadMetrics()
+  refreshing.value = false
+}
+
+/**
+ * The key as the kernel renders it (`SeriesKey::render`).
+ *
+ * ★ The same spelling as a log line or a diagnostic export, rather than a prettier one: two spellings for one series is how
+ * "the metric in the report" and "the metric in the panel" become two different things to look up.
+ */
+function seriesKey(key: SeriesKey): string {
+  if (key.labels.length === 0)
+    return key.name
+  return `${key.name}{${key.labels.map(([name, value]) => `${name}=${value}`).join(',')}}`
+}
+
+/** One value as a short string; a histogram says how many observations and what they averaged. */
+function seriesValue(value: MetricValue): string {
+  if (value.kind !== 'histogram')
+    return String(value.value)
+  // ★ No observations is not a mean of zero: 0/0 written as "0" would make a histogram that never ran look like 0 ms.
+  const mean = value.value.count === 0 ? '—' : (value.value.sum / value.value.count).toFixed(2)
+  return messages.settings.metrics.histogram(value.value.count, mean)
+}
+
+let metricsTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(async () => {
+  await loadMetrics()
+  metricsTimer = setInterval(() => {
+    void loadMetrics()
+  }, METRICS_POLL_MS)
+})
+
+onUnmounted(() => {
+  if (metricsTimer !== undefined)
+    clearInterval(metricsTimer)
+})
+
 onMounted(load)
+
+/** The notice's Retry: everything this page read, not only the two answers the first mount asked for. */
+async function reload(): Promise<void> {
+  await Promise.all([load(), loadMetrics()])
+}
 
 /** Reads what this device is and what it is set to. Both answers arrive together, because one screen shows both. */
 async function load(): Promise<void> {
