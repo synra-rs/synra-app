@@ -385,4 +385,73 @@ describe('the plugins page', () => {
     expect(wrapper.text()).toContain('Arrived by event')
     wrapper.unmount()
   })
+
+  it('reads a plugins recent calls when the trail is opened', async () => {
+    // ★ The trail is pulled, not read on mount: one ring per plugin on every page open is work nobody asked for. What
+    // this asserts is the pull — the closed section asks nothing, and opening it reaches the command and draws the rows.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_audit') {
+        // Oldest first, as `audit_for` answers: the page is what reverses it for a reader.
+        return {
+          ok: true,
+          value: [
+            { atMs: 1_700_000_000_000, capability: 'log:write', allowed: true },
+            { atMs: 1_700_000_001_000, capability: 'network:fetch', allowed: false, reason: 'denied' }
+          ]
+        }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit', expect.anything())
+    const trail = wrapper.find('details')
+    expect(trail.exists()).toBe(true)
+    ;(trail.element as HTMLDetailsElement).open = true
+    await trail.trigger('toggle')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20 })
+    expect(wrapper.text()).toContain('log:write')
+    // ★ The refusal is named, not just coloured: `denied` is the gate's own outcome name, and a row without it tells the
+    // user a call failed without telling them why.
+    expect(wrapper.text()).toContain('network:fetch')
+    expect(wrapper.text()).toContain(messages.plugins.audit.refused)
+    expect(wrapper.text()).toContain('denied')
+    const rows = wrapper.findAll('details li')
+    expect(rows[0]?.text()).toContain('network:fetch')
+    wrapper.unmount()
+  })
+
+  it('shows a refusal to read the trail rather than an empty one', async () => {
+    // ★ "Nothing recorded" and "could not be read" are different answers: an empty section on a refusal would tell the
+    // user a plugin has been quiet when the shell simply could not ask.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_audit')
+        return { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const trail = wrapper.find('details')
+    ;(trail.element as HTMLDetailsElement).open = true
+    await trail.trigger('toggle')
+    await flushPromises()
+
+    expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('unsupported')
+    expect(wrapper.text()).not.toContain(messages.plugins.audit.empty)
+    wrapper.unmount()
+  })
 })

@@ -316,6 +316,38 @@
             </div>
 
             <!--
+              ★ What the plugin **actually did**, beside what it may do. The granted list is a permission; this is a record
+              of the gate's calls, which is what makes "granted" different from "used" (09 §159, 18 §5).
+
+              Reading is a separate question from granting, so the trail is *pulled* rather than pushed: a page that asked on
+              mount would read one ring per plugin that nobody asked about, and a page that read once would show activity from
+              before whatever the user came back to check.
+            -->
+            <details class="stack gap-2" @toggle="(event) => openAudit(plugin.pluginId, event)">
+              <summary class="cursor-pointer text-xs text-ink-dim">
+                {{ messages.plugins.audit.title }}
+              </summary>
+              <ul v-if="(audit[plugin.pluginId]?.length ?? 0) > 0" class="m-0 ps-5 text-xs">
+                <!--
+                  The index is part of the key: two calls to the same capability can happen in the same millisecond, and the
+                  ring records both. Keying on the pair would make Vue draw one row for two calls.
+                -->
+                <li v-for="(entry, index) in audit[plugin.pluginId]" :key="`${entry.atMs}-${entry.capability}-${index}`">
+                  <span class="font-mono">{{ entry.capability }}</span>
+                  <span :class="entry.allowed ? 'text-ink-dim' : 'text-danger'">
+                    {{ entry.allowed ? messages.plugins.audit.allowed : messages.plugins.audit.refused }}
+                  </span>
+                  <!-- Why it was refused, when the gate said why: the stable outcome name, not a sentence this page wrote. -->
+                  <span v-if="!entry.allowed && entry.reason" class="text-xs text-ink-dim font-mono">{{ entry.reason }}</span>
+                  <span class="text-ink-dim">{{ new Date(entry.atMs).toLocaleTimeString() }}</span>
+                </li>
+              </ul>
+              <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
+                {{ messages.plugins.audit.empty }}
+              </p>
+            </details>
+
+            <!--
               Removal asks first, and the question says what happens to the data: this is the one action on the card that
               cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
             -->
@@ -450,7 +482,7 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction, UpdateInfo } from '@synra/protocol'
-import type { Failure, InstallPreview } from './plugins/actions'
+import type { AuditEntry, Failure, InstallPreview } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -459,7 +491,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
 
 /** A publisher row, as `plugins_publishers` answers it. */
 interface PublisherRow {
@@ -744,6 +776,21 @@ const installing = ref(false)
 
 /** The update the registry published, by plugin, for the cards that were asked about. */
 const updates = ref<Record<string, UpdateInfo>>({})
+
+/** What each plugin's audit ring said, once asked. `undefined` means "not asked yet". */
+const audit = ref<Record<string, AuditEntry[] | undefined>>({})
+
+/** Loads a plugin's recent calls whenever its section is opened. */
+async function openAudit(pluginId: string, event: Event): Promise<void> {
+  if (!(event.target as HTMLDetailsElement).open)
+    return
+  const outcome = await readAudit(kernel, pluginId)
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  audit.value[pluginId] = [...outcome.value]
+}
 
 /** The plugin whose update is being checked. */
 const checking = ref<string | undefined>(undefined)

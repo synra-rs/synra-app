@@ -49,6 +49,24 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
+/** One audited capability call, as `plugins_audit` answers it. */
+export interface AuditEntry {
+  readonly atMs: number
+  readonly capability: string
+  readonly allowed: boolean
+  readonly reason?: string
+  readonly elapsedMs?: number
+  readonly traceId?: string
+}
+
+/** What a plugin actually did, most recent first. */
+export async function audit(kernel: KernelClient, pluginId: string, limit = 20): Promise<Outcome<readonly AuditEntry[]>> {
+  const answer = await kernel.call<AuditEntry[]>('plugins_audit', { pluginId, limit })
+  // ★ Reversed because the command answers a **tail** of the ring, oldest first: `audit_for` reports the order the calls
+  // happened in, and the caller asking "what has it been doing lately" reads from the other end.
+  return answer.ok ? { ok: true, value: [...answer.value].reverse() } : { ok: false, failure: failureOf(answer.error) }
+}
+
 /** What a registry package says about itself, before any of it is downloaded. */
 export interface InstallPreview {
   readonly pluginId: string

@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { KernelClient } from '../../ipc/client'
-import { decide, installFrom, planSync, runSync, setEnabled, uninstall } from './actions'
+import { audit, decide, installFrom, planSync, runSync, setEnabled, uninstall } from './actions'
 
 /** A client whose bridge answers with `answer` and records every call. */
 function client(answer: unknown = { ok: true }) {
@@ -76,6 +76,42 @@ describe('the enable call', () => {
     expect(invoke.mock.calls[0]?.[0]).toBe('plugins_enable')
     expect(invoke.mock.calls[1]?.[0]).toBe('plugins_disable')
     expect(invoke.mock.calls[0]?.[1]).toEqual({ pluginId: '@acme/hello' })
+  })
+})
+
+describe('the audit call', () => {
+  it('asks for one plugin and a limit', async () => {
+    const { client: kernel, invoke } = client([{ atMs: 1, capability: 'log:*', allowed: true }])
+
+    const outcome = await audit(kernel, '@acme/hello')
+
+    expect(invoke).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20 })
+    expect(outcome.ok ? outcome.value.length : 0).toBe(1)
+  })
+
+  it('answers a refusal as the notice needs it', async () => {
+    // ★ `retryable` is part of the shape `isIpcError` checks, so a fixture without it is read as a **success** — which
+    // is exactly how this test first failed, and the kind of failure a refusal fixture is meant to catch.
+    const { client: kernel } = client({ code: 'capability_denied', message: 'error.capability_denied', retryable: false })
+
+    const outcome = await audit(kernel, '@acme/hello')
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok)
+      expect(outcome.failure.code).toBe('capability_denied')
+  })
+
+  it('shows the newest call first', async () => {
+    // The command answers oldest first, because "the last `limit`" is a slice of the ring; a caller reading a trail wants
+    // the other end. Reversing here keeps the page from sorting a list whose order is already known.
+    const { client: kernel } = client([
+      { atMs: 1, capability: 'log:*', allowed: true },
+      { atMs: 2, capability: 'network:fetch', allowed: false, reason: 'denied' }
+    ])
+
+    const outcome = await audit(kernel, '@acme/hello')
+
+    expect(outcome.ok ? outcome.value[0]?.capability : undefined).toBe('network:fetch')
   })
 })
 

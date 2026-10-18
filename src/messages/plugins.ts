@@ -32,6 +32,13 @@ export const plugins = {
     ui: 'Adds pages to the interface',
     size: 'About {size} MiB, as published'
   },
+  audit: {
+    title: 'Recent calls',
+    allowed: 'allowed',
+    refused: 'refused',
+    empty: 'No calls have been recorded.',
+    unavailable: 'The calls could not be read.'
+  },
   /** The registry's own index, searched by keyword. */
   catalog: {
     placeholder: 'Search the registry',
