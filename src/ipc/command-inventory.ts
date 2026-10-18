@@ -39,8 +39,8 @@ export const REGISTERED = [
   'plugin_ui_open',
   // The page's own report, checked against the session the host issued for it.
   'plugin_ui_ready',
-  // The transfers in flight. Registered with an empty registry behind it: the worker that fills it does not exist yet, so the
-  // honest answer today is "nothing is in flight", which is true.
+  // The transfers in flight. The registry is filled by the two send commands as they move blocks; an **inbound** transfer is
+  // driven by the listener and is not reported in this list yet.
   'transfer_cancel',
   'transfer_send_file',
   'transfer_send_text',

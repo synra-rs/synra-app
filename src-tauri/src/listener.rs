@@ -7,11 +7,12 @@
 //! showing a device list that never learns what arrived. A desktop that needed a second program running beside it would be one
 //! whose transfers only work while somebody starts that program.
 //!
-//! # What it is not yet
+//! # What it does, and does not do, with what arrives
 //!
-//! `serve` is called with [`no_answer`](synra_core::listener::no_answer) as its finished callback, which means an accepted transfer
-//! is recorded nowhere. The callback is where `sync_records` gets written, and until it is, `plugins_sync_plan` reports every peer as
-//! holding nothing — see `design-docs/19 §8.7`.
+//! The finished callback records **what the peer holds** in `sync_records` when a bundle arrives, which is the same fact the daemon
+//! records and what a plan is built from. It does **not install** the received package: the daemon's callback runs the install
+//! pipeline, and this shell's does not yet — so a bundle that arrives here is recorded and left in the inbox. That is a real gap
+//! rather than a detail: a package that is never installed is one the next plan will still offer to send.
 //!
 //! # Why it runs in its own thread
 //!
