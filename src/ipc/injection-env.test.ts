@@ -71,6 +71,9 @@ describe('the three "can"s mean three different things', () => {
   it('hostSupports answers about the host version', () => {
     const synra = createInjection(context())
     expect(synra.env.hostSupports('event.subscribe')).toBe(true)
-    expect(synra.env.hostSupports('network.fetch')).toBe(false)
+    // ★ True since outbound requests went over the plugin channel. `false` here would be the same lie the table exists
+    // to prevent: an author guarding against a failure the host no longer produces.
+    expect(synra.env.hostSupports('network.fetch')).toBe(true)
+    expect(synra.env.hostSupports('device.pick')).toBe(false)
   })
 })

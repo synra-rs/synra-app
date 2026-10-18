@@ -26,7 +26,9 @@ export const BACKED: Readonly<Record<ClientFeature, boolean>> = {
   // `supported` list that says no to something that works leaves an author guarding against a failure that never comes.
   'transfer.onProgress': true,
   'device.pick': false,
-  'network.fetch': false,
+  // ★ True since outbound requests went over the plugin channel: the host's own fetcher enforces the
+  // `network:fetch:<host>` grants, so the call either reaches the network the user allowed or is refused by name.
+  'network.fetch': true,
   // ★ True since the clipboard went over the plugin channel: the call reaches `platform:read-clipboard` and the
   // platform runner. An empty clipboard is `''`, not a refusal — the ordinary case must not be a `catch`.
   'clipboard.read': true

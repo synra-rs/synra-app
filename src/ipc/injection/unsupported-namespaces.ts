@@ -1,5 +1,5 @@
 /**
- * The namespaces this build cannot answer: network, transfer and self.
+ * The namespaces this build cannot answer: transfer and self.
  *
  * # Why each of them is here rather than absent
  *
@@ -12,7 +12,6 @@
 
 import type {
   ActionDescriptor,
-  NetworkNamespace,
   SelfNamespace,
   TransferNamespace,
   TransferProgress
@@ -20,20 +19,6 @@ import type {
 import type { TransferId } from '@synra/protocol'
 
 import { unsupported } from './errors'
-
-/** The network namespace, which refuses rather than reaching around the page's own CSP. */
-export function createNetworkNamespace(): NetworkNamespace {
-  return {
-    // ★ A refusal rather than a fetch.
-    //
-    // The plugin page's CSP is `connect-src 'none'`, so a direct `fetch` fails in a way that looks like a network
-    // problem. Routing through the kernel is the only sanctioned path, and this build has no command for it — so this
-    // says so instead of reaching around the policy.
-    fetch: async () => {
-      throw unsupported('network.fetch')
-    }
-  }
-}
 
 /** The transfer namespace, whose unsubscribe is real even though no transfer ever starts. */
 export function createTransferNamespace(): TransferNamespace {
