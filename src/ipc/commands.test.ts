@@ -104,6 +104,8 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // `One`, with the option bag the wrapper requires: the page builds it, and a fake that ignored it would answer a shape
   // the page could not have produced.
   diag_export: { options: { includeAudit: false, includeDebugLogs: false } },
+  // `Many`: a bare array, which is what the arity says the payload is.
+  diag_logs_tail: { lines: 100 },
   // `Unit`: the answer has no shape to hold a caller to, which is the claim this entry makes alongside the declaration.
   plugins_audit_clear: { pluginId: '@acme/hello' },
   plugins_update: { pluginId: '@acme/hello' },

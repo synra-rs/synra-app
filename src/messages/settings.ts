@@ -62,7 +62,10 @@ export const settings = {
     lines: 'Log lines',
     export: 'Export diagnostics',
     included: (sections: string): string => `Includes: ${sections}`,
-    excluded: (sections: string): string => `Left out: ${sections}`
+    excluded: (sections: string): string => `Left out: ${sections}`,
+    /** The shell's own recent log, for a user who wants to see it before exporting. */
+    logs: 'Recent log',
+    logsEmpty: 'The log is empty.'
   },
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {

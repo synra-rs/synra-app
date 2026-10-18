@@ -399,4 +399,27 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain(messages.settings.diagnostics.excluded('audit trail: not requested'))
     wrapper.unmount()
   })
+
+  it('reads the recent log when its section is opened', async () => {
+    // ★ Read on open, not on mount: a log copied at load is stale by the time a user scrolls to it, and it is the
+    // largest thing this page can ask for. The queued `toggle` is the browser's own event, as in the audit section.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_logs_tail: ['synra: started', 'synra: discovery bound']
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(mocks.call).not.toHaveBeenCalledWith('diag_logs_tail', expect.anything())
+    const log = wrapper.find('details')
+    expect(log.exists(), 'the log section is missing').toBe(true)
+    ;(log.element as HTMLDetailsElement).open = true
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('diag_logs_tail', { lines: 200 })
+    expect(wrapper.text()).toContain('synra: discovery bound')
+    wrapper.unmount()
+  })
 })

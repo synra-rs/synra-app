@@ -161,6 +161,9 @@ export class FakeKernel implements Bridge {
           included: ['environment', 'config', 'devices', 'plugins'],
           excluded: []
         }
+      case 'diag_logs_tail':
+        // `Many`: a bare array of lines. Empty is an answer too — the page has its own sentence for it.
+        return []
       case 'plugins_publisher_decide':
         return {}
       case 'plugins_preview':

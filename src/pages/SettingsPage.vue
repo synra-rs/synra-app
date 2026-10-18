@@ -277,6 +277,21 @@
           {{ messages.settings.diagnostics.excluded(exported.excluded.join('; ')) }}
         </span>
       </div>
+
+      <!--
+        ★ The log is read on demand, like the plugin audit: a page that read it on mount would hold a copy that goes stale
+        while the user is looking at it, and a log can be the largest thing this page ever asks for. Opening the section
+        is the request; closing it leaves what was read on screen, because the lines are still what the shell wrote.
+      -->
+      <details class="stack gap-2" @toggle="(event) => openLog(event)">
+        <summary class="cursor-pointer text-xs text-ink-dim">
+          {{ messages.settings.diagnostics.logs }}
+        </summary>
+        <pre v-if="logLines.length > 0" class="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs font-mono">{{ logLines.join('\n') }}</pre>
+        <p v-else-if="logAsked" class="m-0 text-xs text-ink-dim">
+          {{ messages.settings.diagnostics.logsEmpty }}
+        </p>
+      </details>
     </section>
   </section>
 </template>
@@ -454,6 +469,26 @@ async function exportDiagnostics(): Promise<void> {
     return
   }
   exported.value = answer.value
+}
+
+/** The shell's recent log, once the section is opened. */
+const logLines = ref<readonly string[]>([])
+
+/** Whether the log has been asked for, so the empty sentence is not drawn before the first read. */
+const logAsked = ref(false)
+
+/** Reads the tail on every open: a log copied once goes stale while the user is looking at it. */
+async function openLog(event: Event): Promise<void> {
+  if (!(event.target as HTMLDetailsElement).open)
+    return
+  error.value = undefined
+  const answer = await kernel.call<string[]>('diag_logs_tail', { lines: 200 })
+  logAsked.value = true
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  logLines.value = [...answer.value]
 }
 
 /** The device being un-trusted, so its button can say so. */
