@@ -93,6 +93,11 @@ pub struct AppState {
     /// desk is the shared thing they agree on — the daemon learnt this first, where the answer comes from a person who is not
     /// on the connection that asked.
     pub pairing: Arc<synra_core::pairing::PairingDesk>,
+    /// The transfer desk: incoming transfers waiting for this device's answer.
+    ///
+    /// ★ Beside the pairing desk and for the same reason: the question is asked on a connection thread and answered by a
+    /// command, and those are different threads with no other value between them.
+    pub transfer_desk: Arc<crate::transfer_desk::TransferDesk>,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 
@@ -212,6 +217,7 @@ impl AppState {
                 local_id,
                 synra_protocol::session::SessionTimeouts::default().pairing,
             )),
+            transfer_desk: Arc::new(crate::transfer_desk::TransferDesk::new()),
             started_at_ms: now_ms,
             platform: Arc::new(synra_platform::CommandPlatform::new()),
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),

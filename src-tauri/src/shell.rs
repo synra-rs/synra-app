@@ -180,6 +180,19 @@ mod wrappers {
         commands::transfers::transfer_cancel(&state, &transfer_id)
     }
 
+    /// Answers the prompt for an incoming transfer.
+    ///
+    /// The listener thread is waiting on this answer, and the file is accepted or refused when it arrives — so this is a
+    /// decision about a peer's connection, not a preference stored for later.
+    #[tauri::command]
+    pub fn transfer_respond(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        transfer_id: String,
+        accept: bool,
+    ) -> Result<(), IpcError> {
+        commands::transfers::transfer_respond(&state, &transfer_id, accept)
+    }
+
     /// Sends a file to a paired device, and answers the transfer it started.
     ///
     /// ★ **Blocking, deliberately, for now.** The dial and the block loop run on this call, so a large file occupies the
@@ -452,6 +465,7 @@ mod wrappers {
             plugin_ui_ready,
             plugin_ui_rpc,
             transfer_cancel,
+            transfer_respond,
             transfer_send_file,
             transfer_send_text,
             transfer_list,

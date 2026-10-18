@@ -186,6 +186,58 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 crate::commands::transfers::announce_transfer(&progress_state, snapshot);
             });
 
+            // ★ The question a peer's file asks. Attachments wait for a person; plugin bundles do not, because a sync round
+            // is already a decision the user made by pressing "sync", and a prompt in the middle of it would make the round
+            // depend on somebody watching the window.
+            let offer_state = Arc::clone(&db_state);
+            let offer_desk = Arc::clone(&db_state.transfer_desk);
+            let offer: Arc<synra_core::inbound::OfferCallback> = Arc::new(
+                move |incoming: &synra_core::inbound::Offer<'_>| {
+                    use synra_core::inbound::OfferDecision;
+                    if !matches!(incoming.request.kind, synra_protocol::session::TransferKind::Attachment) {
+                        return OfferDecision::Accept;
+                    }
+                    let now = synra_store::sqlite::now_ms();
+                    let peer_name = offer_state
+                        .db()
+                        .paired_devices()
+                        .ok()
+                        .and_then(|devices| {
+                            devices
+                                .into_iter()
+                                .find(|device| device.device_id == incoming.peer.to_string())
+                        })
+                        .map_or_else(|| incoming.peer.to_string(), |device| device.display_name);
+                    let pending = crate::transfer_desk::Pending {
+                        transfer_id: incoming.request.transfer_id.to_string(),
+                        peer: incoming.peer.to_string(),
+                        file_name: incoming.file_name.to_owned(),
+                        total_bytes: incoming.request.byte_length,
+                        started_at_ms: now,
+                    };
+                    let announced =
+                        crate::commands::transfers::offered_snapshot(incoming, &peer_name, now);
+                    let show = || {
+                        crate::commands::transfers::announce_transfer(&offer_state, announced);
+                    };
+                    let accepted = offer_desk.ask(
+                        &pending,
+                        show,
+                        crate::transfer_desk::OFFER_TIMEOUT,
+                    );
+                    crate::commands::transfers::withdraw_offer(
+                        &offer_state,
+                        incoming.request.transfer_id,
+                    );
+                    if accepted {
+                        OfferDecision::Accept
+                    }
+                    else {
+                        OfferDecision::Refuse
+                    }
+                },
+            );
+
             synra_core::listener::serve_with(
                 &host,
                 &thread_cancel,
@@ -194,6 +246,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 &router,
                 &finished,
                 &progress,
+                &offer,
             );
         })
         .map_or_else(

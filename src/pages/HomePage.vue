@@ -74,6 +74,20 @@
               {{ transfer.state }}
             </ATag>
           </div>
+          <!--
+            A transfer that is `offered` is a question, not a file arriving: the receiving side is waiting for this answer
+            before it stores a byte, and the peer's connection is held open until it comes. Both answers are shown because
+            "no" is an answer, not a dismissal.
+          -->
+          <div v-if="transfer.state === 'offered'" class="row gap-2">
+            <span class="truncate text-xs text-ink-dim">{{ transfer.fileName }}</span>
+            <AButton size="small" @click="respond(transfer.transferId, true)">
+              {{ messages.home.inFlight.accept }}
+            </AButton>
+            <AButton size="small" @click="respond(transfer.transferId, false)">
+              {{ messages.home.inFlight.reject }}
+            </AButton>
+          </div>
         </AList.Item>
       </AList>
     </section>
@@ -150,6 +164,19 @@ const { intents, transfers } = storeToRefs(intentsStore)
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/**
+ * Answers the prompt for a file a peer wants to send.
+ *
+ * The row is not removed here: the kernel publishes `transferFinished` when the waiting connection has its answer, and
+ * the intents store applies it — the same rule as every other event on this screen.
+ */
+async function respond(transferId: string, accept: boolean): Promise<void> {
+  error.value = undefined
+  const answer = await kernel.call<null>('transfer_respond', { transferId, accept })
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /** Which of the four real states the wire is in, and which device it is about. */
 const wire = computed(() => {

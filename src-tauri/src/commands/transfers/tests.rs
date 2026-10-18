@@ -24,6 +24,20 @@ fn snapshot(transfer_id: TransferId, state: &str) -> TransferSnapshot {
 }
 
 #[test]
+fn answering_a_prompt_that_is_not_waiting_is_refused() {
+    // ★ The prompt's id is one a panel was told about. Answering twice, or answering after the window closed, is an
+    // answer to a question that no longer exists — and a kernel that said "done" would leave the panel believing it
+    // settled something a peer is still waiting on.
+    let state = crate::testing::state();
+    let refused = super::transfer_respond(&state, "00000000-0000-4000-8000-000000000003", true)
+        .expect_err("nothing is waiting");
+    assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
+
+    let invalid = super::transfer_respond(&state, "not-an-id", true).expect_err("it does not parse");
+    assert_eq!(invalid.code, synra_protocol::ErrorCode::InvalidArgument);
+}
+
+#[test]
 fn cancelling_a_transfer_that_is_not_in_flight_is_refused() {
     // ★ A cancel naming a transfer nobody is running means the panel is out of date. Answering "done" would leave it
     // believing it stopped something, so the refusal names the identifier and the panel can re-read.

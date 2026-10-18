@@ -60,7 +60,8 @@ import {
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
-  intent_snapshot: ['intentId']
+  intent_snapshot: ['intentId'],
+  transfer_respond: ['transferId', 'accept']
 }
 
 /**
@@ -153,6 +154,9 @@ export class FakeKernel implements Bridge {
       case 'intent_snapshot':
         // `One`, and it takes an `intent_id`: the command answers about *one* intent rather than listing them.
         return { ...INTENT }
+      case 'transfer_respond':
+        // The answer is nothing; the row leaves through the `transferFinished` event the kernel will publish.
+        return {}
       case 'transfer_list':
         // ★ A bare array, for the same reason as `plugins_list` above: `Many`.
         return TRANSFERS.map(transfer => ({ ...transfer }))

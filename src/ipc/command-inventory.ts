@@ -46,6 +46,7 @@ export const REGISTERED = [
   // The transfers in flight. The registry is filled by the two send commands as they move blocks; an **inbound** transfer is
   // driven by the listener and is not reported in this list yet.
   'transfer_cancel',
+  'transfer_respond',
   'transfer_send_file',
   'transfer_send_text',
   'transfer_list',

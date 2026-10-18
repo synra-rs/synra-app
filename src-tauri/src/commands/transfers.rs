@@ -413,6 +413,83 @@ pub fn received_snapshot(
 /// Because the two halves must not be separated: a row left in the registry is a transfer the panel shows as still
 /// arriving, and a `TransferFinished` without the removal leaves a row that no later event can clear. The outgoing path
 /// has the same pair in [`finish_transfer`], and this is the receiving half of it.
+/// The row a transfer prompt is built from, before any byte has arrived.
+///
+/// `state` is `offered`, which is the word the interface uses for "this is a question, not a transfer". The counts are
+/// real: the proposal says how many bytes and how it will be split, so the prompt can show a size without reading
+/// anything.
+#[must_use]
+pub fn offered_snapshot(
+    offer: &synra_core::inbound::Offer<'_>,
+    peer_name: &str,
+    started_at_ms: i64,
+) -> TransferSnapshot {
+    let request = offer.request;
+    let blocks_total = if request.chunk_size == 0 {
+        0
+    }
+    else {
+        u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size))).unwrap_or(u32::MAX)
+    };
+    TransferSnapshot {
+        transfer_id: request.transfer_id,
+        peer_device: offer.peer,
+        peer_name: peer_name.to_owned(),
+        direction: "receive".to_owned(),
+        kind: match request.kind {
+            synra_protocol::session::TransferKind::PluginBundle => "plugin-bundle",
+            _ => "attachment",
+        }
+        .to_owned(),
+        state: "offered".to_owned(),
+        file_name: offer.file_name.to_owned(),
+        received_bytes: 0,
+        total_bytes: request.byte_length,
+        blocks_done: 0,
+        blocks_total,
+        abort_reason: None,
+        started_at_ms,
+    }
+}
+
+/// Removes a prompt's row, whichever way it was answered.
+///
+/// The row was never a transfer in flight, so there is no worker to forget it and no temporary file to delete: the panel
+/// has to be told, and the registry has to stop listing it.
+pub fn withdraw_offer(state: &crate::state::AppState, transfer_id: TransferId) {
+    state.transfers.forget(&transfer_id);
+    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+}
+
+/// Answers the prompt for an incoming transfer.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] when the identifier does not parse, and [`ErrorCode::TransferFailed`] when no prompt is
+/// waiting for it — an id that expired while the user was deciding, or one the interface repeated.
+pub fn transfer_respond(
+    state: &crate::state::AppState,
+    transfer_id: &str,
+    accept: bool,
+) -> Result<(), IpcError> {
+    let id = transfer_id.parse::<TransferId>().map_err(|error| {
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}))
+    })?;
+    if state.transfer_desk.respond(&id.to_string(), accept) {
+        return Ok(());
+    }
+    Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(serde_json::json!({
+        "transferId": transfer_id,
+        "reason": "it is not waiting for an answer",
+    })))
+}
+
+/// Announces a received transfer as completed and retires its row.
+///
+/// The receiving half of a transfer has no worker to remove the row; without this the panel would show it as arriving
+/// for ever. A transfer that never registered a row is still finished: the announcement is how the panel learns the id
+/// is done.
 pub fn complete_received(
     state: &crate::state::AppState,
     transfer_id: synra_protocol::ids::TransferId,

@@ -60,6 +60,8 @@ pub mod instance;
 pub mod listener;
 pub mod plugin_host;
 pub mod state;
+/// The incoming transfers waiting for an answer.
+pub mod transfer_desk;
 pub mod tray_menu;
 
 // ★ The window, and only when there is one to build.
