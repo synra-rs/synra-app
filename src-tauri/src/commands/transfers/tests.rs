@@ -228,6 +228,14 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
         snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
         "the attempt's time is recorded"
     );
+    match snapshot.get("transfer_throughput_bps{kind=attachment}") {
+        // The exact rate depends on how long the memory link took, so the claim is that a rate was measured at all.
+        Some(synra_observe::metrics::Value::Histogram(histogram)) => {
+            assert_eq!(histogram.count, 1);
+            assert!(histogram.sum > 0.0, "a delivered transfer has a positive rate");
+        }
+        other => panic!("expected a throughput histogram, got {other:?}"),
+    }
 
     let _ = std::fs::remove_file(path);
 }
@@ -657,5 +665,9 @@ fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
     assert!(
         snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
         "an abort still took time from its first progress event"
+    );
+    assert!(
+        snapshot.get("transfer_throughput_bps{kind=attachment}").is_none(),
+        "an aborted transfer has no rate: it did not move its bytes"
     );
 }

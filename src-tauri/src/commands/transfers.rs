@@ -611,6 +611,21 @@ fn record_attempt(
             &synra_observe::metrics::SeriesKey::new("transfer_bytes", [("kind".to_owned(), kind.to_owned())]),
             byte_length as f64,
         );
+        // ★ Throughput only for a transfer that moved its bytes, and only when there is a duration to divide by. The
+        // window is the whole attempt (for a send, including the dial), so this is end-to-end throughput rather than the
+        // link's line rate — which is the number a user comparing "how long did this take" is asking about.
+        if let Some(elapsed) = elapsed {
+            let seconds = elapsed.as_secs_f64();
+            if seconds > 0.0 {
+                state.metrics.histogram_observe(
+                    &synra_observe::metrics::SeriesKey::new(
+                        "transfer_throughput_bps",
+                        [("kind".to_owned(), kind.to_owned())],
+                    ),
+                    byte_length as f64 / seconds,
+                );
+            }
+        }
     }
 }
 
