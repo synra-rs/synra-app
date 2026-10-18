@@ -156,15 +156,66 @@ fn candidate_card(state: &AppState, candidate: &orchestrate::CandidateView) -> C
 ///
 /// [`IpcError`] when the source is one this build cannot route, or when there is no plugin engine.
 pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<IntentId, IpcError> {
-    let plugins = plugins(state)?;
-    let item = item_for(state, source)?;
-    let routed = orchestrate::dispatch(plugins, &state.board, &item, synra_store::sqlite::now_ms())
-        .map_err(|error| as_ipc(&error))?;
+    let started = std::time::Instant::now();
+    let routed = match route(state, source) {
+        Ok(routed) => routed,
+        Err(error) => {
+            record_dispatch(state, None, started.elapsed());
+            return Err(error);
+        }
+    };
+    record_dispatch(state, Some(&routed), started.elapsed());
     // ★ The window learns an intent exists without asking. The snapshot is read back from the board rather than built
     // from `routed`: the board is what `intent_list` will answer with, and a card assembled here would be a second
     // description of the same intent — the one that disagrees the first time the two are computed differently.
     announce(state, routed.intent_id);
     Ok(routed.intent_id)
+}
+
+/// The routing half, split out so the caller can record a duration on both paths.
+///
+/// # Errors
+///
+/// As [`intent_dispatch`]: no engine, an unroutable source, or the library's own refusal.
+#[allow(clippy::result_large_err)]
+fn route(state: &AppState, source: &IntentSourceDto) -> Result<orchestrate::Routed, IpcError> {
+    let plugins = plugins(state)?;
+    let item = item_for(state, source)?;
+    orchestrate::dispatch(plugins, &state.board, &item, synra_store::sqlite::now_ms())
+        .map_err(|error| as_ipc(&error))
+}
+
+/// Records one dispatch: how long it took, whether routing succeeded, and whether anything offered to handle it.
+///
+/// # Why the labels are the daemon's
+///
+/// The daemon has counted `intents_total{outcome=ok|refused}` and `intent_no_handler_total` since its share path was
+/// written, and `intent_duration_ms` now in both hosts. A second spelling here (the settle stage, `result=…`) would make
+/// the two hosts' snapshots incomparable for the one question these counters answer — "is the share path working", not
+/// "which stage did it stop at" (the card already says that).
+///
+/// # Why a routing failure still gets a duration
+///
+/// A share the matcher refused still spent its matching time. A distribution built only from successes would answer
+/// "how slow is a share" with no failures in it.
+fn record_dispatch(state: &AppState, routed: Option<&orchestrate::Routed>, elapsed: std::time::Duration) {
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new("intent_duration_ms", []),
+        elapsed.as_secs_f64() * 1_000.0,
+    );
+
+    let outcome = if routed.is_some() { "ok" } else { "refused" };
+    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
+        "intents_total",
+        [("outcome".to_owned(), outcome.to_owned())],
+    ));
+    // The separate counter is not redundant with `outcome=ok`: an empty plugin set still raises an intent successfully,
+    // and "nothing offered to handle this" is the question a user has when nothing opens.
+    if routed.is_some_and(|routed| routed.candidates.is_empty()) {
+        state
+            .metrics
+            .counter_inc(&synra_observe::metrics::SeriesKey::new("intent_no_handler_total", []));
+    }
 }
 
 /// Every intent the board is holding, in the order they were raised.
@@ -449,6 +500,30 @@ mod tests {
         match delivery.events() {
             [synra_ipc::event::KernelEvent::IntentUpdated(intent)] => assert_eq!(intent.intent_id, id),
             other => panic!("expected the intent's card, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_dispatch_records_its_outcome_and_duration() {
+        // ★ The metric is written where the dispatch happened, with the daemon's own labels. Three claims: the outcome
+        // counter fires, the no-handler counter fires when nothing offered, and the histogram received one observation —
+        // a histogram with no observations is a shape rather than a measurement.
+        use synra_observe::metrics::Value;
+
+        let state = engine_state();
+        let _ = intent_dispatch(&state, &IntentSourceDto::Share { text: "hi".to_owned(), title: None })
+            .expect("raised");
+
+        let snapshot = state.metrics.snapshot();
+        assert_eq!(
+            snapshot.get("intents_total{outcome=ok}"),
+            Some(&Value::Counter(1)),
+            "routing succeeded, so the counter says so"
+        );
+        assert_eq!(snapshot.get("intent_no_handler_total"), Some(&Value::Counter(1)));
+        match snapshot.get("intent_duration_ms") {
+            Some(Value::Histogram(histogram)) => assert_eq!(histogram.count, 1, "one dispatch, one observation"),
+            other => panic!("expected a duration histogram, got {other:?}"),
         }
     }
 

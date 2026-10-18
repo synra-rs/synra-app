@@ -409,6 +409,19 @@ pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -
 pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
     let rows = state.db().plugins().map_err(internal)?;
 
+    // ★ The two plugin gauges the design names, set where the truth is read rather than incremented on every write: a
+    // write that failed half-way leaves no counter to correct, and a database edited by a tool is reflected by the next
+    // list. `active` is the user's switch, not "loaded in this process" — a faulted plugin is still enabled until the
+    // user says otherwise.
+    let installed = i64::try_from(rows.len()).unwrap_or(i64::MAX);
+    let active = i64::try_from(rows.iter().filter(|row| row.enabled).count()).unwrap_or(i64::MAX);
+    state
+        .metrics
+        .gauge_set(&synra_observe::metrics::SeriesKey::new("plugins_installed", []), installed);
+    state
+        .metrics
+        .gauge_set(&synra_observe::metrics::SeriesKey::new("plugins_active", []), active);
+
     // ★ One lock for the whole list.
     //
     // Taking it once per row would make a twenty-plugin list take the lock twenty times, and a plugin that compiles
@@ -1658,6 +1671,26 @@ mod tests {
         let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10).expect("read");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].at_ms, now - 2 * day, "the recent call stayed");
+    }
+
+    #[test]
+    fn listing_plugins_sets_the_installed_and_active_gauges() {
+        // ★ Set where the truth is read rather than incremented on every write: a write that failed half-way leaves no
+        // counter to correct. The fixture installs one enabled plugin; a second, disabled row makes the two numbers
+        // differ — an assertion that only checked one gauge would pass even if both were fed the same value.
+        use synra_observe::metrics::Value;
+
+        let (_root, state) = installed();
+        state
+            .db()
+            .insert_plugin("@acme/other", false, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .expect("a second row");
+
+        let _ = plugins_list(&state).expect("the list");
+
+        let snapshot = state.metrics.snapshot();
+        assert_eq!(snapshot.get("plugins_installed"), Some(&Value::Gauge(2)));
+        assert_eq!(snapshot.get("plugins_active"), Some(&Value::Gauge(1)), "only the enabled one is active");
     }
 
     #[test]
