@@ -70,9 +70,22 @@
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
           <div class="row-between gap-3">
             <span class="truncate text-sm">{{ transfer.peerName }}</span>
-            <ATag class="m-0">
-              {{ transfer.state }}
-            </ATag>
+            <div class="row gap-2">
+              <ATag class="m-0">
+                {{ transfer.state }}
+              </ATag>
+              <!--
+                The same command for both directions: an outgoing transfer stops its worker, an incoming one leaves the
+                identifier for the listener, which is the only writer to that link.
+              -->
+              <AButton
+                size="small"
+                :loading="cancelling === transfer.transferId"
+                @click="cancelTransfer(transfer)"
+              >
+                {{ messages.home.inFlight.cancel }}
+              </AButton>
+            </div>
           </div>
         </AList.Item>
       </AList>
@@ -127,7 +140,7 @@
  * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
  * worth looking at.
  */
-import type { IntentSnapshot, SuggestedAction } from '@synra/protocol'
+import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
@@ -150,6 +163,19 @@ const { intents, transfers } = storeToRefs(intentsStore)
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/** The transfer being cancelled, so its button can say so and cannot be pressed twice. */
+const cancelling = ref<string | undefined>(undefined)
+
+/** Asks the kernel to abandon a transfer, whichever direction it is moving. */
+async function cancelTransfer(transfer: TransferSnapshot): Promise<void> {
+  cancelling.value = transfer.transferId
+  error.value = undefined
+  const answer = await kernel.call<null>('transfer_cancel', { transferId: transfer.transferId })
+  cancelling.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /** Which of the four real states the wire is in, and which device it is about. */
 const wire = computed(() => {

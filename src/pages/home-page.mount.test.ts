@@ -13,6 +13,8 @@
  * assertion runs. A memory router with no routes is enough: nothing here navigates.
  */
 
+import type { TransferSnapshot } from '@synra/protocol'
+
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -89,6 +91,38 @@ describe('the home page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('intent_list')
+    wrapper.unmount()
+  })
+
+  it('cancels a transfer from its row', async () => {
+    // ★ One command for both directions: the row does not need to know whether the kernel will stop a worker or leave the
+    // identifier for the listener.
+    const transfer: TransferSnapshot = {
+      transferId: '22222222-2222-4222-8222-222222222222',
+      peerDevice: '11111111-1111-4111-8111-111111111111',
+      peerName: 'Study PC',
+      direction: 'receive',
+      kind: 'file',
+      state: 'receiving',
+      fileName: 'notes.txt',
+      receivedBytes: 0,
+      totalBytes: 10,
+      blocksDone: 0,
+      blocksTotal: 1,
+      startedAtMs: 1
+    }
+    answer({ intent_list: [], transfer_cancel: null })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
+    await flushPromises()
+    const cancel = wrapper.findAll('button').find(button => button.text() === 'Cancel')
+    expect(cancel).toBeDefined()
+    await cancel?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('transfer_cancel', { transferId: transfer.transferId })
     wrapper.unmount()
   })
 
