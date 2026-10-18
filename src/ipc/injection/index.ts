@@ -45,7 +45,7 @@ import { createNetworkNamespace } from './network'
 import { createClipboardNamespace, createPlatformNamespace } from './platform'
 import { createSelfNamespace } from './self'
 import { createStorageNamespace } from './storage'
-import { createTransferNamespace } from './unsupported-namespaces'
+import { createTransferNamespace } from './transfer'
 
 export type { HostKind, InjectionContext } from './context'
 
@@ -74,7 +74,7 @@ export function createInjection(context: InjectionContext): SynraClient {
     device: createDeviceNamespace(context, event, granted),
     storage: createStorageNamespace(context),
     network: createNetworkNamespace(context),
-    transfer: createTransferNamespace(),
+    transfer: createTransferNamespace(context),
     platform: createPlatformNamespace(context),
     clipboard: createClipboardNamespace(context),
     self: createSelfNamespace(context),

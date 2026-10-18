@@ -135,6 +135,8 @@ pub fn plugin_ui_rpc(
         PluginUiOp::NetworkFetch => network_fetch(state, &plugin_id, args),
         PluginUiOp::SelfActions => self_actions(state, &plugin_id),
         PluginUiOp::SelfInvoke => self_invoke(state, &plugin_id, args),
+        PluginUiOp::TransferSend => transfer_send(state, &session, args),
+        PluginUiOp::TransferStatus => transfer_status(state, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "method": method,
             "reason": "the operation is on the plugin surface and this build does not implement it",
@@ -619,6 +621,140 @@ fn plugin_set_error(error: synra_core::dispatch::PluginSetError) -> IpcError {
         ),
         _ => internal(error),
     }
+}
+
+// ── Transfers ────────────────────────────────────────────────────────────────────────────────────
+//
+// ★ The first slice of the page-to-kernel byte channel: the page base64-encodes the Blob, the kernel decodes it into a
+// temporary file and reuses the desktop's own send path (`transfers::transfer_send_file`) — the same dial, the same
+// per-block progress events and the same error mapping the transfer panel uses. The cap is the honest part of this
+// slice: a 100 MiB string in one IPC message is not a channel, so large files wait for the chunked one (19 §8.10).
+
+/// The largest file a page may send in one call.
+const MAX_PLUGIN_TRANSFER_BYTES: usize = 4 * 1024 * 1024;
+
+/// Whether a page's file name is one path component a receiver may safely be told.
+fn transfer_file_name(name: &str) -> Result<(), IpcError> {
+    let refused = |reason: &str| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": "fileName", "reason": reason}))
+    };
+    if name.is_empty() {
+        return Err(refused("a file needs a name"));
+    }
+    if name.len() > 255 {
+        return Err(refused("the name is longer than 255 bytes"));
+    }
+    if name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
+        return Err(refused("the name must be one path component"));
+    }
+    Ok(())
+}
+
+/// The client's name for a transfer state.
+///
+/// The sender's snapshots say `queued` and `active`; the contract's union says `pending` and `transferring`. The rest are
+/// the same word in both places, so they pass through instead of being mapped twice.
+fn transfer_state_name(state: &str) -> &str {
+    match state {
+        "queued" => "pending",
+        "active" => "transferring",
+        other => other,
+    }
+}
+
+/// Sends one file a page handed over as base64.
+fn transfer_send(
+    state: &AppState,
+    session: &ValidatedSession,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    use base64::Engine as _;
+    use synra_protocol::ids::DeviceId;
+
+    require_grant(session, "file:transfer:send", "transfer.send")?;
+    if args.get("contextId").is_some() {
+        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+            "reason": "grouping a transfer by context is not implemented on this channel yet",
+        })));
+    }
+    let to_text = string_arg(args, "to")?;
+    let to = uuid::Uuid::parse_str(to_text)
+        .map(DeviceId::from_uuid)
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"field": "to", "reason": error.to_string()}))
+        })?;
+    let file_name = string_arg(args, "fileName")?;
+    transfer_file_name(file_name)?;
+    let data = string_arg(args, "data")?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": "data", "reason": error.to_string()}))
+    })?;
+    if bytes.len() > MAX_PLUGIN_TRANSFER_BYTES {
+        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+            "field": "data",
+            "bytes": bytes.len(),
+            "maxBytes": MAX_PLUGIN_TRANSFER_BYTES,
+        })));
+    }
+
+    // One directory per transfer: the file keeps the name the page chose, two sends cannot collide, and the cleanup
+    // removes exactly what this call created.
+    let directory = state.paths.cache_dir().join("plugin-transfers").join(uuid::Uuid::new_v4().to_string());
+    std::fs::create_dir_all(&directory).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": format!("could not make the transfer directory: {error}")}))
+    })?;
+    let path = directory.join(file_name);
+    if let Err(error) = std::fs::write(&path, &bytes) {
+        let _ = std::fs::remove_dir(&directory);
+        return Err(IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": format!("could not write the transfer file: {error}")})));
+    }
+
+    let outcome = super::transfers::transfer_send_file(
+        state,
+        &synra_ipc::dto::SendFileRequest {
+            to,
+            path: path.to_string_lossy().into_owned(),
+            context_id: None,
+        },
+    );
+    // ★ Both paths clean up: a failed dial must not leave the page's bytes in the cache directory.
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&directory);
+    Ok(serde_json::json!({"transferId": outcome?.to_string()}))
+}
+
+/// The state of a transfer this shell still has a row for.
+fn transfer_status(state: &AppState, args: &serde_json::Value) -> Result<serde_json::Value, IpcError> {
+    use synra_protocol::ids::TransferId;
+
+    let id_text = string_arg(args, "transferId")?;
+    let id = uuid::Uuid::parse_str(id_text)
+        .map(TransferId::from_uuid)
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"field": "transferId", "reason": error.to_string()}))
+        })?;
+    let Some(snapshot) = state.transfers.list().into_iter().find(|transfer| transfer.transfer_id == id) else {
+        // A completed transfer is removed from the registry by `finish_transfer`; the façade keeps the final state of
+        // the transfers it started, so an unknown id here is usually "it is over" rather than "it never existed".
+        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+            "transferId": id_text,
+            "reason": "no transfer by that id is in flight",
+        })));
+    };
+    Ok(serde_json::json!({
+        "transferId": snapshot.transfer_id.to_string(),
+        "state": transfer_state_name(&snapshot.state),
+        "receivedBytes": snapshot.received_bytes,
+        "totalBytes": snapshot.total_bytes,
+        "blocksDone": snapshot.blocks_done,
+        "blocksTotal": snapshot.blocks_total,
+    }))
 }
 
 /// The façade a plugin page runs: built by `pnpm run build:facade`, embedded here.

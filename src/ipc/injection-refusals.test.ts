@@ -27,12 +27,6 @@ describe('what the host cannot do yet', () => {
   const cases: readonly { readonly name: string, readonly call: (synra: SynraClient) => Promise<unknown> }[] = [
     { name: 'device.send', call: async synra => synra.device.send({ to: 'peer', event: 'thing' }) },
     { name: 'device.broadcast', call: async synra => synra.device.broadcast({ event: 'thing' }) },
-    {
-      name: 'transfer.send',
-      call: async synra =>
-        synra.transfer.send({ to: 'peer', file: new Blob(['x']), fileName: 'a.txt' })
-    },
-    { name: 'transfer.status', call: async synra => synra.transfer.status('t1') },
     { name: 'event.emit', call: async synra => synra.event.emit('_plugin.com.example.notes.thing') }
   ]
 

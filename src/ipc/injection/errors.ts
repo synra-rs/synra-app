@@ -36,6 +36,16 @@ export function denied(capability: string): SynraError {
   } as unknown as SynraError
 }
 
+/** A refusal for a value the host will not take in one piece. */
+export function tooLarge(detail: string): SynraError {
+  return {
+    code: 'payload_too_large' as ErrorCode,
+    message: `error.payload_too_large`,
+    retryable: false,
+    details: { detail }
+  } as unknown as SynraError
+}
+
 /** A refusal for an argument the host cannot accept. */
 export function invalidArgument(detail: string): SynraError {
   return {
