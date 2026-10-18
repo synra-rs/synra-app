@@ -176,6 +176,54 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('plans a sync and sends only when a device needs the artifact', async () => {
+    // ★ The plan is read before the run: `online` exists only in the plan, and a page that ran blind would report a
+    // failure for every device whose network was already visibly down.
+    const plan = {
+      pluginId: '@acme/hello',
+      targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: true, online: true }]
+    }
+    mocks.call
+      .mockResolvedValueOnce({ ok: true, value: [card()] })
+      .mockResolvedValueOnce({ ok: true, value: plan })
+      .mockResolvedValueOnce({ ok: true, value: { updated: 1, unchanged: 0 } })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)
+    expect(button, 'the card drew no sync button').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenNthCalledWith(2, 'plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(mocks.call).toHaveBeenNthCalledWith(3, 'plugins_sync_run', { plan })
+    expect(wrapper.text()).toContain(messages.plugins.syncDone(1, 0, 0))
+    wrapper.unmount()
+  })
+
+  it('says there is nothing to send when every device already has it', async () => {
+    mocks.call
+      .mockResolvedValueOnce({ ok: true, value: [card()] })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          pluginId: '@acme/hello',
+          targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: false, online: true }]
+        }
+      })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain(messages.plugins.syncNothing)
+    wrapper.unmount()
+  })
+
   it('draws the store, so a card that arrived by event reaches the screen', async () => {
     // ★ The page stopped holding a copy of the list: it reads the store, and `src/events.ts` writes it. This asserts the
     // join — a card put in the store by something other than the page's own read still reaches the DOM.

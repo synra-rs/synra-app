@@ -53,5 +53,18 @@ export const plugins = {
    * ★ Only drawn when the card says `hasUi`. A button on a headless-only plugin would be a control that can only
    * refuse, and the card already has the word for what the plugin is.
    */
-  openAction: 'Open'
+  openAction: 'Open',
+  /**
+   * Sending the artifact to the paired devices that do not have it.
+   *
+   * The plan and the run are one button because the user's intent is one: the intermediate plan is not a decision, it is
+   * the kernel telling the page what it would do.
+   */
+  syncAction: 'Sync to devices',
+  syncing: 'Syncing…',
+  /** Nothing to send: every paired device already reported this version. */
+  syncNothing: 'Every paired device already has this version.',
+  /** The counts as one sentence, so the three numbers cannot be read as a list of separate outcomes. */
+  syncDone: (updated: number, unchanged: number, failed: number): string =>
+    `Synced: ${updated} updated, ${unchanged} already current, ${failed} failed.`
 } as const

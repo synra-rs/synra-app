@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { KernelClient } from '../../ipc/client'
-import { decide, installFrom, setEnabled, uninstall } from './actions'
+import { decide, installFrom, planSync, runSync, setEnabled, uninstall } from './actions'
 
 /** A client whose bridge answers with `answer` and records every call. */
 function client(answer: unknown = { ok: true }) {
@@ -89,5 +89,43 @@ describe('the uninstall call', () => {
       pluginId: '@acme/hello',
       removeData: false
     })
+  })
+})
+
+describe('the sync calls', () => {
+  it('asks for a plan with the plugin id', async () => {
+    const { client: kernel, invoke } = client({ pluginId: '@acme/hello', targets: [] })
+
+    const outcome = await planSync(kernel, '@acme/hello')
+
+    expect(invoke).toHaveBeenCalledWith('plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('runs the plan it was given, under the key the command reads', async () => {
+    const { client: kernel, invoke } = client({ updated: 1, unchanged: 0 })
+    const plan = {
+      pluginId: '@acme/hello',
+      targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: true, online: true }]
+    }
+
+    const outcome = await runSync(kernel, plan)
+
+    expect(invoke).toHaveBeenCalledWith('plugins_sync_run', { plan })
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('answers the plan’s refusal as the notice needs it', async () => {
+    const { client: kernel } = client({
+      code: 'unsupported',
+      message: 'error.unsupported',
+      retryable: false
+    })
+
+    const outcome = await planSync(kernel, '@acme/hello')
+
+    if (outcome.ok)
+      throw new Error('a refusal must not be reported as a success')
+    expect(outcome.failure.code).toBe('unsupported')
   })
 })

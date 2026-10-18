@@ -25,7 +25,7 @@
 | --- | --- |
 | `src/`（前端） | 72 个文件、约 6.8k 行（42 个生产文件 + 30 个测试与夹具） |
 | `src-tauri/src/`（壳） | 30 个文件、约 8.1k 行（21 个生产 + 9 个测试） |
-| 命令 | 契约 41 条 · **注册 35 条** · 其中被调用 16 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
+| 命令 | 契约 41 条 · **注册 35 条** · 其中被调用 18 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
 | 页面 | 4 页（Home / Devices / Plugins / Settings） |
 | 前端 store | 5 / 8（devices / pairing / plugins / intents / settings） |
 
@@ -46,7 +46,7 @@
   （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`（seed 是包装函数的参数，不在全局 —— token
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
-- 验证：`pnpm test` 214 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
+- 验证：`pnpm test` 219 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
   Rust 侧 198 条。
 
 ### 还没有的（下一步就是这些）
@@ -56,8 +56,8 @@
 2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
    剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
 3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。
-4. **同步的终点**：`plugins_sync_plan` / `plugins_sync_run` 已注册但没有页面调用；接收端写 `plugins` 行而不解包
-   （包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。
+4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
+   接收端仍然只写 `plugins` 行而不解包（包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。
 5. **入站传输的进度**：`transfer_list` 只列本进程发出的传输，`listener` 收到的传输不在这张表里。
 
 ## 这个仓库装什么
@@ -110,7 +110,7 @@ synra-app/
 
 ```powershell
 pnpm install
-pnpm test             # vitest（214 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
+pnpm test             # vitest（219 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
 pnpm run build:facade # 生成 src-tauri/inject/facade.js —— Rust 侧 include_str! 它
 pnpm build            # vue-tsc -b + vite build
 pnpm shapes           # 8 条守卫（含 facade-fresh：重建门面并逐字节比较）

@@ -14,7 +14,7 @@
  * is described.
  */
 
-import type { InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
+import type { InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 
@@ -91,4 +91,22 @@ export async function uninstall(client: KernelClient, pluginId: string, removeDa
     removeData
   })
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+}
+
+/**
+ * Asks the paired devices what they hold, and answers what would have to be sent.
+ *
+ * The plan is a separate call from the run because it can be **read**: a device that is offline is in the plan with
+ * `online: false`, and a page that ran without looking would send to nobody and report a screen of failures. The two
+ * steps are the kernel's own split, and this module does not merge them.
+ */
+export async function planSync(client: KernelClient, pluginId: string): Promise<Outcome<SyncPlanDto>> {
+  const answer = await client.call<SyncPlanDto>('plugins_sync_plan', { pluginId })
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+}
+
+/** Sends the artifact the plan marked as needed, and answers what each device did. */
+export async function runSync(client: KernelClient, plan: SyncPlanDto): Promise<Outcome<SyncReport>> {
+  const answer = await client.call<SyncReport>('plugins_sync_run', { plan })
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }

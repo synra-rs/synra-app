@@ -171,6 +171,10 @@
                 {{ messages.plugins.openAction }}
               </AButton>
 
+              <AButton size="small" :loading="syncing === plugin.pluginId" @click="sync(plugin)">
+                {{ syncing === plugin.pluginId ? messages.plugins.syncing : messages.plugins.syncAction }}
+              </AButton>
+
               <APopconfirm
                 :title="messages.plugins.removeTitle"
                 :description="messages.plugins.removeKeepsData"
@@ -238,7 +242,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, planSync, runSync, setEnabled, uninstall } from './plugins/actions'
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -364,6 +368,14 @@ async function remove(plugin: PluginSnapshot): Promise<void> {
 const opening = ref<string | undefined>(undefined)
 
 /**
+ * What to tell the user after an action that reported rather than changed a card: an install, or a sync.
+ *
+ * One ref rather than two, because the page shows one note under the form: two would fight for the same line, and a
+ * message that replaced another without being read is a message that was never shown.
+ */
+const note = ref<string | undefined>(undefined)
+
+/**
  * Opens the plugin's page in its own window.
  *
  * The window is the shell's to build (`plugin_ui_open`), not this page's: the label, the origin and the token are decided
@@ -379,14 +391,51 @@ async function open(plugin: PluginSnapshot): Promise<void> {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
+/** The plugin whose artifact is being sent, so its button says so and cannot be pressed twice. */
+const syncing = ref<string | undefined>(undefined)
+
+/**
+ * Sends the artifact to the paired devices the plan says need it.
+ *
+ * ★ The plan is read before it is run, because it is the only place `online` is visible: a run over a plan whose targets
+ * are all offline would report a failure per device for a network the user could have seen was down. When nothing needs
+ * sending the button says so rather than showing a report of zeroes.
+ */
+async function sync(plugin: PluginSnapshot): Promise<void> {
+  syncing.value = plugin.pluginId
+  error.value = undefined
+  note.value = undefined
+
+  const planned = await planSync(kernel, plugin.pluginId)
+  if (!planned.ok) {
+    syncing.value = undefined
+    error.value = planned.failure
+    return
+  }
+  if (!planned.value.targets.some(target => target.needsArtifact)) {
+    syncing.value = undefined
+    note.value = messages.plugins.syncNothing
+    return
+  }
+
+  const report = await runSync(kernel, planned.value)
+  syncing.value = undefined
+  if (!report.ok) {
+    error.value = report.failure
+    return
+  }
+  note.value = messages.plugins.syncDone(
+    report.value.updated,
+    report.value.unchanged,
+    report.value.failures?.length ?? 0
+  )
+}
+
 /** The directory the user typed. */
 const installPath = ref('')
 
 /** Whether an install is in flight, so the button says so and cannot be pressed twice. */
 const installing = ref(false)
-
-/** What to tell the user after an install succeeded. */
-const note = ref<string | undefined>(undefined)
 
 /** Installs the package in the directory the user named, then re-reads the list. */
 async function install(): Promise<void> {
