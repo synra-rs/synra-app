@@ -7,6 +7,17 @@ export const plugins = {
   title: 'Plugins',
   empty: 'No plugin is installed.',
   /**
+   * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher
+   * id signed with a different key is not the publisher a user trusted.
+   */
+  publishers: {
+    title: 'Publishers',
+    detail: 'Keys that have signed a package this device verified.',
+    empty: 'No signed package has been verified yet.',
+    trust: 'Trust key',
+    revoke: 'Revoke key'
+  },
+  /**
    * ★ This said "See what a plugin is". There is no screen with that answer — the explanation lives in the
    * documentation site, and this window cannot open it (`default-src 'self'`, and the plugin facade's
    * `platform:open-url` is not part of the host's surface) — so that label would have been a button that does

@@ -103,6 +103,75 @@ pub fn plugins_consent_respond(
     Ok(card)
 }
 
+/// Every publisher this device has met, and what it has decided about each.
+///
+/// # Errors
+///
+/// [`IpcError::Internal`] when the table cannot be read.
+pub fn plugins_publishers(state: &AppState) -> Result<Vec<synra_ipc::dto::PublisherDto>, IpcError> {
+    let rows = {
+        let db = state.db();
+        db.publishers().map_err(internal)?
+    };
+    Ok(rows
+        .into_iter()
+        .map(|row| synra_ipc::dto::PublisherDto {
+            publisher_id: row.publisher_id,
+            fingerprint: row.fingerprint,
+            trust: row.trust,
+            first_seen_ms: row.first_seen_ms,
+            decided_ms: row.decided_ms,
+        })
+        .collect())
+}
+
+/// Decides what this device thinks of a publisher's key.
+///
+/// # The three answers
+///
+/// `trusted` is the user saying "I will take packages signed by this key"; `revoked` is the opposite; `seen` returns a
+/// decision to "met but not judged", which is what a user who changes their mind gets. Nothing here reads a signature:
+/// the row exists because an install verified one, and this is the judgement on top of that fact.
+///
+/// # Errors
+///
+/// [`IpcError::InvalidArgument`] for an unknown trust value or a publisher this device has not met.
+pub fn plugins_publisher_decide(
+    state: &AppState,
+    publisher_id: &str,
+    trust: &str,
+) -> Result<(), IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let trust = match trust {
+        "trusted" => synra_store::TRUST_TRUSTED,
+        "seen" => synra_store::TRUST_SEEN,
+        "revoked" => synra_store::TRUST_REVOKED,
+        other => {
+            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "field": "trust",
+                "reason": format!("`{other}` is not one of seen, trusted, revoked"),
+            })))
+        }
+    };
+    if publisher_id.is_empty() || publisher_id.len() > 256 {
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": "publisherId", "reason": "it must be 1–256 bytes"})));
+    }
+    let changed = {
+        let db = state.db();
+        db.set_publisher_trust(publisher_id, trust, synra_store::sqlite::now_ms())
+            .map_err(internal)?
+    };
+    if changed {
+        Ok(())
+    }
+    else {
+        Err(IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"publisherId": publisher_id, "reason": "no signature from it was seen"})))
+    }
+}
+
 /// Installs a `.synra` package a peer sent, with this shell's engine.
 ///
 /// # Why the backend is cloned before the install
@@ -491,7 +560,10 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 
 #[cfg(test)]
 mod tests {
-    use super::{entry_card, plugins_audit, plugins_consent_respond, plugins_install, plugins_list};
+    use super::{
+        entry_card, plugins_audit, plugins_consent_respond, plugins_install, plugins_list,
+        plugins_publisher_decide, plugins_publishers,
+    };
     use synra_ipc::InstallSourceDto;
     use synra_protocol::PluginId;
     use crate::testing;
@@ -921,5 +993,27 @@ mod tests {
         assert_eq!(card.plugin_id.as_str(), ID);
         assert_eq!(card.state, "awaiting_consent");
         assert!(card.granted.is_empty() && card.denied.is_empty(), "nothing has been decided yet");
+    }
+
+    #[test]
+    fn a_publisher_decision_needs_a_key_this_device_has_met() {
+        // ★ "Trusted" is a decision on a row that exists because a signature was verified. A command that could create
+        // the row would let the interface trust a key no package ever carried.
+        let state = crate::testing::state();
+
+        let refused = plugins_publisher_decide(&state, "@ghost", "trusted").expect_err("nobody has met it");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
+
+        state
+            .db()
+            .record_publisher("@acme", "AB12 CD34 EF56 7890", "a2V5", 1_000)
+            .expect("the key was seen");
+        plugins_publisher_decide(&state, "@acme", "trusted").expect("a known key can be trusted");
+        let listed = plugins_publishers(&state).expect("a list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].trust, "trusted");
+
+        let refused = plugins_publisher_decide(&state, "@acme", "maybe").expect_err("not a decision");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
     }
 }

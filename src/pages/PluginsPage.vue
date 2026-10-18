@@ -215,6 +215,51 @@
         </AList.Item>
       </template>
     </AList>
+    <section class="stack gap-3">
+      <h2 class="text-base font-medium">
+        {{ messages.plugins.publishers.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.plugins.publishers.detail }}
+      </p>
+
+      <!--
+        What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
+        nobody has decided yet"; the decision is the user's, and it is per key rather than per publisher name.
+      -->
+      <AEmpty v-if="publishers.length === 0" :description="messages.plugins.publishers.empty" />
+      <AList v-else size="small">
+        <AList.Item v-for="publisher in publishers" :key="publisher.publisherId">
+          <div class="row-between gap-3">
+            <span class="min-w-0 stack gap-0.5">
+              <span class="truncate text-sm">{{ publisher.publisherId }}</span>
+              <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
+            </span>
+            <span class="row gap-2">
+              <ATag class="m-0">
+                {{ publisher.trust }}
+              </ATag>
+              <AButton
+                v-if="publisher.trust !== 'trusted'"
+                size="small"
+                :loading="deciding === publisher.publisherId"
+                @click="decidePublisher(publisher.publisherId, 'trusted')"
+              >
+                {{ messages.plugins.publishers.trust }}
+              </AButton>
+              <AButton
+                v-if="publisher.trust !== 'revoked'"
+                size="small"
+                :loading="deciding === publisher.publisherId"
+                @click="decidePublisher(publisher.publisherId, 'revoked')"
+              >
+                {{ messages.plugins.publishers.revoke }}
+              </AButton>
+            </span>
+          </div>
+        </AList.Item>
+      </AList>
+    </section>
   </section>
 </template>
 
@@ -243,6 +288,15 @@ import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
 import { decide, installFrom, planSync, runSync, setEnabled, uninstall } from './plugins/actions'
+
+/** A publisher row, as `plugins_publishers` answers it. */
+interface PublisherRow {
+  readonly publisherId: string
+  readonly fingerprint: string
+  readonly trust: string
+  readonly firstSeenMs: number
+  readonly decidedMs?: number
+}
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -280,14 +334,23 @@ function stateColour(state: string): 'success' | 'error' | 'default' {
   }
 }
 
+/** The publishers whose signatures this device has seen. */
+const publishers = ref<readonly PublisherRow[]>([])
+
+/** The publisher whose decision is being written. */
+const deciding = ref<string | undefined>(undefined)
+
 onMounted(load)
 
-/** Reads the installed plugins. Startup and the empty state's button are the same read. */
+/** Reads the installed plugins and the publishers this device has met. */
 async function load(): Promise<void> {
   loading.value = true
   error.value = undefined
 
-  const answer = await kernel.call<readonly PluginSnapshot[]>('plugins_list')
+  const [answer, publisherAnswer] = await Promise.all([
+    kernel.call<readonly PluginSnapshot[]>('plugins_list'),
+    kernel.call<readonly PublisherRow[]>('plugins_publishers')
+  ])
   loading.value = false
 
   if (answer.ok) {
@@ -301,6 +364,29 @@ async function load(): Promise<void> {
   else {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
   }
+  if (publisherAnswer.ok && Array.isArray(publisherAnswer.value)) {
+    publishers.value = publisherAnswer.value
+  }
+  else if (answer.ok) {
+    error.value = {
+      code: publisherAnswer.error.code,
+      message: publisherAnswer.error.message,
+      actions: publisherAnswer.error.actions
+    }
+  }
+}
+
+/** Trusts or revokes a publisher's key, then re-reads so the row shows the decision the kernel stored. */
+async function decidePublisher(publisherId: string, trust: 'trusted' | 'revoked'): Promise<void> {
+  deciding.value = publisherId
+  error.value = undefined
+  const answer = await kernel.call<null>('plugins_publisher_decide', { publisherId, trust })
+  deciding.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  await load()
 }
 
 /** The plugin whose decision is being written, so its button says so and cannot be pressed twice. */

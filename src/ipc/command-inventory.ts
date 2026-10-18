@@ -58,6 +58,8 @@ export const REGISTERED = [
   // ★ Running the plan: one dial and one transfer per device that needs the artifact, and the receiver's answer decides
   // what `sync_records` is allowed to say. A device that could not be reached is a report entry, not a failed command.
   'plugins_sync_run',
+  'plugins_publishers',
+  'plugins_publisher_decide',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
   // ★ And the fifth, which the interface had been pretending existed: `HomePage.vue`'s "received" panel called

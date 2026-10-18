@@ -185,6 +185,7 @@ describe('the plugins page', () => {
     }
     mocks.call
       .mockResolvedValueOnce({ ok: true, value: [card()] })
+      .mockResolvedValueOnce({ ok: true, value: [] })
       .mockResolvedValueOnce({ ok: true, value: plan })
       .mockResolvedValueOnce({ ok: true, value: { updated: 1, unchanged: 0 } })
 
@@ -196,8 +197,8 @@ describe('the plugins page', () => {
     await button?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenNthCalledWith(2, 'plugins_sync_plan', { pluginId: '@acme/hello' })
-    expect(mocks.call).toHaveBeenNthCalledWith(3, 'plugins_sync_run', { plan })
+    expect(mocks.call).toHaveBeenNthCalledWith(3, 'plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(mocks.call).toHaveBeenNthCalledWith(4, 'plugins_sync_run', { plan })
     expect(wrapper.text()).toContain(messages.plugins.syncDone(1, 0, 0))
     wrapper.unmount()
   })
@@ -205,6 +206,7 @@ describe('the plugins page', () => {
   it('says there is nothing to send when every device already has it', async () => {
     mocks.call
       .mockResolvedValueOnce({ ok: true, value: [card()] })
+      .mockResolvedValueOnce({ ok: true, value: [] })
       .mockResolvedValueOnce({
         ok: true,
         value: {
@@ -219,7 +221,7 @@ describe('the plugins page', () => {
     await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenCalledTimes(2)
+    expect(mocks.call).toHaveBeenCalledTimes(3)
     expect(wrapper.text()).toContain(messages.plugins.syncNothing)
     wrapper.unmount()
   })

@@ -61,7 +61,8 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
   intent_snapshot: ['intentId'],
-  transfer_respond: ['transferId', 'accept']
+  transfer_respond: ['transferId', 'accept'],
+  plugins_publisher_decide: ['publisherId', 'trust']
 }
 
 /**
@@ -131,6 +132,11 @@ export class FakeKernel implements Bridge {
       case 'devices_scan_cancel':
         this.#stopScan()
         return null
+      case 'plugins_publishers':
+        // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
+        return []
+      case 'plugins_publisher_decide':
+        return {}
       case 'plugins_list':
         // ★ A bare array, because the kernel's own table says this command returns `Many`.
         //

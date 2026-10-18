@@ -194,6 +194,24 @@ mod wrappers {
         commands::transfers::transfer_respond(&state, &transfer_id, accept, remember)
     }
 
+    /// Lists the publishers whose signatures this device has seen.
+    #[tauri::command]
+    pub fn plugins_publishers(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Vec<synra_ipc::dto::PublisherDto>, IpcError> {
+        commands::plugins::plugins_publishers(&state)
+    }
+
+    /// Trusts, revokes, or un-decides a publisher's key.
+    #[tauri::command]
+    pub fn plugins_publisher_decide(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        publisher_id: String,
+        trust: String,
+    ) -> Result<(), IpcError> {
+        commands::plugins::plugins_publisher_decide(&state, &publisher_id, &trust)
+    }
+
     /// Sends a file to a paired device, and answers the transfer it started.
     ///
     /// ★ **It answers now, not when the file has moved.** The dial and the block loop run on a worker thread that owns
@@ -464,6 +482,8 @@ mod wrappers {
             plugins_audit,
             plugins_sync_plan,
             plugins_sync_run,
+            plugins_publishers,
+            plugins_publisher_decide,
             intent_dispatch,
             intent_list,
             intent_snapshot,
