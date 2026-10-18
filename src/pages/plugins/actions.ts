@@ -59,9 +59,17 @@ export interface AuditEntry {
   readonly traceId?: string
 }
 
-/** What a plugin actually did, most recent first. */
-export async function audit(kernel: KernelClient, pluginId: string, limit = 20): Promise<Outcome<readonly AuditEntry[]>> {
-  const answer = await kernel.call<AuditEntry[]>('plugins_audit', { pluginId, limit })
+/** How many recorded calls one page of the audit section asks for. */
+export const AUDIT_PAGE = 20
+
+/** What a plugin actually did, most recent first, starting at `offset` rows into the history. */
+export async function audit(
+  kernel: KernelClient,
+  pluginId: string,
+  limit = AUDIT_PAGE,
+  offset = 0
+): Promise<Outcome<readonly AuditEntry[]>> {
+  const answer = await kernel.call<AuditEntry[]>('plugins_audit', { pluginId, limit, offset })
   // ★ No reversal: the command reads `plugin_audit` with `ORDER BY at_ms DESC, id DESC`, so its answer is already the
   // order a reader wants. The old copy was reversed because it was a tail of the in-memory ring, which reports oldest
   // first — a copy is still there, but nothing reads it.

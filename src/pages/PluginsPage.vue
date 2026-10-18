@@ -361,6 +361,19 @@
               >
                 {{ messages.plugins.audit.clear }}
               </AButton>
+              <!--
+                ★ Offered only while the last page came back **full** — that is the one signal a limit-only query gives
+                that more rows may exist. Clicking it when nothing remains answers `[]` and hides the button, which is one
+                wasted read rather than a control that disappears while a page was still coming.
+              -->
+              <AButton
+                v-if="!auditDone[plugin.pluginId] && (audit[plugin.pluginId]?.length ?? 0) > 0"
+                size="small"
+                :loading="loadingMoreAudit === plugin.pluginId"
+                @click="loadMoreAudit(plugin.pluginId)"
+              >
+                {{ messages.plugins.audit.more }}
+              </AButton>
             </details>
 
             <!--
@@ -507,7 +520,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
+import { AUDIT_PAGE, clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -787,7 +800,18 @@ const updates = ref<Record<string, UpdateInfo>>({})
 /** What each plugin's audit ring said, once asked. `undefined` means "not asked yet". */
 const audit = ref<Record<string, AuditEntry[] | undefined>>({})
 
-/** Loads a plugin's recent calls whenever its section is opened. */
+/** Whether a plugin's history has been read to its end. Absent means "not known yet", which draws the button. */
+const auditDone = ref<Record<string, boolean>>({})
+
+/** The plugin whose next page is in flight. */
+const loadingMoreAudit = ref<string | undefined>(undefined)
+
+/**
+ * Loads a plugin's recent calls whenever its section is opened.
+ *
+ * ★ The first page replaces whatever was there: reopening the section is the user asking "what has it been doing lately",
+ * and appending to a list from before they closed it would mix two reads.
+ */
 async function openAudit(pluginId: string, event: Event): Promise<void> {
   if (!(event.target as HTMLDetailsElement).open)
     return
@@ -797,6 +821,24 @@ async function openAudit(pluginId: string, event: Event): Promise<void> {
     return
   }
   audit.value[pluginId] = [...outcome.value]
+  // A short page is the only "no more" signal a limit-only query gives.
+  auditDone.value[pluginId] = outcome.value.length < AUDIT_PAGE
+}
+
+/** Appends the next page of one plugin's history. */
+async function loadMoreAudit(pluginId: string): Promise<void> {
+  loadingMoreAudit.value = pluginId
+  error.value = undefined
+  const outcome = await readAudit(kernel, pluginId, AUDIT_PAGE, audit.value[pluginId]?.length ?? 0)
+  loadingMoreAudit.value = undefined
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  // ★ Appended rather than replaced: the offset is "how many rows this card has already shown", and the page is a
+  // continuation of the same order. A failed read leaves the rows that did arrive, because they are still true.
+  audit.value[pluginId] = [...(audit.value[pluginId] ?? []), ...outcome.value]
+  auditDone.value[pluginId] = outcome.value.length < AUDIT_PAGE
 }
 
 /** The plugin whose history is being cleared. */

@@ -80,13 +80,22 @@ describe('the enable call', () => {
 })
 
 describe('the audit call', () => {
-  it('asks for one plugin and a limit', async () => {
+  it('asks for one plugin and a page', async () => {
     const { client: kernel, invoke } = client([{ atMs: 1, capability: 'log:*', allowed: true }])
 
     const outcome = await audit(kernel, '@acme/hello')
 
-    expect(invoke).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20 })
+    expect(invoke).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20, offset: 0 })
     expect(outcome.ok ? outcome.value.length : 0).toBe(1)
+  })
+
+  it('asks for the next page by offset, not by a different query', async () => {
+    // ★ The page appends; a command that ignored the offset would make "Show more" redraw the rows already on screen.
+    const { client: kernel, invoke } = client([{ atMs: 41, capability: 'log:*', allowed: true }])
+
+    await audit(kernel, '@acme/hello', 20, 40)
+
+    expect(invoke).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20, offset: 40 })
   })
 
   it('answers a refusal as the notice needs it', async () => {

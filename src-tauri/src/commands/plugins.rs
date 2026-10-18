@@ -630,6 +630,12 @@ pub(crate) fn parse(plugin_id: &str) -> Result<PluginId, IpcError> {
 /// Because a settings screen shows what a plugin has been doing **lately**, and the interesting end of a trail is the
 /// recent one. `limit` of zero returns nothing, which is what a caller asking for nothing gets.
 ///
+/// # ★ Why there is an offset as well
+///
+/// Because the table holds the whole retention window, and a card that could only ever show the newest twenty rows made
+/// "view the full history" a button the design asked for and this build did not have. The offset is applied in SQL, so
+/// "show more" walks the index rather than re-reading the rows the user has already seen.
+///
 /// # ★ Why this reads the table rather than the ring
 ///
 /// The ring is this process's last ten thousand calls; the table is the history. Both hosts install an audit sink
@@ -649,10 +655,11 @@ pub fn plugins_audit(
     state: &AppState,
     plugin_id: &PluginId,
     limit: u32,
+    offset: u32,
 ) -> Result<Vec<AuditEntryDto>, IpcError> {
     let records = state
         .db()
-        .audit_trail_for(plugin_id.as_str(), limit)
+        .audit_trail_for(plugin_id.as_str(), offset, limit)
         .map_err(internal)?;
     Ok(records.iter().map(record_card).collect())
 }
@@ -1631,11 +1638,26 @@ mod tests {
         let state = crate::testing::state();
         state.db().record_audit(&row(ID, "device:list", "allowed", 5_000)).expect("recorded");
 
-        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10).expect("read");
+        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].capability, "device:list");
         assert_eq!(rows[0].at_ms, 5_000);
+    }
+
+    #[test]
+    fn the_audit_read_can_skip_the_rows_a_page_already_showed() {
+        // ★ "Show more" is wired through this parameter. A command that ignored it would repeat the first page, which is
+        // the one failure a list that appends rather than replaces would show as duplicated rows rather than as nothing.
+        let state = crate::testing::state();
+        for at in [1_000, 2_000, 3_000] {
+            state.db().record_audit(&row(ID, "device:list", "allowed", at)).expect("recorded");
+        }
+
+        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 1, 1).expect("read");
+
+        assert_eq!(rows.len(), 1, "one row asked for, one row answered");
+        assert_eq!(rows[0].at_ms, 2_000, "and it is the second-newest, not the newest again");
     }
 
     #[test]
@@ -1649,7 +1671,7 @@ mod tests {
 
         assert_eq!(state.db().audit_count().expect("counted"), 1);
         assert!(
-            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10)
+            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0)
                 .expect("read")
                 .is_empty()
         );
@@ -1668,7 +1690,7 @@ mod tests {
 
         assert_eq!(prune_audit(&state, now), 1);
 
-        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10).expect("read");
+        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].at_ms, now - 2 * day, "the recent call stayed");
     }

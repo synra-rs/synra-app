@@ -38,7 +38,9 @@ export const plugins = {
     refused: 'refused',
     empty: 'No calls have been recorded.',
     // ★ Shown only beside rows that exist: clearing the empty state would be a button whose only effect is to redraw it.
-    clear: 'Clear history'
+    clear: 'Clear history',
+    /** The next page of the durable history, offered only while the last page came back full. */
+    more: 'Show more'
   },
   /** The registry's own index, searched by keyword. */
   catalog: {

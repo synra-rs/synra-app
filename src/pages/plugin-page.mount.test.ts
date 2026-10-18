@@ -420,7 +420,7 @@ describe('the plugins page', () => {
     // twice and make "the page read it once" untestable. The wait is for that queued task.
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20 })
+    expect(mocks.call).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20, offset: 0 })
     expect(wrapper.text()).toContain('log:write')
     // ★ The refusal is named, not just coloured: `denied` is the gate's own outcome name, and a row without it tells the
     // user a call failed without telling them why.
@@ -429,6 +429,46 @@ describe('the plugins page', () => {
     expect(wrapper.text()).toContain('denied')
     const rows = wrapper.findAll('details li')
     expect(rows[0]?.text()).toContain('network:fetch')
+    // A two-row page cannot have another one, so the control for it is absent.
+    expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.more)).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('appends the next page of calls without repeating the first', async () => {
+    // ★ "Show more" is an offset into the same newest-first order, not a second query. The page appends; the button goes
+    // away when a page comes back short, which is the only signal a limit-only read gives that there is no more.
+    const page = (start: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        atMs: start + index,
+        capability: 'log:write',
+        allowed: true
+      }))
+    mocks.call.mockImplementation(async (command: string, args?: { offset?: number }) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_audit')
+        return { ok: true, value: args?.offset === 20 ? page(101, 4) : page(1, 20) }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const trail = wrapper.find('details')
+    ;(trail.element as HTMLDetailsElement).open = true
+    await flushPromises()
+
+    expect(wrapper.findAll('details li')).toHaveLength(20)
+    const more = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.audit.more)
+    expect(more, 'a full page drew no way to read the rest').toBeDefined()
+    await more?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20, offset: 20 })
+    expect(wrapper.findAll('details li')).toHaveLength(24)
+    expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.more)).toBe(false)
     wrapper.unmount()
   })
 

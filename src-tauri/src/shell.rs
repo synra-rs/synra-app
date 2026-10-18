@@ -422,13 +422,16 @@ mod wrappers {
     }
 
     // ★ The audit trail, which had no writer until a plugin instance was given a session.
+    //
+    // `offset` is optional so an existing caller that only knows `limit` keeps working: the first page is the default.
     #[tauri::command]
     pub fn plugins_audit(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: synra_protocol::PluginId,
         limit: u32,
+        offset: Option<u32>,
     ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
-        commands::plugins::plugins_audit(&state, &plugin_id, limit)
+        commands::plugins::plugins_audit(&state, &plugin_id, limit, offset.unwrap_or(0))
     }
 
     /// Forgets one plugin's audit history.
