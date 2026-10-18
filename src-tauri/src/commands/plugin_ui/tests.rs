@@ -1393,6 +1393,21 @@ fn an_unknown_transfer_says_it_is_not_in_flight() {
     assert_eq!(refused.code, ErrorCode::Unsupported);
 }
 
+#[test]
+fn closing_a_page_ends_its_session() {
+    // ★ The token is the page's authority. An entry that outlives its window keeps answering for a page nobody can see,
+    // and a second window with the same label would inherit the first one's nonce.
+    let state = crate::testing::state();
+    let token = hosted_page(&state);
+    let nonce: u128 = token.parse().expect("the token is the nonce in decimal");
+
+    super::forget_window(&state, "page-rpc");
+
+    assert!(state.hosted_ui.lock().get("page-rpc").is_none());
+    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
+    assert!(state.ui_sessions.validate(nonce, &plugin_id(), "1.0.0", now).is_err(), "the session is gone");
+}
+
 #[cfg(feature = "tauri-shell")]
 #[test]
 fn a_plugin_page_is_served_with_a_policy_that_cannot_reach_the_network() {

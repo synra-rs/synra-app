@@ -1461,6 +1461,18 @@ pub(crate) fn document_response(
         .unwrap_or_else(|_| tauri::http::Response::new(Cow::Owned(Vec::new())))
 }
 
+/// Removes a page's session when its window is gone.
+///
+/// ★ A page's authority is its token, and the token is in a table the page cannot write. Until this runs, a closed window
+/// leaves a live session behind: `plugin_ui_ready` and the protocol handler answer for a page that no longer exists, and a
+/// second window with the same label would inherit the first one's nonce. Closing is the end of the session.
+pub fn forget_window(state: &AppState, label: &str) {
+    let entry = state.hosted_ui.lock().remove(label);
+    if let Some(entry) = entry {
+        let _ = state.ui_sessions.revoke(entry.nonce);
+    }
+}
+
 /// The `synra-plugin://` handler: one bundle file, or a refusal.
 ///
 /// # Why it is here and not in `shell.rs`

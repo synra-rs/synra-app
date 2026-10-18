@@ -297,7 +297,7 @@ mod wrappers {
         // parsed `Url` too, and comparing the two normalised forms is what makes the first load and a hash route pass
         // while every other destination is refused.
         let opened = url.as_str().to_owned();
-        tauri::WebviewWindowBuilder::new(&app, &request.label, tauri::WebviewUrl::CustomProtocol(url))
+        let window = tauri::WebviewWindowBuilder::new(&app, &request.label, tauri::WebviewUrl::CustomProtocol(url))
             .initialization_script(&request.script)
             // ★ The page may not navigate away. It holds this plugin's token and grants, and the script is attached to
             // the WebView rather than to an address — so another page, another origin or an external scheme would keep
@@ -310,8 +310,19 @@ mod wrappers {
             // the platform capability exists to make.
             .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
             .build()
-            .map(|_window| ())
-            .map_err(failed)
+            .map_err(failed)?;
+
+        // ★ Closing the window ends the session: the token table is the page's authority, and an entry that outlives the
+        // page would let a closed window keep answering. `Destroyed` rather than `CloseRequested` because a close can be
+        // cancelled, and a cancelled close must keep the page it kept.
+        let state = std::sync::Arc::clone(state.inner());
+        let label = request.label.clone();
+        window.on_window_event(move |event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                commands::plugin_ui::forget_window(&state, &label);
+            }
+        });
+        Ok(())
     }
 
     /// Replaces an installed plugin with the newest version the registry publishes.
