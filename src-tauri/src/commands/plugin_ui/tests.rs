@@ -1392,3 +1392,24 @@ fn an_unknown_transfer_says_it_is_not_in_flight() {
 
     assert_eq!(refused.code, ErrorCode::Unsupported);
 }
+
+#[cfg(feature = "tauri-shell")]
+#[test]
+fn a_plugin_page_is_served_with_a_policy_that_cannot_reach_the_network() {
+    // ★ The design assigns the CSP to the protocol handler (08 §550). Without this header a page's network access depends
+    // on a global setting the plugin cannot see; with it `connect-src 'none'` travels with the document.
+    let response = super::document_response(b"<html></html>".to_vec(), "text/html; charset=utf-8");
+
+    assert_eq!(response.status(), 200);
+    let policy = response
+        .headers()
+        .get("content-security-policy")
+        .expect("the policy header")
+        .to_str()
+        .expect("a header string");
+
+    assert!(policy.contains("default-src 'none'"), "{policy}");
+    assert!(policy.contains("connect-src 'none'"), "{policy}");
+    assert!(policy.contains("script-src 'self'"), "{policy}");
+    assert!(policy.contains("form-action 'none'"), "{policy}");
+}

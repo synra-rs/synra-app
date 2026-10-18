@@ -1434,6 +1434,33 @@ pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -
     best
 }
 
+/// The policy every plugin page is served with.
+///
+/// ★ Tauri 2.12 has no public per-window CSP, so the global policy in `tauri.conf.json` is inherited by every window. This
+/// header is the part the design assigns to the protocol handler (08 §550, 09 §416): the network is what it exists to
+/// close, and a policy that travels with the document does not depend on a setting the page cannot see.
+/// `'unsafe-inline'` for scripts and styles is the design's own allowance — a plugin page is a bundle, not a host page.
+#[cfg(feature = "tauri-shell")]
+pub(crate) const PLUGIN_CSP: &str = "default-src 'none'; script-src 'self' 'unsafe-inline'; \
+     style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; \
+     base-uri 'none'; form-action 'none'";
+
+/// A successful page response, with the policy attached.
+#[cfg(feature = "tauri-shell")]
+pub(crate) fn document_response(
+    bytes: Vec<u8>,
+    content_type: &'static str,
+) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
+    use std::borrow::Cow;
+
+    tauri::http::Response::builder()
+        .status(200)
+        .header(tauri::http::header::CONTENT_TYPE, content_type)
+        .header("content-security-policy", PLUGIN_CSP)
+        .body(Cow::Owned(bytes))
+        .unwrap_or_else(|_| tauri::http::Response::new(Cow::Owned(Vec::new())))
+}
+
 /// The `synra-plugin://` handler: one bundle file, or a refusal.
 ///
 /// # Why it is here and not in `shell.rs`
@@ -1471,11 +1498,7 @@ pub fn serve(
     let root = synra_plugin_ui::artifact::bundle_dir(&state.paths.plugin_dir(plugin_id.as_str()));
 
     match ui_file(&root, &path) {
-        Ok((bytes, content_type)) => tauri::http::Response::builder()
-            .status(200)
-            .header(tauri::http::header::CONTENT_TYPE, content_type)
-            .body(Cow::Owned(bytes))
-            .unwrap_or_else(|_| answer(500, "the response could not be built")),
+        Ok((bytes, content_type)) => document_response(bytes, content_type),
         Err(refusal) => {
             // 403 for a path the rules refuse, 404 for a file that is not there: the first is somebody asking for something
             // they may never have, the second is a bundle that is missing a file it should carry.
