@@ -68,23 +68,37 @@
 
       <AList v-else size="small">
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
-          <div class="row-between gap-3">
-            <span class="truncate text-sm">{{ transfer.peerName }}</span>
-            <div class="row gap-2">
-              <ATag class="m-0">
-                {{ transfer.state }}
-              </ATag>
-              <!--
-                The same command for both directions: an outgoing transfer stops its worker, an incoming one leaves the
-                identifier for the listener, which is the only writer to that link.
-              -->
-              <AButton
+          <div class="stack gap-2">
+            <div class="row-between gap-3">
+              <span class="truncate text-sm">{{ transfer.peerName }}</span>
+              <div class="row gap-2">
+                <ATag class="m-0">
+                  {{ transfer.state }}
+                </ATag>
+                <!--
+                  The same command for both directions: an outgoing transfer stops its worker, an incoming one leaves the
+                  identifier for the listener, which is the only writer to that link.
+                -->
+                <AButton
+                  size="small"
+                  :loading="cancelling === transfer.transferId"
+                  @click="cancelTransfer(transfer)"
+                >
+                  {{ messages.home.inFlight.cancel }}
+                </AButton>
+              </div>
+            </div>
+            <!--
+              ★ The bytes, not a spinner: "transferring" with no number is a state a user cannot judge, and a bar with no
+              figure is one they cannot quote in a bug report.
+            -->
+            <div class="row gap-3">
+              <AProgress
+                class="flex-1"
+                :percent="percentOf(transfer)"
                 size="small"
-                :loading="cancelling === transfer.transferId"
-                @click="cancelTransfer(transfer)"
-              >
-                {{ messages.home.inFlight.cancel }}
-              </AButton>
+              />
+              <span class="text-xs text-ink-dim">{{ progressLabel(transfer) }}</span>
             </div>
           </div>
         </AList.Item>
@@ -141,7 +155,7 @@
  * worth looking at.
  */
 import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -166,6 +180,34 @@ const error = ref<{ code: string, message: string, actions?: readonly SuggestedA
 
 /** The transfer being cancelled, so its button can say so and cannot be pressed twice. */
 const cancelling = ref<string | undefined>(undefined)
+
+/** How far the transfer has got, clamped to what a bar can draw. */
+function percentOf(transfer: TransferSnapshot): number {
+  if (transfer.totalBytes <= 0)
+    return 0
+  return Math.min(100, Math.round((transfer.receivedBytes / transfer.totalBytes) * 100))
+}
+
+/** A byte count a person can read. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024)
+    return `${bytes} B`
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(1)} ${units[unit]}`
+}
+
+/** "12.3 KiB of 3.0 MiB", so the bar can be quoted as well as seen. */
+function progressLabel(transfer: TransferSnapshot): string {
+  return messages.home.inFlight.progress
+    .replace('{done}', formatBytes(transfer.receivedBytes))
+    .replace('{total}', formatBytes(transfer.totalBytes))
+}
 
 /** Asks the kernel to abandon a transfer, whichever direction it is moving. */
 async function cancelTransfer(transfer: TransferSnapshot): Promise<void> {

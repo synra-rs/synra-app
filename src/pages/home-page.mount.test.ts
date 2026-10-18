@@ -105,7 +105,7 @@ describe('the home page', () => {
       kind: 'file',
       state: 'receiving',
       fileName: 'notes.txt',
-      receivedBytes: 0,
+      receivedBytes: 5,
       totalBytes: 10,
       blocksDone: 0,
       blocksTotal: 1,
@@ -117,6 +117,10 @@ describe('the home page', () => {
 
     useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
     await flushPromises()
+    // ★ The bar and the sentence are two views of one number: "50%" is what a progress element announces, and the byte
+    // count is what a user can quote when the number is wrong.
+    expect(wrapper.text()).toContain('50%')
+    expect(wrapper.text()).toContain('5 B of 10 B')
     const cancel = wrapper.findAll('button').find(button => button.text() === 'Cancel')
     expect(cancel).toBeDefined()
     await cancel?.trigger('click')

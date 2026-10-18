@@ -27,7 +27,8 @@ export const home = {
     title: 'Sending now',
     empty: 'Nothing is on its way to another device.',
     action: 'Choose a device',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    progress: '{done} of {total}'
   },
 
   received: {
