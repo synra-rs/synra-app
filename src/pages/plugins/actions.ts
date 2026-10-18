@@ -49,6 +49,29 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
+/** What a registry package says about itself, before any of it is downloaded. */
+export interface InstallPreview {
+  readonly pluginId: string
+  readonly version: string
+  readonly title: string
+  readonly description?: string
+  readonly publisher: string
+  readonly publisherName?: string
+  readonly capabilities: readonly string[]
+  readonly headless: boolean
+  readonly hasUi: boolean
+  readonly sizeBytes?: number
+}
+
+/** Reads a registry package's own description, so the dialog can show what it asks for. */
+export async function previewInstall(
+  client: KernelClient,
+  pluginId: string
+): Promise<Outcome<InstallPreview>> {
+  const answer = await client.call<InstallPreview>('plugins_preview', { pluginId })
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+}
+
 /** Installs a package the configured registry serves, by its plugin id. */
 export async function installFromRegistry(
   client: KernelClient,

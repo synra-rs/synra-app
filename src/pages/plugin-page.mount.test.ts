@@ -234,6 +234,20 @@ describe('the plugins page', () => {
         return { ok: true, value: [card()] }
       if (command === 'plugins_publishers')
         return { ok: true, value: [] }
+      if (command === 'plugins_preview') {
+        return {
+          ok: true,
+          value: {
+            pluginId: '@acme/hello',
+            version: '1.0.0',
+            title: 'Hello',
+            publisher: '@acme',
+            capabilities: ['log:*'],
+            headless: true,
+            hasUi: false
+          }
+        }
+      }
       if (command === 'plugins_install')
         return { ok: true, value: { pluginId: '@acme/hello', version: '1.0.0', enabled: false } }
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
@@ -248,6 +262,18 @@ describe('the plugins page', () => {
     await wrapper.find('input[placeholder="Plugin id, e.g. @acme/hello"]').setValue('@acme/hello')
     const install = wrapper.findAll('button').find(button => button.text().includes('Install'))
     await install?.trigger('click')
+    await flushPromises()
+
+    // ★ The registry install asks first: the click fetches the package's own description, and nothing is downloaded until
+    // the dialog is confirmed.
+    expect(mocks.call).toHaveBeenCalledWith('plugins_preview', { pluginId: '@acme/hello' })
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_install', expect.anything())
+
+    const confirm = Array.from(document.body.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Install')
+    )
+    expect(confirm).toBeDefined()
+    confirm?.click()
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('plugins_install', {

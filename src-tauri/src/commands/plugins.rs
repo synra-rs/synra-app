@@ -18,7 +18,7 @@
 //! needs to see: they will go looking for the setting to remove it, and if it is not on the screen they will file a bug
 //! about it having vanished.
 
-use synra_ipc::{AuditEntryDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
+use synra_ipc::{AuditEntryDto, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
 
@@ -206,14 +206,25 @@ pub(crate) fn install_package(
     .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
 }
 
-/// Installs a plugin from a directory, through the checks, and reports what the user has to be told.
+/// Describes a registry package before any of it is downloaded.
 ///
-/// # Why the shell installs rather than the kernel
+/// ★ A preview is the publisher's claim, read from the packument's inline manifest; the signature check happens on the
+/// bytes. It is a question — "these are the permissions, do you want to fetch it?" — and never an approval.
 ///
-/// Because the pipeline needs an engine, and the kernel holds the seam rather than an engine. `synra_core::install` is
-/// the pipeline — the same one the daemon runs, so the order of the checks has **one** implementation — and what differs
-/// between the two hosts is the [`HostFacts`] passed in: a desktop can open a window, so a plugin that declares a
-/// notification installs here without the warning a daemon earns.
+/// # Errors
+///
+/// `Unsupported` when no registry is configured, `InvalidArgument` when the registry does not serve the package or does not
+/// publish its manifest inline, and a fetch refusal's own code for a network problem.
+pub fn plugins_preview(
+    state: &AppState,
+    plugin_id: &str,
+    version: Option<&str>,
+) -> Result<InstallPreviewDto, IpcError> {
+    crate::commands::registry::preview(state, plugin_id, version)
+}
+
+/// Installs a plugin from a directory or the configured registry, through the checks, and reports what the user has to be
+/// told.
 ///
 /// # What an install is not
 ///
@@ -222,8 +233,7 @@ pub(crate) fn install_package(
 ///
 /// # Errors
 ///
-/// * `Unsupported` for a registry source — this build has no fetcher, and refusing it by name is the honest alternative
-///   to a network error that does not exist. It is also `Unsupported` when this shell has no plugin engine at all.
+/// * `Unsupported` when this shell has no plugin engine at all, or no registry is configured for a registry source.
 /// * `InvalidArgument` when a check refused the package; the params carry the stage and the reason.
 pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<InstallReport, IpcError> {
     match source {
@@ -580,7 +590,7 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 mod tests {
     use super::{
         entry_card, plugins_audit, plugins_consent_respond, plugins_install, plugins_list,
-        plugins_publisher_decide, plugins_publishers,
+        plugins_preview, plugins_publisher_decide, plugins_publishers,
     };
     use synra_ipc::InstallSourceDto;
     use synra_protocol::PluginId;
@@ -648,6 +658,7 @@ mod tests {
         let state = with_engine(state);
         let source = package(root.path());
         let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
+        let manifest_json: serde_json::Value = serde_json::from_slice(&manifest).expect("a manifest document");
 
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
         let address = listener.local_addr().expect("an address");
@@ -659,7 +670,8 @@ mod tests {
                 "1.0.0": {
                     "name": "@acme/hello",
                     "version": "1.0.0",
-                    "dist": { "tarball": format!("{base}/pkg.tgz") }
+                    "dist": { "tarball": format!("{base}/pkg.tgz") },
+                    "synra": manifest_json
                 }
             }
         })
@@ -669,7 +681,7 @@ mod tests {
             ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
         ]);
         std::thread::spawn(move || {
-            for _ in 0..2 {
+            for _ in 0..3 {
                 let Ok(mut stream) = listener.accept().map(|(stream, _)| stream) else { return };
                 let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
                 let mut first = String::new();
@@ -693,6 +705,14 @@ mod tests {
             .db()
             .set_config("plugins.registry", &serde_json::json!(base), 1_000)
             .expect("the registry is configured");
+
+        // ★ The preview is read before anything is downloaded, from the packument's inline manifest. It shows what the
+        // package asks for; the install that follows still verifies the bytes and records the plugin switched off.
+        let preview = plugins_preview(&state, "@acme/hello", None).expect("a preview");
+        assert_eq!(preview.plugin_id.as_str(), "@acme/hello");
+        assert_eq!(preview.version, "1.0.0");
+        assert_eq!(preview.capabilities, ["log:*"]);
+        assert!(preview.headless && !preview.has_ui);
 
         let report = plugins_install(
             &state,

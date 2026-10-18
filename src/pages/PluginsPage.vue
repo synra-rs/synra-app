@@ -23,6 +23,44 @@
       </AButton>
     </div>
 
+    <!--
+      A registry install asks first. The preview is the publisher's own claim — the signature is checked on the bytes —
+      and it is a question, not an approval: the plugin still lands switched off and untrusted.
+    -->
+    <AModal
+      :open="preview !== undefined"
+      :title="messages.plugins.preview.title"
+      :ok-text="messages.plugins.installAction"
+      @ok="confirmPreview"
+      @cancel="preview = undefined"
+    >
+      <div v-if="preview" class="stack gap-2">
+        <p class="m-0 text-base font-medium">
+          {{ preview.title }} · {{ preview.version }}
+        </p>
+        <p class="m-0 text-sm text-ink-dim">
+          {{ messages.plugins.preview.publisher }}: {{ preview.publisherName ?? preview.publisher }}
+        </p>
+        <p class="m-0 text-sm">
+          {{ messages.plugins.preview.permissions }}
+        </p>
+        <ul v-if="preview.capabilities.length > 0" class="m-0 ps-5 text-sm">
+          <li v-for="capability in preview.capabilities" :key="capability" class="font-mono">
+            {{ capability }}
+          </li>
+        </ul>
+        <p v-else class="m-0 text-sm text-ink-dim">
+          {{ messages.plugins.preview.none }}
+        </p>
+        <p class="m-0 text-sm text-ink-dim">
+          {{ preview.headless ? messages.plugins.preview.headless : messages.plugins.preview.ui }}
+        </p>
+        <p v-if="preview.sizeBytes" class="m-0 text-sm text-ink-dim">
+          {{ messages.plugins.preview.size.replace('{size}', (preview.sizeBytes / 1_048_576).toFixed(1)) }}
+        </p>
+      </div>
+    </AModal>
+
     <!-- Installing is not approving: the sentence says the plugin is off, because a user told only "installed" would
          look for a fault in a plugin that is behaving exactly as designed. -->
     <AAlert v-if="note" type="success" :message="note" closable @close="note = undefined" />
@@ -332,8 +370,9 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Segmented as ASegmented, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import type { InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
+import type { Failure, InstallPreview } from './plugins/actions'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -341,7 +380,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, installFromRegistry, planSync, runSync, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, setEnabled, uninstall } from './plugins/actions'
 
 /** A publisher row, as `plugins_publishers` answers it. */
 interface PublisherRow {
@@ -624,6 +663,9 @@ const installOptions = computed(() => [
 /** Whether an install is in flight, so the button says so and cannot be pressed twice. */
 const installing = ref(false)
 
+/** The package a registry install would fetch, shown before anything is downloaded. */
+const preview = ref<InstallPreview | undefined>(undefined)
+
 /** Installs from the source the user named, then re-reads the list. */
 async function install(): Promise<void> {
   const from = installPath.value.trim()
@@ -631,12 +673,46 @@ async function install(): Promise<void> {
     return
   installing.value = true
   error.value = undefined
-  const outcome = installMode.value === 'registry'
-    ? await installFromRegistry(kernel, from)
-    : await installFrom(kernel, from)
+
+  // ★ A registry install asks first. The preview is the publisher's own claim about permissions, and a dialog that showed
+  // them is the difference between "install this name" and "install this thing that wants these".
+  if (installMode.value === 'registry') {
+    const outcome = await previewInstall(kernel, from)
+    installing.value = false
+    if (!outcome.ok) {
+      error.value = outcome.failure
+      return
+    }
+    preview.value = outcome.value
+    return
+  }
+
+  const outcome = await installFrom(kernel, from)
   installing.value = false
-  if (!outcome.ok) {
-    error.value = outcome.failure
+  await completeInstall(outcome.ok ? outcome.value : undefined, outcome.ok ? undefined : outcome.failure)
+}
+
+/** Installs what the preview described, after the user confirmed it. */
+async function confirmPreview(): Promise<void> {
+  const chosen = preview.value
+  if (!chosen || installing.value)
+    return
+  preview.value = undefined
+  installing.value = true
+  error.value = undefined
+  const outcome = await installFromRegistry(kernel, chosen.pluginId)
+  installing.value = false
+  await completeInstall(outcome.ok ? outcome.value : undefined, outcome.ok ? undefined : outcome.failure)
+}
+
+/** The steps both install sources share: the note, the list, and the publisher question. */
+async function completeInstall(
+  report: InstallReport | undefined,
+  failure: Failure | undefined
+): Promise<void> {
+  if (!report) {
+    if (failure)
+      error.value = failure
     return
   }
   note.value = messages.plugins.installedSwitchedOff
@@ -645,11 +721,10 @@ async function install(): Promise<void> {
 
   // ★ Asked after the list is re-read, so a key the user already trusted (or a package with no signature) does not
   // produce a second prompt. The fingerprint is the one the install verified, not one parsed here from the package.
-  const signed = outcome.value
-  const known = signed.publisherId
-    ? publishers.value.find(publisher => publisher.publisherId === signed.publisherId)
+  const known = report.publisherId
+    ? publishers.value.find(publisher => publisher.publisherId === report.publisherId)
     : undefined
-  if (signed.publisherId && signed.fingerprint && known?.trust !== 'trusted')
-    pendingPublisher.value = { id: signed.publisherId, fingerprint: signed.fingerprint }
+  if (report.publisherId && report.fingerprint && known?.trust !== 'trusted')
+    pendingPublisher.value = { id: report.publisherId, fingerprint: report.fingerprint }
 }
 </script>

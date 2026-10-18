@@ -15,6 +15,16 @@ export const plugins = {
     registry: 'From the registry'
   },
   installName: 'Plugin id, e.g. @acme/hello',
+  /** What a registry package says about itself, before any of it is downloaded. */
+  preview: {
+    title: 'Install this plugin?',
+    publisher: 'Publisher',
+    permissions: 'It asks for',
+    none: 'It asks for no permissions.',
+    headless: 'Runs without an interface',
+    ui: 'Adds pages to the interface',
+    size: 'About {size} MiB, as published'
+  },
   /**
    * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher
    * id signed with a different key is not the publisher a user trusted.

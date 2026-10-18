@@ -19,6 +19,11 @@
 //! install pipeline runs over it. Signature checks, archive limits, the manifest and the store all stay in one place; this
 //! module is transport.
 //!
+//! # What the preview is
+//!
+//! `plugins_preview` reads the packument's inline manifest and shows its permissions **before** the tarball is fetched.
+//! It is a question, not an approval: the signature is checked on the bytes, and the plugin still lands switched off.
+//!
 //! # What this is not
 //!
 //! A catalog. `plugins_catalog_search` still answers from what is installed, because a search endpoint is a different
@@ -28,9 +33,10 @@ use std::collections::BTreeMap;
 
 use synra_core::network::{IpPolicy, NetworkGuard};
 use synra_fetch::{Client, Limits as FetchLimits, Request};
-use synra_ipc::dto::{InstallReport, InstallSourceDto};
+use synra_ipc::dto::{InstallPreviewDto, InstallReport, InstallSourceDto};
 use synra_protocol::ErrorCode;
-use synra_registry::{Limits as ArchiveLimits, Packument, extract_tgz};
+use synra_protocol::PluginId;
+use synra_registry::{Limits as ArchiveLimits, Packument, Version, extract_tgz};
 
 use crate::state::AppState;
 
@@ -156,6 +162,76 @@ pub fn packument(state: &AppState, plugin_id: &str) -> Result<Packument, synra_i
     })
 }
 
+/// The version a document names, by tag or by string.
+///
+/// Shared by the preview and the install so the two cannot disagree about which version the user saw.
+fn choose<'a>(document: &'a Packument, plugin_id: &str, version: Option<&str>) -> Result<&'a Version, synra_ipc::IpcError> {
+    match version {
+        Some(version) => document.at(version).ok_or_else(|| {
+            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "pluginId": plugin_id,
+                "version": version,
+                "reason": "the registry does not publish that version",
+            }))
+        }),
+        None => document.latest().ok_or_else(|| {
+            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "pluginId": plugin_id,
+                "reason": "the registry has no `latest` tag for it",
+            }))
+        }),
+    }
+}
+
+/// What the file a packument points at says about its own size.
+///
+/// The number is the publisher's claim, in the registry's extension block, and the preview labels it as such; a document
+/// without one answers `None` rather than `0`, because "no size" and "empty" are different answers.
+fn published_size(dist: &synra_registry::Dist) -> Option<u64> {
+    let size = dist.synra.as_ref()?.get("size")?;
+    let wasm = size.get("wasm").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let ui = size.get("ui").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    Some(wasm.saturating_add(ui))
+}
+
+/// Describes a package before any of it is downloaded.
+///
+/// # Errors
+///
+/// As [`packument`], plus `InvalidArgument` when the version carries no inline manifest — a preview that showed no
+/// permissions would be a confirmation dialog that confirms nothing.
+pub fn preview(
+    state: &AppState,
+    plugin_id: &str,
+    version: Option<&str>,
+) -> Result<InstallPreviewDto, synra_ipc::IpcError> {
+    let document = packument(state, plugin_id)?;
+    let chosen = choose(&document, plugin_id, version)?;
+    let manifest = chosen.synra.as_ref().ok_or_else(|| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+            "pluginId": plugin_id,
+            "version": chosen.version,
+            "reason": "the registry does not publish the manifest inline, so the permissions cannot be shown yet",
+        }))
+    })?;
+    let plugin_id = PluginId::try_from(manifest.id.to_string()).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"pluginId": manifest.id.to_string(), "reason": error.to_string()}))
+    })?;
+    Ok(InstallPreviewDto {
+        plugin_id,
+        version: chosen.version.clone(),
+        title: manifest.title.clone(),
+        description: manifest.description.clone(),
+        publisher: manifest.publisher.id.clone(),
+        publisher_name: manifest.publisher.name.clone(),
+        capabilities: manifest.capabilities.iter().map(|declaration| declaration.cap.clone()).collect(),
+        headless: manifest.runtime.headless.is_some(),
+        has_ui: manifest.runtime.ui.is_some(),
+        size_bytes: published_size(&chosen.dist),
+    })
+}
+
 /// A tarball extracted under the cache, and the files it wrote so they can be removed without a recursive delete.
 struct PackageDir {
     directory: std::path::PathBuf,
@@ -251,21 +327,7 @@ pub fn install(
 ) -> Result<InstallReport, synra_ipc::IpcError> {
     let base = base(state)?;
     let document = packument(state, plugin_id)?;
-    let chosen = match version {
-        Some(version) => document.at(version).ok_or_else(|| {
-            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "pluginId": plugin_id,
-                "version": version,
-                "reason": "the registry does not publish that version",
-            }))
-        })?,
-        None => document.latest().ok_or_else(|| {
-            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "pluginId": plugin_id,
-                "reason": "the registry has no `latest` tag for it",
-            }))
-        })?,
-    };
+    let chosen = choose(&document, plugin_id, version)?;
 
     let package = download(state, &base, chosen)?;
     let outcome = crate::commands::plugins::install_directory(state, package.path());

@@ -26,6 +26,7 @@ export const REGISTERED = [
   'pairing_respond',
   'pairing_cancel',
   'plugins_list',
+  'plugins_preview',
   'plugins_enable',
   'plugins_disable',
   'plugins_consent_respond',

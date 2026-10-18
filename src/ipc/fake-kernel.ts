@@ -62,7 +62,8 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_cancel: ['scanId'],
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
-  plugins_publisher_decide: ['publisherId', 'trust']
+  plugins_publisher_decide: ['publisherId', 'trust'],
+  plugins_preview: ['pluginId']
 }
 
 /**
@@ -137,6 +138,18 @@ export class FakeKernel implements Bridge {
         return []
       case 'plugins_publisher_decide':
         return {}
+      case 'plugins_preview':
+        // The permissions a preview shows, in the kernel's own shape. A fake that answered nothing would make the
+        // confirmation dialog untestable in every page that opens it.
+        return {
+          pluginId: '@acme/hello',
+          version: '1.0.0',
+          title: 'Hello',
+          publisher: '@acme',
+          capabilities: ['log:*'],
+          headless: true,
+          hasUi: false
+        }
       case 'plugins_list':
         // ★ A bare array, because the kernel's own table says this command returns `Many`.
         //
