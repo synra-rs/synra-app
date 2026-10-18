@@ -270,8 +270,22 @@ mod wrappers {
             IpcError::unknown(synra_protocol::ErrorCode::Internal)
                 .with_params(serde_json::json!({ "reason": error.to_string() }))
         })?;
+        // ★ The address the WebView actually received, not the string `open_request` built. A navigation candidate is a
+        // parsed `Url` too, and comparing the two normalised forms is what makes the first load and a hash route pass
+        // while every other destination is refused.
+        let opened = url.as_str().to_owned();
         tauri::WebviewWindowBuilder::new(&app, &request.label, tauri::WebviewUrl::CustomProtocol(url))
             .initialization_script(&request.script)
+            // ★ The page may not navigate away. It holds this plugin's token and grants, and the script is attached to
+            // the WebView rather than to an address — so another page, another origin or an external scheme would keep
+            // this page's authority while showing something the opener never chose.
+            .on_navigation(move |candidate| {
+                commands::plugin_ui::stays_on_page(candidate.as_str(), &opened)
+            })
+            // And `window.open` is denied outright: a second window has no initialization script, so it would be a page
+            // with no token — and on some platforms it would be a browser window the plugin opened, which is a decision
+            // the platform capability exists to make.
+            .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
             .build()
             .map(|_window| ())
             .map_err(failed)

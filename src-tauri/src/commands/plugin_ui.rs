@@ -729,6 +729,29 @@ pub struct OpenRequest {
     pub script: String,
 }
 
+/// Whether a navigation stays on the page that was opened.
+///
+/// # Why the rule is "the exact page", not "the plugin's origin"
+///
+/// Because the two are not the same safety property. The page was opened with **this** plugin's token and grants, and
+/// the initialization script is attached to the WebView, not to a URL — so a navigation to another page of the same
+/// bundle would keep this page's authority while showing content the opener never chose. In-page routing (`#…`, the
+/// history API) still works, which is how a single-page plugin is supposed to navigate; a document navigation to a
+/// second address does not.
+///
+/// A fragment is part of the same document: `#/settings` is a hash route, not a different page. Everything else — another
+/// path, another plugin's origin, `https:`, `file:`, `data:` — is refused.
+///
+/// The attribute is because only the `tauri-shell` build has a `WebviewWindowBuilder` to hand this to; the predicate stays
+/// compiled in every build so its tests run where the WebView does not.
+#[cfg_attr(not(feature = "tauri-shell"), allow(dead_code))]
+pub(crate) fn stays_on_page(candidate: &str, opened: &str) -> bool {
+    fn document(url: &str) -> &str {
+        url.split('#').next().unwrap_or(url)
+    }
+    document(candidate) == document(opened)
+}
+
 /// Prepares the page for one plugin, and records who it belongs to.
 ///
 /// # Errors

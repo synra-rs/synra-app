@@ -47,14 +47,14 @@
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 208 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 191 条。
+  Rust 侧 192 条。
 
 ### 还没有的（下一步就是这些）
 
 1. **插件页的其余能力**：`window.synra` 已经注入，`device.list`、`storage.*`、`clipboard.*`、`platform.*`、
    `network.fetch`、`self.actions/self.invoke` 都已走 `plugin_ui_rpc`；transfer.* 仍以 `unsupported` 拒绝。
-2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`；导航范围限制（`on_navigation`）未做，
-   每窗口 CSP 受 Tauri 2.12 限制只能继承全局策略。
+2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
+   剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
 3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。
 4. **同步的终点**：`plugins_sync_plan` / `plugins_sync_run` 已注册但没有页面调用；接收端写 `plugins` 行而不解包
    （包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。

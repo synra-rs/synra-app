@@ -866,6 +866,29 @@ fn the_fetch_codes_reach_the_interface_unchanged() {
     }
 }
 
+#[test]
+fn a_page_may_only_stay_on_itself() {
+    // ★ `has_ui` says the plugin has a page; this says what the page may do with the window. A fragment is the same
+    // document and is how a single-page plugin routes; every other destination changes what is shown while keeping the
+    // token the window was opened with.
+    let opened = "synra-plugin://acme/hello/index";
+
+    assert!(super::stays_on_page(opened, opened));
+    assert!(super::stays_on_page("synra-plugin://acme/hello/index#/settings", opened));
+    assert!(super::stays_on_page("synra-plugin://acme/hello/index#", opened));
+
+    // Another page of the same bundle is still a navigation, and would keep this page's authority.
+    assert!(!super::stays_on_page("synra-plugin://acme/hello/other", opened));
+    // The prefix trap: a page whose address merely starts with the opened one.
+    assert!(!super::stays_on_page("synra-plugin://acme/hello/index2", opened));
+    // Another plugin's origin, and the schemes a page might use to leave the app entirely.
+    assert!(!super::stays_on_page("synra-plugin://acme/other/index", opened));
+    assert!(!super::stays_on_page("https://example.com/", opened));
+    assert!(!super::stays_on_page("file:///etc/passwd", opened));
+    assert!(!super::stays_on_page("data:text/html,hello", opened));
+    assert!(!super::stays_on_page("", opened));
+}
+
 // ── The plugin's own actions ────────────────────────────────────────────────────────────────────
 
 /// A state whose plugin is loaded, has declared one action, and whose backend answers `actions.invoke` with `answer`.
