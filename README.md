@@ -47,12 +47,13 @@
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 220 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 210 条。
+  Rust 侧 211 条。
 
 ### 还没有的（下一步就是这些）
 
 1. **插件页的其余能力**：`window.synra` 的所有命名空间都已接上 `plugin_ui_rpc`；`transfer.*` 是第一版
-   （base64、单条 IPC、4 MiB 上限、`send` 在传输结束后才返回），大文件需要的分块通道还没有。
+   （base64、单条 IPC、4 MiB 上限），**插件页的 `send` 仍在传输结束后才返回**；桌面命令 `transfer_send_file` 已经提前
+   返回并交给 worker（见 19 §8.15）。大文件需要的分块通道还没有。
 2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
    剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
 3. **单实例 / 优雅关停**：单实例锁（`instance.lock`，操作系统文件锁）与「第二次启动唤起已有窗口」（`instance.show`，
@@ -61,8 +62,7 @@
 4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
    发送侧把已安装目录打成 `.synra`（跳过已解包的 `ui/`），接收侧（窗口与 daemon 都是）先 `install::from_package`
    走完整校验与落盘，再 `record_received` 写历史与对端状态；安装失败时回 `refused` 而不是声称已装。
-5. **接收端的接受/拒绝**：入站传输的接受与逐块进度已经写进同一张表，但任何已配对设备的附件仍直接落 inbox，
-   还没有 `file.transfer.request` 的询问步骤。
+5. **接收端的接受/拒绝**：已经做了（`file.transfer.request` 的询问步骤、全局提示、拒绝回 abort），见 19 §8.14。
 
 ## 这个仓库装什么
 

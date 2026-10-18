@@ -24,6 +24,11 @@ use synra_protocol::ids::TransferId;
 pub struct Transfers {
     /// Keyed by the transfer, not ordered: `list` sorts, so the worker never has to.
     by_id: Mutex<HashMap<TransferId, Entry>>,
+    /// The token that stops each worker, when a transfer has one.
+    ///
+    /// Beside the snapshots rather than inside them: a token is not part of what a panel draws, and a `TransferSnapshot`
+    /// that carried one would have to be `Clone` over a handle or lose it in the clone.
+    cancels: Mutex<HashMap<TransferId, synra_core::supervisor::Cancellation>>,
 }
 
 /// One transfer: what the interface shows, and what this shell owns on disk.
@@ -70,6 +75,35 @@ impl Transfers {
     /// what is in flight, and a caller that cancels is the one that knows whether the transfer was a message of its own.
     pub fn forget(&self, transfer_id: &TransferId) -> Option<std::path::PathBuf> {
         self.by_id.lock().remove(transfer_id).and_then(|entry| entry.temp)
+    }
+
+    /// Remembers the token that stops the worker for this transfer.
+    pub fn track_cancel(
+        &self,
+        transfer_id: TransferId,
+        cancel: synra_core::supervisor::Cancellation,
+    ) {
+        self.cancels.lock().insert(transfer_id, cancel);
+    }
+
+    /// Takes the token out and asks it to stop.
+    ///
+    /// Answers whether a worker was there to ask. A token is removed on the way out: a cancel arriving after the worker
+    /// finished must not leave one behind for a later transfer that reuses the identifier (identifiers are v4 and do not
+    /// repeat, but a map that only grows is a leak either way).
+    pub fn stop(&self, transfer_id: &TransferId) -> bool {
+        match self.cancels.lock().remove(transfer_id) {
+            Some(cancel) => {
+                cancel.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Forgets a token whose worker has finished on its own.
+    pub fn untrack(&self, transfer_id: &TransferId) {
+        self.cancels.lock().remove(transfer_id);
     }
 
     /// Every transfer, ordered by identifier.
@@ -202,6 +236,10 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
         return Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
     }
+    // ★ The worker is asked to stop **before** its row is removed: the loop checks the token between blocks, and a token
+    // taken out after the forget would still be found by the worker's next check — but the order also means a cancel that
+    // races the last block cannot resurrect a row nobody asked to keep.
+    state.transfers.stop(&id);
     // ★ The file this shell created for the transfer goes with it. A cancel that only removed the row would leave a message
     // on disk that nobody will ever send and nothing will ever delete.
     if let Some(path) = state.transfers.forget(&id) {
@@ -308,6 +346,18 @@ pub fn send_over(
     sender: synra_core::transfer::TransferSender,
     row: TransferSnapshot,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    send_over_with(state, to, address, sender, row, None)
+}
+
+/// [`send_over`], with a token a cancel can stop.
+pub fn send_over_with(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    address: std::net::SocketAddr,
+    sender: synra_core::transfer::TransferSender,
+    row: TransferSnapshot,
+    cancel: Option<&synra_core::supervisor::Cancellation>,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
     let transfer_id = row.transfer_id;
@@ -329,7 +379,7 @@ pub fn send_over(
         }
     };
     let mut link = dialled.into_link(identity.device_id, synra_core::peer::Flags::production());
-    send_ready(state, to, &mut link, sender, row)
+    send_ready_with(state, to, &mut link, sender, row, cancel)
 }
 
 /// Moves the blocks over a link that is already connected, and reports each one.
@@ -343,8 +393,26 @@ pub fn send_ready(
     state: &crate::state::AppState,
     to: synra_protocol::ids::DeviceId,
     link: &mut synra_core::link::PeerLink,
+    sender: synra_core::transfer::TransferSender,
+    row: TransferSnapshot,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    send_ready_with(state, to, link, sender, row, None)
+}
+
+/// [`send_ready`], with a token a cancel can stop between blocks.
+///
+/// # Why the token is checked here rather than by the transfer loop
+///
+/// Because the loop is in the kernel and has no notion of a user. The check sits in the `send` closure, which is the one
+/// place the loop asks before writing a block; a cancelled token turns into a refusal, the loop stops, and the peer is
+/// told with an abort frame rather than left waiting for blocks that will never come.
+pub fn send_ready_with(
+    state: &crate::state::AppState,
+    to: synra_protocol::ids::DeviceId,
+    link: &mut synra_core::link::PeerLink,
     mut sender: synra_core::transfer::TransferSender,
     mut row: TransferSnapshot,
+    cancel: Option<&synra_core::supervisor::Cancellation>,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     use synra_protocol::ErrorCode;
 
@@ -354,20 +422,179 @@ pub fn send_ready(
     row.state = "active".to_owned();
     announce_transfer(state, row.clone());
 
+    let cancelled = || cancel.is_some_and(|token| token.is_cancelled());
     let outcome = synra_core::transfer::send_blocks(
         &mut sender,
-        |index, data| link.send_chunk(index, data),
+        |index, data| {
+            if cancelled() {
+                return Err(SendStop::Cancelled);
+            }
+            link.send_chunk(index, data).map_err(SendStop::Link)
+        },
         |done, _total| {
-            row.blocks_done = done;
-            announce_transfer(state, row.clone());
+            if !cancelled() {
+                row.blocks_done = done;
+                announce_transfer(state, row.clone());
+            }
         },
     );
+    if matches!(
+        &outcome,
+        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled))
+    ) {
+        // ★ The peer is told, not merely dropped. A sender that closes without an abort sees its blocks stop arriving and
+        // waits out its own transfer window; an abort ends the round on both sides.
+        let _ = synra_core::abort(
+            link,
+            transfer_id,
+            synra_protocol::session::TransferAbortReason::UserCancelled,
+            synra_protocol::ids::TraceId::new(),
+            unix_millis() as i64,
+        );
+    }
     finish_transfer(state, transfer_id);
 
     outcome.map(|()| transfer_id).map_err(|error| {
         IpcError::unknown(ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}))
     })
+}
+
+/// Why a block could not be sent: the link refused it, or the user stopped the transfer.
+#[derive(Debug)]
+enum SendStop {
+    /// The user cancelled; the loop stops before writing the next block.
+    Cancelled,
+    /// The link refused the block.
+    Link(synra_core::LinkError),
+}
+
+impl std::fmt::Display for SendStop {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => formatter.write_str("the transfer was cancelled"),
+            Self::Link(error) => std::fmt::Display::fmt(error, formatter),
+        }
+    }
+}
+
+impl std::error::Error for SendStop {}
+
+/// Starts a send on its own thread, and answers the transfer's identifier now.
+///
+/// # Why a thread rather than an awaited command
+///
+/// Because the dial and the block loop can take minutes, and a command that answers only at the end cannot be cancelled —
+/// the answer is the only thing the interface ever gets, and by then there is nothing left to stop. The row and the token
+/// exist before this returns, so a cancel arriving immediately has something to cancel.
+///
+/// # What the thread owns
+///
+/// The sender (and so the file's blocks), the row it reports, and the temporary file this shell wrote when there was one.
+/// The file is removed on every exit path: a message stuck behind a dead link must not stay in the cache for ever.
+pub fn start_send(
+    state: &std::sync::Arc<crate::state::AppState>,
+    to: synra_protocol::ids::DeviceId,
+    address: std::net::SocketAddr,
+    sender: synra_core::transfer::TransferSender,
+    row: TransferSnapshot,
+    temp: Option<std::path::PathBuf>,
+) -> synra_protocol::ids::TransferId {
+    let transfer_id = row.transfer_id;
+    let cancel = synra_core::supervisor::Cancellation::new();
+    state.transfers.track_cancel(transfer_id, cancel.clone());
+    if let Some(path) = &temp {
+        state.transfers.record_with_temp(row.clone(), path.clone());
+    }
+    announce_transfer(state, row.clone());
+
+    let thread_state = std::sync::Arc::clone(state);
+    let spawned = std::thread::Builder::new()
+        .name(format!("synra-send-{transfer_id}"))
+        .spawn(move || {
+            if let Err(error) = send_over_with(&thread_state, to, address, sender, row, Some(&cancel)) {
+                eprintln!("synra: transfer {transfer_id} did not finish: {error:?}");
+            }
+            if let Some(path) = temp {
+                let _ = std::fs::remove_file(path);
+            }
+        });
+    if spawned.is_err() {
+        // The row was announced before the thread existed; without this it would stay "queued" for ever.
+        finish_transfer(state, transfer_id);
+    }
+    transfer_id
+}
+
+/// Prepares and starts a file send, answering the transfer's identifier.
+///
+/// # Errors
+///
+/// The same refusals as [`transfer_send_file`], all of which happen before a thread exists.
+pub fn transfer_send_file_start(
+    state: &std::sync::Arc<crate::state::AppState>,
+    request: &synra_ipc::dto::SendFileRequest,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let address = address_of(state, request.to)?;
+    let sender = synra_core::transfer::TransferSender::open(
+        std::path::Path::new(&request.path),
+        synra_core::transfer::DEFAULT_CHUNK_SIZE,
+    )
+    .map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": request.path, "reason": error.to_string()}))
+    })?;
+    let planned = sender.request();
+
+    let now_ms = synra_core::host::millis_reading(unix_millis());
+    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    row.file_name = std::path::Path::new(&request.path)
+        .file_name()
+        .map_or_else(|| request.path.clone(), |name| name.to_string_lossy().into_owned());
+
+    Ok(start_send(state, request.to, address, sender, row, None))
+}
+
+/// Prepares and starts a text send, answering the transfer's identifier.
+///
+/// # Errors
+///
+/// As [`transfer_send_text`].
+pub fn transfer_send_text_start(
+    state: &std::sync::Arc<crate::state::AppState>,
+    request: &synra_ipc::dto::SendTextRequest,
+) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_protocol::ErrorCode;
+
+    let address = address_of(state, request.to)?;
+    let outbox = state.paths.cache_dir().join("outbox");
+    std::fs::create_dir_all(&outbox).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
+    })?;
+    let path = outbox.join(format!("message-{}.txt", unix_millis()));
+    std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+    })?;
+
+    let sender = synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&path);
+        })
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+        })?;
+
+    let planned = sender.request();
+    let now_ms = synra_core::host::millis_reading(unix_millis());
+    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    row.kind = "attachment".to_owned();
+
+    Ok(start_send(state, request.to, address, sender, row, Some(path)))
 }
 
 /// The row a receiver reports while a transfer arrives.
@@ -516,6 +743,7 @@ pub fn complete_received(
 /// showing a transfer that no longer exists, and an announcement without the removal leaves one it can never clear.
 pub(crate) fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::ids::TransferId) {
     state.transfers.forget(&transfer_id);
+    state.transfers.untrack(&transfer_id);
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
 }
 

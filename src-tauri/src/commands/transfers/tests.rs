@@ -128,6 +128,47 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
 }
 
 #[test]
+fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
+    // ★ The token is checked in the block loop, so a cancel is not "close the window and hope": the peer receives an
+    // abort frame, and the panel's row is removed by the same exit path as a completed send.
+    use crate::testing::state as app_state;
+    use synra_core::link::memory::MemoryStream;
+    use synra_core::peer::Flags;
+    use synra_protocol::handshake::Agreed;
+
+    let state = app_state();
+    let (near, far) = MemoryStream::pair_with_capacity(4 * 1024 * 1024);
+    let agreed = Agreed { common: Vec::new(), missing_required: Vec::new() };
+    let local = DeviceId::new();
+    let peer = DeviceId::new();
+    let mut sending = synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
+    let mut receiving = synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
+
+    let path = std::env::temp_dir().join(format!("synra-cancelled-send-{}.bin", std::process::id()));
+    std::fs::write(&path, vec![7u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize]).expect("a file");
+    let sender =
+        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE).expect("a sender");
+    let planned = sender.request();
+    let row = super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
+
+    let cancel = synra_core::supervisor::Cancellation::new();
+    cancel.cancel();
+    let refused = super::send_ready_with(&state, peer, &mut sending, sender, row, Some(&cancel))
+        .expect_err("the token was already cancelled");
+    assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
+
+    match receiving.receive_inbound().expect("the abort") {
+        synra_core::link::Inbound::Envelope(envelope) => {
+            assert_eq!(envelope.event.as_str(), "file.transfer.abort", "the peer was told");
+        }
+        other => panic!("expected an abort, got {other:?}"),
+    }
+    assert!(state.transfers.is_empty(), "and the row is gone");
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn cancelling_a_transfer_removes_the_file_it_created() {
     // ★ The gap this closes: a cancelled message was removed from the panel and left on disk. The registry is the only place
     // that knows the path — a sent file belongs to the user and must survive, so "delete on cancel" cannot be a guess.

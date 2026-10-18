@@ -195,37 +195,28 @@ mod wrappers {
 
     /// Sends a file to a paired device, and answers the transfer it started.
     ///
-    /// ★ **Blocking, deliberately, for now.** The dial and the block loop run on this call, so a large file occupies the
-    /// command's thread until it is done; the interface is not frozen because Tauri runs commands off the UI thread, but two
-    /// sends at once would queue. The fix is a worker thread that owns the loop and reports through `announce_transfer` —
-    /// which is why that function exists separately from this command.
-    /// Sends a file to a paired device, and answers the transfer it started.
-    ///
-    /// # Why it is `async` around a blocking call
-    ///
-    /// The dial and the block loop cannot be made asynchronous without rewriting the link, so they run on a blocking thread
-    /// instead. Two things follow, and only two: the window's thread is never held, and two sends proceed at once instead of
-    /// queueing. **The result is still awaited**, so a refusal reaches the caller as an error rather than as an event that
-    /// arrives later — the command still promises "this transfer is running", not "this transfer has been queued".
+    /// ★ **It answers now, not when the file has moved.** The dial and the block loop run on a worker thread that owns
+    /// the transfer's row and its cancel token; what this returns is the identifier the panel needs in order to show the
+    /// transfer, and to stop it. The refusals that can happen before a worker exists — an unknown device, a file that
+    /// cannot be planned — are still errors here, because a caller that has a file but no thread must be told.
     #[tauri::command]
-    pub async fn transfer_send_file(
+    pub fn transfer_send_file(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendFileRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::transfers::transfer_send_file(&state, &request)).await
+        commands::transfers::transfer_send_file_start(state.inner(), &request)
     }
 
     /// Sends text as a file, and answers the transfer it started.
     ///
-    /// As [`transfer_send_file`](Self::transfer_send_file): a blocking send on its own thread, with the result awaited.
+    /// As [`transfer_send_file`](Self::transfer_send_file): the temporary file is written before the worker starts, and the
+    /// worker removes it when it is done, whichever way it ends.
     #[tauri::command]
-    pub async fn transfer_send_text(
+    pub fn transfer_send_text(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         request: synra_ipc::dto::SendTextRequest,
     ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::transfers::transfer_send_text(&state, &request)).await
+        commands::transfers::transfer_send_text_start(state.inner(), &request)
     }
 
     /// The transfers in flight.
