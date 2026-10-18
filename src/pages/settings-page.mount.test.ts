@@ -128,6 +128,28 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('lists a trusted sender and takes the trust back by unsetting the last key', async () => {
+    // ★ The list is the configuration key, not a second store: removing the only sender unsets the key rather than
+    // writing an empty array, because "no preference" and "a preference for nobody" are the same thing to the kernel.
+    const sender = '11111111-1111-4111-8111-111111111111'
+    answer({
+      config_get: { values: { 'transfers.acceptFrom': [sender] }, overridden: ['transfers.acceptFrom'] },
+      identity_get: IDENTITY,
+      config_set: null
+    })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Ask again')
+    const remove = wrapper.findAll('button').find(button => button.text().includes('Ask again'))
+    expect(remove, 'the trusted sender has a remove button').toBeDefined()
+    await remove?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', { patch: { unset: ['transfers.acceptFrom'] } })
+    wrapper.unmount()
+  })
+
   it('shows the refusal when the configuration cannot be read', async () => {
     // Refused rather than answered: a settings screen that renders defaults when the read failed is showing the user
     // values the kernel never agreed to.

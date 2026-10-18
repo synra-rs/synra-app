@@ -773,6 +773,32 @@ pub fn auto_accept_peer(state: &crate::state::AppState, peer: &str) -> bool {
     accepted_senders(state).iter().any(|accepted| accepted == peer)
 }
 
+/// Forgets a device the user chose to accept without asking.
+///
+/// Called when the device itself is forgotten: a trusted sender that is no longer paired is a preference about a device
+/// this one no longer knows, and keeping it would silently re-trust the same identifier if it ever came back.
+pub(crate) fn forget_sender(state: &crate::state::AppState, peer: &str) {
+    let mut accepted = accepted_senders(state);
+    let before = accepted.len();
+    accepted.retain(|known| known != peer);
+    if accepted.len() == before {
+        return;
+    }
+    let now = synra_store::sqlite::now_ms();
+    if accepted.is_empty() {
+        // Unset rather than store an empty array: an empty preference is no preference, and a row saying "none" is a
+        // setting a screen would have to interpret.
+        let _ = state.db().apply_config(
+            &[synra_store::ConfigChange { key: ACCEPT_FROM_KEY.to_owned(), value: None }],
+            now,
+        );
+    }
+    else {
+        let value = serde_json::to_value(&accepted).unwrap_or_else(|_| serde_json::json!([]));
+        let _ = state.db().set_config(ACCEPT_FROM_KEY, &value, now);
+    }
+}
+
 /// Remembers a device the user chose to accept without asking.
 ///
 /// Stored under one configuration key as a JSON array of device ids, so the settings screen can show (and one day remove)

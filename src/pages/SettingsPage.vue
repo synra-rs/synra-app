@@ -84,6 +84,39 @@
         </div>
       </ATooltip>
     </section>
+
+    <section class="stack gap-3">
+      <h2 class="text-base font-medium">
+        {{ messages.settings.trusted.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.trusted.detail }}
+      </p>
+
+      <!--
+        The list is the configuration key the transfer prompt writes (`transfers.acceptFrom`), not a second store. Removing
+        a row writes the key back (or unsets it when the last row goes), so there is one answer to "may this device send
+        without asking".
+      -->
+      <AEmpty v-if="trusted.length === 0" :description="messages.settings.trusted.empty" />
+      <AList v-else size="small">
+        <AList.Item v-for="device in trusted" :key="device.id">
+          <div class="row-between gap-3">
+            <span class="min-w-0 row gap-2">
+              <span class="truncate text-sm">{{ device.name }}</span>
+              <span v-if="device.name !== device.id" class="truncate text-xs text-ink-dim font-mono">{{ device.id }}</span>
+            </span>
+            <AButton
+              size="small"
+              :loading="forgetting === device.id"
+              @click="forgetTrusted(device.id)"
+            >
+              {{ messages.settings.trusted.remove }}
+            </AButton>
+          </div>
+        </AList.Item>
+      </AList>
+    </section>
   </section>
 </template>
 
@@ -104,12 +137,21 @@
  * bug in the settings page. So the control is rendered disabled, with the reason.
  */
 import type { ConfigSnapshot, IdentitySnapshot, SuggestedAction } from '@synra/protocol'
-import { Descriptions as ADescriptions, Select as ASelect, Switch as ASwitch, Tooltip as ATooltip } from 'ant-design-vue'
-import { onMounted, ref } from 'vue'
+import {
+  Button as AButton,
+  Descriptions as ADescriptions,
+  Empty as AEmpty,
+  List as AList,
+  Select as ASelect,
+  Switch as ASwitch,
+  Tooltip as ATooltip
+} from 'ant-design-vue'
+import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
+import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
 /** The keys this page knows about, in the order they are shown. */
@@ -150,6 +192,49 @@ const error = ref<{ code: string, message: string, actions?: readonly SuggestedA
 
 /** The key being written, so its control can say so and cannot be pressed twice. */
 const saving = ref<PreferenceKey | undefined>(undefined)
+
+/**
+ * The devices this one accepts files from without asking.
+ *
+ * The configuration holds identifiers; the devices store holds the names it knows. A device that is no longer in the
+ * list is shown by its identifier rather than hidden — the preference is still real, and a row that vanished would be a
+ * setting the user cannot see or remove.
+ */
+const devices = useDevicesStore()
+
+const trusted = computed<readonly { id: string, name: string }[]>(() => {
+  const value = settings.value('transfers.acceptFrom')
+  if (!Array.isArray(value))
+    return []
+  return value
+    .filter((id): id is string => typeof id === 'string')
+    .map((id) => {
+      const card = devices.cards.find(entry => entry.deviceId === id)
+      return { id, name: card?.displayName ?? id }
+    })
+})
+
+/** The device being un-trusted, so its button can say so. */
+const forgetting = ref<string | undefined>(undefined)
+
+/**
+ * Takes back "always accept" for one device.
+ *
+ * The last row unsets the key instead of storing an empty list: a settings screen should not have to interpret "none" as
+ * a preference, and the kernel's own default is "ask" — which is the absence of a row.
+ */
+async function forgetTrusted(deviceId: string): Promise<void> {
+  forgetting.value = deviceId
+  error.value = undefined
+  const remaining = trusted.value.filter(device => device.id !== deviceId).map(device => device.id)
+  const patch = remaining.length > 0
+    ? { set: { 'transfers.acceptFrom': remaining } }
+    : { unset: ['transfers.acceptFrom'] }
+  const answer = await kernel.call<null>('config_set', { patch })
+  forgetting.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /**
  * Writes one preference.

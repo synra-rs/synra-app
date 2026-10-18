@@ -47,6 +47,25 @@ fn a_device_the_user_accepts_forever_is_not_asked_again() {
 }
 
 #[test]
+fn forgetting_a_device_forgets_that_it_was_trusted() {
+    // ★ The preference is about a device; once the device is forgotten, the preference is about nothing. It is also
+    // removed rather than left as an empty array, so a settings screen has nothing to interpret.
+    let state = crate::testing::state();
+    let peer = "11111111-1111-4111-8111-111111111111";
+
+    super::remember_peer(&state, peer);
+    assert!(super::auto_accept_peer(&state, peer));
+    super::forget_sender(&state, peer);
+
+    assert!(!super::auto_accept_peer(&state, peer), "the device asks again");
+    let config = crate::commands::config::config_get(&state).expect("the configuration reads");
+    assert!(
+        config.values.get("transfers.acceptFrom").is_none(),
+        "the empty preference was removed rather than stored"
+    );
+}
+
+#[test]
 fn answering_a_prompt_that_is_not_waiting_is_refused() {
     // ★ The prompt's id is one a panel was told about. Answering twice, or answering after the window closed, is an
     // answer to a question that no longer exists — and a kernel that said "done" would leave the panel believing it

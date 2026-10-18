@@ -47,7 +47,7 @@
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 220 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 216 条。
+  Rust 侧 217 条。
 
 ### 还没有的（下一步就是这些）
 
@@ -62,7 +62,8 @@
 4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
    发送侧把已安装目录打成 `.synra`（跳过已解包的 `ui/`），接收侧（窗口与 daemon 都是）先 `install::from_package`
    走完整校验与落盘，再 `record_received` 写历史与对端状态；安装失败时回 `refused` 而不是声称已装。
-5. **接收端的接受/拒绝**：已经做了（`file.transfer.request` 的询问步骤、全局提示、拒绝回 abort、按设备“总是接受”），见 19 §8.14。
+5. **接收端的接受/拒绝**：已经做了（`file.transfer.request` 的询问步骤、全局提示、拒绝回 abort、按设备“总是接受”），
+   设置页可以列出并移除已信任的发送方；忘记设备时信任一并删除。见 19 §8.14。
 
 ## 这个仓库装什么
 
