@@ -81,6 +81,13 @@ pub struct AppState {
     /// they are comparing a bundle from before a change with one from after it — and a name built from the second
     /// would silently put the second file on top of the first.
     pub bundles_written: AtomicU64,
+    /// The pairing desk: the requests waiting for a person, and the answers going back.
+    ///
+    /// ★ Held **here** rather than inside the listener, and that is what makes pairing work at all: a request arrives on a
+    /// socket thread, the user answers from a command, and those are different threads with no connection between them. The
+    /// desk is the shared thing they agree on — the daemon learnt this first, where the answer comes from a person who is not
+    /// on the connection that asked.
+    pub pairing: Arc<synra_core::pairing::PairingDesk>,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 
@@ -175,7 +182,10 @@ impl AppState {
             synra_core::platform_of_os(platform),
             env!("CARGO_PKG_VERSION"),
         );
-        Ok(Self {
+        // Read before the identity is moved into its Arc below: the desk needs the identifier and the field takes ownership.
+    let local_id = identity.device_id;
+
+    Ok(Self {
             host: shared(Host::new(identity.clone(), peer)),
             db: Arc::new(Mutex::new(db)),
             paths,
@@ -186,6 +196,10 @@ impl AppState {
             scanning: Arc::new(Mutex::new(None)),
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
+            pairing: Arc::new(synra_core::pairing::PairingDesk::new(
+                local_id,
+                synra_protocol::session::SessionTimeouts::default().pairing,
+            )),
             started_at_ms: now_ms,
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
             log: None,

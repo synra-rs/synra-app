@@ -63,10 +63,10 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
     let cancel = synra_core::supervisor::Cancellation::new();
     let thread_cancel = cancel.clone();
     let data_dir = state.paths.data_dir().to_path_buf();
-    let desk = Arc::new(synra_core::pairing::PairingDesk::new(
-        state.identity.lock().device_id,
-        synra_protocol::session::SessionTimeouts::default().pairing,
-    ));
+    // ★ The desk comes **from the state**, not from here. A request arrives on a socket thread and the user answers from a
+    // command; if the listener made its own desk, the command's answer would land on a different one and the connection would
+    // wait out its window for a decision already made.
+    let desk = Arc::clone(&state.pairing);
     // ★ The router the kernel's listener wants is a thin pair of the Arcs this shell already holds — not the daemon's 660-line
     // orchestration. It needs a plugin set, and `PluginSet::new` refuses to exist without a host to route effects through, so a
     // window with no plugin host does not listen at all: one that accepted a share and could route it nowhere would be a link
