@@ -253,6 +253,26 @@ impl AppState {
         // Written back because `load` generates one on a fresh installation, and a generated identity that is only in
         // memory is a device that appears new to every peer on every start — which loses every pairing, silently.
         identity.store(&db, now_ms).map_err(internal)?;
+        // ★ A previous run's uninstall may have left an artifact directory behind: a loaded engine held its wasm file
+        // open, the row was already gone, and the user was told. This is the moment to finish it — the old process is
+        // gone and no plugin has been loaded. The sandbox is not swept: data kept on purpose belongs to the user.
+        if let Ok(rows) = db.plugins() {
+            let installed: Vec<String> = rows.into_iter().map(|row| row.plugin_id).collect();
+            match synra_store::PluginFiles::new(paths.clone()).sweep_orphans(&installed) {
+                Ok(sweep) if !sweep.removed.is_empty() => eprintln!(
+                    "synra: removed {} leftover plugin director{} ({} bytes)",
+                    sweep.removed.len(),
+                    if sweep.removed.len() == 1 { "y" } else { "ies" },
+                    sweep.bytes_freed
+                ),
+                Ok(sweep) => {
+                    for path in sweep.leftovers {
+                        eprintln!("synra: could not remove {}", path.display());
+                    }
+                }
+                Err(error) => eprintln!("synra: the plugin directory could not be swept: {error}"),
+            }
+        }
         let peer = synra_core::LocalPeer::new(
             identity.device_id,
             identity.display_name.clone(),
