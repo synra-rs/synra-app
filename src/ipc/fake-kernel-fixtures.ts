@@ -126,6 +126,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
 /** One intent that settled, so the home page has something true to say. */
 export const INTENT: IntentSnapshot = {
   intentId: '01HQ00000000000000000INTNT1',
+  traceId: '01HQ00000000000000000TRACE1',
   state: 'succeeded',
   pluginId: '@synra-plugin/github',
   candidates: [],

@@ -37,6 +37,8 @@ export const home = {
   received: {
     title: 'Received',
     empty: 'Nothing has arrived from another device yet.',
-    action: 'Pair a device'
+    action: 'Pair a device',
+    /** The id a person pastes into `synra logs --trace` to follow one action across devices. */
+    trace: 'Trace'
   }
 } as const

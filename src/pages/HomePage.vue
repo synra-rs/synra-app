@@ -137,6 +137,10 @@
               {{ intent.state }}
             </ATag>
             <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
+            <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
+            <span v-if="intent.traceId" class="truncate text-xs text-ink-dim font-mono" :title="intent.traceId">
+              {{ messages.home.received.trace }} {{ intent.traceId }}
+            </span>
           </div>
         </AList.Item>
       </AList>

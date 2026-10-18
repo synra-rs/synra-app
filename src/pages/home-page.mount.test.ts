@@ -184,6 +184,9 @@ describe('the home page', () => {
     // The fixture's one human word is the plugin it was routed to; `IntentSnapshot` carries no summary field, and an
     // assertion against a field the DTO does not have would pass on `undefined`.
     expect(wrapper.text()).toContain(INTENT.pluginId)
+    // ★ And the trace id, which is what a user pastes into `synra logs --trace`. It was on the board and missing from
+    // the snapshot, so the filter had no id anyone could know.
+    expect(wrapper.text()).toContain(INTENT.traceId)
     wrapper.unmount()
   })
 

@@ -279,6 +279,9 @@ fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, 
     let view = orchestrate::snapshot(&state.board, &intent_id.to_string()).map_err(|error| as_ipc(&error))?;
     Ok(IntentSnapshot {
         intent_id: view.intent_id,
+        // ★ The one identifier a user can hand to `synra logs --trace`. The board carried it; the snapshot used to drop
+        // it, which made the filter a feature with no way to know what to filter by.
+        trace_id: view.trace,
         state: view.state.to_owned(),
         // The kernel's chosen plugin is the one and only candidate once it has settled on one; before that there is no
         // choice to report. Derived rather than sent, because the board does not carry a separate "chosen" field.
@@ -620,11 +623,14 @@ mod tests {
         // ★ Both commands build their answer through `snapshot_of`, and this is what says so: one mapping means a field
         // added to the DTO cannot appear in one answer and be missing from the other.
         let state = crate::testing::state();
-        let id = raise_an_intent(&state);
+        let (id, trace) = raise_an_intent(&state);
 
         let listed = intent_list(&state).expect("the board can be read");
         assert_eq!(listed.len(), 1, "the one intent that was raised is the one that is listed");
         assert_eq!(listed[0], intent_snapshot(&state, id).expect("the same intent"));
+        // ★ The trace the board generated reaches the interface: it is the id a user pastes into `synra logs --trace`, and
+        // a snapshot that dropped it left the filter with nothing anyone could know.
+        assert_eq!(listed[0].trace_id, trace, "the board's trace is the snapshot's trace");
     }
 
     /// Puts one intent on the board directly.
@@ -632,7 +638,7 @@ mod tests {
     /// `orchestrate::dispatch` is the share entry point and needs a plugin engine, which this fixture deliberately has none
     /// of. `intent_list` reads the board, so the board is what the test writes — and `raise` is the kernel's own way to
     /// write one, so what is listed is a real intent rather than a row shaped for the test.
-    fn raise_an_intent(state: &AppState) -> IntentId {
+    fn raise_an_intent(state: &AppState) -> (IntentId, synra_protocol::ids::TraceId) {
         use synra_core::intent::{Choice, IntentSource};
 
         let item = ShareItem {
@@ -642,7 +648,7 @@ mod tests {
             transfers: Vec::new(),
             context_id: None,
         };
-        let (id, _trace, created) = state.board.lock().raise(
+        let (id, trace, created) = state.board.lock().raise(
             IntentSource::Share { item, source_app: None },
             Choice::Automatic,
             None,
@@ -651,6 +657,6 @@ mod tests {
         );
 
         assert!(created, "a request that was never raised before raises a new intent");
-        id
+        (id, trace)
     }
 }
