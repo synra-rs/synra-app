@@ -172,6 +172,12 @@ pub struct AppState {
     /// ★ A command cannot send the abort: the listener's connection thread is the only writer to that link, and a second
     /// writer would race it. The command leaves the identifier here, and the loop consumes it between messages.
     pub inbound_cancels: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Static registry documents, by URL, with the validators their hosts sent.
+    ///
+    /// ★ A conditional request is the whole point: a bucket's `index.json` changes rarely, and a page that re-read it on
+    /// every visit pays for a body it already has. The cache is keyed by URL and bounded by the process, not by time —
+    /// a document that answered 304 is the same document.
+    pub registry_cache: Arc<Mutex<std::collections::HashMap<String, crate::commands::registry::CachedDocument>>>,
 }
 
 /// One plugin page this shell opened, as the window that opened it knows it.
@@ -235,6 +241,7 @@ impl AppState {
             hosted_ui: Mutex::new(std::collections::HashMap::new()),
             transfers: crate::commands::transfers::Transfers::new(),
             inbound_cancels: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            registry_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         })
     }
 

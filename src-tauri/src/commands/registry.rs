@@ -52,6 +52,17 @@ pub const REGISTRY_KEY: &str = "plugins.registry";
 /// the limit is accepted, and the archive's own limits do the rest once it is in memory.
 const MAX_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024 + 1;
 
+/// A static index this process has already parsed, and the validators its host sent.
+#[derive(Debug, Clone)]
+pub struct CachedDocument {
+    /// The `ETag` the host answered with, for `If-None-Match`.
+    pub etag: Option<String>,
+    /// The `Last-Modified` the host answered with, for `If-Modified-Since`.
+    pub last_modified: Option<String>,
+    /// The parsed document, which a 304 says is still current.
+    pub document: Packument,
+}
+
 /// How a registry answers "what versions exist?".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -424,23 +435,86 @@ fn packument_with_base(
     plugin_id: &str,
 ) -> Result<(Base, Packument), synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let (base, response) = get_text(
-        &bases,
-        |base| match base.kind {
+    let mut last: Option<(ErrorCode, String)> = None;
+
+    for base in &bases {
+        let path = match base.kind {
             Kind::Npm => format!("/{}", plugin_id.replace('/', "%2F")),
             Kind::Static => format!("/{plugin_id}.json"),
-        },
-        "the package",
-    )?;
-    let document = match base.kind {
-        Kind::Npm => Packument::parse(&response.body),
-        Kind::Static => synra_registry::parse_static_index(&response.body),
+        };
+        let url = format!("{}{path}", base.origin);
+
+        // ★ The cached document and its validators are cloned before the lock is dropped: a conditional request spends a
+        // network round trip, and a mutex held across it would make every other registry read wait for the slowest bucket.
+        let cached = state.registry_cache.lock().get(&url).cloned();
+        let mut request = get(&url);
+        if let Some(entry) = &cached {
+            if let Some(etag) = &entry.etag {
+                request.headers.insert("if-none-match".to_owned(), etag.clone());
+            }
+            if let Some(modified) = &entry.last_modified {
+                request.headers.insert("if-modified-since".to_owned(), modified.clone());
+            }
+        }
+
+        match client(base).fetch(&request) {
+            Ok(response) if response.status == 304 => {
+                // A 304 says "what you have is current". Without a cached document there is nothing to have, so a host
+                // that answers one anyway is refused rather than guessed about.
+                if let Some(entry) = cached {
+                    return Ok((base.clone(), entry.document));
+                }
+                last = Some((
+                    ErrorCode::ProtocolViolation,
+                    format!("{url} answered 304 without a cached document"),
+                ));
+            }
+            Ok(response) if (200..300).contains(&response.status) => {
+                let document = match base.kind {
+                    Kind::Npm => Packument::parse(&response.body),
+                    Kind::Static => synra_registry::parse_static_index(&response.body),
+                }
+                .map_err(|error| {
+                    synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                        serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
+                    )
+                })?;
+                if base.kind == Kind::Static {
+                    state.registry_cache.lock().insert(
+                        url,
+                        CachedDocument {
+                            etag: response.headers.get("etag").cloned(),
+                            last_modified: response.headers.get("last-modified").cloned(),
+                            document: document.clone(),
+                        },
+                    );
+                }
+                return Ok((base.clone(), document));
+            }
+            Ok(response) if retryable(response.status) => {
+                last = Some((ErrorCode::Unsupported, format!("{url} answered {}", response.status)));
+            }
+            Ok(response) => {
+                return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                    serde_json::json!({
+                        "pluginId": plugin_id,
+                        "status": response.status,
+                        "reason": "the registry refused the request",
+                    }),
+                ));
+            }
+            Err(refusal) => {
+                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+            }
+        }
     }
-    .map_err(|error| {
-        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
-    })?;
-    Ok((base, document))
+
+    let (code, reason) = last.unwrap_or((ErrorCode::Unsupported, "no registry serves the package".to_owned()));
+    Err(synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
+        "pluginId": plugin_id,
+        "reason": reason,
+        "tried": bases.len(),
+    })))
 }
 
 /// The version a document names, by tag or by string.
