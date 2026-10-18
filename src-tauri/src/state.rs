@@ -217,6 +217,30 @@ pub struct HostedUi {
     pub ready: bool,
 }
 
+/// Points the store's write timer at the shell's recorder.
+///
+/// # Why this is a named function
+///
+/// Because the metric's name and its label are one decision, and a test that wants to see a write counted should call the
+/// same function the shell calls — not build a second histogram with the same name and hope the two agree. The daemon has
+/// the same function over the same store hook; the hosts differ in where their recorder comes from, not in what a write
+/// reports.
+pub fn observe_db_writes(
+    db: &mut SynraDb,
+    metrics: &Arc<synra_observe::metrics::RingRecorder>,
+) {
+    let recorder = Arc::clone(metrics);
+    db.observe_writes(Arc::new(move |kind, elapsed| {
+        recorder.histogram_observe(
+            &synra_observe::metrics::SeriesKey::new(
+                "db_write_duration_us",
+                [("kind".to_owned(), kind.to_owned())],
+            ),
+            elapsed.as_secs_f64() * 1_000_000.0,
+        );
+    }));
+}
+
 impl AppState {
     /// A state over an already-open database, with no plugin host.
     ///
@@ -224,7 +248,7 @@ impl AppState {
     ///
     /// [`IpcError`] when the identity cannot be read or written. A shell with no identity has nothing to show a user
     /// and nothing to present to a peer, so this is a start-up refusal rather than a degraded mode.
-    pub fn new(db: SynraDb, paths: Paths, platform: &str, now_ms: i64) -> Result<Self, IpcError> {
+    pub fn new(mut db: SynraDb, paths: Paths, platform: &str, now_ms: i64) -> Result<Self, IpcError> {
         let identity = Identity::load(&db, platform, now_ms).map_err(internal)?;
         // Written back because `load` generates one on a fresh installation, and a generated identity that is only in
         // memory is a device that appears new to every peer on every start — which loses every pairing, silently.
@@ -243,6 +267,9 @@ impl AppState {
     // `Host::with_metrics` existed for the daemon and the window built its host without one, so `frames_sent_total`,
     // `frames_received_total` and `links_opened_total` were written by nothing in the one host a desktop user runs.
     let metrics = Arc::new(synra_observe::metrics::RingRecorder::new());
+    // ★ The store reports every write's duration to this recorder. Installed once, where the database is owned, rather
+    // than at each call site — the store's write methods are the one funnel every write goes through.
+    observe_db_writes(&mut db, &metrics);
 
     // ★ The process facts are kept between reads rather than rebuilt: `sysinfo` computes CPU usage as a delta between
     // two refreshes, so a fresh `System` would report zero on every panel poll. The first refresh here is the baseline.
@@ -501,6 +528,24 @@ mod tests {
             state.metrics.snapshot().get("frames_sent_total{event=kernel.test}"),
             Some(&Value::Counter(1)),
             "the host's frame counter is the shell's recorder"
+        );
+    }
+
+    #[test]
+    fn a_store_write_reaches_the_shells_recorder() {
+        // ★ The store has no recorder of its own: it reports a write to the host that installed an observer. This is the
+        // shell's install, checked through the recorder `diag_metrics` reads — a write the user waits on should be in the
+        // sample the performance panel shows.
+        let state = crate::testing::state();
+
+        state
+            .db()
+            .set_config("test.key", &serde_json::json!(1), 1)
+            .expect("the write is made");
+
+        assert!(
+            state.metrics.snapshot().get("db_write_duration_us{kind=config}").is_some(),
+            "the store's write was not counted by the shell's recorder"
         );
     }
 

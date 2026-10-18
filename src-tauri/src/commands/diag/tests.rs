@@ -482,7 +482,18 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
     for expected in ["db_size_bytes", "uptime_seconds", "memory_rss_bytes", "cpu_percent"] {
         assert!(names.contains(&expected), "{value}");
     }
-    let sampled = ["db_size_bytes", "uptime_seconds", "memory_rss_bytes", "cpu_percent", "threads"];
+    // ★ `db_write_duration_us` is allowed from the first tick now: the shell installs the store's write observer while
+    // building this state, and building it **writes** (the identity row, and the audit row that the fixture's plugin
+    // history leaves). That is a real write in this process, not a test inventing a sample — the rule under test is that
+    // nothing is counted that did not happen, and these happened.
+    let sampled = [
+        "db_size_bytes",
+        "uptime_seconds",
+        "memory_rss_bytes",
+        "cpu_percent",
+        "threads",
+        "db_write_duration_us",
+    ];
     assert!(
         names.iter().all(|name| sampled.contains(name)),
         "something was counted before anything ran: {value}"
