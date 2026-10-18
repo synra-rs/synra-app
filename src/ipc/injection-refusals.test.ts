@@ -27,12 +27,6 @@ describe('what the host cannot do yet', () => {
   const cases: readonly { readonly name: string, readonly call: (synra: SynraClient) => Promise<unknown> }[] = [
     { name: 'device.send', call: async synra => synra.device.send({ to: 'peer', event: 'thing' }) },
     { name: 'device.broadcast', call: async synra => synra.device.broadcast({ event: 'thing' }) },
-    { name: 'storage.get', call: async synra => synra.storage.get('key') },
-    { name: 'storage.get with a fallback', call: async synra => synra.storage.get('key', { fallback: 0 }) },
-    { name: 'storage.set', call: async synra => synra.storage.set('key', 1) },
-    { name: 'storage.delete', call: async synra => synra.storage.delete('key') },
-    { name: 'storage.keys', call: async synra => synra.storage.keys() },
-    { name: 'storage.quota', call: async synra => synra.storage.quota() },
     {
       name: 'transfer.send',
       call: async synra =>

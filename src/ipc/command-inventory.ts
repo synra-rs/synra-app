@@ -40,8 +40,8 @@ export const REGISTERED = [
   // The page's own report, checked against the session the host issued for it.
   'plugin_ui_ready',
   // ★ The plugin page's one call channel: a token the host issued, then a method from the surface `PluginUiOp` names.
-  // `device.list` is the first operation with a body; everything else on the surface refuses with `unsupported` until it
-  // is built, rather than answering an empty list.
+  // `device.list` and `storage.*` have bodies; everything else on the surface refuses with `unsupported` until it is
+  // built, rather than answering an empty list.
   'plugin_ui_rpc',
   // The transfers in flight. The registry is filled by the two send commands as they move blocks; an **inbound** transfer is
   // driven by the listener and is not reported in this list yet.

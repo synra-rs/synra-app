@@ -1,11 +1,10 @@
 /**
- * The namespaces this build cannot answer: storage, network, transfer, platform, clipboard and self.
+ * The namespaces this build cannot answer: network, transfer, platform, clipboard and self.
  *
  * # Why each of them is here rather than absent
  *
- * What is not here yet, and says so: plugin storage, transfers, outbound network, the clipboard and `self.invoke`. Each
- * needs a kernel command that does not exist in this build, and each refuses with `unsupported` rather than returning an
- * empty list, a fake id or a resolved promise. Those arrive with the commands.
+ * Each needs a kernel operation that does not exist in this build, and each refuses with `unsupported` rather than
+ * returning an empty list, a fake id or a resolved promise. Those arrive with the operations.
  *
  * They are one file because they are one decision — the method exists so a missing one is never `TypeError: not a
  * function`, and the refusal names the feature. The two that also check a grant say `capability_denied` instead, because
@@ -18,34 +17,12 @@ import type {
   NetworkNamespace,
   PlatformNamespace,
   SelfNamespace,
-  StorageNamespace,
   TransferNamespace,
   TransferProgress
 } from '@synra/client'
 import type { TransferId } from '@synra/protocol'
 
 import { denied, unsupported } from './errors'
-
-/** The storage namespace, which arrives with a kernel command this build does not have. */
-export function createStorageNamespace(): StorageNamespace {
-  return {
-    get: async <T = unknown>(_key: string): Promise<T | undefined> => {
-      throw unsupported('storage.get')
-    },
-    set: async <T = unknown>(_key: string, _value: T): Promise<void> => {
-      throw unsupported('storage.set')
-    },
-    delete: async (_key: string): Promise<void> => {
-      throw unsupported('storage.delete')
-    },
-    keys: async (_prefix?: string): Promise<string[]> => {
-      throw unsupported('storage.keys')
-    },
-    quota: async () => {
-      throw unsupported('storage.quota')
-    }
-  }
-}
 
 /** The network namespace, which refuses rather than reaching around the page's own CSP. */
 export function createNetworkNamespace(): NetworkNamespace {

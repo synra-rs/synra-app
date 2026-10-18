@@ -36,6 +36,16 @@ export function denied(capability: string): SynraError {
   } as unknown as SynraError
 }
 
+/** A refusal for an argument the host cannot accept. */
+export function invalidArgument(detail: string): SynraError {
+  return {
+    code: 'invalid_argument' as ErrorCode,
+    message: `error.invalid_argument`,
+    retryable: false,
+    details: { detail }
+  } as unknown as SynraError
+}
+
 /** Turns whatever the bridge rejected with into the shape a plugin can branch on. */
 export function asSynraError(reason: unknown): SynraError {
   const candidate = reason as Partial<IpcError> | undefined

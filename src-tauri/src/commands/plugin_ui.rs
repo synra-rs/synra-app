@@ -17,8 +17,11 @@
 //! prevent.
 
 use crate::state::AppState;
+use synra_capability::Capability;
 use synra_ipc::{IpcError, PluginUiOp};
+use synra_plugin_ui::ValidatedSession;
 use synra_protocol::ErrorCode;
+use synra_protocol::ids::PluginId;
 
 /// Records that a plugin page has mounted, after checking it holds a live session.
 ///
@@ -66,20 +69,20 @@ pub fn plugin_ui_ready(state: &AppState, label: &str) -> Result<(), IpcError> {
 ///
 /// # What is implemented, and what is only addressable
 ///
-/// `device.list` is the first operation with a body: it answers the same cards the devices screen shows, reduced to the
-/// four fields the plugin contract declares. Every other operation on the surface answers [`ErrorCode::Unsupported`] —
-/// an honest "this build does not do that yet", rather than an empty list or a promise nothing keeps.
+/// `device.list` and `storage.*` have bodies. The rest of the surface answers [`ErrorCode::Unsupported`] — an honest
+/// "this build does not do that yet", rather than an empty list or a promise nothing keeps.
 ///
 /// # Errors
 ///
-/// [`ErrorCode::InvalidArgument`] when the token is not a decimal number,
-/// [`ErrorCode::CapabilityDenied`] when no hosted page holds it or the session is stale,
-/// [`ErrorCode::Unsupported`] for a method that is not on the plugin surface or is not built here.
+/// [`ErrorCode::InvalidArgument`] when the token is not a decimal number or an operation's arguments are malformed,
+/// [`ErrorCode::CapabilityDenied`] when no hosted page holds the token, the session is stale, or a storage operation's
+/// capability was not granted, [`ErrorCode::Unsupported`] for a method that is not on the plugin surface or is not built
+/// here, and [`ErrorCode::PayloadTooLarge`] when a write would exceed the plugin's storage quota.
 pub fn plugin_ui_rpc(
     state: &AppState,
     token: &str,
     method: &str,
-    _args: &serde_json::Value,
+    args: &serde_json::Value,
 ) -> Result<serde_json::Value, IpcError> {
     let refused = || {
         IpcError::unknown(ErrorCode::CapabilityDenied)
@@ -105,7 +108,7 @@ pub fn plugin_ui_rpc(
     };
 
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    state
+    let session = state
         .ui_sessions
         .validate(nonce, &plugin_id, &version, now)
         .map_err(|_| refused())?;
@@ -119,6 +122,11 @@ pub fn plugin_ui_rpc(
 
     match op {
         PluginUiOp::DeviceList => device_targets(state),
+        PluginUiOp::StorageGet => storage_get(state, &session, &plugin_id, args),
+        PluginUiOp::StorageSet => storage_set(state, &session, &plugin_id, args),
+        PluginUiOp::StorageDelete => storage_delete(state, &session, &plugin_id, args),
+        PluginUiOp::StorageKeys => storage_keys(state, &session, &plugin_id, args),
+        PluginUiOp::StorageQuota => storage_quota(state, &session, &plugin_id),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "method": method,
             "reason": "the operation is on the plugin surface and this build does not implement it",
@@ -148,6 +156,173 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
         })
         .collect();
     Ok(serde_json::Value::Array(targets))
+}
+
+// ── Storage ─────────────────────────────────────────────────────────────────────────────────────
+//
+// ★ Why this is a per-plugin table rather than a directory of files.
+//
+// Because it is the same table the headless half uses: a plugin that remembers a draft from its UI and reads it from its
+// Wasm half is one plugin, and two stores would let the two halves disagree about what it remembers. The store's key is
+// `(plugin_id, key)`, so one page cannot read another plugin's values even with a shared database.
+
+/// Refuses a storage call the page's session does not hold the capability for.
+///
+/// # Why the session's set rather than the `granted` array the façade has
+///
+/// Because they are two representations of one decision, and the session's is the one the kernel validated. The façade's
+/// array is for `env.can` (a synchronous answer with no round trip); a call that changes state goes through the gate.
+fn require_grant(session: &ValidatedSession, capability: &str, method: &str) -> Result<(), IpcError> {
+    let wanted = Capability::parse(capability).map_err(internal)?;
+    if session.grants().contains(&wanted) {
+        return Ok(());
+    }
+    Err(IpcError::unknown(ErrorCode::CapabilityDenied).with_params(serde_json::json!({
+        "method": method,
+        "capability": capability,
+    })))
+}
+
+/// One required string argument.
+fn string_arg<'a>(args: &'a serde_json::Value, field: &str) -> Result<&'a str, IpcError> {
+    args.get(field).and_then(serde_json::Value::as_str).ok_or_else(|| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"field": field, "reason": "a string is required"}))
+    })
+}
+
+/// A database failure is this host's problem, not the plugin's.
+fn internal(error: impl std::fmt::Display) -> IpcError {
+    IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+}
+
+/// How many bytes this plugin's storage may hold.
+///
+/// # Why the set's quota and a default for the unloaded case
+///
+/// Because a UI-only plugin is never loaded into the engine — it has no Wasm — so the set has no quota for it, and the
+/// default is what `HostCalls` would use for a plugin with no tighter one. A hardcoded number here would be a second
+/// answer to a question the quota system already answers.
+fn storage_limit(state: &AppState, plugin: &PluginId) -> u64 {
+    state
+        .plugin_set()
+        .map(|set| set.lock().quota(plugin))
+        .ok()
+        .flatten()
+        .map_or_else(
+            || synra_plugin_host::quota::Quota::default().max_storage_bytes,
+            |quota| quota.max_storage_bytes,
+        )
+}
+
+/// Reads one value out of the page's own storage.
+fn storage_get(
+    state: &AppState,
+    session: &ValidatedSession,
+    plugin: &PluginId,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "storage:local:read", "storage.get")?;
+    let key = string_arg(args, "key")?;
+    let value = state.db().storage_get(plugin.as_str(), key).map_err(internal)?;
+    // `null` rather than an absent field: the client's return is `string | null`, and "no value" is an answer.
+    Ok(value.map_or(serde_json::Value::Null, serde_json::Value::String))
+}
+
+/// Writes one value, refusing a write that would exceed the plugin's quota.
+fn storage_set(
+    state: &AppState,
+    session: &ValidatedSession,
+    plugin: &PluginId,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "storage:local:write", "storage.set")?;
+    let key = string_arg(args, "key")?;
+    let value = string_arg(args, "value")?;
+
+    // The guard is released before the quota lookup: `plugins_install` takes the plugin set and *then* the database, and
+    // a path that took them in the other order would be a deadlock waiting for two commands to overlap.
+    let (used, replaced) = {
+        let db = state.db();
+        let used = db.storage_used_bytes(plugin.as_str()).map_err(internal)?;
+        let replaced = db
+            .storage_get(plugin.as_str(), key)
+            .map_err(internal)?
+            .map_or(0, |previous| previous.len() as u64);
+        drop(db);
+        (used, replaced)
+    };
+    let limit = storage_limit(state, plugin);
+    // A write replaces, so the growth is the difference — the same arithmetic `HostCalls` does for the Wasm half.
+    let after = storage_after(used, replaced, value.len());
+    if after > limit {
+        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+            "quota": "storage",
+            "usedBytes": used,
+            "limitBytes": limit,
+            "valueBytes": value.len(),
+        })));
+    }
+
+    state
+        .db()
+        .storage_set(plugin.as_str(), key, value, synra_store::sqlite::now_ms())
+        .map_err(internal)?;
+    Ok(serde_json::Value::Null)
+}
+
+/// How large the plugin's storage would be after this write.
+///
+/// # Why a function rather than an expression
+///
+/// Because the arithmetic is where a quota check goes wrong in the quiet direction: `used + new` would count a value
+/// that is being **replaced** twice, and a plugin rewriting one key with a slightly larger value would be refused long
+/// before its storage was actually near the limit. A named function is testable with small numbers, which the real
+/// 64 MiB ceiling is not.
+fn storage_after(used: u64, replaced: u64, new_len: usize) -> u64 {
+    used.saturating_sub(replaced).saturating_add(new_len as u64)
+}
+
+/// Removes one value and answers whether there was one.
+fn storage_delete(
+    state: &AppState,
+    session: &ValidatedSession,
+    plugin: &PluginId,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "storage:local:write", "storage.delete")?;
+    let key = string_arg(args, "key")?;
+    let removed = state.db().storage_delete(plugin.as_str(), key).map_err(internal)?;
+    Ok(serde_json::Value::Bool(removed))
+}
+
+/// Every key the page holds, optionally under a prefix.
+fn storage_keys(
+    state: &AppState,
+    session: &ValidatedSession,
+    plugin: &PluginId,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "storage:local:read", "storage.keys")?;
+    let prefix = args.get("prefix").and_then(serde_json::Value::as_str);
+    let keys = state.db().storage_keys(plugin.as_str(), prefix).map_err(internal)?;
+    Ok(serde_json::Value::Array(
+        keys.into_iter().map(serde_json::Value::String).collect(),
+    ))
+}
+
+/// How much of the quota the page is using.
+fn storage_quota(
+    state: &AppState,
+    session: &ValidatedSession,
+    plugin: &PluginId,
+) -> Result<serde_json::Value, IpcError> {
+    require_grant(session, "storage:local:read", "storage.quota")?;
+    let used = state.db().storage_used_bytes(plugin.as_str()).map_err(internal)?;
+    Ok(serde_json::json!({
+        "usedBytes": used,
+        "maxBytes": storage_limit(state, plugin),
+    }))
 }
 
 /// The façade a plugin page runs: built by `pnpm run build:facade`, embedded here.
