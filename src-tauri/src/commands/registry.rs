@@ -783,7 +783,35 @@ pub fn install(
     let package = download(state, &bases, &registry.base, chosen)?;
     let outcome = crate::commands::plugins::install_directory(state, package.path());
     package.cleanup();
-    outcome
+    let mut report = outcome?;
+    if let Some(warning) = publisher_mismatch(
+        &registry.publishers,
+        report.publisher_id.as_deref(),
+        report.fingerprint.as_deref(),
+    ) {
+        report.warnings.push(warning);
+    }
+    Ok(report)
+}
+
+/// A sentence when a static directory's claimed key disagrees with the fingerprint that signed the package.
+///
+/// ★ A mismatch is a fact, not a verdict. Both documents are the author's, and either could be the stale one; refusing the
+/// install on it would give a typo in `publishers` the power to block a release, while saying nothing would waste the one
+/// second opinion the directory offers.
+fn publisher_mismatch(
+    publishers: &std::collections::BTreeMap<String, String>,
+    publisher: Option<&str>,
+    fingerprint: Option<&str>,
+) -> Option<String> {
+    let publisher = publisher?;
+    let fingerprint = fingerprint?;
+    let claimed = publishers.get(publisher)?;
+    (claimed != fingerprint).then(|| {
+        format!(
+            "the index lists key {claimed} for {publisher}, but the package was signed by {fingerprint}"
+        )
+    })
 }
 
 /// Replaces an installed plugin with the newest version the registry publishes.
@@ -835,4 +863,39 @@ pub fn install_from_source(
             .with_params(serde_json::json!({"why": "not a registry source"})));
     };
     install_source(state, plugin_id, version.as_deref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::publisher_mismatch;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn a_directory_key_that_matches_is_silent() {
+        let mut publishers = BTreeMap::new();
+        publishers.insert("@acme".to_owned(), "AB12".to_owned());
+        assert_eq!(publisher_mismatch(&publishers, Some("@acme"), Some("AB12")), None);
+    }
+
+    #[test]
+    fn a_directory_key_that_differs_is_a_sentence() {
+        // ★ The sentence names both values: a person can only judge the disagreement if it shows what disagreed.
+        let mut publishers = BTreeMap::new();
+        publishers.insert("@acme".to_owned(), "AB12".to_owned());
+
+        let warning = publisher_mismatch(&publishers, Some("@acme"), Some("CD34")).expect("a warning");
+
+        assert!(warning.contains("AB12"), "{warning}");
+        assert!(warning.contains("CD34"), "{warning}");
+        assert!(warning.contains("@acme"), "{warning}");
+    }
+
+    #[test]
+    fn nothing_to_compare_is_not_a_mismatch() {
+        let mut publishers = BTreeMap::new();
+        publishers.insert("@acme".to_owned(), "AB12".to_owned());
+        assert_eq!(publisher_mismatch(&publishers, Some("@other"), Some("CD34")), None);
+        assert_eq!(publisher_mismatch(&publishers, Some("@acme"), None), None);
+        assert_eq!(publisher_mismatch(&publishers, None, Some("AB12")), None);
+    }
 }

@@ -909,7 +909,7 @@ async function completeInstall(
       error.value = failure
     return
   }
-  note.value = messages.plugins.installedSwitchedOff
+  note.value = [messages.plugins.installedSwitchedOff, ...(report.warnings ?? [])].join(' ')
   installPath.value = ''
   await load()
 
