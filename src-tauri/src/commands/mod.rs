@@ -21,6 +21,7 @@ pub mod intent;
 pub mod plugin_ui;
 pub mod pairing;
 pub mod plugins;
+pub mod registry;
 /// Planning a sync: which devices are missing this device's plugin, asked of the devices themselves.
 pub mod sync_plan;
 /// Running a plan: sending the artifact and recording what each receiver says it now holds.

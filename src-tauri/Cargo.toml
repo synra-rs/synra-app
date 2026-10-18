@@ -95,6 +95,9 @@ synra-core = { path = "../../synra-rust-core/crates/synra-core" }
 # The HTTP client `network-fetch` needs. A host-side crate on purpose: putting it in the kernel would drag a TLS stack into
 # a crate that is cross-compiled for Android — see the crate's own `Cargo.toml`.
 synra-fetch = { path = "../../synra-rust-core/crates/synra-fetch" }
+# The registry protocol's own rules: packument parsing and the safe tarball extraction. A separate crate because both
+# are about untrusted bytes and can be tested without a window or a socket.
+synra-registry = { path = "../../synra-rust-core/crates/synra-registry" }
 synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
 synra-protocol = { path = "../../synra-rust-core/crates/synra-protocol" }
 synra-capability = { path = "../../synra-rust-core/crates/synra-capability" }
@@ -148,6 +151,11 @@ tauri-build = { version = "2", optional = true, features = [ ] }
 
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
+[dev-dependencies]
+# The registry test builds the tarball the client downloads; parsing it is the production side's job.
+tar = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
 [lints.clippy]
 # ★ Allowed once, rather than silenced at each call site.
 #

@@ -226,10 +226,26 @@ pub(crate) fn install_package(
 ///   to a network error that does not exist. It is also `Unsupported` when this shell has no plugin engine at all.
 /// * `InvalidArgument` when a check refused the package; the params carry the stage and the reason.
 pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<InstallReport, IpcError> {
-    let InstallSourceDto::Path { path } = source else {
-        return Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
-            .with_params(serde_json::json!({ "why": "this build has no registry client" })));
-    };
+    match source {
+        InstallSourceDto::Path { path } => install_directory(state, std::path::Path::new(path)),
+        InstallSourceDto::Registry { .. } => crate::commands::registry::install_from_source(state, source),
+        // A source a newer build added is not one this build can fetch; refusing it by name is the same answer the
+        // variant got before there was a fetcher.
+        _ => Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"why": "this build does not know that install source"}))),
+    }
+}
+
+/// Installs a package from a directory already on disk.
+///
+/// # Errors
+///
+/// * `Unsupported` when this shell has no plugin engine at all.
+/// * `InvalidArgument` when a check refused the package; the params carry the stage and the reason.
+pub(crate) fn install_directory(
+    state: &AppState,
+    path: &std::path::Path,
+) -> Result<InstallReport, IpcError> {
     let plugins = state.plugin_set()?;
     let set = plugins.lock();
     // The database guard is scoped to the call rather than held while the report is built: this mutex is not reentrant,
@@ -240,7 +256,7 @@ pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<In
             &mut db,
             set.backend(),
             &state.paths.plugins_dir(),
-            std::path::Path::new(path),
+            path,
             synra_store::sqlite::now_ms(),
             synra_plugin_host::verify::HostFacts::desktop(),
         )
@@ -605,6 +621,99 @@ mod tests {
         directory
     }
 
+    /// A `.tgz` holding these entries, written in memory.
+    fn tgz(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+
+        let mut builder = tar::Builder::new(GzEncoder::new(Vec::new(), Compression::default()));
+        for (name, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_entry_type(tar::EntryType::Regular);
+            header.set_cksum();
+            builder.append_data(&mut header, name, *bytes).expect("an entry");
+        }
+        builder.into_inner().expect("the encoder").finish().expect("a gzip tail")
+    }
+
+    #[test]
+    fn a_registry_install_downloads_and_opens_the_tarball() {
+        // ★ The whole first path: packument → tarball → extraction → the existing install pipeline. The server is a local
+        // listener, so the test proves the client rather than a network.
+        use std::io::{BufRead, BufReader, Write as _};
+
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+        let address = listener.local_addr().expect("an address");
+        let base = format!("http://{address}");
+        let document = serde_json::json!({
+            "name": "@acme/hello",
+            "dist-tags": { "latest": "1.0.0" },
+            "versions": {
+                "1.0.0": {
+                    "name": "@acme/hello",
+                    "version": "1.0.0",
+                    "dist": { "tarball": format!("{base}/pkg.tgz") }
+                }
+            }
+        })
+        .to_string();
+        let archive = tgz(&[
+            ("package/manifest.json", manifest.as_slice()),
+            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+        ]);
+        std::thread::spawn(move || {
+            for _ in 0..2 {
+                let Ok(mut stream) = listener.accept().map(|(stream, _)| stream) else { return };
+                let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
+                let mut first = String::new();
+                let _ = reader.read_line(&mut first);
+                let body: &[u8] = if first.contains("pkg.tgz") {
+                    &archive
+                }
+                else {
+                    document.as_bytes()
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(body);
+                let _ = stream.flush();
+            }
+        });
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!(base), 1_000)
+            .expect("the registry is configured");
+
+        let report = plugins_install(
+            &state,
+            &InstallSourceDto::Registry {
+                plugin_id: PluginId::try_from("@acme/hello".to_owned()).expect("a plugin id"),
+                version: None,
+            },
+        )
+        .expect("the registry package installs");
+
+        assert_eq!(report.plugin_id.as_str(), "@acme/hello");
+        assert_eq!(report.version, "1.0.0");
+        assert!(state.db().plugins().expect("rows").iter().any(|row| row.plugin_id == "@acme/hello"));
+        // The cache directory the tarball was opened in is gone, not left for the next run to find.
+        let cache = state.paths.cache_dir().join("registry");
+        assert!(
+            !cache.read_dir().map(|entries| entries.count() > 0).unwrap_or(false),
+            "the extracted package was left in the cache"
+        );
+    }
+
     #[test]
     fn installing_a_directory_records_it_switched_off() {
         // ★ The command an interface needs before it can offer an install at all. What it asserts is the answer and the
@@ -676,9 +785,9 @@ mod tests {
     }
 
     #[test]
-    fn a_registry_source_is_refused_by_name() {
-        // Refused rather than reported as a network failure: there is no fetcher, and "could not reach the registry"
-        // would send a user to check a connection that was never used.
+    fn a_registry_install_without_a_configured_registry_is_refused() {
+        // ★ Refused by the missing configuration, not by a network failure: there is nowhere to dial, and "could not reach
+        // the registry" would send a user to check a connection that was never used.
         let (_root, state) = testing::file_state();
         let state = with_engine(state);
 
@@ -689,7 +798,7 @@ mod tests {
                 version: None,
             },
         )
-        .expect_err("there is no registry client");
+        .expect_err("no registry is configured");
 
         assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
     }
