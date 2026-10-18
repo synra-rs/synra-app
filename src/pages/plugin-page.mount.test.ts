@@ -326,6 +326,34 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('shows the update the registry publishes when asked', async () => {
+    // ★ The check is a user action, not a mount-time fan-out: one request per plugin on every page open would make the
+    // list depend on the registry being reachable.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_check_update') {
+        return { ok: true, value: { version: '2.0.0', needsNewConsent: true, addedCapabilities: ['device:send:*'] } }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const check = wrapper.findAll('button').find(button => button.text().includes('Check for updates'))
+    expect(check).toBeDefined()
+    await check?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_check_update', { pluginId: '@acme/hello' })
+    expect(wrapper.text()).toContain('Version 2.0.0 is published')
+    expect(wrapper.text()).toContain('device:send:*')
+    wrapper.unmount()
+  })
+
   it('filters the installed list by what a person remembers', async () => {
     // ★ A filter over the installed list, not a registry search: this shell has no registry client, and a box that
     // promised the catalogue would be a box that cannot deliver. Matched on title here; the id and description are the

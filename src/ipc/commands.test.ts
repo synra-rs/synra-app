@@ -176,7 +176,7 @@ describe('every answer the fake gives, against the arity the kernel declares', (
     // test should be the thing that says so.
     expect(arities.get(MAYBE_COMMAND)).toBe('Maybe')
 
-    const answer = await new FakeKernel().invoke(MAYBE_COMMAND)
+    const answer = await new FakeKernel().invoke(MAYBE_COMMAND, { pluginId: '@acme/hello' })
     // `undefined` is what the fake's default arm answers for a command it does not have, so "no update" has to be a real
     // `null` to be distinguishable from "this fake does not know the command".
     expect(answer === null || typeof answer === 'object').toBe(true)

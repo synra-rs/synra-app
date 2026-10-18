@@ -314,9 +314,15 @@ mod wrappers {
             .map_err(failed)
     }
 
-    /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.    ///
-    /// The source is a tagged enum rather than a string because the design's install command takes a source, and a
-    /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
+    /// Asks the registry whether a newer version is published for an installed plugin.
+    #[tauri::command]
+    pub fn plugins_check_update(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<Option<synra_ipc::dto::UpdateInfo>, IpcError> {
+        commands::plugins::plugins_check_update(&state, &plugin_id)
+    }
+
     /// Searches the configured registry for plugins.
     #[tauri::command]
     pub fn plugins_catalog_search(
@@ -491,6 +497,7 @@ mod wrappers {
             plugins_install,
             plugins_preview,
             plugins_catalog_search,
+            plugins_check_update,
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,

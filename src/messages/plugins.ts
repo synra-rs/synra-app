@@ -14,6 +14,11 @@ export const plugins = {
     path: 'From a directory',
     registry: 'From the registry'
   },
+  /** An update the registry publishes for an installed plugin, which the user asked to look up. */
+  checkUpdates: 'Check for updates',
+  updateFound: 'Version {version} is published',
+  updateNoNewPermissions: 'It asks for the same permissions.',
+  updateNewPermissions: 'It asks for more:',
   installName: 'Plugin id, e.g. @acme/hello',
   /** What a registry package says about itself, before any of it is downloaded. */
   preview: {

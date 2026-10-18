@@ -20,7 +20,7 @@
 
 use synra_ipc::{
     AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError,
-    PluginSnapshot,
+    PluginSnapshot, UpdateInfo,
 };
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
@@ -207,6 +207,19 @@ pub(crate) fn install_package(
         synra_plugin_host::verify::HostFacts::desktop(),
     )
     .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
+}
+
+/// Asks the registry whether a newer version is published for an installed plugin.
+///
+/// # Errors
+///
+/// `PluginNotInstalled` when no active version exists, `Unsupported` when no registry is configured, and a fetch refusal's
+/// own code for a network problem.
+pub fn plugins_check_update(
+    state: &AppState,
+    plugin_id: &str,
+) -> Result<Option<UpdateInfo>, IpcError> {
+    crate::commands::registry::check_update(state, plugin_id)
 }
 
 /// Searches the configured registry for plugins.
@@ -608,8 +621,8 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 #[cfg(test)]
 mod tests {
     use super::{
-        entry_card, plugins_audit, plugins_catalog_search, plugins_consent_respond, plugins_install,
-        plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers,
+        entry_card, plugins_audit, plugins_catalog_search, plugins_check_update, plugins_consent_respond,
+        plugins_install, plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -902,6 +915,59 @@ mod tests {
         assert_eq!(found[0].version, "1.0.0");
         assert_eq!(found[0].publisher, "acme");
         assert!(found[0].installed, "the fixture is installed");
+    }
+
+    #[test]
+    fn an_update_check_names_the_version_and_the_new_permission() {
+        // ★ The comparison is against the installed manifest on disk, not against a row: the capabilities a user approved
+        // are the ones in the package they have, and the store does not keep them.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        plugins_install(
+            &state,
+            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+        )
+        .expect("the fixture installs");
+
+        let manifest = serde_json::json!({
+            "id": "@acme/hello",
+            "version": "2.0.0",
+            "title": "Hello",
+            "publisher": {"id": "@acme"},
+            "sdk": {"min": "0.1.0"},
+            "wit": synra_plugin_host::host_world(),
+            "capabilities": [{"cap": "log:*"}, {"cap": "device:send:*"}],
+            "runtime": {"headless": {"artifact": "plugin.wasm", "stateful": false}}
+        });
+        let document = serde_json::json!({
+            "name": "@acme/hello",
+            "dist-tags": { "latest": "2.0.0" },
+            "versions": {
+                "2.0.0": {
+                    "name": "@acme/hello",
+                    "version": "2.0.0",
+                    "dist": { "tarball": "https://registry.example.com/hello-2.0.0.tgz" },
+                    "synra": manifest
+                }
+            }
+        })
+        .to_string();
+        let (base, _served) = serve(move |_| (200, document.clone().into_bytes()));
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!(base), 1_000)
+            .expect("the registry is configured");
+
+        let update = plugins_check_update(&state, "@acme/hello")
+            .expect("the check runs")
+            .expect("a newer version exists");
+
+        assert_eq!(update.version, "2.0.0");
+        assert!(update.needs_new_consent, "the new manifest asks for a device permission");
+        assert_eq!(update.added_capabilities, ["device:send:*"]);
+        // The installed version is not in the document, so the same check against itself cannot be exercised here; the
+        // equal-version branch is a string comparison and fails closed (no update) rather than inventing one.
     }
 
     /// A tiny HTTP server for the registry tests: answers each request from `handler`, and counts what it served.

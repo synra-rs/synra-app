@@ -232,6 +232,26 @@
             </p>
 
             <!--
+              What the registry publishes, when the user asked. It is not fetched on mount: one check is one request per
+              plugin, and a list of ten would make opening the page depend on ten round trips.
+            -->
+            <AAlert
+              v-if="updates[plugin.pluginId]"
+              type="info"
+              show-icon
+              :message="messages.plugins.updateFound.replace('{version}', updates[plugin.pluginId]?.version ?? '')"
+            >
+              <template #description>
+                <span v-if="(updates[plugin.pluginId]?.addedCapabilities ?? []).length === 0">
+                  {{ messages.plugins.updateNoNewPermissions }}
+                </span>
+                <span v-else>
+                  {{ messages.plugins.updateNewPermissions }} {{ updates[plugin.pluginId]?.addedCapabilities.join(', ') }}
+                </span>
+              </template>
+            </AAlert>
+
+            <!--
               What the plugin asked for, and what it was refused: the second list is the one that turns this screen from
               a settings page into the thing a user reads before installing something. "Nothing" is a word rather than
               an empty space, because an empty space reads as "not loaded".
@@ -307,6 +327,10 @@
 
               <AButton size="small" :loading="syncing === plugin.pluginId" @click="sync(plugin)">
                 {{ syncing === plugin.pluginId ? messages.plugins.syncing : messages.plugins.syncAction }}
+              </AButton>
+
+              <AButton size="small" :loading="checking === plugin.pluginId" @click="checkUpdate(plugin)">
+                {{ messages.plugins.checkUpdates }}
               </AButton>
 
               <APopconfirm
@@ -412,7 +436,7 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
+import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction, UpdateInfo } from '@synra/protocol'
 import type { Failure, InstallPreview } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
@@ -704,6 +728,34 @@ const installOptions = computed(() => [
 
 /** Whether an install is in flight, so the button says so and cannot be pressed twice. */
 const installing = ref(false)
+
+/** The update the registry published, by plugin, for the cards that were asked about. */
+const updates = ref<Record<string, UpdateInfo>>({})
+
+/** The plugin whose update is being checked. */
+const checking = ref<string | undefined>(undefined)
+
+/** Asks the registry about one plugin, and shows or forgets the last answer. */
+async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
+  checking.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<UpdateInfo | null>('plugins_check_update', {
+    pluginId: plugin.pluginId
+  })
+  checking.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  if (answer.value) {
+    updates.value = { ...updates.value, [plugin.pluginId]: answer.value }
+    return
+  }
+  // No newer version: the previous answer, if any, is no longer true.
+  const next = { ...updates.value }
+  delete next[plugin.pluginId]
+  updates.value = next
+}
 
 /** The package a registry install would fetch, shown before anything is downloaded. */
 const preview = ref<InstallPreview | undefined>(undefined)

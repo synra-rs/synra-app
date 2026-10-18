@@ -34,7 +34,9 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use synra_core::network::{IpPolicy, NetworkGuard};
 use synra_fetch::{Client, Limits as FetchLimits, Request};
-use synra_ipc::dto::{CatalogItem, CatalogQuery, CatalogSort, InstallPreviewDto, InstallReport, InstallSourceDto};
+use synra_ipc::dto::{
+    CatalogItem, CatalogQuery, CatalogSort, InstallPreviewDto, InstallReport, InstallSourceDto, UpdateInfo,
+};
 use synra_protocol::ErrorCode;
 use synra_protocol::PluginId;
 use synra_registry::{Limits as ArchiveLimits, Packument, Version, extract_tgz};
@@ -325,6 +327,62 @@ fn encode(text: &str) -> String {
 /// something that is not a packument, and a fetch refusal's own code for a network problem.
 pub fn packument(state: &AppState, plugin_id: &str) -> Result<Packument, synra_ipc::IpcError> {
     Ok(packument_with_base(state, plugin_id)?.1)
+}
+
+/// Whether the registry publishes a version newer than the one installed, and what it asks for that the old one did not.
+///
+/// # What is compared, and what is believed
+///
+/// The published version string and the installed manifest's capabilities — the packument's inline manifest is the
+/// publisher's claim about the new version, and this answer is a prompt to look, not a decision: the install still verifies
+/// the bytes and the preview still shows the real permissions.
+pub fn check_update(
+    state: &AppState,
+    plugin_id: &str,
+) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
+    let active = state.db().active_plugin(plugin_id).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
+    })?;
+    let Some(active) = active else {
+        return Err(synra_ipc::IpcError::unknown(ErrorCode::PluginNotInstalled)
+            .with_params(serde_json::json!({"pluginId": plugin_id})));
+    };
+    let document = packument(state, plugin_id)?;
+    let Some(latest) = document.latest() else {
+        return Ok(None);
+    };
+    if latest.version == active.version {
+        return Ok(None);
+    }
+    let installed = installed_capabilities(state, plugin_id);
+    let published: Vec<String> = latest
+        .synra
+        .as_ref()
+        .map(|manifest| manifest.capabilities.iter().map(|declaration| declaration.cap.clone()).collect())
+        .unwrap_or_default();
+    let added: Vec<String> = published
+        .into_iter()
+        .filter(|capability| !installed.contains(capability))
+        .collect();
+    Ok(Some(UpdateInfo {
+        version: latest.version.clone(),
+        needs_new_consent: !added.is_empty(),
+        added_capabilities: added,
+    }))
+}
+
+/// The capabilities in the manifest this device installed, read from the plugin's own directory.
+///
+/// A missing or unreadable manifest answers an empty list rather than failing the check: an update that cannot be compared
+/// is still an update, and refusing to say so would hide the version bump behind a parse error.
+fn installed_capabilities(state: &AppState, plugin_id: &str) -> Vec<String> {
+    let path = state.paths.plugins_dir().join(plugin_id).join("manifest.json");
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<synra_plugin_api::Manifest>(&text).ok())
+        .map(|manifest| manifest.capabilities.into_iter().map(|declaration| declaration.cap).collect())
+        .unwrap_or_default()
 }
 
 /// The packument and the mirror that served it.
