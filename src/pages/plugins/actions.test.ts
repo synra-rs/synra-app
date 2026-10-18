@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { KernelClient } from '../../ipc/client'
-import { audit, decide, installFrom, planSync, runSync, setEnabled, uninstall } from './actions'
+import { audit, clearAudit, decide, installFrom, planSync, runSync, setEnabled, uninstall } from './actions'
 
 /** A client whose bridge answers with `answer` and records every call. */
 function client(answer: unknown = { ok: true }) {
@@ -112,6 +112,29 @@ describe('the audit call', () => {
     const outcome = await audit(kernel, '@acme/hello')
 
     expect(outcome.ok ? outcome.value[0]?.capability : undefined).toBe('network:fetch')
+  })
+})
+
+describe('the clear call', () => {
+  it('forgets one plugin and sends nothing else', async () => {
+    // ★ One identifier, because the ring is shared: a clear that carried a scope of "all" would be the button on one
+    // card erasing another card's history.
+    const { client: kernel, invoke } = client(null)
+
+    const outcome = await clearAudit(kernel, '@acme/hello')
+
+    expect(invoke).toHaveBeenCalledWith('plugins_audit_clear', { pluginId: '@acme/hello' })
+    expect(outcome.ok).toBe(true)
+  })
+
+  it('answers a refusal as the notice needs it', async () => {
+    const { client: kernel } = client({ code: 'unsupported', message: 'error.unsupported', retryable: false })
+
+    const outcome = await clearAudit(kernel, '@acme/hello')
+
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok)
+      expect(outcome.failure.code).toBe('unsupported')
   })
 })
 

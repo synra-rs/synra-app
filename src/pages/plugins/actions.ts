@@ -67,6 +67,12 @@ export async function audit(kernel: KernelClient, pluginId: string, limit = 20):
   return answer.ok ? { ok: true, value: [...answer.value].reverse() } : { ok: false, failure: failureOf(answer.error) }
 }
 
+/** Forgets one plugin's audit history. */
+export async function clearAudit(kernel: KernelClient, pluginId: string): Promise<Outcome<null>> {
+  const answer = await kernel.call<null>('plugins_audit_clear', { pluginId })
+  return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+}
+
 /** What a registry package says about itself, before any of it is downloaded. */
 export interface InstallPreview {
   readonly pluginId: string

@@ -423,11 +423,24 @@ mod wrappers {
 
     // ★ The audit trail, which had no writer until a plugin instance was given a session.
     #[tauri::command]
-    pub fn plugins_audit(        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    pub fn plugins_audit(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: synra_protocol::PluginId,
         limit: u32,
     ) -> Result<Vec<synra_ipc::AuditEntryDto>, IpcError> {
         commands::plugins::plugins_audit(&state, &plugin_id, limit)
+    }
+
+    /// Forgets one plugin's audit history.
+    ///
+    /// ★ It takes no `limit` and answers nothing: clearing is not a read with a side effect. The two answers a caller has
+    /// to tell apart are "cleared" and "this build cannot run plugins", and the second is the only failure.
+    #[tauri::command]
+    pub fn plugins_audit_clear(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: synra_protocol::PluginId,
+    ) -> Result<(), IpcError> {
+        commands::plugins::plugins_audit_clear(&state, &plugin_id)
     }
 
     /// Asks each paired device what it holds, and answers what would have to be sent.
@@ -581,6 +594,7 @@ mod wrappers {
             transfer_send_text,
             transfer_list,
             plugins_audit,
+            plugins_audit_clear,
             plugins_sync_plan,
             plugins_sync_run,
             plugins_publishers,

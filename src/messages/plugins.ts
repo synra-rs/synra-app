@@ -37,7 +37,8 @@ export const plugins = {
     allowed: 'allowed',
     refused: 'refused',
     empty: 'No calls have been recorded.',
-    unavailable: 'The calls could not be read.'
+    // ★ Shown only beside rows that exist: clearing the empty state would be a button whose only effect is to redraw it.
+    clear: 'Clear history'
   },
   /** The registry's own index, searched by keyword. */
   catalog: {

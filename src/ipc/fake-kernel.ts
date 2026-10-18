@@ -67,6 +67,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_check_update: ['pluginId'],
   plugins_update: ['pluginId'],
   plugins_audit: ['pluginId', 'limit'],
+  plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
   plugins_request_registry_search: ['query']
 }
@@ -148,6 +149,9 @@ export class FakeKernel implements Bridge {
       case 'plugins_audit':
         // No calls is an answer too: the page has an empty state for it.
         return []
+      case 'plugins_audit_clear':
+        // `Unit`: the shell answers nothing on success, and the page replaces its list with the empty state itself.
+        return null
       case 'plugins_publisher_decide':
         return {}
       case 'plugins_preview':

@@ -637,6 +637,25 @@ pub fn plugins_audit(
     Ok(entries.get(start..).unwrap_or_default().iter().map(entry_card).collect())
 }
 
+/// Forgets one plugin's audit history.
+///
+/// # Why the caller is the only one who can clear it
+///
+/// The ring lives in this process, so the trail a user is looking at is the trail this command removes. There is no
+/// durable copy to clear: `plugin_audit` exists in the schema, but nothing reads it and nothing has written to it since
+/// the sink was added — so claiming to clear "the audit" beyond this process would be a promise the command cannot keep.
+/// When a reader of that table lands, it belongs here, in the same call.
+///
+/// # Errors
+///
+/// [`IpcError`] when this build has no plugin engine. The same answer as [`plugins_audit`] rather than a silent success:
+/// a build that cannot say what a plugin did cannot truthfully say it forgot it.
+pub fn plugins_audit_clear(state: &AppState, plugin_id: &PluginId) -> Result<(), IpcError> {
+    let set = state.plugin_set()?;
+    set.lock().clear_audit(plugin_id);
+    Ok(())
+}
+
 /// One recorded call, as the interface shows it.
 ///
 /// ★ The DTO has a `trace_id` and the record does not.
@@ -662,8 +681,9 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 #[cfg(test)]
 mod tests {
     use super::{
-        entry_card, plugins_audit, plugins_catalog_search, plugins_check_update, plugins_consent_respond,
-        plugins_install, plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers,
+        entry_card, plugins_audit, plugins_audit_clear, plugins_catalog_search, plugins_check_update,
+        plugins_consent_respond, plugins_install, plugins_list, plugins_preview, plugins_publisher_decide,
+        plugins_publishers,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -1561,6 +1581,18 @@ mod tests {
         let state = crate::testing::state();
 
         let refused = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10)
+            .expect_err("this fixture has no engine");
+
+        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    }
+
+    #[test]
+    fn without_an_engine_clearing_the_audit_says_so_rather_than_succeeding_silently() {
+        // ★ A success from a build that cannot read the trail would tell the user their history is gone when there was no
+        // ring to clear and no engine to own one. Same refusal as the read, for the same reason.
+        let state = crate::testing::state();
+
+        let refused = plugins_audit_clear(&state, &PluginId::parse(ID).expect("a plugin id"))
             .expect_err("this fixture has no engine");
 
         assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);

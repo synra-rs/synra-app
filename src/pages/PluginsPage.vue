@@ -345,6 +345,22 @@
               <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
                 {{ messages.plugins.audit.empty }}
               </p>
+              <!--
+                ★ Only beside rows that exist. Clearing an empty trail would be a button whose only effect is to redraw
+                the sentence above it, and the absence of the button is also the honest state of "nothing to clear".
+
+                No confirmation. This is a log of what a plugin did, not data the plugin produced; the button is inside a
+                section the user chose to open, and a dialog for it would be the friction that teaches people to dismiss
+                dialogs. The irreversible-action rule in this page is about removal, which deletes files.
+              -->
+              <AButton
+                v-if="(audit[plugin.pluginId]?.length ?? 0) > 0"
+                size="small"
+                :loading="clearingAudit === plugin.pluginId"
+                @click="clearTrail(plugin.pluginId)"
+              >
+                {{ messages.plugins.audit.clear }}
+              </AButton>
             </details>
 
             <!--
@@ -491,7 +507,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
+import { clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
 
 /** A publisher row, as `plugins_publishers` answers it. */
 interface PublisherRow {
@@ -790,6 +806,25 @@ async function openAudit(pluginId: string, event: Event): Promise<void> {
     return
   }
   audit.value[pluginId] = [...outcome.value]
+}
+
+/** The plugin whose history is being cleared. */
+const clearingAudit = ref<string | undefined>(undefined)
+
+/** Forgets a plugin's history, and redraws the section as empty rather than re-reading it. */
+async function clearTrail(pluginId: string): Promise<void> {
+  clearingAudit.value = pluginId
+  error.value = undefined
+  const outcome = await clearAudit(kernel, pluginId)
+  clearingAudit.value = undefined
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  // ★ Emptied here rather than re-read: the command just removed every record, so a read would ask the ring for a list
+  // whose answer is already known. `[]` and not `undefined`, because "asked and empty" is the state that draws the
+  // sentence; `undefined` would put the section back to "not asked yet".
+  audit.value[pluginId] = []
 }
 
 /** The plugin whose update is being checked. */

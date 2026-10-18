@@ -411,10 +411,13 @@ describe('the plugins page', () => {
     await flushPromises()
 
     expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit', expect.anything())
+    // Nothing to clear yet, so no control for it: the button's absence is part of the same "not asked" state.
+    expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.clear)).toBe(false)
     const trail = wrapper.find('details')
     expect(trail.exists()).toBe(true)
     ;(trail.element as HTMLDetailsElement).open = true
-    await trail.trigger('toggle')
+    // ★ Setting `open` queues the browser's own `toggle` event; dispatching a second one by hand would read the trail
+    // twice and make "the page read it once" untestable. The wait is for that queued task.
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('plugins_audit', { pluginId: '@acme/hello', limit: 20 })
@@ -447,11 +450,55 @@ describe('the plugins page', () => {
 
     const trail = wrapper.find('details')
     ;(trail.element as HTMLDetailsElement).open = true
-    await trail.trigger('toggle')
+    // Setting `open` queues the browser's own `toggle` event; a second, hand-dispatched one would read the trail twice.
     await flushPromises()
 
     expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('unsupported')
     expect(wrapper.text()).not.toContain(messages.plugins.audit.empty)
+    wrapper.unmount()
+  })
+
+  it('clears the history from the card that drew it', async () => {
+    // ★ The clear is the other half of the section, and what it must not do is re-read: the command removed every record,
+    // so the page already knows the answer. Clearing the local list is also what makes the empty sentence appear without a
+    // second round trip that could disagree with the command that just succeeded.
+    let cleared = false
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_audit') {
+        return {
+          ok: true,
+          value: cleared ? [] : [{ atMs: 1_700_000_000_000, capability: 'log:write', allowed: true }]
+        }
+      }
+      if (command === 'plugins_audit_clear') {
+        cleared = true
+        return { ok: true, value: null }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const trail = wrapper.find('details')
+    ;(trail.element as HTMLDetailsElement).open = true
+    // Setting `open` queues the browser's own `toggle` event; a second, hand-dispatched one would read the trail twice.
+    await flushPromises()
+
+    const clear = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.audit.clear)
+    expect(clear, 'the section with rows drew no way to clear them').toBeDefined()
+    await clear?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_audit_clear', { pluginId: '@acme/hello' })
+    expect(wrapper.text()).not.toContain('log:write')
+    expect(wrapper.text()).toContain(messages.plugins.audit.empty)
+    // The read happened once, before the clear; a second one would be a round trip for a list that is now empty.
+    expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_audit')).toHaveLength(1)
     wrapper.unmount()
   })
 })

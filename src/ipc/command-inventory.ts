@@ -57,6 +57,8 @@ export const REGISTERED = [
   'transfer_list',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
+  // The other half of that section: 18 §5.2 asks to clear one plugin's history, and reading it was only half the item.
+  'plugins_audit_clear',
   // Planning a sync: asks every paired device what it holds (one small request/response) and records the answers, so the plan
   // is about now rather than about the last bundle that happened to move.
   'plugins_sync_plan',
