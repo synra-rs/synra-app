@@ -14,7 +14,7 @@
  * is described.
  */
 
-import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 
@@ -73,22 +73,6 @@ export async function clearAudit(kernel: KernelClient, pluginId: string): Promis
   return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
 }
 
-/** What a registry package says about itself, before any of it is downloaded. */
-export interface InstallPreview {
-  readonly pluginId: string
-  readonly version: string
-  readonly title: string
-  readonly description?: string
-  readonly publisher: string
-  readonly publisherName?: string
-  /** The fingerprint a static directory lists for the publisher, when it lists one. */
-  readonly publisherKey?: string
-  readonly capabilities: readonly string[]
-  readonly headless: boolean
-  readonly hasUi: boolean
-  readonly sizeBytes?: number
-}
-
 /** Searches the registry's index, scoped by the kernel to packages that declare the plugin keyword. */
 export async function searchCatalog(
   client: KernelClient,
@@ -109,8 +93,8 @@ export async function searchCatalog(
 export async function previewInstall(
   client: KernelClient,
   pluginId: string
-): Promise<Outcome<InstallPreview>> {
-  const answer = await client.call<InstallPreview>('plugins_preview', { pluginId })
+): Promise<Outcome<InstallPreviewDto>> {
+  const answer = await client.call<InstallPreviewDto>('plugins_preview', { pluginId })
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 

@@ -497,8 +497,8 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { CatalogItem, CatalogSort, InstallReport, PluginSnapshot, SuggestedAction, UpdateInfo } from '@synra/protocol'
-import type { AuditEntry, Failure, InstallPreview } from './plugins/actions'
+import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
+import type { AuditEntry, Failure } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -508,15 +508,6 @@ import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
 import { clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
-
-/** A publisher row, as `plugins_publishers` answers it. */
-interface PublisherRow {
-  readonly publisherId: string
-  readonly fingerprint: string
-  readonly trust: string
-  readonly firstSeenMs: number
-  readonly decidedMs?: number
-}
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -570,7 +561,7 @@ function stateColour(state: string): 'success' | 'error' | 'default' {
 }
 
 /** The publishers whose signatures this device has seen. */
-const publishers = ref<readonly PublisherRow[]>([])
+const publishers = ref<readonly PublisherDto[]>([])
 
 /** The publisher whose decision is being written. */
 const deciding = ref<string | undefined>(undefined)
@@ -605,7 +596,7 @@ async function load(): Promise<void> {
 
   const [answer, publisherAnswer] = await Promise.all([
     kernel.call<readonly PluginSnapshot[]>('plugins_list'),
-    kernel.call<readonly PublisherRow[]>('plugins_publishers')
+    kernel.call<readonly PublisherDto[]>('plugins_publishers')
   ])
   loading.value = false
 
@@ -872,7 +863,7 @@ async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
 }
 
 /** The package a registry install would fetch, shown before anything is downloaded. */
-const preview = ref<InstallPreview | undefined>(undefined)
+const preview = ref<InstallPreviewDto | undefined>(undefined)
 
 /** What the registry's index returned for the last search, and whether one has run. */
 const searchText = ref('')
