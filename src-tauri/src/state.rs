@@ -214,8 +214,14 @@ impl AppState {
         // Read before the identity is moved into its Arc below: the desk needs the identifier and the field takes ownership.
     let local_id = identity.device_id;
 
+    // ★ Built before the host, because the host is given one.
+    //
+    // `Host::with_metrics` existed for the daemon and the window built its host without one, so `frames_sent_total`,
+    // `frames_received_total` and `links_opened_total` were written by nothing in the one host a desktop user runs.
+    let metrics = Arc::new(synra_observe::metrics::RingRecorder::new());
+
     let state = Self {
-            host: shared(Host::new(identity.clone(), peer)),
+            host: shared(Host::new(identity.clone(), peer).with_metrics(Arc::clone(&metrics))),
             db: Arc::new(Mutex::new(db)),
             paths,
             identity: Arc::new(Mutex::new(identity)),
@@ -234,7 +240,7 @@ impl AppState {
             uploads: crate::commands::plugin_ui::Uploads::new(),
             started_at_ms: now_ms,
             platform: Arc::new(synra_platform::CommandPlatform::new()),
-            metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),
+            metrics,
             log: None,
             events: Arc::new(synra_core::bus::EventBus::new()),
             ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
@@ -394,4 +400,26 @@ impl AppState {
 pub(crate) fn internal(error: impl std::fmt::Display) -> IpcError {
     IpcError::unknown(synra_protocol::ErrorCode::Internal)
         .with_params(serde_json::json!({"detail": error.to_string()}))
+}
+
+#[cfg(test)]
+mod tests {
+    use synra_observe::metrics::Value;
+
+    #[test]
+    fn the_shells_host_counts_into_the_shells_recorder() {
+        // ★ The host had no recorder before this: `Host::with_metrics` existed for the daemon, and the window built its
+        // host without one — so the frame and link counters were zero in the only host a desktop user runs. The counter
+        // is public precisely so a host can be shown to have one; the assertion is on the recorder the rest of the shell
+        // reads (`diag_metrics`), not on a private field.
+        let state = crate::testing::state();
+
+        state.host.lock().count_frame_sent("kernel.test");
+
+        assert_eq!(
+            state.metrics.snapshot().get("frames_sent_total{event=kernel.test}"),
+            Some(&Value::Counter(1)),
+            "the host's frame counter is the shell's recorder"
+        );
+    }
 }

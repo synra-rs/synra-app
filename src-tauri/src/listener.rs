@@ -54,10 +54,12 @@ pub fn bind(mut state: AppState) -> AppState {
     // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
     // loaded, and the only sign was a white screen with discovery's log above it.
     let identity = state.identity.lock().clone();
-    let host = Arc::new(Mutex::new(synra_core::Host::new(
-        identity.clone(),
-        local_of(&identity),
-    )));
+    // ★ The second host this process builds, and it needs the recorder for the same reason the state's host does: an
+    // accepted connection is a link, and its frames are the only evidence the listener ever handled anything.
+    let host = Arc::new(Mutex::new(
+        synra_core::Host::new(identity.clone(), local_of(&identity))
+            .with_metrics(Arc::clone(&state.metrics)),
+    ));
 
     let bound = {
         let mut guard = host.lock();
