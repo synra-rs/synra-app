@@ -481,6 +481,9 @@ pub fn audit_sink(db: Arc<Mutex<SynraDb>>) -> synra_core::dispatch::plugins::Aud
             outcome: entry.outcome.as_str().to_owned(),
             at_ms: entry.at_ms,
             elapsed_ms: entry.elapsed_ms.map(|elapsed| i64::try_from(elapsed).unwrap_or(i64::MAX)),
+            // ★ The action's trace, when the call had one. `can-handle` and lifecycle calls do not, and `None` says that
+            // rather than making every row look like part of a user action.
+            trace_id: entry.trace.map(|trace| trace.to_string()),
         };
         if let Err(error) = db.lock().record_audit(&record) {
             // The app has no `tracing`, so this is what the shell reports through — the same channel `main.rs` uses for the
@@ -749,6 +752,7 @@ mod tests {
             outcome: synra_observe::audit::AuditOutcome::Allowed,
             at_ms: 1_000,
             elapsed_ms: Some(3),
+            trace: None,
         };
         sink(&entry);
 

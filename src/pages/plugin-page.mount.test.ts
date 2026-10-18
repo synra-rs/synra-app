@@ -475,7 +475,12 @@ describe('the plugins page', () => {
           ok: true,
           value: [
             { atMs: 1_700_000_001_000, capability: 'network:fetch', allowed: false, reason: 'denied' },
-            { atMs: 1_700_000_000_000, capability: 'log:write', allowed: true }
+            {
+              atMs: 1_700_000_000_000,
+              capability: 'log:write',
+              allowed: true,
+              traceId: '01a150c8-c332-768d-9dd1-981502aa1854'
+            }
           ]
         }
       }
@@ -504,6 +509,10 @@ describe('the plugins page', () => {
     expect(wrapper.text()).toContain('denied')
     const rows = wrapper.findAll('details li')
     expect(rows[0]?.text()).toContain('network:fetch')
+    // ★ The action's trace is shown on the row that has one, and absent from the row that does not. It is the id a user
+    // pastes into `synra logs --trace`; a row without it means "this call had no action behind it", not a missing lookup.
+    expect(rows[1]?.text()).toContain('01a150c8-c332-768d-9dd1-981502aa1854')
+    expect(rows[0]?.text()).not.toContain('01a150c8-c332-768d-9dd1-981502aa1854')
     // A two-row page cannot have another one, so the control for it is absent.
     expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.more)).toBe(false)
     wrapper.unmount()

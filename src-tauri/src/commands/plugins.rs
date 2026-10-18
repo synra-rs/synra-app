@@ -810,8 +810,9 @@ pub(crate) fn prune_audit(state: &AppState, now_ms: i64) -> usize {
 /// A name this build does not know is reported rather than guessed at: `allowed: false` with the name as the reason.
 /// Presenting an outcome from a newer build as "allowed" is the one answer that could hide a refusal.
 ///
-/// ★ The DTO has a `trace_id` and the row does not. The ring has no trace either — the session that made the call is not
-/// given one — so this is always `None` because there is nothing to put there, not because a lookup failed.
+/// ★ The DTO's `trace_id` now comes from the row. It used to be `None` because the row had no such column and the session
+/// that made the call was never given the action's trace — two halves of one gap, closed together: `call_traced` stamps the
+/// drained entries, the migration adds the column, and this is the mapping that finally has something to read.
 fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
     let outcome = synra_observe::audit::AuditOutcome::from_stable_name(&record.outcome);
     AuditEntryDto {
@@ -825,7 +826,7 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
             None => Some(record.outcome.clone()),
         },
         elapsed_ms: record.elapsed_ms.and_then(|elapsed| u64::try_from(elapsed).ok()),
-        trace_id: None,
+        trace_id: record.trace_id.clone(),
     }
 }
 
@@ -1750,6 +1751,7 @@ mod tests {
             outcome: outcome.to_owned(),
             at_ms,
             elapsed_ms: Some(7),
+            trace_id: None,
         }
     }
 
@@ -1768,8 +1770,18 @@ mod tests {
         assert!(!denied.allowed);
         // The outcome's stable name, which the interface translates — not a sentence written here.
         assert_eq!(denied.reason.as_deref(), Some("denied"));
-        // And always `None`: the row carries no trace, which is a gap in the *record* rather than in this mapping.
+        // A row recorded without an action behind it stays without one — `None` here is a fact about the call, not a
+        // mapping that failed.
         assert_eq!(denied.trace_id, None);
+
+        // ★ And a row with one gives the DTO one. The column is new; this is the half that proves the mapping reads it
+        // rather than still answering `None` from an older shape.
+        let mut traced = row(ID, "device:list", "allowed", 1_700_000_000_003);
+        traced.trace_id = Some("01a150c8-c332-768d-9dd1-981502aa1854".to_owned());
+        assert_eq!(
+            record_card(&traced).trace_id.as_deref(),
+            Some("01a150c8-c332-768d-9dd1-981502aa1854")
+        );
 
         // ★ "Permitted by the gate, failed in the operation" is not a refusal — `AuditOutcome::was_allowed` says so, and a
         // mapping that compared the name against `"allowed"` would draw this call as blocked.

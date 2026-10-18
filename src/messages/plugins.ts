@@ -40,7 +40,9 @@ export const plugins = {
     // ★ Shown only beside rows that exist: clearing the empty state would be a button whose only effect is to redraw it.
     clear: 'Clear history',
     /** The next page of the durable history, offered only while the last page came back full. */
-    more: 'Show more'
+    more: 'Show more',
+    /** The action's trace, which a bug report can quote for `synra logs --trace`. */
+    trace: 'trace'
   },
   /** The registry's own index, searched by keyword. */
   catalog: {

@@ -384,6 +384,10 @@
                   </span>
                   <!-- Why it was refused, when the gate said why: the stable outcome name, not a sentence this page wrote. -->
                   <span v-if="!entry.allowed && entry.reason" class="text-xs text-ink-dim font-mono">{{ entry.reason }}</span>
+                  <!-- ★ The action this call belongs to. It is the id a bug report quotes for `synra logs --trace`. -->
+                  <span v-if="entry.traceId" class="text-xs text-ink-dim font-mono" :title="entry.traceId">
+                    {{ messages.plugins.audit.trace }} {{ entry.traceId }}
+                  </span>
                   <span class="text-ink-dim">{{ new Date(entry.atMs).toLocaleTimeString() }}</span>
                 </li>
               </ul>
