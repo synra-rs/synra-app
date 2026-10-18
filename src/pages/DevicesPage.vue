@@ -139,9 +139,9 @@
                 button that offered to pair again would be offering to repeat the decision the user already made.
               -->
               <AButton
-                v-if="!card.paired"
+                v-if="!card.paired && !!card.deviceId"
                 size="small"
-                :loading="pairingBusy === card.deviceId"
+                :loading="pairingBusy !== undefined && pairingBusy === card.deviceId"
                 @click="pair(card.deviceId)"
               >
                 {{ messages.devices.pair }}
