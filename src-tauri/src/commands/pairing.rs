@@ -43,6 +43,13 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<(), IpcError
             .with_params(serde_json::json!({"deviceId": device_id, "reason": error.to_string()}))
     })?;
 
+    // ★ A device cannot pair with itself. The check is here rather than in the interface because this device hears its own
+    // announcement, so it appears in its own scan table — and a self-pairing would write a token nobody else ever holds.
+    if to == state.identity.lock().device_id {
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"deviceId": device_id, "reason": "a device cannot pair with itself"})));
+    }
+
     // ★ The address the scan recorded, which is the only place a device nobody has paired is described. It lives in `source`
     // rather than a column of its own: the discovery code writes `candidate.address.to_string()` there.
     let address = {
