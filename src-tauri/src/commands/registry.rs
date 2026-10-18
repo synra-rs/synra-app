@@ -61,6 +61,11 @@ pub struct CachedDocument {
     pub last_modified: Option<String>,
     /// The parsed document, which a 304 says is still current.
     pub document: Packument,
+    /// When `Cache-Control: max-age` says the document should be re-read; `None` means the host gave no lifetime.
+    ///
+    /// ★ `None` is not "expired": a host that sent only a validator is revalidated on every use, which is what an ETag is
+    /// for. The lifetime matters for a host that sent no validator at all — without it the entry would never be refreshed.
+    pub expires_at_ms: Option<i64>,
 }
 
 /// How a registry answers "what versions exist?".
@@ -446,7 +451,15 @@ fn packument_with_base(
 
         // ★ The cached document and its validators are cloned before the lock is dropped: a conditional request spends a
         // network round trip, and a mutex held across it would make every other registry read wait for the slowest bucket.
-        let cached = state.registry_cache.lock().get(&url).cloned();
+        // An entry whose `max-age` has run out is not sent back as a conditional candidate — the host said how long it
+        // was good for, and asking it to revalidate something this side already knows is stale would be a second opinion.
+        let now = synra_store::sqlite::now_ms();
+        let cached = state
+            .registry_cache
+            .lock()
+            .get(&url)
+            .filter(|entry| entry.expires_at_ms.is_none_or(|expires| expires > now))
+            .cloned();
         let mut request = get(&url);
         if let Some(entry) = &cached {
             if let Some(etag) = &entry.etag {
@@ -461,7 +474,11 @@ fn packument_with_base(
             Ok(response) if response.status == 304 => {
                 // A 304 says "what you have is current". Without a cached document there is nothing to have, so a host
                 // that answers one anyway is refused rather than guessed about.
-                if let Some(entry) = cached {
+                if let Some(mut entry) = cached {
+                    if let Some(age) = max_age_ms(&response.headers) {
+                        entry.expires_at_ms = Some(now.saturating_add(age));
+                        state.registry_cache.lock().insert(url, entry.clone());
+                    }
                     return Ok((base.clone(), entry.document));
                 }
                 last = Some((
@@ -480,12 +497,14 @@ fn packument_with_base(
                     )
                 })?;
                 if base.kind == Kind::Static {
+                    let expires_at_ms = max_age_ms(&response.headers).map(|age| now.saturating_add(age));
                     state.registry_cache.lock().insert(
                         url,
                         CachedDocument {
                             etag: response.headers.get("etag").cloned(),
                             last_modified: response.headers.get("last-modified").cloned(),
                             document: document.clone(),
+                            expires_at_ms,
                         },
                     );
                 }
@@ -515,6 +534,19 @@ fn packument_with_base(
         "reason": reason,
         "tried": bases.len(),
     })))
+}
+
+/// The lifetime a `Cache-Control` header grants, in milliseconds.
+///
+/// Only `max-age` is read: `no-store` and `no-cache` are treated as "no lifetime", which means the entry is revalidated on
+/// every use rather than trusted — the conservative reading of a directive this client does not otherwise implement.
+fn max_age_ms(headers: &std::collections::BTreeMap<String, String>) -> Option<i64> {
+    headers
+        .get("cache-control")?
+        .split(',')
+        .find_map(|part| part.trim().strip_prefix("max-age="))
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|seconds| i64::try_from(seconds).unwrap_or(i64::MAX).saturating_mul(1_000))
 }
 
 /// The version a document names, by tag or by string.
