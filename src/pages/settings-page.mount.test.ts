@@ -150,6 +150,53 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('writes one mirror as a string and several as an array', async () => {
+    // ★ The kernel has accepted both shapes since mirrors landed; the page writes the string form for one URL so a
+    // config written by an older settings page is not rewritten into a different shape just by opening this one.
+    answer({
+      config_get: {
+        values: { 'plugins.registry': ['https://a.example', 'https://b.example'] },
+        overridden: ['plugins.registry']
+      },
+      identity_get: IDENTITY,
+      config_set: null
+    })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('input[placeholder="https://registry.example.com"]')).toHaveLength(2)
+
+    const remove = wrapper.findAll('button').find(button => button.text().includes('Remove'))
+    expect(remove).toBeDefined()
+    await remove?.trigger('click')
+    await flushPromises()
+    const save = wrapper.findAll('button').find(button => button.text().includes('Save'))
+    await save?.trigger('click')
+    await flushPromises()
+    const saves = mocks.call.mock.calls.filter(call => call[0] === 'config_set')
+    expect(saves.at(-1)).toEqual([
+      'config_set',
+      { patch: { set: { 'plugins.registry': 'https://b.example' } } }
+    ])
+
+    const add = wrapper.findAll('button').find(button => button.text().includes('Add mirror'))
+    await add?.trigger('click')
+    await flushPromises()
+    const inputs = wrapper.findAll('input[placeholder="https://registry.example.com"]')
+    expect(inputs).toHaveLength(2)
+    const second = inputs[1]
+    expect(second).toBeDefined()
+    await second?.setValue('https://c.example')
+    await save?.trigger('click')
+    await flushPromises()
+    const after = mocks.call.mock.calls.filter(call => call[0] === 'config_set')
+    expect(after.at(-1)).toEqual([
+      'config_set',
+      { patch: { set: { 'plugins.registry': ['https://b.example', 'https://c.example'] } } }
+    ])
+    wrapper.unmount()
+  })
+
   it('shows this device\'s name, which is the one field the page can state without being told', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 

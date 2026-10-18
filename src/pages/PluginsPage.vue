@@ -708,7 +708,7 @@ const preview = ref<InstallPreview | undefined>(undefined)
 const searchText = ref('')
 const searched = ref(false)
 const searching = ref(false)
-const results = ref<readonly CatalogItem[]>([])
+const results = ref<CatalogItem[]>([])
 
 /** Searches the configured registry, and says so when nothing matched. */
 async function search(): Promise<void> {
@@ -725,7 +725,7 @@ async function search(): Promise<void> {
     results.value = []
     return
   }
-  results.value = outcome.value
+  results.value = [...outcome.value]
 }
 
 /** Opens the permission dialog for a search hit — the same dialog an install by id uses. */

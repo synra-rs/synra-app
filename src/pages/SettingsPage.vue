@@ -122,13 +122,25 @@
       <p class="m-0 text-sm text-ink-dim">
         {{ messages.settings.registry.detail }}
       </p>
-      <div class="row gap-2">
+      <div v-for="(_, index) in registryUrls" :key="index" class="row gap-2">
         <AInput
-          v-model:value="registryUrl"
+          :value="registryUrls[index] ?? ''"
           :placeholder="messages.settings.registry.placeholder"
           allow-clear
+          @update:value="(value: string) => updateRegistry(index, value)"
           @press-enter="saveRegistry"
         />
+        <AButton
+          v-if="registryUrls.length > 1"
+          @click="removeRegistry(index)"
+        >
+          {{ messages.settings.registry.remove }}
+        </AButton>
+      </div>
+      <div class="row gap-2">
+        <AButton @click="addRegistry">
+          {{ messages.settings.registry.add }}
+        </AButton>
         <AButton :loading="savingRegistry" @click="saveRegistry">
           {{ messages.settings.registry.save }}
         </AButton>
@@ -234,30 +246,56 @@ const trusted = computed<readonly { id: string, name: string }[]>(() => {
 /** The device being un-trusted, so its button can say so. */
 const forgetting = ref<string | undefined>(undefined)
 
-/** The registry URL being edited; empty means the feature is off. */
-const registryUrl = ref('')
+/** The registries being edited, in the order they will be tried; empty means the feature is off. */
+const registryUrls = ref<string[]>([''])
 
-/** Whether the registry is being written, so the button can say so and cannot be pressed twice. */
+/** Whether the registry list is being written, so the button can say so and cannot be pressed twice. */
 const savingRegistry = ref(false)
 
-// The store is the truth — another window's change lands here through `ConfigUpdated` — and the input is a buffer over it
-// rather than a second copy that would disagree the first time the kernel normalised the URL.
+// The store is the truth — another window's change lands here through `ConfigUpdated` — and the inputs are a buffer over
+// it rather than a second copy that would disagree the first time the kernel normalised the list.
 watch(
   () => settings.value('plugins.registry'),
   (value) => {
-    registryUrl.value = typeof value === 'string' ? value : ''
+    if (typeof value === 'string') {
+      registryUrls.value = [value]
+    }
+    else if (Array.isArray(value)) {
+      registryUrls.value = value.filter((entry): entry is string => typeof entry === 'string')
+    }
+    else {
+      registryUrls.value = ['']
+    }
+    if (registryUrls.value.length === 0)
+      registryUrls.value = ['']
   },
   { immediate: true }
 )
 
-/** Writes the registry URL, or unsets it when the field was cleared. */
+/** Adds an empty row to fill in. */
+function addRegistry(): void {
+  registryUrls.value.push('')
+}
+
+/** Writes one row's value. A handler rather than `v-model` on `registryUrls[index]`: `noUncheckedIndexedAccess` makes
+ * that expression `string | undefined`, and the input's `value` is not optional. */
+function updateRegistry(index: number, value: string): void {
+  registryUrls.value[index] = value
+}
+
+/** Removes one row; the last removal is a cleared field, which the save turns into an unset. */
+function removeRegistry(index: number): void {
+  registryUrls.value.splice(index, 1)
+}
+
+/** Writes the list: one URL as a string (the shape older configs hold), several as an array, none as an unset. */
 async function saveRegistry(): Promise<void> {
   savingRegistry.value = true
   error.value = undefined
-  const url = registryUrl.value.trim()
-  const patch = url === ''
+  const urls = registryUrls.value.map(url => url.trim()).filter(url => url !== '')
+  const patch = urls.length === 0
     ? { unset: ['plugins.registry'] }
-    : { set: { 'plugins.registry': url } }
+    : { set: { 'plugins.registry': urls.length === 1 ? urls[0] : urls } }
   const answer = await kernel.call<null>('config_set', { patch })
   savingRegistry.value = false
   if (!answer.ok)
