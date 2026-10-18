@@ -214,7 +214,7 @@ impl AppState {
         // Read before the identity is moved into its Arc below: the desk needs the identifier and the field takes ownership.
     let local_id = identity.device_id;
 
-    Ok(Self {
+    let state = Self {
             host: shared(Host::new(identity.clone(), peer)),
             db: Arc::new(Mutex::new(db)),
             paths,
@@ -242,7 +242,12 @@ impl AppState {
             transfers: crate::commands::transfers::Transfers::new(),
             inbound_cancels: Arc::new(Mutex::new(std::collections::HashSet::new())),
             registry_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        })
+        };
+
+    // ★ One prune per construction, not per request: a cache whose files are never removed is a directory that grows with
+    // every registry this device ever asked about. A failure to prune is a diagnostic, not a reason to refuse to start.
+    crate::commands::registry::prune_documents(&state, now_ms);
+    Ok(state)
     }
 
     /// Publishes an event for the interface, and answers with its sequence number.

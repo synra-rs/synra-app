@@ -683,6 +683,36 @@ fn store_document(
     let _ = std::fs::write(&path, text);
 }
 
+/// How long a cached document may sit on disk without being read.
+///
+/// ★ The snapshot's readers are short-lived by design: a device that has not asked about a registry in a month will fetch
+/// it once and be right, and the alternative is a directory that grows with every registry this device ever tried.
+const DOCUMENT_CACHE_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
+
+/// Removes cached documents nobody has read for a month, returning how many went.
+///
+/// A failure to prune is a diagnostic, not a reason to refuse to start; the caller ignores the count.
+pub fn prune_documents(state: &AppState, now: i64) -> usize {
+    let Ok(entries) = std::fs::read_dir(state.paths.cache_dir().join("registry-documents")) else {
+        return 0;
+    };
+    let cutoff = now.saturating_sub(DOCUMENT_CACHE_TTL_MS);
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let modified = entry
+            .metadata()
+            .ok()
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| i64::try_from(duration.as_millis()).unwrap_or(i64::MAX));
+        if modified.is_some_and(|modified| modified < cutoff) && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// The lifetime a `Cache-Control` header grants, in milliseconds.
 ///
 /// Only `max-age` is read: `no-store` and `no-cache` are treated as "no lifetime", which means the entry is revalidated on
@@ -1135,6 +1165,41 @@ mod tests {
 
         assert!(super::load_document(&state, url, super::Kind::Static, 11).is_none());
         assert!(!super::document_cache_path(&state, url).exists(), "the stale file is gone");
+    }
+
+    #[test]
+    fn a_document_nobody_read_for_a_month_is_removed() {
+        // ★ A document with only an `ETag` has no expiry, so the load path never deletes it. Without this prune the
+        // directory keeps one file per registry this device ever asked about.
+        let (_root, state) = crate::testing::file_state();
+        let url = "https://bucket.example/plugins/@acme/hello.json";
+        super::store_document(&state, url, super::Kind::Static, &static_document(), &headers(), None);
+        let path = super::document_cache_path(&state, url);
+        let file = std::fs::File::options().write(true).open(&path).expect("the file");
+        file.set_times(
+            std::fs::FileTimes::new()
+                .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 24 * 3600)),
+        )
+        .expect("an old mtime");
+        drop(file);
+
+        let removed = super::prune_documents(&state, synra_store::sqlite::now_ms());
+
+        assert!(removed >= 1);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_fresh_document_is_kept() {
+        let (_root, state) = crate::testing::file_state();
+        let url = "https://bucket.example/plugins/@acme/hello.json";
+        super::store_document(&state, url, super::Kind::Static, &static_document(), &headers(), None);
+        let path = super::document_cache_path(&state, url);
+
+        let removed = super::prune_documents(&state, synra_store::sqlite::now_ms());
+
+        assert_eq!(removed, 0);
+        assert!(path.exists());
     }
 
     #[test]
