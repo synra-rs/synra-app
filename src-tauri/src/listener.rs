@@ -7,12 +7,13 @@
 //! showing a device list that never learns what arrived. A desktop that needed a second program running beside it would be one
 //! whose transfers only work while somebody starts that program.
 //!
-//! # What it does, and does not do, with what arrives
+//! # What it does with what arrives
 //!
-//! The finished callback records **what the peer holds** in `sync_records` when a bundle arrives, which is the same fact the daemon
-//! records and what a plan is built from. It does **not install** the received package: the daemon's callback runs the install
-//! pipeline, and this shell's does not yet — so a bundle that arrives here is recorded and left in the inbox. That is a real gap
-//! rather than a detail: a package that is never installed is one the next plan will still offer to send.
+//! The finished callback is the kernel's [`record_received`](synra_core::plugin_sync::record_received) — the same function
+//! the daemon runs: it writes the history row, records what the peer holds, and inserts the installed row. It does **not**
+//! verify or unpack the package: the transfer proved the digest, and the package format (a manifest and a signature over a
+//! directory) does not exist yet. What matters here is that the window answers the sender with a `SyncResult`, which the
+//! daemon has always done and this shell did not.
 //!
 //! # Why it runs in its own thread
 //!
@@ -112,26 +113,15 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
     std::thread::Builder::new()
         .name(format!("synra-listener-{port}"))
         .spawn(move || {
-            // ★ This callback is what makes `sync_records` have a writer. Without it the table is empty, and
-            // `plugins_sync_plan` reports every peer as holding nothing — a plan that says "send everything" for ever.
-            let finished: synra_core::listener::FinishedCallback = Arc::new(move |transfer: &synra_core::listener::FinishedTransfer| {
-                // Only a bundle says anything about a plugin: an attachment arriving tells this device nothing about what the peer
-                // holds, and recording it would overwrite a real answer with a file that happens to have been sent.
-                let plugin = transfer.bundle.as_ref()?;
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0_i64, |elapsed| synra_core::host::millis_reading(elapsed.as_millis() as u64));
-                if let Err(error) = db_state.db().record_sync(
-                    plugin.as_str(),
-                    &transfer.peer.to_string(),
-                    transfer.version.as_deref().unwrap_or_default(),
-                    &transfer.digest,
-                    now,
-                ) {
-                    eprintln!("synra: a received bundle could not be recorded: {error}");
-                }
-                None
-            });
+            // ★ The kernel's own half, not a second implementation of it. The daemon has used this function since it
+            // learned to record what arrives; the window used to record only "the peer holds this", return nothing, and
+            // leave the sender waiting out its deadline for a result nobody sent.
+            let finished: synra_core::listener::FinishedCallback = Arc::new(
+                move |transfer: &synra_core::listener::FinishedTransfer| {
+                    let db = db_state.db();
+                    synra_core::plugin_sync::record_received(&db, transfer)
+                },
+            );
             synra_core::listener::serve(&host, &thread_cancel, &data_dir, &desk, &router, &finished);
         })
         .map_or_else(
