@@ -66,6 +66,25 @@ fn forgetting_a_device_forgets_that_it_was_trusted() {
 }
 
 #[test]
+fn a_withdrawn_receive_announces_the_end_without_claiming_completion() {
+    // ★ A sender that aborts leaves no file, so the row must go — but "completed" would tell the panel a file exists that
+    // does not. The event is the same `TransferFinished` a cancel uses; only the snapshot is missing.
+    let state = crate::testing::state();
+    let id = TransferId::new();
+    state.transfers.record(snapshot(id, "active"));
+    let subscriber = state.events.subscribe();
+
+    super::withdraw_received(&state, id);
+
+    assert!(state.transfers.is_empty(), "the row is gone");
+    let delivery = state.events.take(subscriber).expect("announced");
+    assert!(matches!(
+        delivery.events(),
+        [synra_ipc::event::KernelEvent::TransferFinished { .. }]
+    ));
+}
+
+#[test]
 fn answering_a_prompt_that_is_not_waiting_is_refused() {
     // ★ The prompt's id is one a panel was told about. Answering twice, or answering after the window closed, is an
     // answer to a question that no longer exists — and a kernel that said "done" would leave the panel believing it
@@ -486,6 +505,7 @@ fn progress_step(
             blocks_done,
             blocks_total: 4,
         },
+        aborted: false,
     }
 }
 

@@ -161,6 +161,16 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             let names: Arc<Mutex<std::collections::HashMap<String, String>>> =
                 Arc::new(Mutex::new(std::collections::HashMap::new()));
             let progress: Arc<synra_core::listener::ProgressCallback> = Arc::new(move |event| {
+                // ★ A sender's abort is the last event of a transfer that produced no file. The row is removed rather than
+                // marked completed: nothing arrived, and a "completed" row for a file that does not exist is a lie the
+                // panel would keep until the next restart.
+                if event.aborted {
+                    crate::commands::transfers::withdraw_received(
+                        &progress_state,
+                        event.progress.transfer_id,
+                    );
+                    return;
+                }
                 let key = event.peer.to_string();
                 let name = {
                     let mut names = names.lock();

@@ -814,6 +814,16 @@ fn remember_peer(state: &crate::state::AppState, peer: &str) {
     let _ = state.db().set_config(ACCEPT_FROM_KEY, &value, synra_store::sqlite::now_ms());
 }
 
+/// Closes a receive row whose transfer ended without a file.
+///
+/// The row was opened by the progress reporter when the proposal was accepted, and a sender that aborts never produces a
+/// `FinishedTransfer` — so this is the only place that can tell the panel the row is over. It is not `completed`: nothing
+/// arrived.
+pub fn withdraw_received(state: &crate::state::AppState, transfer_id: TransferId) {
+    state.transfers.forget(&transfer_id);
+    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+}
+
 /// Announces a received transfer as completed and retires its row.
 ///
 /// The receiving half of a transfer has no worker to remove the row; without this the panel would show it as arriving
