@@ -487,6 +487,32 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             crate::commands::plugin_ui::serve(ctx.app_handle(), &request)
         })
         .setup(|app| {
+            // ★ The single-instance check, **before** the state opens the database or binds a listener. A second launch
+            // has nothing to do here: it has already written the file that asks the running instance to come forward.
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|error| format!("the data directory could not be found: {error}"))?;
+            let mut instance_request = None;
+            match crate::instance::claim(&data_dir) {
+                Ok(crate::instance::Start::First(guard)) => {
+                    instance_request = Some(guard.request_path().to_path_buf());
+                    // Managed, not dropped: the operating-system lock lives as long as this value does, and this value
+                    // lives as long as the application.
+                    app.manage(guard);
+                }
+                Ok(crate::instance::Start::Second) => {
+                    // ★ The running instance has been asked to show itself; this process has nothing to do. Returning
+                    // before `app_state` is the point: a second database and a second listener port must not exist.
+                    app.handle().exit(0);
+                    return Ok(());
+                }
+                Err(error) => {
+                    // ★ A lock we cannot take is not a reason to refuse to run. A read-only data directory would
+                    // otherwise make the window unopenable, and two instances is the lesser fault.
+                    eprintln!("synra: the single-instance lock could not be taken: {error}");
+                }
+            }
             let state = app_state(app.handle())?;
             // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
             // command that publishes later finds a subscriber waiting — a bridge started after the first command would
@@ -505,6 +531,16 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // a **deliberate** way out — see `run_window`, where closing the window hides it instead of ending the process.
             if let Err(error) = crate::tray::install(app.handle()) {
                 eprintln!("synra: the tray icon could not be installed: {error}");
+            }
+            // ★ Last, because a request honoured before there is a window would find nothing to show.
+            if let Some(request) = instance_request {
+                crate::instance::watch(app.handle().clone(), request);
+            }
+            // ★ The window starts hidden (`visible: false` in `tauri.conf.json`) and is shown here, after the
+            // single-instance check. A second launch would otherwise create and flash a window before deciding it has
+            // nothing to do.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
             }
             Ok(())
         })

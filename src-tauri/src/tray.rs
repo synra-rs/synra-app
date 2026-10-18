@@ -24,6 +24,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 use crate::tray_menu::{QUIT, SHOW, TrayAction, action_for};
+use crate::window::show_main;
 
 /// Installs the tray icon and its two items.
 ///
@@ -43,7 +44,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
         // left click would make the quick way a menu, which is the opposite of the point.
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match action_for(event.id().as_ref()) {
-            Some(TrayAction::Show) => show_window(app),
+            Some(TrayAction::Show) => show_main(app),
             Some(TrayAction::Quit) => {
                 // ★ Ask the listener to stop before the process ends. The exit would release the port anyway, but a
                 // restart that races the old process for its own port is exactly what the token exists to prevent — and
@@ -64,7 +65,7 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                show_window(tray.app_handle());
+                show_main(tray.app_handle());
             }
         });
 
@@ -76,15 +77,4 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
 
     let _tray = builder.build(app)?;
     Ok(())
-}
-
-/// Brings the main window back, whether it was hidden, minimised or behind something else.
-fn show_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        // Each step is best-effort: a platform that cannot focus a window still gets it shown, and the alternative is a
-        // tray click that does nothing at all.
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
 }

@@ -54,6 +54,7 @@
 pub mod commands;
 pub mod discovery;
 pub mod events;
+pub mod instance;
 /// The shell's own listener: the half that makes this device reachable.
 #[cfg(feature = "tauri-shell")]
 pub mod listener;
@@ -71,6 +72,9 @@ pub mod shell;
 // ★ The tray needs an event loop, so it is behind the same gate as the window; [`tray_menu`] holds the part that does not.
 #[cfg(feature = "tauri-shell")]
 pub mod tray;
+/// The one window, shown by the tray and by a second launch.
+#[cfg(feature = "tauri-shell")]
+pub mod window;
 
 #[cfg(test)]
 mod testing;
