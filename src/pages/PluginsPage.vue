@@ -333,6 +333,16 @@
                 {{ messages.plugins.checkUpdates }}
               </AButton>
 
+              <AButton
+                v-if="updates[plugin.pluginId]"
+                type="primary"
+                size="small"
+                :loading="updating === plugin.pluginId"
+                @click="applyUpdate(plugin)"
+              >
+                {{ messages.plugins.updateAction }}
+              </AButton>
+
               <APopconfirm
                 :title="messages.plugins.removeTitle"
                 :description="messages.plugins.removeKeepsData"
@@ -755,6 +765,25 @@ async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
   const next = { ...updates.value }
   delete next[plugin.pluginId]
   updates.value = next
+}
+
+/** The plugin whose update is being installed. */
+const updating = ref<string | undefined>(undefined)
+
+/** Installs the newer version, then re-reads the list — the row the user sees comes from the store. */
+async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
+  updating.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<null>('plugins_update', { pluginId: plugin.pluginId })
+  updating.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  const next = { ...updates.value }
+  delete next[plugin.pluginId]
+  updates.value = next
+  await load()
 }
 
 /** The package a registry install would fetch, shown before anything is downloaded. */

@@ -65,6 +65,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_publisher_decide: ['publisherId', 'trust'],
   plugins_preview: ['pluginId'],
   plugins_check_update: ['pluginId'],
+  plugins_update: ['pluginId'],
   plugins_catalog_search: ['query']
 }
 
@@ -157,6 +158,8 @@ export class FakeKernel implements Bridge {
         }
       case 'plugins_check_update':
         // `Maybe`: "no update" is `null`, and the fake answers the ordinary case rather than inventing one.
+        return null
+      case 'plugins_update':
         return null
       case 'plugins_list':
         // ★ A bare array, because the kernel's own table says this command returns `Many`.

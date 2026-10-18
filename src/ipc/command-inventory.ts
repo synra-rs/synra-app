@@ -63,6 +63,7 @@ export const REGISTERED = [
   'plugins_publishers',
   'plugins_publisher_decide',
   'plugins_check_update',
+  'plugins_update',
   // ★ The four the shell could not implement while the orchestration lived in the daemon binary.
   'intent_dispatch',
   // ★ And the fifth, which the interface had been pretending existed: `HomePage.vue`'s "received" panel called
@@ -111,8 +112,7 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // The plugin lifecycle beyond enable/disable/install is not built. `plugins_install` moved out of this list when the
   // pipeline became reachable from the shell: `synra_core::install` is the daemon's pipeline too, so the order of the
   // checks has one implementation and this shell supplies only what it can do (a desktop can open a window).
-  plugins_update: 'no updater exists',
-  plugins_request_registry_search: 'no registry search is wired'
+  plugins_request_registry_search: 'no registry search endpoint is wired'
 }
 
 /**

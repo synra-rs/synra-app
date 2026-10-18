@@ -101,6 +101,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   transfer_list: undefined,
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
   plugins_publishers: undefined,
+  plugins_update: { pluginId: '@acme/hello' },
   plugins_publisher_decide: { publisherId: '@acme', trust: 'trusted' },
   plugins_preview: { pluginId: '@acme/hello' },
   plugins_catalog_search: { query: { query: 'hello' } },

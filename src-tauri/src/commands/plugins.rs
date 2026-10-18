@@ -255,6 +255,16 @@ pub fn plugins_preview(
     crate::commands::registry::preview(state, plugin_id, version)
 }
 
+/// Replaces an installed plugin with the newest version the registry publishes.
+///
+/// # Errors
+///
+/// `PluginNotInstalled` when no active version exists, `Unsupported` when no registry is configured, and the install
+/// pipeline's refusals when the package cannot be fetched or verified.
+pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<(), IpcError> {
+    crate::commands::registry::update(state, plugin_id)
+}
+
 /// Installs a plugin from a directory or the configured registry, through the checks, and reports what the user has to be
 /// told.
 ///
@@ -288,20 +298,60 @@ pub(crate) fn install_directory(
     state: &AppState,
     path: &std::path::Path,
 ) -> Result<InstallReport, IpcError> {
+    let installed = run_install(state, path, false)?;
+    Ok(InstallReport {
+        plugin_id: parse(&installed.plugin_id)?,
+        version: installed.version,
+        warnings: installed.warnings,
+        enabled: false,
+        publisher_id: installed.signed_by.as_ref().map(|publisher| publisher.publisher_id.clone()),
+        fingerprint: installed.signed_by.as_ref().map(|publisher| publisher.fingerprint.clone()),
+    })
+}
+
+/// Replaces the installed version of a plugin with the package at `path`.
+///
+/// # Errors
+///
+/// As [`install_directory`], plus `update` when nothing is installed at that identifier.
+pub(crate) fn update_directory(state: &AppState, path: &std::path::Path) -> Result<(), IpcError> {
+    run_install(state, path, true).map(|_| ())
+}
+
+/// The pipeline both install and update run: verify, stage, move, record.
+fn run_install(
+    state: &AppState,
+    path: &std::path::Path,
+    replace: bool,
+) -> Result<synra_core::install::Installed, IpcError> {
     let plugins = state.plugin_set()?;
     let set = plugins.lock();
     // The database guard is scoped to the call rather than held while the report is built: this mutex is not reentrant,
     // and a `plugins_list` inside the same breadth would be a hang rather than an error.
     let outcome = {
         let mut db = state.db();
-        synra_core::install::from_directory(
-            &mut db,
-            set.backend(),
-            &state.paths.plugins_dir(),
-            path,
-            synra_store::sqlite::now_ms(),
-            synra_plugin_host::verify::HostFacts::desktop(),
-        )
+        let now = synra_store::sqlite::now_ms();
+        let facts = synra_plugin_host::verify::HostFacts::desktop();
+        if replace {
+            synra_core::install::update_from_directory(
+                &mut db,
+                set.backend(),
+                &state.paths.plugins_dir(),
+                path,
+                now,
+                facts,
+            )
+        }
+        else {
+            synra_core::install::from_directory(
+                &mut db,
+                set.backend(),
+                &state.paths.plugins_dir(),
+                path,
+                now,
+                facts,
+            )
+        }
     };
     let installed = outcome.map_err(|refusal| {
         IpcError::unknown(refusal.code()).with_params(serde_json::json!({
@@ -314,17 +364,8 @@ pub(crate) fn install_directory(
     // `announce` asks the set what is loaded, and this mutex is not reentrant: holding it across the call was a
     // same-thread self-deadlock, and the symptom was a test that hung rather than one that failed.
     drop(set);
-    let plugin_id = parse(&installed.plugin_id)?;
-    // The interface learns about the plugin the moment it lands, rather than when the page is reopened.
-    announce(state, &plugin_id);
-    Ok(InstallReport {
-        plugin_id,
-        version: installed.version,
-        warnings: installed.warnings,
-        enabled: false,
-        publisher_id: installed.signed_by.as_ref().map(|publisher| publisher.publisher_id.clone()),
-        fingerprint: installed.signed_by.as_ref().map(|publisher| publisher.fingerprint.clone()),
-    })
+    announce(state, &parse(&installed.plugin_id)?);
+    Ok(installed)
 }
 
 /// Removes a plugin, and its data when the caller says so.

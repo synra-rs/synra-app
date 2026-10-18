@@ -314,6 +314,15 @@ mod wrappers {
             .map_err(failed)
     }
 
+    /// Replaces an installed plugin with the newest version the registry publishes.
+    #[tauri::command]
+    pub fn plugins_update(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<(), IpcError> {
+        commands::plugins::plugins_update(&state, &plugin_id)
+    }
+
     /// Asks the registry whether a newer version is published for an installed plugin.
     #[tauri::command]
     pub fn plugins_check_update(
@@ -498,6 +507,7 @@ mod wrappers {
             plugins_preview,
             plugins_catalog_search,
             plugins_check_update,
+            plugins_update,
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,

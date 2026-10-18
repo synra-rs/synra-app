@@ -19,6 +19,7 @@ export const plugins = {
   updateFound: 'Version {version} is published',
   updateNoNewPermissions: 'It asks for the same permissions.',
   updateNewPermissions: 'It asks for more:',
+  updateAction: 'Update',
   installName: 'Plugin id, e.g. @acme/hello',
   /** What a registry package says about itself, before any of it is downloaded. */
   preview: {

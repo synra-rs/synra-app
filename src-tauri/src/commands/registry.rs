@@ -591,6 +591,26 @@ pub fn install(
     outcome
 }
 
+/// Replaces an installed plugin with the newest version the registry publishes.
+///
+/// # Errors
+///
+/// As [`install`], plus `update` when the plugin is not installed.
+pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcError> {
+    let bases = bases(state)?;
+    let (source, document) = packument_with_base(state, plugin_id)?;
+    let chosen = document.latest().ok_or_else(|| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+            "pluginId": plugin_id,
+            "reason": "the registry has no `latest` tag for it",
+        }))
+    })?;
+    let package = download(state, &bases, &source, chosen)?;
+    let outcome = crate::commands::plugins::update_directory(state, package.path());
+    package.cleanup();
+    outcome
+}
+
 /// A `GET` request with no body.
 fn get(url: &str) -> Request {
     Request {
