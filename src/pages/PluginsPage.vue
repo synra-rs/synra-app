@@ -126,6 +126,9 @@
         <p class="m-0 text-sm">
           {{ messages.plugins.removeDetail(removing?.title ?? '') }}
         </p>
+        <span class="break-all text-xs text-ink-dim font-mono">
+          {{ messages.plugins.removeDataPath(removing?.dataPath ?? '') }}
+        </span>
         <ACheckbox
           :checked="removeData"
           @update:checked="(checked) => (removeData = checked)"

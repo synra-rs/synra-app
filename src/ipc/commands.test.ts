@@ -107,8 +107,9 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // `Many`: a bare array, which is what the arity says the payload is.
   diag_logs_tail: { lines: 100 },
   diag_probes: undefined,
-  // `One`: the contract declares this command as `One`; the fake used to answer `null`, which the page ignored.
-  plugins_uninstall: { bytesFreed: 0, dataKept: true },
+  // `One`: the contract declares this command as `One`, and the fake now answers the removal's report. The value here is
+  // the **arguments** this test invokes with, so both required keys are present.
+  plugins_uninstall: { pluginId: '@acme/hello', removeData: true },
   // `Unit`: the answer has no shape to hold a caller to, which is the claim this entry makes alongside the declaration.
   plugins_audit_clear: { pluginId: '@acme/hello' },
   plugins_update: { pluginId: '@acme/hello' },

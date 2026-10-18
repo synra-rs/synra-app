@@ -73,6 +73,7 @@ export const DEVICES: readonly DeviceCard[] = [
 export const PLUGINS: readonly PluginSnapshot[] = [
   {
     pluginId: '@synra-plugin/github',
+    dataPath: '/tmp/synra/plugin-data/@synra-plugin-github',
     title: 'GitHub links',
     description: 'Opens a shared repository in the desktop browser.',
     version: '0.1.0',
@@ -96,6 +97,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
   },
   {
     pluginId: '@synra-plugin/shortcuts',
+    dataPath: '/tmp/synra/plugin-data/@synra-plugin-shortcuts',
     title: 'Shortcuts',
     version: '0.2.0',
     publisher: '@synra',

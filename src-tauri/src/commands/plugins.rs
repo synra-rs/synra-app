@@ -553,6 +553,8 @@ fn snapshot(
 
     PluginSnapshot {
         plugin_id: plugin_id.clone(),
+        // ★ The same function the removal uses, so the path in the dialog is the directory that will be deleted.
+        data_path: state.paths.plugin_sandbox_dir(&row.plugin_id).display().to_string(),
         title: manifest.as_ref().map_or_else(|| row.plugin_id.clone(), |manifest| manifest.title.clone()),
         description: manifest.as_ref().and_then(|manifest| manifest.description.clone()),
         version: manifest.as_ref().map_or_else(String::new, |manifest| manifest.version.clone()),
@@ -2097,6 +2099,13 @@ mod tests {
         let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
         assert_eq!(card.requested, vec!["log:*".to_owned(), "device:list".to_owned()]);
         assert!(card.granted.is_empty(), "nothing has been decided yet");
+        // ★ The path the removal dialog shows is the directory the removal would delete: both come from
+        // `plugin_sandbox_dir`, and this assertion is what keeps the card from inventing a second spelling of it.
+        assert_eq!(
+            card.data_path,
+            state.paths.plugin_sandbox_dir(ID).display().to_string(),
+            "the card names the sandbox the removal deletes"
+        );
     }
 
     #[test]

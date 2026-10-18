@@ -115,6 +115,8 @@ export const plugins = {
   removeDetail: (title: string): string =>
     `Removing ${title} deletes its installed files. Its data \u2014 settings, indexes and anything it stored \u2014 stays on disk unless you choose to delete it.`,
   removeDeleteData: 'Also delete its data',
+  /** The directory the checkbox would delete, so the user can see it before agreeing. */
+  removeDataPath: (path: string): string => `Data folder: ${path}`,
   removedKept: (title: string, freed: string): string => `${title} was removed; ${freed} freed, and its data was kept.`,
   removedDeleted: (title: string, freed: string): string => `${title} was removed; ${freed} freed, and its data was deleted.`,
   /**

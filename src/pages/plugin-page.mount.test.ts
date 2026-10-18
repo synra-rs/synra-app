@@ -72,6 +72,7 @@ installBrowserApis()
 function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
   return {
     pluginId: '@acme/hello',
+    dataPath: '/tmp/synra/plugin-data/@acme-hello',
     title: 'Hello',
     description: null,
     version: '1.0.0',
@@ -150,6 +151,8 @@ describe('the plugins page', () => {
     expect(modal?.props('open'), 'the dialog did not open').toBe(true)
     expect(wrapper.text()).toContain(messages.plugins.removeTitle)
     expect(wrapper.text()).toContain(messages.plugins.removeDeleteData)
+    // ★ The directory the checkbox would delete: the user is agreeing to delete a path, not an abstraction.
+    expect(wrapper.text()).toContain(messages.plugins.removeDataPath(card().dataPath))
     expect(mocks.call).not.toHaveBeenCalledWith('plugins_uninstall', expect.anything())
 
     const data = wrapper
