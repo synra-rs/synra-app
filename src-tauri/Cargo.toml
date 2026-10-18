@@ -122,7 +122,7 @@ tokio = { version = "1", features = [
   "time",
   "macros"
 ] }
-tauri = { version = "2", optional = true, features = [ "tray-icon" ] }
+tauri = { version = "2", optional = true, features = [ "tray-icon", "unstable" ] }
 # ★ The UI session's nonce. `synra-plugin-ui` deliberately takes it from the caller, because the *only* thing standing
 # between a plugin page and another plugin's grants is that the value is unguessable — and a counter (what
 # `issue_placeholder` uses, and what `open_request` used to call) is not. A v4 UUID gives 122 random bits, enough for a

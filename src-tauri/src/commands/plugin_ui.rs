@@ -1234,6 +1234,16 @@ pub(crate) fn stays_on_page(candidate: &str, opened: &str) -> bool {
     document(candidate) == document(opened)
 }
 
+/// The window label one plugin's page lives under.
+///
+/// ★ One page per plugin: the label is derived from the id, so opening the same plugin a second time finds the window that
+/// is already there instead of issuing a second session for a second window. The id's slash cannot appear in a window
+/// label, hence the `__`.
+#[must_use]
+pub fn window_label(id: &synra_protocol::ids::PluginId) -> String {
+    format!("plugin-{}", id.as_str().replace('/', "__"))
+}
+
 /// Prepares the page for one plugin, and records who it belongs to.
 ///
 /// # Errors
@@ -1261,7 +1271,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenRequest, Ip
             .file_stem()
             .map_or_else(|| "index".to_owned(), |stem| stem.to_string_lossy().into_owned())
     });
-    let label = format!("plugin-{}", id.as_str().replace('/', "__"));
+    let label = window_label(&id);
     let url = format!("synra-plugin://{}/{page}", id.as_str());
 
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();

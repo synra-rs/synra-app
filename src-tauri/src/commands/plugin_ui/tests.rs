@@ -1394,6 +1394,13 @@ fn an_unknown_transfer_says_it_is_not_in_flight() {
 }
 
 #[test]
+fn a_scoped_plugin_gets_a_window_label_without_a_slash() {
+    // ★ The label is what makes "one page per plugin" findable: the id's slash cannot appear in a window label, and the
+    // mapping has to be the same one `open_request` recorded or the second open would build a second window.
+    assert_eq!(super::window_label(&plugin_id()), "plugin-@acme__hello");
+}
+
+#[test]
 fn closing_a_page_ends_its_session() {
     // ★ The token is the page's authority. An entry that outlives its window keeps answering for a page nobody can see,
     // and a second window with the same label would inherit the first one's nonce.

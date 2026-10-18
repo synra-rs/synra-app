@@ -284,6 +284,22 @@ mod wrappers {
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
     ) -> Result<(), IpcError> {
+        use tauri::Manager as _;
+
+        // ★ One page per plugin: a second open is a focus, not a second window. Building another would issue a second
+        // session for the same plugin and replace the first entry in `hosted_ui`, leaving the first page holding a token
+        // no table names.
+        let id = synra_protocol::ids::PluginId::parse(&plugin_id).map_err(|error| {
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
+        })?;
+        let label = commands::plugin_ui::window_label(&id);
+        if let Some(window) = app.get_window(&label) {
+            let _ = window.show();
+            let _ = window.set_focus();
+            return Ok(());
+        }
+
         let request = commands::plugin_ui::open_request(&state, &plugin_id)?;
         let failed = |error: tauri::Error| {
             IpcError::unknown(synra_protocol::ErrorCode::Internal)
