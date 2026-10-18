@@ -23,11 +23,11 @@
 
 | | |
 | --- | --- |
-| `src/`（前端） | 57 个文件、约 5.8k 行（36 个生产文件 + 21 个测试与夹具） |
-| `src-tauri/src/`（壳） | 17 个文件、约 5.2k 行（14 个生产 + 3 个测试） |
-| 命令 | 契约 41 条 · **注册 33 条** · 其中被调用 10 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
+| `src/`（前端） | 72 个文件、约 6.8k 行（42 个生产文件 + 30 个测试与夹具） |
+| `src-tauri/src/`（壳） | 30 个文件、约 8.1k 行（21 个生产 + 9 个测试） |
+| 命令 | 契约 41 条 · **注册 34 条** · 其中被调用 10 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
 | 页面 | 4 页（Home / Devices / Plugins / Settings） |
-| 前端 store | 1 / 8（只有 `devices`） |
+| 前端 store | 5 / 8（devices / pairing / plugins / intents / settings） |
 
 ### 已经能跑的
 
@@ -37,20 +37,25 @@
 - **插件宿主是真的**（[`plugin_host.rs`](./src-tauri/src/plugin_host.rs)）：平台动作、插件存储、受控 `fetch`、
   审计环都是真的；事件 / 设备发送 / 密钥 / 传输 / 动作组返回 `NOT_IMPLEMENTED`，是**明确的拒绝**而不是静默。
 - 前端有类型化 client、`IpcError` 映射与重试分类、`EventDispatcher` + `SequenceTracker`（seq / gap / 未知事件兜底）、
-  4 页、集中文案（`src/messages/`），假内核被**关在测试目录里**（`tests/browser`），有守卫盯着。
-- 验证：`pnpm test` 139 条、`pnpm build` 通过、`pnpm shapes` 7 条守卫通过；Rust 侧测试在
-  `commands/{devices,diag,discovery}`。
+  4 页、集中文案（`src/messages/`），假内核被**关在测试目录里**，有守卫盯着。
+- **事件桥是真的**：`src-tauri/src/events.rs` 订阅内核总线并 `emit` 到 `kernel-event`，四个 store（devices / plugins /
+  intents / settings）按事件更新；配对、传输、插件、配置、扫描都有发布点。
+- **网络那一半在窗口里**：`discovery.rs` 扫、`listener.rs` 收、`transfers.rs` 与 `sync_run.rs` 拨号发；
+  插件页有自己的 origin（`synra-plugin://`）、令牌与初始化脚本。
+- 验证：`pnpm test` 179 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm build` 通过、`pnpm shapes` 守卫通过；
+  Rust 侧 164 条。
 
 ### 还没有的（下一步就是这些）
 
-1. **事件桥**：壳一次 `emit` 都没有（没有 `events.rs`），所以前端的事件分发器**没有生产者**，界面只能靠刷新快照。
-2. **19 条命令**：`pairing_*`（3）、`transfer_*`（4）、`devices_connect`/`disconnect`、8 条插件生命周期
-   （catalog / install / uninstall / update / sync）、`plugin_ui_rpc` / `plugin_ui_ready`。
-3. **插件 UI 承载没有 Rust 那一半**：没有第二个 WebView、没有插件 origin、没有令牌签发、没有注入脚本。
-   现在只有一个单窗口 + `default-src 'self'`。
-4. **没有托盘 / 单实例 / 优雅关停**（没有 `lifecycle.rs`），也没有 `tauri-plugin-*`。
-5. **没有组件测试**：vitest 是 `environment: 'node'`，139 条测试里没有一条渲染页面。
-   CI 已建（`.github/workflows/ci.yml`），但它跑的就是这 139 条 —— 所以它**不能**被读成"页面能渲染"的证据。
+1. **`plugin_ui_rpc`**：插件页的调用通道还没注册，所以 `window.synra` 的存储 / 网络 / 传输 / 剪贴板命名空间仍以
+   `unsupported` 拒绝。另外**注入对象还没有被装进插件页**：初始化脚本只放了 label 与 token，没有代码用它们构造
+   `createInjection(context)` —— `injection/` 目前只在测试里被调用。
+2. **插件窗口的收尾**：`plugin_ui_open` 没有前端入口（插件卡上没有「打开」按钮），导航范围限制（`on_navigation`）未做，
+   每窗口 CSP 受 Tauri 2.12 限制只能继承全局策略。
+3. **托盘 / 单实例 / 优雅关停**：没有 `lifecycle.rs`，也没有 `tauri-plugin-*`。
+4. **同步的终点**：`plugins_sync_plan` / `plugins_sync_run` 已注册但没有页面调用；接收端写 `plugins` 行而不解包
+   （包格式在 core 侧还没定），所以一次同步的终点是「对端说它装了」。
+5. **入站传输的进度**：`transfer_list` 只列本进程发出的传输，`listener` 收到的传输不在这张表里。
 
 ## 这个仓库装什么
 
