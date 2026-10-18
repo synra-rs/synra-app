@@ -308,15 +308,19 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     use synra_core::listener::KernelEventOutcome;
                     use synra_protocol::event::events;
                     let board = Arc::clone(&kernel_state.board);
-                    let Some(plugins) = kernel_state.plugins.as_ref().map(Arc::clone) else {
-                        return KernelEventOutcome::Refused(
-                            "this window has no plugin engine, so it cannot run the action".to_owned(),
-                        );
-                    };
                     let now = synra_store::sqlite::now_ms();
                     let local = kernel_state.identity.lock().device_id;
                     match envelope.event.as_str() {
                         events::INTENT_INVOKE => {
+                            // ★ The engine is looked up **inside** this arm: a late result and a withdrawal only need the
+                            // board, and refusing them because this window cannot run plugins would drop an outcome for an
+                            // action the peer already performed.
+                            let Some(plugins) = kernel_state.plugins.as_ref().map(Arc::clone) else {
+                                return KernelEventOutcome::Refused(
+                                    "this window has no plugin engine, so it cannot run the action"
+                                        .to_owned(),
+                                );
+                            };
                             match synra_core::dispatch::orchestrate::accept_remote(
                                 &plugins, &board, local, envelope, now,
                             ) {
@@ -328,6 +332,14 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         }
                         events::INTENT_CANCEL => {
                             match synra_core::dispatch::orchestrate::accept_cancel(&board, envelope) {
+                                Ok(_) => KernelEventOutcome::Handled,
+                                Err(error) => KernelEventOutcome::Refused(error.to_string()),
+                            }
+                        }
+                        // The late answer to an action this window dispatched: the receiver waited longer than this side
+                        // did and dialled back. `apply_result` ignores one for work no longer in flight.
+                        events::INTENT_RESULT => {
+                            match synra_core::dispatch::orchestrate::apply_result(&board, envelope) {
                                 Ok(_) => KernelEventOutcome::Handled,
                                 Err(error) => KernelEventOutcome::Refused(error.to_string()),
                             }
