@@ -110,6 +110,11 @@ synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", f
 # The UI session registry: tokens issued to a plugin page, and the validation `plugin_ui_ready` performs against them.
 synra-plugin-ui = { path = "../../synra-rust-core/crates/synra-plugin-ui" }
 parking_lot = "0.12"
+# The process gauges (`memory_rss_bytes`, `cpu_percent`, `threads`) need facts only the platform knows, and `sysinfo` is
+# the one crate that answers on all three desktop targets without a per-OS module here. It is already in the lockfile as
+# Tauri's own dependency; only the `system` feature is turned on, so the disk/network/user probes it can also run are not
+# compiled in.
+sysinfo = { version = "0.38", default-features = false, features = [ "system" ] }
 # The page-to-kernel byte channel's first slice: a Blob is base64 in the RPC payload. See `plugin_ui`'s
 # `MAX_PLUGIN_TRANSFER_BYTES` for why this is capped rather than streamed.
 base64 = "0.22"

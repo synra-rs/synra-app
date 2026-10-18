@@ -28,6 +28,17 @@ use synra_core::{Host, Identity, SharedHost, shared};
 use synra_ipc::{IpcError, IdentitySnapshot, ScanState};
 use synra_store::{Paths, SynraDb};
 
+/// One read of this process's facts, for the process gauges.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ProcessSample {
+    /// Resident memory, in bytes.
+    pub memory_bytes: u64,
+    /// CPU usage as a percentage of one core, since the previous read.
+    pub cpu_percent: f64,
+    /// How many threads the process has, when the platform reports them.
+    pub threads: Option<usize>,
+}
+
 /// The kernel pieces the shell's commands reach for.
 ///
 /// # Why `plugins` may be absent
@@ -110,6 +121,11 @@ pub struct AppState {
     pub started: std::time::Instant,
     /// The uptime last added to the counter, so each read adds only the delta.
     pub uptime_reported: Mutex<u64>,
+    /// This process's id, so the sample is this process rather than whichever one the system lists first.
+    process_pid: sysinfo::Pid,
+    /// The system handle kept between reads: CPU usage is the delta between two refreshes, and a fresh handle would
+    /// report zero on every read.
+    process_system: Mutex<sysinfo::System>,
 
     /// The desktop platform: the clipboard, the browser and notifications.
     ///
@@ -228,7 +244,15 @@ impl AppState {
     // `frames_received_total` and `links_opened_total` were written by nothing in the one host a desktop user runs.
     let metrics = Arc::new(synra_observe::metrics::RingRecorder::new());
 
+    // ★ The process facts are kept between reads rather than rebuilt: `sysinfo` computes CPU usage as a delta between
+    // two refreshes, so a fresh `System` would report zero on every panel poll. The first refresh here is the baseline.
+    let process_pid = sysinfo::Pid::from_u32(std::process::id());
+    let mut process_system = sysinfo::System::new();
+    let _ = process_system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
+
     let state = Self {
+            process_pid,
+            process_system: Mutex::new(process_system),
             host: shared(Host::new(identity.clone(), peer).with_metrics(Arc::clone(&metrics))),
             db: Arc::new(Mutex::new(db)),
             paths,
@@ -293,6 +317,28 @@ impl AppState {
         };
         self.metrics
             .counter_add(&synra_observe::metrics::SeriesKey::new("uptime_seconds", []), delta);
+    }
+
+    /// Samples this process for the process gauges.
+    ///
+    /// Returns `None` when the platform will not describe the process — `sysinfo` has a per-OS `process()` that can
+    /// answer nothing, and a metric invented from a missing fact is worse than an absent one.
+    #[must_use]
+    pub fn sample_process(&self) -> Option<ProcessSample> {
+        // The lock lives only as long as the read: the caller then writes the gauges, which take the recorder's own lock,
+        // and holding both in one order here would be a second order to deadlock on.
+        let mut system = self.process_system.lock();
+        let _ = system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[self.process_pid]), true);
+        let process = system.process(self.process_pid)?;
+        let memory_bytes = process.memory();
+        let cpu_percent = f64::from(process.cpu_usage());
+        let threads = process.tasks().map(std::collections::HashSet::len);
+        drop(system);
+        Some(ProcessSample {
+            memory_bytes,
+            cpu_percent,
+            threads,
+        })
     }
 
     /// Publishes an event for the interface, and answers with its sequence number.

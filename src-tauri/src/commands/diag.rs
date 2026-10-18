@@ -319,6 +319,9 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
 ///
 /// Never in practice: the recorder is behind a lock it holds for the length of a read. It returns a `Result` because every
 /// command in this module does, and a command that cannot fail is not a reason to break the shape the interface expects.
+// The CPU percentage is a float from `sysinfo` and the recorder's gauge is an integer: rounding it loses fractions of a
+// percent, which is the only precision a "how busy is this process" gauge can use anyway.
+#[allow(clippy::cast_possible_truncation)]
 pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
     // ★ Sampled at read rather than written by the store: the file grows while the process runs, and no single write
     // point knows the final size. A missing file is zero — an in-memory database, or a database not yet created.
@@ -330,6 +333,24 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
     // ★ Uptime is sampled here for the same reason the sizes are: nothing else knows when the shell started, and a
     // counter advanced by the delta keeps the series monotonic across every read.
     state.record_uptime(state.uptime().as_secs());
+    // ★ The process gauges come from `sysinfo`, kept on `AppState` between reads because CPU is a delta. `None` means the
+    // platform would not describe the process; no gauges are written then, rather than a zero standing in for "unknown".
+    if let Some(process) = state.sample_process() {
+        state.metrics.gauge_set(
+            &synra_observe::metrics::SeriesKey::new("memory_rss_bytes", []),
+            i64::try_from(process.memory_bytes).unwrap_or(i64::MAX),
+        );
+        state.metrics.gauge_set(
+            &synra_observe::metrics::SeriesKey::new("cpu_percent", []),
+            process.cpu_percent.round() as i64,
+        );
+        if let Some(threads) = process.threads {
+            state.metrics.gauge_set(
+                &synra_observe::metrics::SeriesKey::new("threads", []),
+                i64::try_from(threads).unwrap_or(i64::MAX),
+            );
+        }
+    }
     Ok(state.metrics.snapshot())
 }
 

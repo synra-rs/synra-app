@@ -470,18 +470,23 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
     let snapshot = diag_metrics(&state).expect("metrics");
     let value = serde_json::to_value(&snapshot).expect("serialises");
 
-    // ★ The command answers with the samples a shell can have before it has done anything: `db_size_bytes` is sampled
-    // from the database file, and `uptime_seconds` from the monotonic start — a database and a running process exist from
-    // the first migration. The rule under test — answer rather than refuse, and invent nothing — is unchanged; the
-    // assertion now says exactly what the answer holds.
+    // ★ The command answers with the samples a shell can have before it has done anything: the database size, the
+    // uptime, and the process facts — all four exist from the first migration and the first clock tick. The rule under
+    // test — answer rather than refuse, and invent nothing — is unchanged; the assertion now says what the answer may
+    // hold, and `threads` is allowed to be absent because not every platform reports it.
     let values = value["values"].as_array().expect("the sample list");
-    assert_eq!(values.len(), 2, "{value}");
     let names: Vec<&str> = values
         .iter()
         .filter_map(|sample| sample["key"]["name"].as_str())
         .collect();
-    assert!(names.contains(&"db_size_bytes"), "{value}");
-    assert!(names.contains(&"uptime_seconds"), "{value}");
+    for expected in ["db_size_bytes", "uptime_seconds", "memory_rss_bytes", "cpu_percent"] {
+        assert!(names.contains(&expected), "{value}");
+    }
+    let sampled = ["db_size_bytes", "uptime_seconds", "memory_rss_bytes", "cpu_percent", "threads"];
+    assert!(
+        names.iter().all(|name| sampled.contains(name)),
+        "something was counted before anything ran: {value}"
+    );
 }
 
 #[test]
@@ -535,6 +540,22 @@ fn the_metrics_answer_includes_the_database_size() {
     let snapshot = diag_metrics(&state).expect("metrics");
 
     assert_eq!(snapshot.get("db_size_bytes"), Some(&synra_observe::metrics::Value::Gauge(32)));
+}
+
+#[test]
+fn the_metrics_answer_carries_the_process_memory() {
+    // ★ The platform readout lands in the recorder, not in a private field: a process that is running has more than zero
+    // resident bytes, so the assertion is that a number arrived rather than the exact number (which no test can know).
+    let state = testing::state();
+
+    let snapshot = diag_metrics(&state).expect("metrics");
+
+    match snapshot.get("memory_rss_bytes") {
+        Some(synra_observe::metrics::Value::Gauge(bytes)) => {
+            assert!(*bytes > 0, "a running process reports some resident memory");
+        }
+        other => panic!("expected a memory gauge, got {other:?}"),
+    }
 }
 
 #[test]
