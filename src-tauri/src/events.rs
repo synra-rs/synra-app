@@ -71,22 +71,31 @@ pub fn envelopes(delivery: &Delivery<KernelEvent>, at: i64) -> Vec<KernelEventEn
 /// shell kept running would still be delivering to an `AppHandle` that can no longer emit — which is why the loop ends
 /// on the first failed emit rather than spinning.
 #[cfg(feature = "tauri-shell")]
-pub fn spawn(app: tauri::AppHandle, events: Arc<EventBus<KernelEvent>>) {
+pub fn spawn(
+    app: tauri::AppHandle,
+    events: Arc<EventBus<KernelEvent>>,
+    cancel: &synra_core::supervisor::Cancellation,
+) {
     use tauri::Emitter as _;
 
     let subscriber = events.subscribe();
-    std::thread::spawn(move || loop {
-        match events.take(subscriber) {
-            Some(delivery) => {
-                for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {
-                    if app.emit(CHANNEL, &envelope).is_err() {
-                        // The window is gone. Nothing else can be delivered and the bus would only queue for a
-                        // subscriber nobody reads.
-                        return;
+    // The token is cloned into the thread: the loop's stop condition and the caller's token are the same value, so there
+    // is no second flag for the two to disagree about.
+    let cancel = cancel.clone();
+    std::thread::spawn(move || {
+        while !cancel.is_cancelled() {
+            match events.take(subscriber) {
+                Some(delivery) => {
+                    for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {
+                        if app.emit(CHANNEL, &envelope).is_err() {
+                            // The window is gone. Nothing else can be delivered and the bus would only queue for a
+                            // subscriber nobody reads.
+                            return;
+                        }
                     }
                 }
+                None => std::thread::sleep(POLL),
             }
-            None => std::thread::sleep(POLL),
         }
     });
 }

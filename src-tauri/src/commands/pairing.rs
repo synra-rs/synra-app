@@ -222,14 +222,15 @@ pub fn pairing_cancel(state: &AppState, request_id: &str) -> Result<(), IpcError
 /// A thread turning over four times a second is the smallest thing that turns an arrival into an event, and the alternative — a
 /// callback from the socket thread into Tauri — would put the interface in the path of a handshake.
 #[cfg(feature = "tauri-shell")]
-pub fn watch(app: tauri::AppHandle) {
+pub fn watch(app: tauri::AppHandle, cancel: &synra_core::supervisor::Cancellation) {
     use tauri::Manager as _;
 
+    let cancel = cancel.clone();
     std::thread::Builder::new()
         .name("synra-pairing-watch".to_owned())
         .spawn(move || {
             let mut announced: std::collections::HashSet<RequestId> = std::collections::HashSet::new();
-            loop {
+            while !cancel.is_cancelled() {
                 let state = app.state::<std::sync::Arc<AppState>>();
                 let prompts: Vec<synra_ipc::dto::PairingPrompt> = state
                     .pairing

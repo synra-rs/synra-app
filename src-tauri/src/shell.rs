@@ -523,15 +523,26 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
             // command that publishes later finds a subscriber waiting — a bridge started after the first command would
             // miss exactly the event that command raised.
-            crate::events::spawn(app.handle().clone(), std::sync::Arc::clone(&state.events));
+            let bridge_cancel = synra_core::supervisor::Cancellation::new();
+            crate::events::spawn(
+                app.handle().clone(),
+                std::sync::Arc::clone(&state.events),
+                &bridge_cancel,
+            );
             app.manage(std::sync::Arc::new(state));
+            // The bridge and the pairing watcher are the two threads that outlive the window but own no socket; their
+            // tokens go in one value so the shutdown does not have to remember a second place.
+            let pairing_cancel = synra_core::supervisor::Cancellation::new();
+            app.manage(Background {
+                cancels: vec![bridge_cancel, pairing_cancel.clone()],
+            });
             // ★ The listener starts after the state is managed, because it reads that state to build its host and router. The token
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
             // does, and a restart would fail to bind a port the old one still holds.
             app.manage(crate::listener::spawn(app.handle()));
             // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
             // could ask to pair and the window would look at it and never say so.
-            crate::commands::pairing::watch(app.handle().clone());
+            crate::commands::pairing::watch(app.handle().clone(), &pairing_cancel);
             // ★ The tray, and it is reported rather than fatal: the window is the application, and a desktop without an
             // indicator host (some Linux setups) must still get one. What it buys is the second way back to a window and
             // a **deliberate** way out — see `run_window`, where closing the window hides it instead of ending the process.
@@ -598,12 +609,25 @@ pub fn run_window() -> Result<(), String> {
 ///
 /// Because a shutdown that lists its workers by hand is one that forgets the next worker somebody starts. The listener
 /// and discovery are the two that own a socket; both are asked here, and a new one belongs in this list with them.
+/// The stop tokens for the threads that outlive the window but own no socket.
+///
+/// The event bridge and the pairing watcher both live for the process; they are not the listener, whose token is managed
+/// separately because it is created after this value, and not discovery, whose token lives in `AppState`.
+struct Background {
+    cancels: Vec<synra_core::supervisor::Cancellation>,
+}
+
 fn stop_background(app: &tauri::AppHandle) {
     // The listener's token is managed rather than held by `AppState`, because it is created after the state is managed.
     if let Some(managed) = app.try_state::<Option<synra_core::supervisor::Cancellation>>()
         && let Some(cancel) = managed.inner().as_ref()
     {
         cancel.cancel();
+    }
+    if let Some(background) = app.try_state::<Background>() {
+        for cancel in &background.cancels {
+            cancel.cancel();
+        }
     }
     if let Some(state) = app.try_state::<std::sync::Arc<AppState>>()
         && let Some(discovery) = state.discovery.as_ref()

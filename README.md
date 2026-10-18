@@ -57,8 +57,8 @@
 2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
    剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
 3. **单实例 / 优雅关停**：单实例锁（`instance.lock`，操作系统文件锁）与「第二次启动唤起已有窗口」（`instance.show`，
-   500 ms 轮询）已经做了；退出路径（`ExitRequested`，托盘 Quit 也走它）会取消 listener 与 discovery 的 token。
-   **还没有**：`events` / `pairing` 两个转发线程的显式取消（它们不持有 socket，随进程结束带走）。
+   500 ms 轮询）已经做了；退出路径（`ExitRequested`，托盘 Quit 也走它）会取消 listener、discovery、事件桥与 pairing
+   监视线程的 token，四个后台线程都会在各自的轮询间隔内退出。
 4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
    发送侧把已安装目录打成 `.synra`（跳过已解包的 `ui/`），接收侧（窗口与 daemon 都是）先 `install::from_package`
    走完整校验与落盘，再 `record_received` 写历史与对端状态；安装失败时回 `refused` 而不是声称已装。
