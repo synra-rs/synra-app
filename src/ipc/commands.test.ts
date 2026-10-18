@@ -103,6 +103,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   plugins_publishers: undefined,
   plugins_publisher_decide: { publisherId: '@acme', trust: 'trusted' },
   plugins_preview: { pluginId: '@acme/hello' },
+  plugins_catalog_search: { query: { query: 'hello' } },
   config_get: undefined
 }
 

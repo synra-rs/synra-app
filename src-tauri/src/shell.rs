@@ -317,6 +317,15 @@ mod wrappers {
     /// Installs a plugin from a directory, through the checks, and answers with what to tell the user.    ///
     /// The source is a tagged enum rather than a string because the design's install command takes a source, and a
     /// registry one is a different act with a different failure mode — refused here by name until there is a fetcher.
+    /// Searches the configured registry for plugins.
+    #[tauri::command]
+    pub fn plugins_catalog_search(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        query: synra_ipc::dto::CatalogQuery,
+    ) -> Result<Vec<synra_ipc::dto::CatalogItem>, IpcError> {
+        commands::plugins::plugins_catalog_search(&state, &query)
+    }
+
     /// Describes a registry package before any of it is downloaded.
     #[tauri::command]
     pub fn plugins_preview(
@@ -481,6 +490,7 @@ mod wrappers {
             plugins_consent_respond,
             plugins_install,
             plugins_preview,
+            plugins_catalog_search,
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,

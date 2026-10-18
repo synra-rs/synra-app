@@ -25,6 +25,13 @@ export const plugins = {
     ui: 'Adds pages to the interface',
     size: 'About {size} MiB, as published'
   },
+  /** The registry's own index, searched by keyword. */
+  catalog: {
+    placeholder: 'Search the registry',
+    action: 'Search',
+    empty: 'Nothing matched.',
+    preview: 'Preview'
+  },
   /**
    * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher
    * id signed with a different key is not the publisher a user trusted.

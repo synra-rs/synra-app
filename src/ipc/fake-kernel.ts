@@ -63,7 +63,8 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
   plugins_publisher_decide: ['publisherId', 'trust'],
-  plugins_preview: ['pluginId']
+  plugins_preview: ['pluginId'],
+  plugins_catalog_search: ['query']
 }
 
 /**
@@ -135,6 +136,9 @@ export class FakeKernel implements Bridge {
         return null
       case 'plugins_publishers':
         // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
+        return []
+      case 'plugins_catalog_search':
+        // A search that finds nothing is an answer, not a refusal; the page draws its own empty state.
         return []
       case 'plugins_publisher_decide':
         return {}

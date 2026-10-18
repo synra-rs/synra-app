@@ -27,6 +27,7 @@ export const REGISTERED = [
   'pairing_cancel',
   'plugins_list',
   'plugins_preview',
+  'plugins_catalog_search',
   'plugins_enable',
   'plugins_disable',
   'plugins_consent_respond',
@@ -109,7 +110,6 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // The plugin lifecycle beyond enable/disable/install is not built. `plugins_install` moved out of this list when the
   // pipeline became reachable from the shell: `synra_core::install` is the daemon's pipeline too, so the order of the
   // checks has one implementation and this shell supplies only what it can do (a desktop can open a window).
-  plugins_catalog_search: 'no catalog client is wired',
   plugins_check_update: 'no update checker exists',
   plugins_update: 'no updater exists',
   plugins_request_registry_search: 'no registry search is wired'

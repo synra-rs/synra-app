@@ -24,6 +24,44 @@
     </div>
 
     <!--
+      The registry's own index. A result is a name and a description, not a decision: Preview opens the same permission
+      dialog an install by id would, so a search hit cannot install anything the user has not seen.
+    -->
+    <section class="stack gap-2">
+      <div class="row gap-2">
+        <AInput
+          v-model:value="searchText"
+          :placeholder="messages.plugins.catalog.placeholder"
+          allow-clear
+          @press-enter="search"
+        />
+        <AButton :loading="searching" :disabled="searchText.trim() === ''" @click="search">
+          {{ messages.plugins.catalog.action }}
+        </AButton>
+      </div>
+      <AList v-if="results.length > 0" :data-source="results" size="small">
+        <template #renderItem="{ item }">
+          <AList.Item>
+            <div class="row-between gap-4">
+              <div class="stack">
+                <span class="truncate text-sm font-medium">
+                  {{ item.title }} <span class="text-ink-dim">{{ item.version }}</span>
+                </span>
+                <span class="text-sm text-ink-dim">{{ item.description ?? item.pluginId }}</span>
+              </div>
+              <AButton size="small" @click="previewResult(item)">
+                {{ messages.plugins.catalog.preview }}
+              </AButton>
+            </div>
+          </AList.Item>
+        </template>
+      </AList>
+      <p v-else-if="searched && !searching" class="m-0 text-sm text-ink-dim">
+        {{ messages.plugins.catalog.empty }}
+      </p>
+    </section>
+
+    <!--
       A registry install asks first. The preview is the publisher's own claim — the signature is checked on the bytes —
       and it is a question, not an approval: the plugin still lands switched off and untrusted.
     -->
@@ -370,7 +408,7 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
+import type { CatalogItem, InstallReport, PluginSnapshot, SuggestedAction } from '@synra/protocol'
 import type { Failure, InstallPreview } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Popconfirm as APopconfirm, Segmented as ASegmented, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
@@ -380,7 +418,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
 
 /** A publisher row, as `plugins_publishers` answers it. */
 interface PublisherRow {
@@ -665,6 +703,41 @@ const installing = ref(false)
 
 /** The package a registry install would fetch, shown before anything is downloaded. */
 const preview = ref<InstallPreview | undefined>(undefined)
+
+/** What the registry's index returned for the last search, and whether one has run. */
+const searchText = ref('')
+const searched = ref(false)
+const searching = ref(false)
+const results = ref<readonly CatalogItem[]>([])
+
+/** Searches the configured registry, and says so when nothing matched. */
+async function search(): Promise<void> {
+  const text = searchText.value.trim()
+  if (text === '' || searching.value)
+    return
+  searching.value = true
+  error.value = undefined
+  const outcome = await searchCatalog(kernel, text)
+  searching.value = false
+  searched.value = true
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    results.value = []
+    return
+  }
+  results.value = outcome.value
+}
+
+/** Opens the permission dialog for a search hit — the same dialog an install by id uses. */
+async function previewResult(item: CatalogItem): Promise<void> {
+  error.value = undefined
+  const outcome = await previewInstall(kernel, item.pluginId)
+  if (!outcome.ok) {
+    error.value = outcome.failure
+    return
+  }
+  preview.value = outcome.value
+}
 
 /** Installs from the source the user named, then re-reads the list. */
 async function install(): Promise<void> {

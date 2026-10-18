@@ -31,9 +31,10 @@
 
 use std::collections::BTreeMap;
 
+use serde::Deserialize;
 use synra_core::network::{IpPolicy, NetworkGuard};
 use synra_fetch::{Client, Limits as FetchLimits, Request};
-use synra_ipc::dto::{InstallPreviewDto, InstallReport, InstallSourceDto};
+use synra_ipc::dto::{CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto};
 use synra_protocol::ErrorCode;
 use synra_protocol::PluginId;
 use synra_registry::{Limits as ArchiveLimits, Packument, Version, extract_tgz};
@@ -130,6 +131,123 @@ fn client(base: &Base) -> Client {
             ..FetchLimits::default()
         },
     )
+}
+
+/// What the npm search endpoint answers.
+#[derive(Debug, Deserialize)]
+struct SearchResponse {
+    #[serde(default)]
+    objects: Vec<SearchObject>,
+}
+
+/// One result's envelope.
+#[derive(Debug, Deserialize)]
+struct SearchObject {
+    package: SearchPackage,
+}
+
+/// The package fields a result carries.
+#[derive(Debug, Deserialize)]
+struct SearchPackage {
+    name: String,
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    publisher: Option<SearchPublisher>,
+}
+
+/// Who published the package, as the search endpoint reports it.
+#[derive(Debug, Deserialize)]
+struct SearchPublisher {
+    #[serde(default)]
+    username: Option<String>,
+}
+
+/// The most results a caller may receive, whatever it asked for.
+const MAX_SEARCH_RESULTS: u32 = 50;
+
+/// How many results a search returns when the caller names no limit.
+const DEFAULT_SEARCH_RESULTS: u32 = 20;
+
+/// Searches the configured registry's npm-compatible search endpoint.
+///
+/// The query is scoped to `keywords:synra-plugin` so an ordinary npm package is not offered as a plugin. Results whose
+/// name is not a plugin id are dropped rather than shown as something this device could install.
+///
+/// # Errors
+///
+/// `Unsupported` when no registry is configured, and a fetch refusal's own code for a network problem.
+pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>, synra_ipc::IpcError> {
+    let base = base(state)?;
+    let text = query.query.trim();
+    let scope = if text.is_empty() {
+        "keywords:synra-plugin".to_owned()
+    }
+    else {
+        format!("keywords:synra-plugin {text}")
+    };
+    let limit = query.limit.unwrap_or(DEFAULT_SEARCH_RESULTS).clamp(1, MAX_SEARCH_RESULTS);
+    let url = format!(
+        "{}/-/v1/search?text={}&size={limit}",
+        base.origin,
+        encode(&scope)
+    );
+    let response = client(&base).fetch(&get(&url)).map_err(|refusal| {
+        synra_ipc::IpcError::unknown(refusal.code).with_params(serde_json::json!({
+            "url": url,
+            "reason": refusal.message,
+        }))
+    })?;
+    if !(200..300).contains(&response.status) {
+        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+            "status": response.status,
+            "reason": "the registry does not serve a search endpoint",
+        })));
+    }
+    let parsed: SearchResponse = serde_json::from_str(&response.body).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"reason": error.to_string()}))
+    })?;
+    let installed: std::collections::BTreeSet<String> = state
+        .db()
+        .plugins()
+        .map(|rows| rows.into_iter().map(|row| row.plugin_id).collect())
+        .unwrap_or_default();
+    Ok(parsed
+        .objects
+        .into_iter()
+        .filter_map(|object| {
+            let package = object.package;
+            let plugin_id = PluginId::try_from(package.name.clone()).ok()?;
+            Some(CatalogItem {
+                plugin_id,
+                title: package.name.clone(),
+                description: package.description,
+                version: package.version,
+                publisher: package.publisher.and_then(|publisher| publisher.username).unwrap_or_default(),
+                // The search endpoint does not report a manifest, so the count is unknown here; the preview shows the
+                // real list before anything is installed.
+                capability_count: 0,
+                installed: installed.contains(&package.name),
+            })
+        })
+        .take(limit as usize)
+        .collect())
+}
+
+/// Percent-encodes a query string for a URL.
+fn encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(char::from(byte)),
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 /// The packument for one package.

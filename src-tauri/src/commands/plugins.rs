@@ -18,7 +18,10 @@
 //! needs to see: they will go looking for the setting to remove it, and if it is not on the screen they will file a bug
 //! about it having vanished.
 
-use synra_ipc::{AuditEntryDto, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
+use synra_ipc::{
+    AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError,
+    PluginSnapshot,
+};
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
 
@@ -204,6 +207,22 @@ pub(crate) fn install_package(
         synra_plugin_host::verify::HostFacts::desktop(),
     )
     .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
+}
+
+/// Searches the configured registry for plugins.
+///
+/// The catalogue is a search over the registry's own index, scoped to packages that declare the plugin keyword; the
+/// preview still shows the manifest's permissions before an install.
+///
+/// # Errors
+///
+/// `Unsupported` when no registry is configured or it serves no search endpoint, and a fetch refusal's own code for a
+/// network problem.
+pub fn plugins_catalog_search(
+    state: &AppState,
+    query: &CatalogQuery,
+) -> Result<Vec<CatalogItem>, IpcError> {
+    crate::commands::registry::search(state, query)
 }
 
 /// Describes a registry package before any of it is downloaded.
@@ -589,10 +608,10 @@ fn entry_card(entry: &synra_observe::audit::AuditEntry) -> AuditEntryDto {
 #[cfg(test)]
 mod tests {
     use super::{
-        entry_card, plugins_audit, plugins_consent_respond, plugins_install, plugins_list,
-        plugins_preview, plugins_publisher_decide, plugins_publishers,
+        entry_card, plugins_audit, plugins_catalog_search, plugins_consent_respond, plugins_install,
+        plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers,
     };
-    use synra_ipc::InstallSourceDto;
+    use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
     use crate::testing;
 
@@ -821,6 +840,58 @@ mod tests {
         .expect_err("no registry is configured");
 
         assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
+    }
+
+    #[test]
+    fn a_catalog_search_lists_what_the_registry_index_returns() {
+        // ★ Results are filtered to plugin ids: an npm index scoped by keyword can still return a package whose name is
+        // not one this device could install, and showing it would offer a button that cannot work.
+        use std::io::{BufRead, BufReader, Write as _};
+
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        plugins_install(
+            &state,
+            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+        )
+        .expect("the fixture installs");
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
+        let address = listener.local_addr().expect("an address");
+        let base = format!("http://{address}");
+        let body = r#"{"objects":[
+            {"package":{"name":"@acme/hello","version":"1.0.0","description":"Hello","publisher":{"username":"acme"}}},
+            {"package":{"name":"not a plugin","version":"1.0.0"}}
+        ]}"#;
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
+            let mut first = String::new();
+            let _ = reader.read_line(&mut first);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(body.as_bytes());
+        });
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!(base), 1_000)
+            .expect("the registry is configured");
+
+        let found = plugins_catalog_search(
+            &state,
+            &CatalogQuery { query: "hello".to_owned(), registry: None, limit: Some(10) },
+        )
+        .expect("a search");
+
+        assert_eq!(found.len(), 1, "a name that is not a plugin id is filtered out");
+        assert_eq!(found[0].plugin_id.as_str(), "@acme/hello");
+        assert_eq!(found[0].version, "1.0.0");
+        assert_eq!(found[0].publisher, "acme");
+        assert!(found[0].installed, "the fixture is installed");
     }
 
     /// A manifest declaring the two capabilities the consent tests decide about.
