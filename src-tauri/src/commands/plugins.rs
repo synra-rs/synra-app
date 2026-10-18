@@ -422,6 +422,19 @@ pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
         .metrics
         .gauge_set(&synra_observe::metrics::SeriesKey::new("plugins_active", []), active);
 
+    // ★ Each plugin's sandbox size, as a gauge per plugin. Sampled where the list is read, because the directory grows
+    // while the process runs and there is no single write to hook: a plugin's data is whatever it left on disk.
+    for row in &rows {
+        let bytes = directory_size(&state.paths.plugin_sandbox_dir(&row.plugin_id));
+        state.metrics.gauge_set(
+            &synra_observe::metrics::SeriesKey::new(
+                "plugin_data_bytes",
+                [("plugin".to_owned(), row.plugin_id.clone())],
+            ),
+            i64::try_from(bytes).unwrap_or(i64::MAX),
+        );
+    }
+
     // ★ One lock for the whole list.
     //
     // Taking it once per row would make a twenty-plugin list take the lock twenty times, and a plugin that compiles
@@ -766,6 +779,25 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
         elapsed_ms: record.elapsed_ms.and_then(|elapsed| u64::try_from(elapsed).ok()),
         trace_id: None,
     }
+}
+
+/// The bytes under a directory, or zero when it cannot be read.
+///
+/// ★ Errors become zero rather than failing the list: a size is a diagnostic, and a plugin whose sandbox is unreadable is
+/// still a plugin the list can describe. A directory that does not exist is zero too — "no data yet" and "no permission"
+/// are the same number here, and the gauge is not the place to tell them apart.
+fn directory_size(root: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => directory_size(&entry.path()),
+            Ok(_) => entry.metadata().map_or(0, |metadata| metadata.len()),
+            Err(_) => 0,
+        })
+        .fold(0u64, u64::saturating_add)
 }
 
 #[cfg(test)]
@@ -1797,6 +1829,26 @@ mod tests {
         let snapshot = state.metrics.snapshot();
         assert_eq!(snapshot.get("plugins_installed"), Some(&Value::Gauge(2)));
         assert_eq!(snapshot.get("plugins_active"), Some(&Value::Gauge(1)), "only the enabled one is active");
+    }
+
+    #[test]
+    fn listing_plugins_reports_the_bytes_each_sandbox_holds() {
+        // ★ The storage group's per-plugin gauge: the design names it, and nothing measured it. Nested files are in the
+        // fixture because a top-level-only walk would pass a test that only wrote one file at the root.
+        use synra_observe::metrics::Value;
+
+        let (_root, state) = installed();
+        let sandbox = state.paths.plugin_sandbox_dir(ID);
+        std::fs::create_dir_all(sandbox.join("nested")).expect("the sandbox");
+        std::fs::write(sandbox.join("cache.bin"), [1u8; 10]).expect("a file");
+        std::fs::write(sandbox.join("nested").join("more.bin"), [2u8; 5]).expect("a nested file");
+
+        let _ = plugins_list(&state).expect("the list");
+
+        assert_eq!(
+            state.metrics.snapshot().get("plugin_data_bytes{plugin=@synra-plugin/chat}"),
+            Some(&Value::Gauge(15))
+        );
     }
 
     #[test]

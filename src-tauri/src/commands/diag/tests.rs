@@ -470,7 +470,11 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
     let snapshot = diag_metrics(&state).expect("metrics");
     let value = serde_json::to_value(&snapshot).expect("serialises");
 
-    assert_eq!(value["values"].as_array().map(Vec::len), Some(0), "{value}");
+    // ★ The command answers with the one sample a shell can have before it has done anything: `db_size_bytes` is
+    // sampled from the database file at read time, and a database exists from the first migration. The rule under test —
+    // answer rather than refuse, and invent nothing — is unchanged; the assertion now says exactly what the answer holds.
+    assert_eq!(value["values"].as_array().map(Vec::len), Some(1), "{value}");
+    assert_eq!(value["values"][0]["key"]["name"], "db_size_bytes", "{value}");
 }
 
 #[test]
@@ -507,6 +511,23 @@ fn what_the_gate_counts_is_what_the_command_reports() {
         labels.iter().any(|pair| pair[0] == "capability" && pair[1] == "device:send:*"),
         "{found}"
     );
+}
+
+#[test]
+fn the_metrics_answer_includes_the_database_size() {
+    // ★ The design's `db_size_bytes` gauge, sampled where the metrics are read: no write point knows the final size, and
+    // the file grows while the process runs. The test writes a file where the database would be, so the number is a known
+    // one rather than whatever a timing-dependent database happened to hold.
+    let state = testing::state();
+    let path = state.paths.db_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("the data directory");
+    }
+    std::fs::write(&path, [0u8; 32]).expect("a database-sized file");
+
+    let snapshot = diag_metrics(&state).expect("metrics");
+
+    assert_eq!(snapshot.get("db_size_bytes"), Some(&synra_observe::metrics::Value::Gauge(32)));
 }
 
 #[test]

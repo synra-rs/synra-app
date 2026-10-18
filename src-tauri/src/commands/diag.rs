@@ -308,7 +308,7 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
 
 /// What the shell's metrics currently hold.
 ///
-/// """ + S + """ Why this command returns the snapshot rather than a rendering of it.
+/// Why this command returns the snapshot rather than a rendering of it.
 ///
 /// Because what a caller does with metrics is look for a name it cares about — `gate_denied_total` for a capability a plugin
 /// keeps asking for and not getting — and a caller that has to parse a rendering is a caller that has to know how the
@@ -320,6 +320,13 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
 /// Never in practice: the recorder is behind a lock it holds for the length of a read. It returns a `Result` because every
 /// command in this module does, and a command that cannot fail is not a reason to break the shape the interface expects.
 pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsSnapshot, IpcError> {
+    // ★ Sampled at read rather than written by the store: the file grows while the process runs, and no single write
+    // point knows the final size. A missing file is zero — an in-memory database, or a database not yet created.
+    let size = std::fs::metadata(state.paths.db_path()).map_or(0, |metadata| metadata.len());
+    state.metrics.gauge_set(
+        &synra_observe::metrics::SeriesKey::new("db_size_bytes", []),
+        i64::try_from(size).unwrap_or(i64::MAX),
+    );
     Ok(state.metrics.snapshot())
 }
 
