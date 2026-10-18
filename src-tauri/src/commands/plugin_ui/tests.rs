@@ -1146,6 +1146,111 @@ fn a_transfer_argument_this_channel_cannot_honour_is_named() {
 }
 
 #[test]
+fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
+    use base64::Engine as _;
+
+    let (_root, state, token) = transfer_page();
+    let encoded = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+    let begun = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.begin",
+        &serde_json::json!({
+            "to": "11111111-1111-4111-8111-111111111111",
+            "fileName": "big.bin",
+            "totalBytes": 5,
+        }),
+    )
+    .expect("the upload begins");
+    let upload = begun
+        .get("uploadId")
+        .and_then(|value| value.as_str())
+        .expect("an upload id")
+        .to_owned();
+
+    let uploads = state.paths.cache_dir().join("plugin-transfers");
+    assert_eq!(
+        std::fs::read_dir(&uploads).map(|entries| entries.count()).unwrap_or(0),
+        1,
+        "the upload owns one directory while it is open"
+    );
+
+    super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.chunk",
+        &serde_json::json!({"uploadId": upload, "data": encoded(b"hello")}),
+    )
+    .expect("the chunk is appended");
+
+    // More bytes than the page declared is refused rather than written, and the upload stays open so the page can still
+    // abort it or retry with the right bytes.
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.chunk",
+        &serde_json::json!({"uploadId": upload, "data": encoded(b"!")}),
+    )
+    .expect_err("over the declared size");
+    assert_eq!(refused.code, ErrorCode::PayloadTooLarge);
+
+    // An upload id this host does not know is answered as a bad argument, not as a send.
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.chunk",
+        &serde_json::json!({"uploadId": "not-an-upload", "data": encoded(b"x")}),
+    )
+    .expect_err("no such upload");
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+
+    let aborted = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.abort",
+        &serde_json::json!({"uploadId": upload}),
+    )
+    .expect("the upload aborts");
+    assert_eq!(aborted.get("aborted"), Some(&serde_json::Value::Bool(true)));
+    assert_eq!(
+        std::fs::read_dir(&uploads).map(|entries| entries.count()).unwrap_or(0),
+        0,
+        "the upload's directory went with it"
+    );
+
+}
+
+#[test]
+fn a_chunked_transfer_the_page_never_finishes_uses_no_send() {
+    // ★ Beginning and aborting is the "page went away" path: the host must not dial anything, and the only thing left is
+    // that the upload is gone.
+    let (_root, state, token) = transfer_page();
+    let begun = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.begin",
+        &serde_json::json!({
+            "to": "11111111-1111-4111-8111-111111111111",
+            "fileName": "a.bin",
+            "totalBytes": 4,
+        }),
+    )
+    .expect("the upload begins");
+    let upload = begun.get("uploadId").and_then(|value| value.as_str()).expect("an id");
+
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "transfer.finish",
+        &serde_json::json!({"uploadId": upload}),
+    )
+    .expect_err("the declared bytes never arrived");
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+    assert!(state.transfers.is_empty(), "nothing was sent");
+}
+
+#[test]
 fn a_file_larger_than_one_ipc_message_is_refused_by_size() {
     use base64::Engine as _;
 

@@ -47,13 +47,13 @@
   按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
   生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
 - 验证：`pnpm test` 220 条（含 5 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 211 条。
+  Rust 侧 213 条。
 
 ### 还没有的（下一步就是这些）
 
-1. **插件页的其余能力**：`window.synra` 的所有命名空间都已接上 `plugin_ui_rpc`；`transfer.*` 是第一版
-   （base64、单条 IPC、4 MiB 上限），**插件页的 `send` 仍在传输结束后才返回**；桌面命令 `transfer_send_file` 已经提前
-   返回并交给 worker（见 19 §8.15）。大文件需要的分块通道还没有。
+1. **插件页的其余能力**：`window.synra` 的所有命名空间都已接上 `plugin_ui_rpc`；`transfer.*` 现在有**分块通道**
+   （`transfer.begin` / `chunk` / `finish` / `abort`，每块 1 MiB，整文件 64 MiB），插件页的 `send` 会自动分块；
+   **但 `finish` 仍等传输结束才返回**，桌面命令 `transfer_send_file` 已经提前返回并交给 worker（见 19 §8.15）。
 2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
    剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
 3. **单实例 / 优雅关停**：单实例锁（`instance.lock`，操作系统文件锁）与「第二次启动唤起已有窗口」（`instance.show`，

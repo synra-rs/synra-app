@@ -98,6 +98,8 @@ pub struct AppState {
     /// ★ Beside the pairing desk and for the same reason: the question is asked on a connection thread and answered by a
     /// command, and those are different threads with no other value between them.
     pub transfer_desk: Arc<crate::transfer_desk::TransferDesk>,
+    /// The chunked uploads a plugin page is writing through `transfer.begin` / `chunk` / `finish`.
+    pub uploads: crate::commands::plugin_ui::Uploads,
     /// When the shell started, for a diagnostic report.
     pub started_at_ms: i64,
 
@@ -218,6 +220,7 @@ impl AppState {
                 synra_protocol::session::SessionTimeouts::default().pairing,
             )),
             transfer_desk: Arc::new(crate::transfer_desk::TransferDesk::new()),
+            uploads: crate::commands::plugin_ui::Uploads::new(),
             started_at_ms: now_ms,
             platform: Arc::new(synra_platform::CommandPlatform::new()),
             metrics: Arc::new(synra_observe::metrics::RingRecorder::new()),

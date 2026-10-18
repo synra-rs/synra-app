@@ -28,8 +28,11 @@ import type { InjectionContext } from './context'
 import { KERNEL_EVENT_CHANNEL } from '../channel'
 import { asSynraError, denied, tooLarge, unsupported } from './errors'
 
-/** The largest file one call may carry, matching the kernel's `MAX_PLUGIN_TRANSFER_BYTES`. */
-const MAX_TRANSFER_BYTES = 4 * 1024 * 1024
+/** The largest file the chunked channel will carry, matching the kernel's `MAX_PLUGIN_UPLOAD_BYTES`. */
+const MAX_TRANSFER_BYTES = 64 * 1024 * 1024
+
+/** How much of a file one `transfer.chunk` carries, matching the kernel's `MAX_PLUGIN_CHUNK_BYTES`. */
+const CHUNK_BYTES = 1024 * 1024
 
 /** What the kernel answers for a status. */
 interface RawStatus {
@@ -119,25 +122,42 @@ export function createTransferNamespace(context: InjectionContext): TransferName
       if (request.contextId !== undefined)
         throw unsupported('transfer.send contextId')
       if (request.file.size > MAX_TRANSFER_BYTES)
-        throw tooLarge(`the file is ${request.file.size} bytes, and one call carries at most ${MAX_TRANSFER_BYTES}`)
+        throw tooLarge(`the file is ${request.file.size} bytes, and the channel carries at most ${MAX_TRANSFER_BYTES}`)
 
-      const data = await base64Of(request.file)
-      const answer = await call<{ readonly transferId: string }>('transfer.send', {
+      // ★ One message per chunk, not one message for the file: a `transfer.send` carrying a whole 64 MiB blob as base64
+      // would be an 85 MiB IPC message, which is not a channel. The upload is aborted on any failure so the host does
+      // not keep a partial file in its cache directory.
+      const { uploadId } = await call<{ readonly uploadId: string }>('transfer.begin', {
         to: request.to,
         fileName: request.fileName,
-        data
-      })
-
-      // ★ The call resolves after the transfer is over, so this is the final state — the one the kernel's registry no
-      // longer has by the time the page can ask.
-      const transferId = answer.transferId as TransferId
-      known.set(answer.transferId, {
-        transferId,
-        state: 'completed',
-        receivedBytes: request.file.size,
         totalBytes: request.file.size
       })
-      return transferId
+
+      try {
+        for (let offset = 0; offset < request.file.size; offset += CHUNK_BYTES) {
+          const data = await base64Of(request.file.slice(offset, offset + CHUNK_BYTES))
+          await call('transfer.chunk', { uploadId, data })
+        }
+        const answer = await call<{ readonly transferId: string }>('transfer.finish', { uploadId })
+        const transferId = answer.transferId as TransferId
+        known.set(answer.transferId, {
+          transferId,
+          state: 'completed',
+          receivedBytes: request.file.size,
+          totalBytes: request.file.size
+        })
+        return transferId
+      }
+      catch (reason) {
+        // Best effort: the first error is the one the page needs to see, and an abort that fails says nothing it can act on.
+        try {
+          await call('transfer.abort', { uploadId })
+        }
+        catch {
+          // The upload is gone either way — the host removes it on its own when it expires or the session ends.
+        }
+        throw reason
+      }
     },
 
     status: async (id: TransferId): Promise<TransferStatus> => {

@@ -35,8 +35,12 @@ function channel(answers: Readonly<Record<string, unknown>>, onListen?: (callbac
 }
 
 describe('transfer', () => {
-  it('sends the blob as base64 and remembers how it ended', async () => {
-    const { bridge: seam, invoke } = channel({ 'transfer.send': { transferId: ID } })
+  it('sends the blob as chunks and remembers how it ended', async () => {
+    const { bridge: seam, invoke } = channel({
+      'transfer.begin': { uploadId: 'UPLOAD1' },
+      'transfer.chunk': {},
+      'transfer.finish': { transferId: ID }
+    })
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
 
     const id = await synra.transfer.send({
@@ -46,14 +50,24 @@ describe('transfer', () => {
     })
 
     expect(id).toBe(ID)
-    expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
+    expect(invoke).toHaveBeenNthCalledWith(1, 'plugin_ui_rpc', {
       token: '123456789012345678901234567890',
-      method: 'transfer.send',
+      method: 'transfer.begin',
       args: {
         to: '11111111-1111-4111-8111-111111111111',
         fileName: 'note.txt',
-        data: 'aGVsbG8='
+        totalBytes: 5
       }
+    })
+    expect(invoke).toHaveBeenNthCalledWith(2, 'plugin_ui_rpc', {
+      token: '123456789012345678901234567890',
+      method: 'transfer.chunk',
+      args: { uploadId: 'UPLOAD1', data: 'aGVsbG8=' }
+    })
+    expect(invoke).toHaveBeenNthCalledWith(3, 'plugin_ui_rpc', {
+      token: '123456789012345678901234567890',
+      method: 'transfer.finish',
+      args: { uploadId: 'UPLOAD1' }
     })
 
     // ★ The kernel forgets a finished transfer; the page still has an id and wants its outcome.
@@ -75,11 +89,11 @@ describe('transfer', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('refuses a file that one message cannot carry', async () => {
+  it('refuses a file larger than the chunked channel carries', async () => {
     const { bridge: seam, invoke } = channel({})
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
-    // A shaped object rather than four real megabytes: `send` decides on `size` before it reads anything.
-    const huge = { size: 4 * 1024 * 1024 + 1, arrayBuffer: async () => new ArrayBuffer(0) } as unknown as Blob
+    // A shaped object rather than 64 real megabytes: `send` decides on `size` before it reads anything.
+    const huge = { size: 64 * 1024 * 1024 + 1, arrayBuffer: async () => new ArrayBuffer(0) } as unknown as Blob
 
     await expect(
       synra.transfer.send({ to: 'peer', file: huge, fileName: 'big.bin' })
@@ -148,7 +162,11 @@ describe('transfer', () => {
   })
 
   it('replays the final state to a listener that attached after the send', async () => {
-    const { bridge: seam } = channel({ 'transfer.send': { transferId: ID } })
+    const { bridge: seam } = channel({
+      'transfer.begin': { uploadId: 'UPLOAD1' },
+      'transfer.chunk': {},
+      'transfer.finish': { transferId: ID }
+    })
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
 
     await synra.transfer.send({ to: 'peer', file: new Blob(['hi']), fileName: 'a.txt' })
