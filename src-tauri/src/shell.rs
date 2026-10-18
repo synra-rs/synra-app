@@ -170,7 +170,7 @@ mod wrappers {
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
         remove_data: bool,
-    ) -> Result<(), IpcError> {
+    ) -> Result<synra_ipc::RemoveReport, IpcError> {
         commands::plugins::plugins_uninstall(&state, &plugin_id, remove_data)
     }
 

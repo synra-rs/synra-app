@@ -175,6 +175,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
+import { formatBytes } from '../format'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
@@ -205,20 +206,6 @@ function percentOf(transfer: TransferSnapshot): number {
   if (transfer.totalBytes <= 0)
     return 0
   return Math.min(100, Math.round((transfer.receivedBytes / transfer.totalBytes) * 100))
-}
-
-/** A byte count a person can read. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024)
-    return `${bytes} B`
-  const units = ['KiB', 'MiB', 'GiB', 'TiB']
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value.toFixed(1)} ${units[unit]}`
 }
 
 /** "12.3 KiB of 3.0 MiB", so the bar can be quoted as well as seen. */

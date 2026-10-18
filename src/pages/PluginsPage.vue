@@ -539,6 +539,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
+import { formatBytes } from '../format'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
@@ -760,9 +761,10 @@ async function remove(): Promise<void> {
   // the list is read once. Forgetting here rather than only reloading means the card disappears even if the read fails.
   pluginsStore.forget(plugin.pluginId)
   removing.value = undefined
+  const freed = formatBytes(outcome.value.bytesFreed)
   note.value = deleteData
-    ? messages.plugins.removedDeleted(plugin.title)
-    : messages.plugins.removedKept(plugin.title)
+    ? messages.plugins.removedDeleted(plugin.title, freed)
+    : messages.plugins.removedKept(plugin.title, freed)
   await load()
 }
 

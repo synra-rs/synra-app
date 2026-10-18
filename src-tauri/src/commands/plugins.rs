@@ -20,7 +20,7 @@
 
 use synra_ipc::{
     AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError,
-    PluginSnapshot, UpdateInfo,
+    PluginSnapshot, RemoveReport, UpdateInfo,
 };
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
@@ -390,8 +390,19 @@ fn run_install(
 /// # Errors
 ///
 /// `PluginNotInstalled` when no row has that identifier, and `Internal` when the store or the filesystem refuses.
-pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -> Result<(), IpcError> {
+pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -> Result<RemoveReport, IpcError> {
     let id = parse(plugin_id)?;
+    // ★ Measured **before** the removal: after `remove_dir_all` there is nothing left to measure, and a size read then
+    // would be a zero dressed as a measurement. Both directories count — the artifact goes either way, the sandbox only
+    // when the user asked for it — and the report's `bytes_freed` is the total, because that is the number a person
+    // freeing space cares about.
+    let artifact = directory_size(&state.paths.plugin_dir(&id.to_string()));
+    let sandbox = if remove_data {
+        directory_size(&state.paths.plugin_sandbox_dir(&id.to_string()))
+    }
+    else {
+        0
+    };
     let removed = state.db().remove_plugin(&id.to_string()).map_err(internal)?;
     if !removed {
         return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
@@ -400,7 +411,14 @@ pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -
     synra_store::PluginFiles::new(state.paths.clone())
         .remove(&id.to_string(), remove_data)
         .map_err(internal)?;
-    Ok(())
+    Ok(RemoveReport {
+        bytes_freed: artifact.saturating_add(sandbox),
+        data_kept: !remove_data,
+        // ★ Empty rather than a list of what failed: `PluginFiles::remove` refuses the whole removal when a directory
+        // will not go, so a partial success is not a state this command can return. A leftover list would be a field that
+        // is always empty, which is the kind of field a reader starts to trust.
+        leftovers: Vec::new(),
+    })
 }
 
 
@@ -2020,8 +2038,9 @@ mod tests {
         let (_root, state) = installed();
         let data = state.paths.plugin_sandbox_dir(ID);
         std::fs::create_dir_all(&data).expect("some plugin data");
+        std::fs::write(data.join("cache.bin"), [7u8; 5]).expect("some bytes");
 
-        super::plugins_uninstall(&state, ID, false).expect("uninstalls");
+        let report = super::plugins_uninstall(&state, ID, false).expect("uninstalls");
 
         assert!(
             state.db().plugins().expect("rows").iter().all(|row| row.plugin_id != ID),
@@ -2029,6 +2048,11 @@ mod tests {
         );
         assert!(!state.paths.plugin_dir(ID).exists(), "and the artifacts with it");
         assert!(data.exists(), "but the data stays unless asked for");
+        // ★ The report the design names and nothing returned: the artifact's bytes were freed, and the five bytes in
+        // the sandbox were **not** — `data_kept` is the same fact in a sentence the page can print.
+        assert!(report.data_kept, "the data stayed");
+        assert_eq!(report.bytes_freed as usize, MANIFEST.len(), "only the artifact was freed");
+        assert!(report.leftovers.is_empty(), "a wholesale removal leaves nothing behind");
     }
 
     #[test]
@@ -2038,10 +2062,17 @@ mod tests {
         let (_root, state) = installed();
         let data = state.paths.plugin_sandbox_dir(ID);
         std::fs::create_dir_all(&data).expect("some plugin data");
+        std::fs::write(data.join("cache.bin"), [7u8; 5]).expect("some bytes");
 
-        super::plugins_uninstall(&state, ID, true).expect("uninstalls");
+        let report = super::plugins_uninstall(&state, ID, true).expect("uninstalls");
 
         assert!(!data.exists(), "the data went with the plugin");
+        assert!(!report.data_kept, "and the report says so");
+        assert_eq!(
+            report.bytes_freed as usize,
+            MANIFEST.len() + 5,
+            "artifact and sandbox both counted"
+        );
     }
 
     #[test]

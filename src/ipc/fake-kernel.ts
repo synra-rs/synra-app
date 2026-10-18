@@ -70,6 +70,9 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
   plugins_request_registry_search: ['query'],
+  // The removal takes both arguments and the shell refuses without either, so the fake must require them too — this is
+  // the check that keeps a dev-build click from succeeding with a call the real shell would reject.
+  plugins_uninstall: ['pluginId', 'removeData'],
   diag_export: ['options']
 }
 
@@ -176,6 +179,14 @@ export class FakeKernel implements Bridge {
               suggestion: 'include this report when asking for help'
             }
           ]
+        }
+      case 'plugins_uninstall':
+        // `One`: the removal's report. The fake echoes the decision and claims no bytes — the page prints what it is
+        // given, so a made-up number here would show up in the dev build as if it were measured.
+        return {
+          bytesFreed: 0,
+          dataKept: args?.removeData !== true,
+          leftovers: []
         }
       case 'plugins_publisher_decide':
         return {}

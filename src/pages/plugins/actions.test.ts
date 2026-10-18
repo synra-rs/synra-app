@@ -162,15 +162,17 @@ describe('the uninstall call', () => {
 
   it('sends the destructive half of the decision too', async () => {
     // ★ The other answer: `removeData: true` is the one that deletes user files, and a page that could only send `false`
-    // made the option unreachable — the command had always accepted it.
-    const { client: kernel, invoke } = client(null)
+    // made the option unreachable — the command had always accepted it. The report comes back as the answer, because the
+    // contract declares this command as `One` and the page prints what was freed.
+    const { client: kernel, invoke } = client({ bytesFreed: 5, dataKept: false, leftovers: [] })
 
-    await uninstall(kernel, '@acme/hello', true)
+    const outcome = await uninstall(kernel, '@acme/hello', true)
 
     expect(invoke).toHaveBeenCalledWith('plugins_uninstall', {
       pluginId: '@acme/hello',
       removeData: true
     })
+    expect(outcome.ok && outcome.value.bytesFreed).toBe(5)
   })
 })
 

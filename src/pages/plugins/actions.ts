@@ -14,7 +14,7 @@
  * is described.
  */
 
-import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 
@@ -153,13 +153,16 @@ export async function setEnabled(client: KernelClient, pluginId: string, enabled
  *
  * `removeData` is passed through rather than defaulted here: the decision belongs to the confirmation the user sees, and
  * a default in two places is a default that can disagree with the sentence next to the button.
+ *
+ * The answer is the removal's report, not `null`: the contract has declared `plugins_uninstall` as `One` all along, and
+ * the report carries what was freed — which is the only way a user learns what the deletion actually cost them.
  */
-export async function uninstall(client: KernelClient, pluginId: string, removeData: boolean): Promise<Outcome<null>> {
-  const answer = await client.call<null>('plugins_uninstall', {
+export async function uninstall(client: KernelClient, pluginId: string, removeData: boolean): Promise<Outcome<RemoveReport>> {
+  const answer = await client.call<RemoveReport>('plugins_uninstall', {
     pluginId,
     removeData
   })
-  return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
 /**

@@ -125,7 +125,11 @@ describe('the plugins page', () => {
     // ★ The destructive half of removal: the command always accepted `removeData`, and the page sent `false` without ever
     // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the
     // argument the action layer sends is covered in `pages/plugins/actions.test.ts`, both ways.
-    mocks.call.mockResolvedValue({ ok: true, value: [card()] })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_uninstall')
+        return { ok: true, value: { bytesFreed: 1536, dataKept: false, leftovers: [] } }
+      return { ok: true, value: [card()] }
+    })
     const wrapper = mount(PluginsPage)
     await flushPromises()
 
@@ -161,7 +165,7 @@ describe('the plugins page', () => {
       pluginId: '@acme/hello',
       removeData: true
     })
-    expect(wrapper.text()).toContain(messages.plugins.removedDeleted('Hello'))
+    expect(wrapper.text()).toContain(messages.plugins.removedDeleted('Hello', '1.5 KiB'))
     wrapper.unmount()
   })
 
