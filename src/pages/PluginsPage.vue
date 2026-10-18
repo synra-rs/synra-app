@@ -27,7 +27,7 @@
       <template #description>
         <div class="stack gap-2">
           <span class="text-sm">{{ messages.plugins.publisherPrompt.detail }}</span>
-          <span class="truncate font-mono text-xs">{{ pendingPublisher.fingerprint }}</span>
+          <span class="truncate text-xs font-mono">{{ pendingPublisher.fingerprint }}</span>
           <span class="row gap-2">
             <AButton
               size="small"
@@ -35,6 +35,13 @@
               @click="trustPendingPublisher"
             >
               {{ messages.plugins.publisherPrompt.trust }}
+            </AButton>
+            <AButton
+              size="small"
+              :loading="deciding === pendingPublisher.id"
+              @click="revokePendingPublisher"
+            >
+              {{ messages.plugins.publisherPrompt.revoke }}
             </AButton>
             <AButton size="small" @click="pendingPublisher = undefined">
               {{ messages.plugins.publisherPrompt.later }}
@@ -374,6 +381,15 @@ async function trustPendingPublisher(): Promise<void> {
   if (!pending)
     return
   await decidePublisher(pending.id, 'trusted')
+  pendingPublisher.value = undefined
+}
+
+/** Revokes the key the install just showed — the opposite answer, from the same prompt. */
+async function revokePendingPublisher(): Promise<void> {
+  const pending = pendingPublisher.value
+  if (!pending)
+    return
+  await decidePublisher(pending.id, 'revoked')
   pendingPublisher.value = undefined
 }
 

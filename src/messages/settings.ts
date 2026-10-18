@@ -28,11 +28,6 @@ export const settings = {
     autoSyncPlugins: 'Update plugins automatically'
   },
   /**
-   * Rendered next to controls that exist but do nothing yet. A toggle that looks like it works and does not is worse
-   * than one that is visibly absent: the user changes it, sees nothing move, and starts debugging the wrong thing.
-   */
-  notWiredYet: 'These come from the kernel. Changing them is not wired up yet, so they are shown rather than offered.',
-  /**
    * The devices this one accepts files from without asking. The list is the consequence of a choice made at the prompt,
    * and removing a row here is how that choice is taken back.
    */

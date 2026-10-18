@@ -22,6 +22,7 @@ export const plugins = {
     title: 'This package was signed',
     detail: 'Compare this fingerprint with the one the publisher gave you. Trusting the key is a decision about future packages from it.',
     trust: 'Trust this key',
+    revoke: 'Never trust this publisher',
     later: 'Not now'
   },
   /**

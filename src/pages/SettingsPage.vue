@@ -46,43 +46,35 @@
       </h2>
 
       <!--
-        The reason a control does nothing appears twice on purpose. It is on the controls, because that is where the
-        question is asked; and it is here on the page, because a disabled control cannot take focus, so for a keyboard
-        user the tooltip is unreachable — and "it is disabled" with no reason is the thing this page's doc comment
-        refuses to do.
+        The reason a control does nothing appears on the control itself, not as a paragraph: the switch writes and the
+        theme select does not, and a page-wide "nothing works yet" sentence would be false for one of the two.
       -->
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.notWiredYet }}
-      </p>
-
-      <ATooltip :title="messages.settings.notWiredYet">
-        <div class="stack gap-3">
-          <div v-for="key in KEYS" :key="key" class="row-between gap-4">
-            <span class="min-w-0 row gap-2">
-              <span class="text-sm">{{ messages.settings.preference[key] }}</span>
-              <!--
+      <div class="stack gap-3">
+        <div v-for="key in KEYS" :key="key" class="row-between gap-4">
+          <span class="min-w-0 row gap-2">
+            <span class="text-sm">{{ messages.settings.preference[key] }}</span>
+            <!--
                 The value as the kernel answered it, printed rather than prettified. `null` is a fact — the kernel has
                 no value for that key — and the controls below take their state from the same read, so nothing here is
                 a default this page invented.
               -->
-              <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
-            </span>
+            <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
+          </span>
 
-            <ASwitch
-              v-if="key === 'autoSyncPlugins'"
-              :checked="settings.value(configKey(key)) === true"
-              :loading="saving === key"
-              @change="(checked) => save(key, checked === true)"
-            />
+          <ASwitch
+            v-if="key === 'autoSyncPlugins'"
+            :checked="settings.value(configKey(key)) === true"
+            :loading="saving === key"
+            @change="(checked) => save(key, checked === true)"
+          />
 
-            <!--
+          <!--
               A select with no options: the set of themes is the kernel's to name, and a list we wrote here would be
               this page inventing values it does not own. Disabled, it shows the value it was given and nothing else.
             -->
-            <ASelect v-else :value="preferenceValue(key)" disabled class="w-fit" />
-          </div>
+          <ASelect v-else :value="preferenceValue(key)" disabled class="w-fit" />
         </div>
-      </ATooltip>
+      </div>
     </section>
 
     <section class="stack gap-3">
@@ -143,8 +135,7 @@ import {
   Empty as AEmpty,
   List as AList,
   Select as ASelect,
-  Switch as ASwitch,
-  Tooltip as ATooltip
+  Switch as ASwitch
 } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
