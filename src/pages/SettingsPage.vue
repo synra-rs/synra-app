@@ -78,6 +78,23 @@
     </section>
 
     <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.transfers.title }}
+      </h2>
+      <div class="row-between gap-4">
+        <div class="stack">
+          <span class="text-sm">{{ messages.settings.transfers.cancelAsk }}</span>
+          <span class="text-xs text-ink-dim">{{ messages.settings.transfers.cancelAskDetail }}</span>
+        </div>
+        <ASwitch
+          :checked="askCancel"
+          :loading="savingCancel"
+          @change="(checked) => saveCancel(checked === true)"
+        />
+      </div>
+    </section>
+
+    <section class="stack gap-3">
       <h2 class="text-base font-medium">
         {{ messages.settings.trusted.title }}
       </h2>
@@ -242,6 +259,32 @@ const trusted = computed<readonly { id: string, name: string }[]>(() => {
       return { id, name: card?.displayName ?? id }
     })
 })
+
+/** Whether an in-flight transfer asks before it is abandoned; absent means yes, because the safe default is the question. */
+const askCancel = ref(true)
+
+/** Whether that preference is being written. */
+const savingCancel = ref(false)
+
+watch(
+  () => settings.value('transfers.confirmCancel'),
+  (value) => {
+    askCancel.value = value !== false
+  },
+  { immediate: true }
+)
+
+/** Writes the cancel-confirmation preference. */
+async function saveCancel(value: boolean): Promise<void> {
+  savingCancel.value = true
+  error.value = undefined
+  const answer = await kernel.call<null>('config_set', {
+    patch: { set: { 'transfers.confirmCancel': value } }
+  })
+  savingCancel.value = false
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /** The device being un-trusted, so its button can say so. */
 const forgetting = ref<string | undefined>(undefined)

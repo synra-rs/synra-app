@@ -118,6 +118,26 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('writes the cancel-confirmation preference under its own key', async () => {
+    // ★ Absent means "ask": the page shows the switch on, and turning it off stores the one value that changes the
+    // behaviour. A page that treated absent as off would remove the question without anybody asking it to.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const switches = wrapper.findAllComponents({ name: 'ASwitch' })
+    expect(switches).toHaveLength(2)
+    const cancelSwitch = switches[1]
+    expect(cancelSwitch).toBeDefined()
+    await cancelSwitch?.vm.$emit('change', false)
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'transfers.confirmCancel': false } }
+    })
+    wrapper.unmount()
+  })
+
   it('writes the registry URL, and unsets it when the field is cleared', async () => {
     // ★ Empty means "no registry", not "the empty string": the install branch treats an absent key as unsupported, and a
     // stored empty string would read as a configured address that is not one.

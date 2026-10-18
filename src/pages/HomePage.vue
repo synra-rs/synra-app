@@ -82,6 +82,7 @@
                   can press is a button that will be pressed by mistake.
                 -->
                 <APopconfirm
+                  v-if="askBeforeCancel"
                   :title="messages.home.inFlight.confirm"
                   :ok-text="messages.home.inFlight.abandon"
                   :cancel-text="messages.home.inFlight.keep"
@@ -91,6 +92,14 @@
                     {{ messages.home.inFlight.cancel }}
                   </AButton>
                 </APopconfirm>
+                <AButton
+                  v-else
+                  size="small"
+                  :loading="cancelling === transfer.transferId"
+                  @click="cancelTransfer(transfer)"
+                >
+                  {{ messages.home.inFlight.cancel }}
+                </AButton>
               </div>
             </div>
             <!--
@@ -170,9 +179,14 @@ import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useIntentsStore } from '../stores/intents'
+import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
 const devices = useDevicesStore()
+const settings = useSettingsStore()
+
+/** Whether an in-flight transfer asks before it is abandoned; absent means yes. */
+const askBeforeCancel = computed(() => settings.value('transfers.confirmCancel') !== false)
 
 // ★ The intent store, not two local refs. The kernel publishes `intentUpdated` / `transferUpdated` and `src/events.ts`
 // applies them to this store; a page holding its own copy would show the list it read at mount while the store moved on —

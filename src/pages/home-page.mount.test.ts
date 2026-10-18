@@ -137,6 +137,40 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('cancels at once when the user turned the question off', async () => {
+    // ★ The confirmation is a preference, not a fixed rule: with `transfers.confirmCancel` false the row's button is
+    // itself, and one click is the whole gesture.
+    const transfer: TransferSnapshot = {
+      transferId: '33333333-3333-4333-8333-333333333333',
+      peerDevice: '11111111-1111-4111-8111-111111111111',
+      peerName: 'Study PC',
+      direction: 'send',
+      kind: 'file',
+      state: 'sending',
+      fileName: 'notes.txt',
+      receivedBytes: 0,
+      totalBytes: 10,
+      blocksDone: 0,
+      blocksTotal: 1,
+      startedAtMs: 1
+    }
+    answer({ intent_list: [], transfer_cancel: null })
+    const { useSettingsStore } = await import('../stores/settings')
+    useSettingsStore().applySnapshot({ values: { 'transfers.confirmCancel': false }, overridden: [] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'APopconfirm' }).exists()).toBe(false)
+    const cancel = wrapper.findAll('button').find(button => button.text() === 'Cancel')
+    await cancel?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('transfer_cancel', { transferId: transfer.transferId })
+    wrapper.unmount()
+  })
+
   it('draws an intent the store received', async () => {
     // ★ The page reads `useIntentsStore`; `src/events.ts` writes it. An intent put in the store after mount still has to
     // reach the screen, or the two halves are only connected by the read at startup.

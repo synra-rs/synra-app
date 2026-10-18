@@ -37,6 +37,12 @@ export const settings = {
     empty: 'No device is trusted to send without asking.',
     remove: 'Ask again'
   },
+  /** What a transfer asks before it is abandoned; the friction is a preference, not a fixed rule. */
+  transfers: {
+    title: 'Transfers',
+    cancelAsk: 'Ask before cancelling',
+    cancelAskDetail: 'Confirm before a transfer in flight is abandoned.'
+  },
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',
