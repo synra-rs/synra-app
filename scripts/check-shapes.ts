@@ -206,8 +206,31 @@ async function checkTypeOnlyImports(): Promise<void> {
  *
  * Reading the Rust source rather than keeping a list here is the same decision the dispatcher's error type made: one
  * list, two readers. The alternative is a copy that agrees on the day it is written.
+ *
+ * Returns the **distinct** set of called names, which `readme-counts` compares with the README's "被调用 N 条" — that
+ * number was prose nobody checked until it drifted by two.
  */
-async function checkCommandNames(): Promise<void> {
+async function checkCommandNames(): Promise<ReadonlySet<string>> {
+  // Every string this repository passes as a command. The names appear as the first argument of `call` and in the
+  // method table below, and both are `'name'` literals.
+  //
+  // ★ The receiver is part of the pattern, and `self.invoke` is why. The first version matched any `.call(`/`.invoke(`
+  // with a lowercase literal and read `synra.self.invoke('clear')` — a **plugin action**, not a command — as a call to a
+  // command the kernel does not declare. Naming the seam (`kernel`, `client`, the injected `bridge`) is the rule the
+  // check actually means: those are the only objects whose call names are commands. The type argument is allowed because
+  // `kernel.call<DevicesSnapshot>('devices_snapshot')` is the ordinary form.
+  //
+  // ★ Read **before** the kernel checkout, because the returned set also feeds the README's "called" count, and a missing
+  // sibling repository must not silently disable that check.
+  const called = new Set<string>()
+  for (const file of await sources(join(here, 'src'))) {
+    const text = await readFile(file, 'utf8')
+    for (const match of text.matchAll(/\b(?:kernel|client|bridge)\.(?:call|invoke)\s*(?:<[^()]*>\s*)?\(\s*'([a-z][a-z0-9_]*)'/g)) {
+      if (match[1] !== undefined)
+        called.add(match[1])
+    }
+  }
+
   const rust = join(here, '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
   let rustText: string
   try {
@@ -215,7 +238,7 @@ async function checkCommandNames(): Promise<void> {
   }
   catch {
     notes.push('command-names: the kernel checkout is not beside this one, so the names were not compared')
-    return
+    return called
   }
 
   // The macro's arms are `"name" => Domain, Interface, Shape, mutating;`. The name is the first quoted string on the
@@ -232,24 +255,7 @@ async function checkCommandNames(): Promise<void> {
       check: 'command-names',
       detail: `no command names were found in ${relative(here, rust)} — the macro's shape may have changed`
     })
-    return
-  }
-
-  // Every string this repository passes as a command. The names appear as the first argument of `call` and in the
-  // method table below, and both are `'name'` literals.
-  //
-  // ★ The receiver is part of the pattern, and `self.invoke` is why. The first version matched any `.call(`/`.invoke(`
-  // with a lowercase literal and read `synra.self.invoke('clear')` — a **plugin action**, not a command — as a call to a
-  // command the kernel does not declare. Naming the seam (`kernel`, `client`, the injected `bridge`) is the rule the
-  // check actually means: those are the only objects whose call names are commands. The type argument is allowed because
-  // `kernel.call<DevicesSnapshot>('devices_snapshot')` is the ordinary form.
-  const called = new Set<string>()
-  for (const file of await sources(join(here, 'src'))) {
-    const text = await readFile(file, 'utf8')
-    for (const match of text.matchAll(/\b(?:kernel|client|bridge)\.(?:call|invoke)\s*(?:<[^()]*>\s*)?\(\s*'([a-z][a-z0-9_]*)'/g)) {
-      if (match[1] !== undefined)
-        called.add(match[1])
-    }
+    return called
   }
 
   for (const name of called) {
@@ -265,6 +271,7 @@ async function checkCommandNames(): Promise<void> {
     `command-names: ${String(declared.size)} declared by the kernel, `
     + `${String(called.size)} called here, ${String([...called].filter(name => declared.has(name)).length)} agree`
   )
+  return called
 }
 
 /**
@@ -562,7 +569,7 @@ function withoutCommentLines(text: string): string {
     .join('\n')
 }
 
-async function checkCommandArguments(): Promise<void> {
+async function checkCommandArguments(called: ReadonlySet<string>): Promise<void> {
   let shell: string
   try {
     shell = await readFile(join(here, 'src-tauri', 'src', 'shell.rs'), 'utf8')
@@ -713,12 +720,13 @@ async function checkCommandArguments(): Promise<void> {
   if (unreadable > 0)
     notes.push(`command-arguments: ${String(unreadable)} call(s) were not read — their name or arguments are not literals`)
 
-  // ★ The README states the registered count in prose, and prose is not compiled: it said "23", then "25", while the shell
-  // grew to 29 — four commands' worth of a promise nobody could check. The number is derivable, so it is checked rather than
-  // remembered.
+  // ★ Both counts the README states are checked, and the second used to be exempt.
   //
-  // Only the registered count is compared here. `checked` above counts **call sites**, while the README's "被调用 N 条" counts
-  // **distinct commands**: comparing them reported 15 against 10 and would have failed a true sentence.
+  // The registered count was guarded after it drifted "23 → 25 while the shell grew to 29". The "called" count was left
+  // alone because the call-site total is not the distinct-command total: comparing them reported 15 against 10 and would
+  // have failed a true sentence. Now `checkCommandNames` returns the **distinct** set, so the same number can be checked —
+  // and it needed to be: the log and export panels added two callers and the prose silently stayed at 29 while the code
+  // reached 31.
   const readme = await readFile('README.md', 'utf8')
   const stated = /注册 (\d+) 条/.exec(readme)
   if (stated === null) {
@@ -731,6 +739,19 @@ async function checkCommandArguments(): Promise<void> {
     failures.push({
       check: 'readme-counts',
       detail: `README.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`,
+    })
+  }
+  const calledStated = /被调用 (\d+) 条/.exec(readme)
+  if (calledStated === null) {
+    failures.push({
+      check: 'readme-counts',
+      detail: 'README.md no longer states how many commands are called, so nothing checks it'
+    })
+  }
+  else if (calledStated[1] !== String(called.size)) {
+    failures.push({
+      check: 'readme-counts',
+      detail: `README.md says ${calledStated[1] ?? '?'} called commands, and src calls ${String(called.size)} distinct ones`
     })
   }
 }
@@ -785,8 +806,8 @@ async function checkFacadeIsFresh(): Promise<void> {
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
-await checkCommandNames()
-await checkCommandArguments()
+const called = await checkCommandNames()
+await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 await checkFacadeIsFresh()
 
