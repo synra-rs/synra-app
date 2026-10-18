@@ -8,6 +8,8 @@
   -->
   <ConfigProvider :theme="synraAntdTheme()">
     <div class="grid grid-rows-[1fr_auto] screen md:grid-rows-1" :class="rail ? 'md:grid-cols-[4.5rem_1fr]' : 'md:grid-cols-[15rem_1fr]'">
+      <!-- The one prompt that is about a peer waiting on this answer; at the root so it is visible on every page. -->
+      <TransferPrompt />
       <!--
         The navigation, in the three forms R11 gives it: an expanded sidebar at `lg` (which is also `minWidth`, R12), an
         icon rail at `md`, and nothing at all below that — where the bottom bar takes over.
@@ -139,6 +141,7 @@ import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as AS
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'
 import { PAGES } from './router'
 import { useDevicesStore } from './stores/devices'

@@ -38,6 +38,7 @@ import { home } from './home'
 import { nav } from './nav'
 import { plugins } from './plugins'
 import { settings } from './settings'
+import { transfers } from './transfers'
 
 export type { ErrorCode } from './errors'
 
@@ -55,6 +56,8 @@ export const messages = {
   plugins,
 
   settings,
+
+  transfers,
 
   kernelErrors,
 
