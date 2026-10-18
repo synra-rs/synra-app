@@ -57,6 +57,8 @@ export interface InstallPreview {
   readonly description?: string
   readonly publisher: string
   readonly publisherName?: string
+  /** The fingerprint a static directory lists for the publisher, when it lists one. */
+  readonly publisherKey?: string
   readonly capabilities: readonly string[]
   readonly headless: boolean
   readonly hasUi: boolean

@@ -83,6 +83,9 @@
         <p class="m-0 text-sm text-ink-dim">
           {{ messages.plugins.preview.publisher }}: {{ preview.publisherName ?? preview.publisher }}
         </p>
+        <p v-if="preview.publisherKey" class="m-0 text-sm text-ink-dim">
+          {{ messages.plugins.preview.directoryKey }}: <span class="font-mono">{{ preview.publisherKey }}</span>
+        </p>
         <p class="m-0 text-sm">
           {{ messages.plugins.preview.permissions }}
         </p>

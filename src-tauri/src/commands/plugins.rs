@@ -1158,6 +1158,7 @@ mod tests {
         let state = with_engine(state);
         let source = package(root.path());
         let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
+        let manifest_json: serde_json::Value = serde_json::from_slice(&manifest).expect("a manifest document");
         let archive = tgz(&[
             ("package/manifest.json", manifest.as_slice()),
             ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
@@ -1179,9 +1180,11 @@ mod tests {
         *document.lock().expect("the document") = serde_json::json!({
             "name": "@acme/hello",
             "latest": "1.0.0",
+            "publishers": { "@acme": "AB12 CD34 EF56 7890" },
             "versions": [{
                 "version": "1.0.0",
-                "tarball": format!("{base}/pkg.tgz")
+                "tarball": format!("{base}/pkg.tgz"),
+                "manifest": manifest_json
             }]
         })
         .to_string();
@@ -1189,6 +1192,11 @@ mod tests {
             .db()
             .set_config("plugins.registry", &serde_json::json!(format!("static:{base}")), 1_000)
             .expect("the static index is configured");
+
+        // ★ The directory's fingerprint is shown before the tarball is downloaded; the signature is still checked on the
+        // bytes after it arrives.
+        let preview = plugins_preview(&state, "@acme/hello", None).expect("a preview");
+        assert_eq!(preview.publisher_key.as_deref(), Some("AB12 CD34 EF56 7890"));
 
         let report = plugins_install(
             &state,

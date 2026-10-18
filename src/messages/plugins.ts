@@ -25,6 +25,7 @@ export const plugins = {
   preview: {
     title: 'Install this plugin?',
     publisher: 'Publisher',
+    directoryKey: 'The index lists this key for the publisher',
     permissions: 'It asks for',
     none: 'It asks for no permissions.',
     headless: 'Runs without an interface',

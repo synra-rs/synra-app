@@ -61,6 +61,8 @@ pub struct CachedDocument {
     pub last_modified: Option<String>,
     /// The parsed document, which a 304 says is still current.
     pub document: Packument,
+    /// The publisher fingerprints the directory listed, carried with the document so a 304 keeps them.
+    pub publishers: std::collections::BTreeMap<String, String>,
     /// When `Cache-Control: max-age` says the document should be re-read; `None` means the host gave no lifetime.
     ///
     /// ★ `None` is not "expired": a host that sent only a validator is revalidated on every use, which is what an ETag is
@@ -365,6 +367,16 @@ fn encode(text: &str) -> String {
     out
 }
 
+/// A parsed registry document, and what a static directory claims about its publishers.
+struct RegistryDocument {
+    /// Which registry answered, so the tarball can be fetched from it or its mirrors.
+    base: Base,
+    /// The metadata, in the shape the install reads.
+    packument: Packument,
+    /// Publisher id to fingerprint, from a static index; empty for an npm registry.
+    publishers: std::collections::BTreeMap<String, String>,
+}
+
 /// The packument for one package.
 ///
 /// # Errors
@@ -372,7 +384,7 @@ fn encode(text: &str) -> String {
 /// `Unsupported` when no registry is configured, `InvalidArgument` when the registry does not serve the package or serves
 /// something that is not a packument, and a fetch refusal's own code for a network problem.
 pub fn packument(state: &AppState, plugin_id: &str) -> Result<Packument, synra_ipc::IpcError> {
-    Ok(packument_with_base(state, plugin_id)?.1)
+    Ok(packument_with_base(state, plugin_id)?.packument)
 }
 
 /// Whether the registry publishes a version newer than the one installed, and what it asks for that the old one did not.
@@ -438,7 +450,7 @@ fn installed_capabilities(state: &AppState, plugin_id: &str) -> Vec<String> {
 fn packument_with_base(
     state: &AppState,
     plugin_id: &str,
-) -> Result<(Base, Packument), synra_ipc::IpcError> {
+) -> Result<RegistryDocument, synra_ipc::IpcError> {
     let bases = bases(state)?;
     let mut last: Option<(ErrorCode, String)> = None;
 
@@ -479,7 +491,11 @@ fn packument_with_base(
                         entry.expires_at_ms = Some(now.saturating_add(age));
                         state.registry_cache.lock().insert(url, entry.clone());
                     }
-                    return Ok((base.clone(), entry.document));
+                    return Ok(RegistryDocument {
+                        base: base.clone(),
+                        packument: entry.document,
+                        publishers: entry.publishers,
+                    });
                 }
                 last = Some((
                     ErrorCode::ProtocolViolation,
@@ -487,15 +503,24 @@ fn packument_with_base(
                 ));
             }
             Ok(response) if (200..300).contains(&response.status) => {
-                let document = match base.kind {
-                    Kind::Npm => Packument::parse(&response.body),
-                    Kind::Static => synra_registry::parse_static_index(&response.body),
-                }
-                .map_err(|error| {
-                    synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                        serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
-                    )
-                })?;
+                let (document, publishers) = match base.kind {
+                    Kind::Npm => (
+                        Packument::parse(&response.body).map_err(|error| {
+                            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                                serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
+                            )
+                        })?,
+                        std::collections::BTreeMap::new(),
+                    ),
+                    Kind::Static => {
+                        let index = synra_registry::parse_static_index(&response.body).map_err(|error| {
+                            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                                serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
+                            )
+                        })?;
+                        (index.document, index.publishers)
+                    }
+                };
                 if base.kind == Kind::Static {
                     let expires_at_ms = max_age_ms(&response.headers).map(|age| now.saturating_add(age));
                     state.registry_cache.lock().insert(
@@ -504,11 +529,16 @@ fn packument_with_base(
                             etag: response.headers.get("etag").cloned(),
                             last_modified: response.headers.get("last-modified").cloned(),
                             document: document.clone(),
+                            publishers: publishers.clone(),
                             expires_at_ms,
                         },
                     );
                 }
-                return Ok((base.clone(), document));
+                return Ok(RegistryDocument {
+                    base: base.clone(),
+                    packument: document,
+                    publishers,
+                });
             }
             Ok(response) if retryable(response.status) => {
                 last = Some((ErrorCode::Unsupported, format!("{url} answered {}", response.status)));
@@ -592,8 +622,8 @@ pub fn preview(
     plugin_id: &str,
     version: Option<&str>,
 ) -> Result<InstallPreviewDto, synra_ipc::IpcError> {
-    let document = packument(state, plugin_id)?;
-    let chosen = choose(&document, plugin_id, version)?;
+    let registry = packument_with_base(state, plugin_id)?;
+    let chosen = choose(&registry.packument, plugin_id, version)?;
     let manifest = chosen.synra.as_ref().ok_or_else(|| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
             "pluginId": plugin_id,
@@ -612,6 +642,9 @@ pub fn preview(
         description: manifest.description.clone(),
         publisher: manifest.publisher.id.clone(),
         publisher_name: manifest.publisher.name.clone(),
+        // ★ The directory's claim, when there is one. It is shown beside the signature prompt after install, not treated as
+        // verification: the signature is checked on the bytes, and this is only a second statement to compare it with.
+        publisher_key: registry.publishers.get(&manifest.publisher.id).cloned(),
         capabilities: manifest.capabilities.iter().map(|declaration| declaration.cap.clone()).collect(),
         headless: manifest.runtime.headless.is_some(),
         has_ui: manifest.runtime.ui.is_some(),
@@ -744,10 +777,10 @@ pub fn install(
     version: Option<&str>,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let (source, document) = packument_with_base(state, plugin_id)?;
-    let chosen = choose(&document, plugin_id, version)?;
+    let registry = packument_with_base(state, plugin_id)?;
+    let chosen = choose(&registry.packument, plugin_id, version)?;
 
-    let package = download(state, &bases, &source, chosen)?;
+    let package = download(state, &bases, &registry.base, chosen)?;
     let outcome = crate::commands::plugins::install_directory(state, package.path());
     package.cleanup();
     outcome
@@ -760,14 +793,14 @@ pub fn install(
 /// As [`install`], plus `update` when the plugin is not installed.
 pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let (source, document) = packument_with_base(state, plugin_id)?;
-    let chosen = document.latest().ok_or_else(|| {
+    let registry = packument_with_base(state, plugin_id)?;
+    let chosen = registry.packument.latest().ok_or_else(|| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
             "pluginId": plugin_id,
             "reason": "the registry has no `latest` tag for it",
         }))
     })?;
-    let package = download(state, &bases, &source, chosen)?;
+    let package = download(state, &bases, &registry.base, chosen)?;
     let outcome = crate::commands::plugins::update_directory(state, package.path());
     package.cleanup();
     outcome
