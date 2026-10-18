@@ -28,6 +28,9 @@ export const REGISTERED = [
   'plugins_list',
   'plugins_preview',
   'plugins_catalog_search',
+  // ★ The contract's simpler search entry: the same endpoint, reached with only the text. It was on the not-yet list
+  // because nothing wired it; the endpoint it needs has existed since `plugins_catalog_search` landed.
+  'plugins_request_registry_search',
   'plugins_enable',
   'plugins_disable',
   'plugins_consent_respond',
@@ -90,8 +93,7 @@ export const REGISTERED = [
  * the wait is different in each group and a reader deserves to know which.
  */
 export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
-  // ★ The network half this comment used to name is here now — the shell listens (`listener.rs`), dials for pairing and for
-  // transfers, and asks peers what they hold for a sync plan. What is still missing is not a transport but the code that
+  // ★ The network half this comment used to name is here now — the shell listens (`listener.rs`), dials for pairing and for  // transfers, and asks peers what they hold for a sync plan. What is still missing is not a transport but the code that
   // acts on a plan: no runner sends a plugin bundle, and the contract's name for that is `plugins_sync_run`.
   //
   // Pairing said "needs the pairing desk wired to a Tauri command" — and the desk is in `AppState` now, answered from a
@@ -108,11 +110,10 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // ★ "The kernel dials" is still true of the daemon and not of this shell, which never dials anything. The reason stands
   // as an intent — the UI is not where a dial belongs — but it is not a claim that dialling happens here.
   devices_connect: 'deliberately absent: the kernel dials, the UI does not',
-  devices_disconnect: 'deliberately absent: the kernel dials, the UI does not',
+  devices_disconnect: 'deliberately absent: the kernel dials, the UI does not'
   // The plugin lifecycle beyond enable/disable/install is not built. `plugins_install` moved out of this list when the
   // pipeline became reachable from the shell: `synra_core::install` is the daemon's pipeline too, so the order of the
   // checks has one implementation and this shell supplies only what it can do (a desktop can open a window).
-  plugins_request_registry_search: 'no registry search endpoint is wired'
 }
 
 /**

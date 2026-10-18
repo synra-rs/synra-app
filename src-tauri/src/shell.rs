@@ -382,6 +382,27 @@ mod wrappers {
         commands::plugins::plugins_catalog_search(&state, &query)
     }
 
+    /// Searches the registry with only the text, as the contract's simpler entry names it.
+    ///
+    /// The endpoint is the same one [`plugins_catalog_search`] reaches; this command exists so a caller that has no paging
+    /// or sort to state does not have to invent them. Registering it is what makes the contract's name true.
+    #[tauri::command]
+    pub fn plugins_request_registry_search(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        query: String,
+    ) -> Result<Vec<synra_ipc::dto::CatalogItem>, IpcError> {
+        commands::plugins::plugins_catalog_search(
+            &state,
+            &synra_ipc::dto::CatalogQuery {
+                query,
+                registry: None,
+                limit: None,
+                offset: None,
+                sort: None,
+            },
+        )
+    }
+
     /// Describes a registry package before any of it is downloaded.
     #[tauri::command]
     pub fn plugins_preview(
@@ -547,6 +568,7 @@ mod wrappers {
             plugins_install,
             plugins_preview,
             plugins_catalog_search,
+            plugins_request_registry_search,
             plugins_check_update,
             plugins_update,
             plugins_uninstall,
