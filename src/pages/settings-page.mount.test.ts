@@ -118,6 +118,38 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('writes the registry URL, and unsets it when the field is cleared', async () => {
+    // ★ Empty means "no registry", not "the empty string": the install branch treats an absent key as unsupported, and a
+    // stored empty string would read as a configured address that is not one.
+    answer({
+      config_get: { values: { 'plugins.registry': 'https://r.example' }, overridden: ['plugins.registry'] },
+      identity_get: IDENTITY,
+      config_set: null
+    })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const input = wrapper.find('input[placeholder="https://registry.example.com"]')
+    expect((input.element as HTMLInputElement).value).toBe('https://r.example')
+
+    await input.setValue('https://r2.example')
+    const save = wrapper.findAll('button').find(button => button.text().includes('Save'))
+    expect(save).toBeDefined()
+    await save?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'plugins.registry': 'https://r2.example' } }
+    })
+
+    await input.setValue('')
+    await save?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { unset: ['plugins.registry'] }
+    })
+    wrapper.unmount()
+  })
+
   it('shows this device\'s name, which is the one field the page can state without being told', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 

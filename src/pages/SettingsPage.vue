@@ -109,6 +109,31 @@
         </AList.Item>
       </AList>
     </section>
+
+    <!--
+      The registry is a URL, not a preference among named values, so it gets its own input. Empty means "no registry":
+      the install path stays available from a directory, and the registry branch refuses by name instead of dialling a
+      default somebody else chose.
+    -->
+    <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.registry.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.registry.detail }}
+      </p>
+      <div class="row gap-2">
+        <AInput
+          v-model:value="registryUrl"
+          :placeholder="messages.settings.registry.placeholder"
+          allow-clear
+          @press-enter="saveRegistry"
+        />
+        <AButton :loading="savingRegistry" @click="saveRegistry">
+          {{ messages.settings.registry.save }}
+        </AButton>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -122,22 +147,23 @@
  * in a diagnostic bundle, and is not the thing `config_get` returns. The design document is explicit that configuration
  * is the kernel's, so this page round-trips a real command even though the value it changes is not written back yet.
  *
- * # Why nothing is written back in M0
+ * # What is written back, and what is not
  *
- * `config_set` exists and is not called from here. A toggle that appears to work and does not is worse than one that is
- * visibly absent: the user changes a setting, sees the shell's own state move, restarts the app, and is now debugging a
- * bug in the settings page. So the control is rendered disabled, with the reason.
+ * The automatic-update switch and the registry URL both round-trip `config_set` and let the kernel's `ConfigUpdated`
+ * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
+ * be the fake control this page's doc comment refuses to draw.
  */
 import type { ConfigSnapshot, IdentitySnapshot, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
   Descriptions as ADescriptions,
   Empty as AEmpty,
+  Input as AInput,
   List as AList,
   Select as ASelect,
   Switch as ASwitch
 } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
@@ -207,6 +233,36 @@ const trusted = computed<readonly { id: string, name: string }[]>(() => {
 
 /** The device being un-trusted, so its button can say so. */
 const forgetting = ref<string | undefined>(undefined)
+
+/** The registry URL being edited; empty means the feature is off. */
+const registryUrl = ref('')
+
+/** Whether the registry is being written, so the button can say so and cannot be pressed twice. */
+const savingRegistry = ref(false)
+
+// The store is the truth — another window's change lands here through `ConfigUpdated` — and the input is a buffer over it
+// rather than a second copy that would disagree the first time the kernel normalised the URL.
+watch(
+  () => settings.value('plugins.registry'),
+  (value) => {
+    registryUrl.value = typeof value === 'string' ? value : ''
+  },
+  { immediate: true }
+)
+
+/** Writes the registry URL, or unsets it when the field was cleared. */
+async function saveRegistry(): Promise<void> {
+  savingRegistry.value = true
+  error.value = undefined
+  const url = registryUrl.value.trim()
+  const patch = url === ''
+    ? { unset: ['plugins.registry'] }
+    : { set: { 'plugins.registry': url } }
+  const answer = await kernel.call<null>('config_set', { patch })
+  savingRegistry.value = false
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /**
  * Takes back "always accept" for one device.

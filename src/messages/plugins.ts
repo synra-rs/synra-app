@@ -9,6 +9,12 @@ export const plugins = {
   /** The filter above the installed list; it matches the id, the title and the description. */
   filterPlaceholder: 'Filter installed plugins',
   noMatch: 'No installed plugin matches that filter.',
+  /** How an install names its source: a directory on this device, or a package in the configured registry. */
+  installMode: {
+    path: 'From a directory',
+    registry: 'From the registry'
+  },
+  installName: 'Plugin id, e.g. @acme/hello',
   /**
    * The publishers whose signatures this device has seen. The key, not the name, is what a decision is about: a publisher
    * id signed with a different key is not the publisher a user trusted.

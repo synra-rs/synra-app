@@ -49,6 +49,17 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
+/** Installs a package the configured registry serves, by its plugin id. */
+export async function installFromRegistry(
+  client: KernelClient,
+  pluginId: string
+): Promise<Outcome<InstallReport>> {
+  const answer = await client.call<InstallReport>('plugins_install', {
+    source: { source: 'registry', pluginId }
+  })
+  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+}
+
 /**
  * Records what the user allowed.
  *

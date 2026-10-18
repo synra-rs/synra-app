@@ -5,11 +5,19 @@
     </h1>
 
     <!--
-      The install form. A **path** rather than a package name: this shell has no registry client, and the command refuses a
-      registry source by name instead of pretending to fetch one.
+      The install form. Two sources, named rather than guessed: a directory on this device, or a package id in the
+      registry configured on the settings page. The mode is a control instead of a rule that inspects the text, because
+      `@acme/hello` and `C:\plugins\hello` are both "a string with a slash" and a page that guessed would eventually guess
+      wrong.
     -->
+    <ASegmented v-model:value="installMode" :options="installOptions" />
     <div class="row gap-2">
-      <AInput v-model:value="installPath" :placeholder="messages.plugins.installPath" allow-clear @press-enter="install" />
+      <AInput
+        v-model:value="installPath"
+        :placeholder="installMode === 'registry' ? messages.plugins.installName : messages.plugins.installPath"
+        allow-clear
+        @press-enter="install"
+      />
       <AButton :loading="installing" :disabled="installPath.trim() === ''" @click="install">
         {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
       </AButton>
@@ -325,7 +333,7 @@
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import type { PluginSnapshot, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Segmented as ASegmented, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 
@@ -333,7 +341,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, planSync, runSync, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, planSync, runSync, setEnabled, uninstall } from './plugins/actions'
 
 /** A publisher row, as `plugins_publishers` answers it. */
 interface PublisherRow {
@@ -604,17 +612,28 @@ async function sync(plugin: PluginSnapshot): Promise<void> {
 /** The directory the user typed. */
 const installPath = ref('')
 
+/** Where the install comes from: a directory this device has, or the registry it was configured with. */
+const installMode = ref<'path' | 'registry'>('path')
+
+/** The mode's labels, as the segmented control shows them. */
+const installOptions = computed(() => [
+  { label: messages.plugins.installMode.path, value: 'path' },
+  { label: messages.plugins.installMode.registry, value: 'registry' }
+])
+
 /** Whether an install is in flight, so the button says so and cannot be pressed twice. */
 const installing = ref(false)
 
-/** Installs the package in the directory the user named, then re-reads the list. */
+/** Installs from the source the user named, then re-reads the list. */
 async function install(): Promise<void> {
   const from = installPath.value.trim()
   if (from === '' || installing.value)
     return
   installing.value = true
   error.value = undefined
-  const outcome = await installFrom(kernel, from)
+  const outcome = installMode.value === 'registry'
+    ? await installFromRegistry(kernel, from)
+    : await installFrom(kernel, from)
   installing.value = false
   if (!outcome.ok) {
     error.value = outcome.failure

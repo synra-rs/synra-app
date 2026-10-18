@@ -36,5 +36,12 @@ export const settings = {
     detail: 'These devices can send files without a prompt.',
     empty: 'No device is trusted to send without asking.',
     remove: 'Ask again'
+  },
+  /** Where registry installs are fetched from; empty means the feature is off. */
+  registry: {
+    title: 'Registry',
+    detail: 'The npm-compatible registry this device installs plugins from. Leave it empty to disable registry installs.',
+    placeholder: 'https://registry.example.com',
+    save: 'Save'
   }
 } as const

@@ -226,6 +226,36 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('installs from the registry when the mode says so', async () => {
+    // ★ The mode is a control rather than a guess about the text: `@acme/hello` and `C:\plugins\hello` are both "a string
+    // with a slash", and the source the command receives is what decides whether a network is touched.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_install')
+        return { ok: true, value: { pluginId: '@acme/hello', version: '1.0.0', enabled: false } }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const mode = wrapper.findComponent({ name: 'ASegmented' })
+    await mode.vm.$emit('update:value', 'registry')
+    await flushPromises()
+    await wrapper.find('input[placeholder="Plugin id, e.g. @acme/hello"]').setValue('@acme/hello')
+    const install = wrapper.findAll('button').find(button => button.text().includes('Install'))
+    await install?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_install', {
+      source: { source: 'registry', pluginId: '@acme/hello' }
+    })
+    wrapper.unmount()
+  })
+
   it('filters the installed list by what a person remembers', async () => {
     // ★ A filter over the installed list, not a registry search: this shell has no registry client, and a box that
     // promised the catalogue would be a box that cannot deliver. Matched on title here; the id and description are the
