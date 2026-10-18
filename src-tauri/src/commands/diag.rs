@@ -144,6 +144,13 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
     if options.include_debug_logs || options.log_lines.is_some() {
         // `verbose` is true because the user asking for debug logs has asked for the debug lines; the quiet filter would
         // hide exactly what they requested, and the bundle would carry an empty section that looked deliberate.
+        //
+        // ★ The shell's writer is asynchronous, so the tail is asked for **after** a flush: a bundle assembled seconds
+        // after the failure is exactly the case where the line explaining it is still in the queue, and a bundle missing
+        // that line sends the reader looking for a different explanation.
+        if let Some(guard) = state.log.as_ref() {
+            guard.flush();
+        }
         let wanted = options.log_lines.map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
         sources.log_lines = Some(
             synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines,
