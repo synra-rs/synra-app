@@ -253,7 +253,16 @@ impl Host for DesktopHost {
     ) -> Result<(), CallError> {
         // To stderr, which is where a shell's own diagnostics go. The daemon routes this through `tracing` because it
         // has a log file; a windowed shell has a terminal when it was started from one and nothing when it was not.
-        eprintln!("synra: [{level}] {} {}{message}", plugin.as_str(), context.map_or(String::new(), |c| format!("({c}) ")));
+        //
+        // ★ The action's trace is prefixed when the call is part of one, from the thread's scope: `PluginSet::call_traced`
+        // makes it current for the call, and the plugin contract has no field to carry it.
+        let trace = synra_observe::trace_scope::current()
+            .map_or_else(String::new, |trace| format!("trace={trace} "));
+        eprintln!(
+            "synra: [{level}] {}{trace}{}{message}",
+            plugin.as_str(),
+            context.map_or(String::new(), |c| format!("({c}) "))
+        );
         Ok(())
     }
 
