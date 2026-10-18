@@ -52,15 +52,26 @@ pub const REGISTRY_KEY: &str = "plugins.registry";
 /// the limit is accepted, and the archive's own limits do the rest once it is in memory.
 const MAX_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024 + 1;
 
+/// How a registry answers "what versions exist?".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// An npm-compatible registry: a packument at `{origin}/{id}`.
+    Npm,
+    /// A static host: one `index.json` per package at `{origin}/{id}.json` (16 §4.4).
+    Static,
+}
+
 /// A registry address, split into what the guard and the URLs need.
 #[derive(Debug, Clone)]
 struct Base {
-    /// `scheme://authority`, without a trailing slash.
+    /// `scheme://authority`, plus the path prefix for a static host, without a trailing slash.
     origin: String,
     /// The host alone, as a capability grants it.
     host: String,
     /// Whether the scheme is `https`.
     secure: bool,
+    /// Which document the address serves.
+    kind: Kind,
 }
 
 /// The configured registries, in the order they are tried.
@@ -98,7 +109,10 @@ fn bases(state: &AppState) -> Result<Vec<Base>, synra_ipc::IpcError> {
         .iter()
         .map(|url| url.trim())
         .filter(|url| !url.is_empty())
-        .map(split_url)
+        .map(|url| match url.strip_prefix("static:") {
+            Some(rest) => split_url(rest.trim(), Kind::Static),
+            None => split_url(url, Kind::Npm),
+        })
         .collect::<Result<_, _>>()?;
     if parsed.is_empty() {
         return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
@@ -109,7 +123,7 @@ fn bases(state: &AppState) -> Result<Vec<Base>, synra_ipc::IpcError> {
 }
 
 /// Splits a base URL into its scheme, authority and host.
-fn split_url(url: &str) -> Result<Base, synra_ipc::IpcError> {
+fn split_url(url: &str, kind: Kind) -> Result<Base, synra_ipc::IpcError> {
     let refused = |reason: &str| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"field": REGISTRY_KEY, "reason": reason}))
@@ -123,11 +137,17 @@ fn split_url(url: &str) -> Result<Base, synra_ipc::IpcError> {
     else {
         return Err(refused("it must start with https:// or http://"));
     };
-    let authority = rest.split('/').next().unwrap_or_default().trim_end_matches('/');
+    let authority = rest.split('/').next().unwrap_or_default();
     if authority.is_empty() {
         return Err(refused("it names no host"));
     }
-    // A port is allowed; a path is not, because the paths below are the protocol's.
+    let path = rest[authority.len()..].trim_end_matches('/');
+    // An npm registry's paths are the protocol's, so a path in its URL would be silently ignored; a static host's prefix
+    // is where the bucket's files live, so a path is the point there.
+    if kind == Kind::Npm && !path.is_empty() {
+        return Err(refused("an npm-compatible registry names only a scheme and a host"));
+    }
+    // A port is allowed.
     let (host, port) = match authority.rsplit_once(':') {
         Some((host, port)) if port.chars().all(|character| character.is_ascii_digit()) => (host, Some(port)),
         _ => (authority, None),
@@ -136,11 +156,13 @@ fn split_url(url: &str) -> Result<Base, synra_ipc::IpcError> {
     if host.is_empty() {
         return Err(refused("it names no host"));
     }
-    let origin = match port {
-        Some(port) => format!("{}://{}:{port}", if secure { "https" } else { "http" }, host),
-        None => format!("{}://{}", if secure { "https" } else { "http" }, host),
+    let scheme = if secure { "https" } else { "http" };
+    let authority_with_port = match port {
+        Some(port) => format!("{host}:{port}"),
+        None => host.clone(),
     };
-    Ok(Base { origin, host, secure })
+    let origin = format!("{scheme}://{authority_with_port}{path}");
+    Ok(Base { origin, host, secure, kind })
 }
 
 /// Whether another mirror could plausibly fix this status.
@@ -154,11 +176,12 @@ fn retryable(status: u16) -> bool {
 /// Fetches one path from the first mirror that answers usefully, returning the mirror and the response.
 fn get_text(
     bases: &[Base],
-    path: &str,
+    path_for: impl Fn(&Base) -> String,
     what: &str,
 ) -> Result<(Base, synra_fetch::Response), synra_ipc::IpcError> {
     let mut last: Option<(ErrorCode, String)> = None;
     for base in bases {
+        let path = path_for(base);
         let url = format!("{}{path}", base.origin);
         match client(base).fetch(&get(&url)) {
             Ok(response) if (200..300).contains(&response.status) => return Ok((base.clone(), response)),
@@ -256,7 +279,14 @@ const DEFAULT_SEARCH_RESULTS: u32 = 20;
 ///
 /// `Unsupported` when no registry is configured, and a fetch refusal's own code for a network problem.
 pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>, synra_ipc::IpcError> {
-    let bases = bases(state)?;
+    let bases: Vec<Base> = bases(state)?.into_iter().filter(|base| base.kind == Kind::Npm).collect();
+    if bases.is_empty() {
+        // A static index is one document per package; there is no index to search, and a request to one would be a 404
+        // dressed up as "nothing matched".
+        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+            "why": "the configured registries serve no search endpoint",
+        })));
+    }
     let text = query.query.trim();
     let scope = if text.is_empty() {
         "keywords:synra-plugin".to_owned()
@@ -267,7 +297,7 @@ pub fn search(state: &AppState, query: &CatalogQuery) -> Result<Vec<CatalogItem>
     let limit = query.limit.unwrap_or(DEFAULT_SEARCH_RESULTS).clamp(1, MAX_SEARCH_RESULTS);
     let offset = query.offset.unwrap_or(0);
     let path = format!("/-/v1/search?text={}&size={limit}&from={offset}", encode(&scope));
-    let (_, response) = get_text(&bases, &path, "the search endpoint")?;
+    let (_, response) = get_text(&bases, |_| path.clone(), "the search endpoint")?;
     let parsed: SearchResponse = serde_json::from_str(&response.body).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"reason": error.to_string()}))
@@ -394,9 +424,19 @@ fn packument_with_base(
     plugin_id: &str,
 ) -> Result<(Base, Packument), synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let path = format!("/{}", plugin_id.replace('/', "%2F"));
-    let (base, response) = get_text(&bases, &path, "the package")?;
-    let document = Packument::parse(&response.body).map_err(|error| {
+    let (base, response) = get_text(
+        &bases,
+        |base| match base.kind {
+            Kind::Npm => format!("/{}", plugin_id.replace('/', "%2F")),
+            Kind::Static => format!("/{plugin_id}.json"),
+        },
+        "the package",
+    )?;
+    let document = match base.kind {
+        Kind::Npm => Packument::parse(&response.body),
+        Kind::Static => synra_registry::parse_static_index(&response.body),
+    }
+    .map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
     })?;
@@ -513,18 +553,34 @@ fn download(
     chosen: &synra_registry::Version,
 ) -> Result<PackageDir, synra_ipc::IpcError> {
     let tarball = &chosen.dist.tarball;
-    // ★ A tarball is fetched from the mirror that served the packument, or from another **configured** mirror by the same
-    // path. A packument that points at an origin nobody configured is asking for a fetch this device never agreed to.
-    let path = tarball.strip_prefix(&source.origin).ok_or_else(|| {
-        synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "tarball": tarball,
-            "reason": format!("the tarball is not on a configured registry ({})", source.origin),
-        }))
-    })?;
-    let mut candidates = vec![(source.clone(), tarball.clone())];
-    for other in bases {
-        if other.origin != source.origin {
-            candidates.push((other.clone(), format!("{}{}", other.origin, path)));
+    let mut candidates = Vec::new();
+    if source.kind == Kind::Static {
+        // ★ A static index names a full URL, and the bytes may be on a CDN beside the bucket. The address is checked for
+        // scheme and host like any registry, but not tied to the index's origin — the index is the author's document, and
+        // the same document also names the manifest and the digest the signature covers.
+        let base = split_url(tarball, Kind::Static).map_err(|_| {
+            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "tarball": tarball,
+                "reason": "the static index names a tarball that is not an https:// or http:// URL",
+            }))
+        })?;
+        candidates.push((base, tarball.clone()));
+    }
+    else {
+        // ★ An npm tarball is fetched from the mirror that served the packument, or from another **configured** mirror by
+        // the same path. A packument that points at an origin nobody configured is asking for a fetch this device never
+        // agreed to.
+        let path = tarball.strip_prefix(&source.origin).ok_or_else(|| {
+            synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "tarball": tarball,
+                "reason": format!("the tarball is not on a configured registry ({})", source.origin),
+            }))
+        })?;
+        candidates.push((source.clone(), tarball.clone()));
+        for other in bases {
+            if other.origin != source.origin {
+                candidates.push((other.clone(), format!("{}{}", other.origin, path)));
+            }
         }
     }
 

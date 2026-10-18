@@ -1149,6 +1149,79 @@ mod tests {
     }
 
     #[test]
+    fn a_static_index_installs_the_tarball_it_names() {
+        // ★ A bucket has no packument endpoint: one JSON document per package names the versions and their tarballs, and
+        // the install path is the same one an npm registry feeds.
+        use std::sync::{Arc, Mutex};
+
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
+        let archive = tgz(&[
+            ("package/manifest.json", manifest.as_slice()),
+            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+        ]);
+
+        let document = Arc::new(Mutex::new(String::new()));
+        let served = Arc::clone(&document);
+        let (base, _served) = serve(move |line: &str| {
+            if line.contains("hello.json") {
+                (200, served.lock().expect("the document").clone().into_bytes())
+            }
+            else if line.contains("pkg.tgz") {
+                (200, archive.clone())
+            }
+            else {
+                (404, Vec::new())
+            }
+        });
+        *document.lock().expect("the document") = serde_json::json!({
+            "name": "@acme/hello",
+            "latest": "1.0.0",
+            "versions": [{
+                "version": "1.0.0",
+                "tarball": format!("{base}/pkg.tgz")
+            }]
+        })
+        .to_string();
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!(format!("static:{base}")), 1_000)
+            .expect("the static index is configured");
+
+        let report = plugins_install(
+            &state,
+            &InstallSourceDto::Registry {
+                plugin_id: PluginId::try_from("@acme/hello".to_owned()).expect("a plugin id"),
+                version: None,
+            },
+        )
+        .expect("the static index installs");
+
+        assert_eq!(report.plugin_id.as_str(), "@acme/hello");
+        assert_eq!(report.version, "1.0.0");
+    }
+
+    #[test]
+    fn a_static_index_has_no_search_to_offer() {
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!("static:https://static.example.com"), 1_000)
+            .expect("the static index is configured");
+
+        let refused = plugins_catalog_search(
+            &state,
+            &CatalogQuery { query: "hello".to_owned(), registry: None, limit: None, offset: None, sort: None },
+        )
+        .expect_err("there is no index to search");
+
+        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported, "{refused:?}");
+    }
+
+    #[test]
     fn a_card_says_whether_the_plugin_has_a_page() {
         // ★ `has_ui` is not `hybrid`: a UI-only plugin has a page and no headless half, and `plugin_ui_open` can open
         // it. The card needs both facts separately, or the one shape with a page but no Wasm would have no way in.

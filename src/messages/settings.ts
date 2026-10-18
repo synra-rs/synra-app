@@ -46,7 +46,7 @@ export const settings = {
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',
-    detail: 'The npm-compatible registries this device installs plugins from, tried in order. Leave the list empty to disable registry installs.',
+    detail: 'The npm-compatible registries this device installs plugins from, tried in order. Prefix one with `static:` when it is a bucket serving one index.json per package. Leave the list empty to disable registry installs.',
     placeholder: 'https://registry.example.com',
     add: 'Add mirror',
     remove: 'Remove',
