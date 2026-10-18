@@ -21,6 +21,7 @@ function card(pluginId: string, overrides: Partial<PluginSnapshot> = {}): Plugin
     enabled: false,
     state: 'awaiting_consent',
     hybrid: false,
+    hasUi: false,
     granted: [],
     denied: [],
     requested: [],

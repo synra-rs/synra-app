@@ -403,6 +403,11 @@ function shellWrappers(source: string): Map<string, Wrapper> {
       // caller sends.
       if (field === 'state' || type.startsWith('tauri::State'))
         continue
+      // ★ `app: tauri::AppHandle` is resolved by `#[tauri::command]` from the invocation context, exactly like `state` —
+      // not deserialized from the message. This was found by `plugin_ui_open`'s first caller: the page sends only
+      // `pluginId`, the guard reported `app` as a missing required key, and the command was right.
+      if (type.startsWith('tauri::AppHandle'))
+        continue
       const key = camelCase(field)
       declared.push(key)
       // `Option<T>` is the one shape Tauri answers with `None` when the key is absent. Everything else is required, which

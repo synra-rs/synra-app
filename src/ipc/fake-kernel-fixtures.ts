@@ -80,6 +80,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     enabled: true,
     state: 'active',
     hybrid: false,
+    hasUi: false,
     health: {
       health: 'healthy',
       explanation: 'plugin.health.ok',
@@ -101,6 +102,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     enabled: true,
     state: 'faulted',
     hybrid: false,
+    hasUi: false,
     health: {
       health: 'faulted',
       explanation: 'plugin.health.quotaExceeded',

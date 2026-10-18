@@ -46,5 +46,12 @@ export const plugins = {
   /** Removing, and the sentence that says what happens to the user's data. */
   removeAction: 'Remove',
   removeTitle: 'Remove this plugin?',
-  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.'
+  removeKeepsData: 'The plugin is removed and its data stays on disk. Nothing you put into it is deleted.',
+  /**
+   * Opening the plugin's own page.
+   *
+   * ★ Only drawn when the card says `hasUi`. A button on a headless-only plugin would be a control that can only
+   * refuse, and the card already has the word for what the plugin is.
+   */
+  openAction: 'Open'
 } as const

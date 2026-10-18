@@ -310,6 +310,9 @@ fn snapshot(
         hybrid: manifest.as_ref().is_some_and(|manifest| {
             manifest.runtime.headless.is_some() && manifest.runtime.ui.is_some()
         }),
+        // ★ Read from the manifest's page entry rather than from `hybrid`: a UI-only plugin has a page and no headless
+        // half, and `plugin_ui_open` can open it — the card has to know that before it draws the button.
+        has_ui: manifest.as_ref().is_some_and(|manifest| manifest.runtime.ui.is_some()),
         // ★ `None` rather than a zeroed reading.
         //
         // The host has not observed this plugin yet, so it has no usage to report. A snapshot full of zeros would be
@@ -619,6 +622,30 @@ mod tests {
             .into_iter()
             .map(|row| (row.capability, row.granted))
             .collect()
+    }
+
+    #[test]
+    fn a_card_says_whether_the_plugin_has_a_page() {
+        // ★ `has_ui` is not `hybrid`: a UI-only plugin has a page and no headless half, and `plugin_ui_open` can open
+        // it. The card needs both facts separately, or the one shape with a page but no Wasm would have no way in.
+        let (_root, state) = installed();
+
+        let headless_only = plugins_list(&state).expect("the list").remove(0);
+        assert!(!headless_only.has_ui, "a headless-only manifest has no page");
+        assert!(!headless_only.hybrid);
+
+        // The same plugin with a UI half written over its manifest. The entry is what `plugin_ui_open` resolves, so a
+        // card that reported `has_ui` without one would draw a button that cannot work.
+        let manifest = MANIFEST.replace(
+            r#""runtime": { "headless": { "artifact": "dist/plugin.wasm", "stateful": false } }"#,
+            r#""runtime": { "headless": { "artifact": "dist/plugin.wasm", "stateful": false },
+                "ui": { "artifact": "dist/ui", "entry": "index.html" } }"#,
+        );
+        std::fs::write(state.paths.plugin_dir(ID).join("manifest.json"), manifest).expect("a manifest with a page");
+
+        let with_page = plugins_list(&state).expect("the list").remove(0);
+        assert!(with_page.has_ui, "the page entry is not reported");
+        assert!(with_page.hybrid, "this manifest has both halves");
     }
 
     #[test]

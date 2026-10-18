@@ -162,7 +162,15 @@
               Removal asks first, and the question says what happens to the data: this is the one action on the card that
               cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
             -->
-            <div class="row">
+            <div class="row gap-2">
+              <!--
+                ★ Only when the card says the plugin has a page. `hasUi`, not `hybrid`: a UI-only plugin has a page and no
+                headless half, and a card that gated on both would leave that shape with no way in.
+              -->
+              <AButton v-if="plugin.hasUi" size="small" :loading="opening === plugin.pluginId" @click="open(plugin)">
+                {{ messages.plugins.openAction }}
+              </AButton>
+
               <APopconfirm
                 :title="messages.plugins.removeTitle"
                 :description="messages.plugins.removeKeepsData"
@@ -350,6 +358,25 @@ async function remove(plugin: PluginSnapshot): Promise<void> {
   // the list is read once. Forgetting here rather than only reloading means the card disappears even if the read fails.
   pluginsStore.forget(plugin.pluginId)
   await load()
+}
+
+/** The plugin whose page is being opened, so its button says so and cannot be pressed twice. */
+const opening = ref<string | undefined>(undefined)
+
+/**
+ * Opens the plugin's page in its own window.
+ *
+ * The window is the shell's to build (`plugin_ui_open`), not this page's: the label, the origin and the token are decided
+ * before the WebView exists, and a page that assembled them would be a second place those rules live. This is why the
+ * call answers `null` and the failure is shown here — the button is the request, not the window.
+ */
+async function open(plugin: PluginSnapshot): Promise<void> {
+  opening.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<null>('plugin_ui_open', { pluginId: plugin.pluginId })
+  opening.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 /** The directory the user typed. */

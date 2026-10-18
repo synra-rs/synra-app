@@ -32,6 +32,7 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 const PluginsPage = (await import('./PluginsPage.vue')).default
 const { usePluginsStore } = await import('../stores/plugins')
 const ErrorNotice = (await import('../components/ErrorNotice.vue')).default
+const { messages } = await import('../messages')
 
 /**
  * What jsdom lacks and antd asks for.
@@ -78,6 +79,7 @@ function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
     enabled: false,
     state: 'awaiting_consent',
     hybrid: false,
+    hasUi: false,
     health: undefined,
     granted: [],
     denied: [],
@@ -143,6 +145,34 @@ describe('the plugins page', () => {
     const notice = wrapper.findComponent(ErrorNotice)
     expect(notice.exists()).toBe(true)
     expect(notice.props('code')).toBe('internal')
+    wrapper.unmount()
+  })
+
+  it('opens a page from the card that has one', async () => {
+    // ★ The command had no caller until this button: `plugin_ui_open` was registered, tested and unreachable. What this
+    // asserts is the join — the card's `hasUi` draws the control, and pressing it reaches the command with the id.
+    mocks.call.mockResolvedValue({ ok: true, value: [card({ hasUi: true })] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.openAction)
+    expect(button, 'the card with a page drew no way to open it').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugin_ui_open', { pluginId: '@acme/hello' })
+    wrapper.unmount()
+  })
+
+  it('draws no open button for a plugin without a page', async () => {
+    // A button that can only refuse is worse than no button: the card already has the word for what the plugin is.
+    mocks.call.mockResolvedValue({ ok: true, value: [card({ hasUi: false })] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.openAction)).toBe(false)
     wrapper.unmount()
   })
 
