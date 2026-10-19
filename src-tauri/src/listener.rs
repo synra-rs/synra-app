@@ -92,6 +92,22 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
     let cancel = synra_core::supervisor::Cancellation::new();
     let thread_cancel = cancel.clone();
     let data_dir = state.paths.data_dir().to_path_buf();
+    // ★ The window writes late answers to the same disk queue the daemon uses, so it has to drain it too; otherwise a
+    // window that could not reach a peer would leave the answer on disk for ever. The retry thread stops on the same
+    // cancellation token as the listener.
+    {
+        let host = Arc::clone(&host);
+        let data_dir = data_dir.clone();
+        let cancel = cancel.clone();
+        std::thread::spawn(move || {
+            loop {
+                let _ = synra_core::listener::retry_late(&host, &data_dir);
+                if cancel.wait(std::time::Duration::from_secs(30)) {
+                    break;
+                }
+            }
+        });
+    }
     // ★ The desk comes **from the state**, not from here. A request arrives on a socket thread and the user answers from a
     // command; if the listener made its own desk, the command's answer would land on a different one and the connection would
     // wait out its window for a decision already made.
