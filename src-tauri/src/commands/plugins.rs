@@ -106,6 +106,48 @@ pub fn plugins_consent_respond(
     Ok(card)
 }
 
+/// Loads every installed plugin the database says should run.
+///
+/// # Why this is a shell function and not a startup-only step
+///
+/// Because the same pass is what tells the interface why a plugin is not running. The summary it returns is stored on
+/// [`AppState`](crate::AppState) and read by [`plugins_list`], so a card's `stateReason` and the set of plugins that can
+/// actually answer are two views of one record.
+///
+/// # Errors
+///
+/// None. A shell with no engine has nothing to load, and a plugin that fails is a row in the summary — the same shape
+/// every other failure in this loader takes, because one broken plugin must not stop the others.
+#[cfg(any(feature = "tauri-shell", test))]
+pub(crate) fn load_installed_plugins(
+    state: &AppState,
+    verdict: &synra_observe::crash::StartupVerdict,
+    revocations: &synra_plugin_api::revocation::RevocationList,
+) -> synra_core::plugin::LoadedSummary {
+    let Ok(plugins) = state.plugin_set() else {
+        // No engine: the caller records why on the state, and there is nothing to load. `plugins_list` explains it from
+        // `engine_refusal` rather than from an empty summary.
+        return synra_core::plugin::LoadedSummary::default();
+    };
+    let mut set = plugins.lock();
+    let summary = {
+        let db = state.db();
+        synra_core::plugin::load_installed(&mut set, &db, &state.paths.plugins_dir(), verdict, revocations)
+    };
+    // ★ The set's lock is released before anything reads it again. `plugins_list` takes the same lock, and this mutex is
+    // not reentrant — holding it across the list would be a same-thread self-deadlock whose symptom is a hung window.
+    drop(set);
+    if let Some(why) = &summary.safe_mode {
+        eprintln!("synra-app: starting without plugins: {why}");
+    }
+    for refused in &summary.refused {
+        // Printed, because a plugin that failed to load is invisible otherwise and a silent skip is how a broken plugin
+        // becomes a support question months later.
+        eprintln!("synra-app: {} was not loaded: {}", refused.plugin_id, refused.reason);
+    }
+    summary
+}
+
 /// Every publisher this device has met, and what it has decided about each.
 ///
 /// # Errors
@@ -556,6 +598,7 @@ fn snapshot(
     let manifest = read_manifest(state, &row.plugin_id);
     let is_loaded = loaded.is_some_and(|ids| ids.contains(plugin_id));
     let decisions = state.db().plugin_grants(&row.plugin_id).unwrap_or_default();
+    let state_word = life_state(row, is_loaded, manifest.is_some());
 
     PluginSnapshot {
         plugin_id: plugin_id.clone(),
@@ -566,7 +609,10 @@ fn snapshot(
         version: manifest.as_ref().map_or_else(String::new, |manifest| manifest.version.clone()),
         publisher: manifest.as_ref().map_or_else(String::new, |manifest| manifest.publisher.id.clone()),
         enabled: row.enabled,
-        state: life_state(row, is_loaded, manifest.is_some()).to_owned(),
+        state: state_word.to_owned(),
+        // ★ The sentence behind the state word, from the layer that decided. Without it `unavailable` covers a crash
+        // loop, a missing artifact and a build without an engine, and the user is sent to the wrong place.
+        state_reason: state_reason(state, &row.plugin_id, state_word, is_loaded),
         hybrid: manifest.as_ref().is_some_and(|manifest| {
             manifest.runtime.headless.is_some() && manifest.runtime.ui.is_some()
         }),
@@ -647,6 +693,57 @@ fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: boo
     // Enabled, trusted, readable, and not loaded. `unavailable` rather than `broken`: the shell may simply have no engine,
     // which is a property of this build rather than of the plugin.
     "unavailable"
+}
+
+/// Why a card's state word is what it is, when there is something to add.
+///
+/// # Why the reasons are not derived in the page
+///
+/// Because they are facts the host holds: which plugin failed to load and what the engine said, whether the whole load
+/// pass was skipped after a crash loop, or whether there is no engine at all. A page that guessed from `state` would
+/// invent a sentence for each case, and the first case it had not been written for would read as a plugin's fault.
+///
+/// # Why `unavailable` has a fallback sentence
+///
+/// A plugin that is enabled, trusted and readable but absent from the set is a fact the report should have explained;
+/// when it did not, saying that much is better than leaving the card silent. The three reasons above it are the ones
+/// that actually happen.
+fn state_reason(
+    state: &AppState,
+    plugin_id: &str,
+    state_word: &str,
+    loaded: bool,
+) -> Option<String> {
+    if loaded {
+        return None;
+    }
+    if state_word == "unreadable" {
+        return Some("its manifest could not be read".to_owned());
+    }
+    if state_word != "unavailable" {
+        return None;
+    }
+    // ★ One critical section, then the guard is gone. The sentence is cloned out before anything else can take this
+    // lock — the list holds it once for the whole page, and a second acquisition under the first would be a hang.
+    let (safe_mode, refused) = {
+        let loads = state.plugin_loads();
+        (loads.safe_mode.clone(), loads.refusal_for(plugin_id).map(str::to_owned))
+    };
+    if let Some(reason) = safe_mode {
+        return Some(reason);
+    }
+    if let Some(reason) = refused {
+        return Some(reason);
+    }
+    if let Some(reason) = &state.engine_refusal {
+        return Some(reason.clone());
+    }
+    if state.plugins.is_none() {
+        // The ordinary case in a test, and the honest sentence for a build with no engine: the card has no engine to
+        // blame a plugin for, and "unavailable" without this sends the user looking for a broken artifact.
+        return Some("this build has no plugin engine".to_owned());
+    }
+    Some("it is installed and enabled, but this process did not load it".to_owned())
 }
 
 /// Reads a plugin's manifest off disk.
@@ -873,9 +970,9 @@ fn directory_size(root: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_RETENTION_KEY, install_directory, plugins_audit, plugins_audit_clear, plugins_catalog_search,
-        plugins_check_update, plugins_consent_respond, plugins_install, plugins_list, plugins_preview,
-        plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
+        AUDIT_RETENTION_KEY, install_directory, load_installed_plugins, plugins_audit, plugins_audit_clear,
+        plugins_catalog_search, plugins_check_update, plugins_consent_respond, plugins_install, plugins_list,
+        plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -2262,5 +2359,138 @@ mod tests {
 
         let refused = plugins_publisher_decide(&state, "@acme", "maybe").expect_err("not a decision");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
+    }
+
+    /// Puts a loadable plugin on disk and records the decision that lets it run.
+    ///
+    /// ★ The directory comes from `Paths::plugin_dir`, the same function the installer, removal and sweep use. A fixture
+    /// that joined the raw id here would put the manifest somewhere the loader never looks, and the test would then be
+    /// asserting a layout no installation has.
+    fn loadable(state: &crate::state::AppState) {
+        let manifest = format!(
+            r#"{{"id": "{ID}", "version": "1.0.0", "title": "Chat",
+                "publisher": {{"id": "synra-official"}}, "sdk": {{"min": "0.1.0"}},
+                "wit": "{}",
+                "capabilities": [{{"cap": "log:*"}}],
+                "runtime": {{"headless": {{"artifact": "plugin.wasm", "stateful": false}}}}}}"#,
+            synra_plugin_host::host_world()
+        );
+        let directory = state.paths.plugin_dir(ID);
+        std::fs::create_dir_all(&directory).expect("the plugin directory");
+        std::fs::write(directory.join("manifest.json"), &manifest).expect("a manifest");
+        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        state
+            .db()
+            .insert_plugin(ID, true, true, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .expect("a plugin row");
+        state
+            .db()
+            .record_grants(
+                ID,
+                &[("log:*".to_owned(), true)],
+                testing::FIXED_NOW_MS,
+                &synra_plugin_api::manifest_digest(&manifest),
+            )
+            .expect("the decisions");
+    }
+
+    #[test]
+    fn the_shell_loads_an_installed_plugin_rather_than_leaving_its_set_empty() {
+        // ★ The whole point of this round: before it, `with_plugins_or_refuse` built an empty `PluginSet` and never
+        // loaded anything, so an installed plugin was listed, could be enabled, and was never askable. The assertion is
+        // on the set itself, because that is what an intent matches against.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        loadable(&state);
+
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        assert_eq!(summary.len(), 1, "refused: {:?}", summary.refused);
+        let id = PluginId::parse(ID).expect("an id");
+        assert!(state.plugin_set().expect("an engine").lock().contains(&id));
+
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        assert_eq!(card.state, "running");
+        assert_eq!(card.state_reason, None, "a running plugin needs no excuse");
+    }
+
+    #[test]
+    fn safe_mode_is_visible_on_the_card_rather_than_just_an_empty_set() {
+        // ★ The M4 acceptance: a plugin that crashes the process three times must not be started a fourth, and the user
+        // has to be told why the plugin they can see is not running. Reaching the verdict through three reports is the
+        // point — hand-building `SafeMode` would only prove that a made-up value returns false.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        loadable(&state);
+        let crashes = synra_observe::crash::CrashStore::at(root.path().join("crashes"));
+        for offset in 0..synra_observe::crash::SAFE_MODE_THRESHOLD {
+            crashes
+                .write(&synra_observe::crash::CrashReport::new(
+                    testing::FIXED_NOW_MS + i64::try_from(offset).expect("a small offset"),
+                    "0.1.0",
+                    Some("src/plugin.rs:42".to_owned()),
+                    Some("the plugin panicked".to_owned()),
+                    None,
+                    None,
+                    None,
+                ))
+                .expect("the report is written");
+        }
+        let verdict = crashes.verdict(testing::FIXED_NOW_MS);
+        assert!(!verdict.allows_plugins(), "three crashes did not reach safe mode: {verdict:?}");
+
+        let summary = load_installed_plugins(
+            &state,
+            &verdict,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        assert!(summary.is_empty(), "safe mode loaded something: {:?}", summary.loaded);
+        let state = state.with_plugin_loads(summary);
+
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        assert_eq!(card.state, "unavailable");
+        let reason = card.state_reason.as_deref().expect("safe mode must say why");
+        assert!(reason.contains("crashed 3 times"), "{reason}");
+    }
+
+    #[test]
+    fn a_plugin_that_failed_to_load_says_why_on_its_card() {
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        let directory = state.paths.plugin_dir(ID);
+        loadable(&state);
+        std::fs::remove_file(directory.join("plugin.wasm")).expect("the artifact is removed");
+
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        assert_eq!(summary.refused.len(), 1, "{summary:?}");
+        let state = state.with_plugin_loads(summary);
+
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        assert_eq!(card.state, "unavailable");
+        let reason = card.state_reason.as_deref().expect("a refusal must say why");
+        assert!(reason.contains("artifact"), "{reason}");
+    }
+
+    #[test]
+    fn a_shell_without_an_engine_says_so_on_the_card() {
+        // ★ "This build cannot run plugins" and "this plugin is broken" are different answers, and only one of them
+        // sends the user to the right place. A shell built without an engine is a real configuration, not a failure.
+        let (_root, state) = installed();
+        state.db().set_plugin_trusted(ID, true, testing::FIXED_NOW_MS).expect("trusted");
+
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.first().expect("the installed plugin");
+        assert!(card.state != "running");
+        assert_eq!(card.state_reason.as_deref(), Some("this build has no plugin engine"));
     }
 }

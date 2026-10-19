@@ -847,6 +847,18 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
         .ensure_directories()
         .map_err(|error| format!("the data directories could not be created: {error}"))?;
 
+    // ★ The crash pipeline starts before anything that can panic.
+    //
+    // A report of what went wrong has to be written by the layer that is already working, so the hook goes in before the
+    // database is opened and before any plugin is compiled. The daemon installs the same hook at the same point; without
+    // it here, a plugin that kills the window leaves no report, the verdict below can never see a crash loop, and safe
+    // mode — the only way back to the settings screen a crashing plugin has made unreachable — never triggers.
+    let crashes = synra_observe::crash::CrashStore::new(paths.log_dir());
+    synra_observe::crash::install_panic_hook(crashes.clone(), env!("CARGO_PKG_VERSION"));
+    // The verdict reads what previous runs left behind. It is taken once, here, and passed to the loader: a second read
+    // later would see this run's own startup and answer a different question.
+    let verdict = crashes.verdict(now_ms());
+
     let mut db = SynraDb::open(&paths.db_path())
         .map_err(|error| format!("the database could not be opened: {error}"))?;
     // Migrated on the way in, so a shell that starts on an older database does not fail every command with a message
@@ -878,7 +890,7 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     let state = AppState::new(db, paths, platform, now_ms())
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
-    let mut state = with_plugins_or_refuse(state);
+    let mut state = with_plugins_or_refuse(state, &verdict);
     // ★ Bind the listener **before** discovery, so the announcement can carry the port a peer should dial. The order is the
     // whole fix: announcing the discovery port meant every pairing dialled the responder, which accepts datagrams and not links.
     state = crate::listener::bind(state);
@@ -957,7 +969,10 @@ fn with_discovery_or_report(state: AppState) -> AppState {
 /// ★ This is also what keeps an Android build a *shell* rather than a black screen when the engine cannot start: the
 /// `wasmtime` engine is the largest and most platform-sensitive dependency in the tree, and this function is the seam
 /// that lets the rest of the application survive it.
-fn with_plugins_or_refuse(state: AppState) -> AppState {
+fn with_plugins_or_refuse(
+    state: AppState,
+    verdict: &synra_observe::crash::StartupVerdict,
+) -> AppState {
     // ★ The engine the platform wants, asked for rather than assumed.
     //
     // `BackendKind::default_for` is the table the kernel keeps for exactly this question, and a shell that named
@@ -1003,14 +1018,22 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
                         // ★ And the same recorder the `diag_metrics` command reads, so the counts a plugin's
                         // capability requests produce are reachable from the window rather than only from a log line.
                         .with_metrics(Arc::clone(&state.metrics));
-                    state.with_plugins(Arc::new(Mutex::new(set)))
+                    // ★ The set is built, and then it is **filled**. Until this line the shell created an empty set and
+                    // never called the loader, so every plugin was listed, could be enabled, and was never askable —
+                    // `intent_dispatch` matched nothing and `life_state` called it `unavailable` forever.
+                    let state = state.with_plugins(Arc::new(Mutex::new(set)));
+                    let revocations = revocations_or_empty(&state.paths);
+                    let summary = commands::plugins::load_installed_plugins(&state, verdict, &revocations);
+                    state.with_plugin_loads(summary)
                 }
                 Err(error) => {
                     // The same shape as the arm below: said once, and the shell carries on without the plugin half.
                     eprintln!(
                         "synra: plugins will not run in this build: this engine cannot enforce the limits this shell sets: {error}"
                     );
-                    state
+                    state.with_engine_refusal(format!(
+                        "this build cannot enforce the limits a plugin needs: {error}"
+                    ))
                 }
             }
         }
@@ -1020,7 +1043,37 @@ fn with_plugins_or_refuse(state: AppState) -> AppState {
             // `AppState::plugin_set` is where the user-facing refusal is produced, with the reason attached. Saying it
             // again per command would be two statements of one fact, and the second is the one nobody reads.
             eprintln!("synra: plugins will not run in this build: {error}");
-            state
+            state.with_engine_refusal(format!("this build has no plugin engine: {error}"))
+        }
+    }
+}
+
+/// The revocation list shipped beside the data directory, or an empty one.
+///
+/// # Why a missing file is not an error
+///
+/// Because the list ships with the application and the ordinary install may not have one: "nothing is revoked" and
+/// "there is no list" are different facts, but they lead to the same action here, and refusing to open the window over
+/// the second would trade a working application for a diagnostic absence. A file that **is** there and cannot be read is
+/// reported, because silently ignoring a revocation list is the one failure in this area a user would never forgive.
+fn revocations_or_empty(paths: &Paths) -> synra_plugin_api::revocation::RevocationList {
+    let path = paths.data_dir().join("revocations.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return synra_plugin_api::revocation::RevocationList::empty();
+    };
+    match synra_plugin_api::revocation::RevocationList::parse(&text) {
+        Ok(list) => {
+            if !list.is_empty() {
+                eprintln!("synra: {} revocation entries read from {}", list.len(), path.display());
+            }
+            list
+        }
+        Err(error) => {
+            eprintln!(
+                "synra: {} could not be read as a revocation list ({error}); no plugin is disabled on its account",
+                path.display()
+            );
+            synra_plugin_api::revocation::RevocationList::empty()
         }
     }
 }

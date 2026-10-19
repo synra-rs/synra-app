@@ -68,6 +68,19 @@ pub struct AppState {
     pub board: Arc<Mutex<Board>>,
     /// The plugins this shell can ask, when it has an engine.
     pub plugins: Option<Arc<Mutex<synra_core::dispatch::PluginSet>>>,
+    /// What the startup load pass did: what runs, what did not, and why.
+    ///
+    /// ★ This is what makes "the plugin is not running" answerable. The state word on a card says `unavailable`, and
+    /// without this that is all a user gets — the difference between a crash loop, a missing artifact and a plugin this
+    /// build cannot run all look the same. The summary is the kernel's own record (`synra_core::plugin`), not a second
+    /// derivation here, so the card and the startup report cannot disagree.
+    pub plugin_loads: Mutex<synra_core::plugin::LoadedSummary>,
+    /// Why no engine was built, when one was not.
+    ///
+    /// `plugins` being `None` covers two situations a user needs told apart: a build without an engine, and an engine
+    /// that refused to start or could not enforce the limits this shell sets. The sentence is produced where the
+    /// refusal happened, and the card carries it as the plugin's `stateReason`.
+    pub engine_refusal: Option<String>,
     /// The discovery worker, when this shell could bind the sockets.
     ///
     /// # Why this may be absent, and what that costs
@@ -306,6 +319,8 @@ impl AppState {
             identity: Arc::new(Mutex::new(identity)),
             board: Arc::new(Mutex::new(Board::new())),
             plugins: None,
+            plugin_loads: Mutex::new(synra_core::plugin::LoadedSummary::default()),
+            engine_refusal: None,
             discovery: None,
             scanning: Arc::new(Mutex::new(None)),
             scans_started: AtomicU64::new(0),
@@ -453,6 +468,42 @@ impl AppState {
     pub fn with_plugins(mut self, plugins: Arc<Mutex<synra_core::dispatch::PluginSet>>) -> Self {
         self.plugins = Some(plugins);
         self
+    }
+
+    /// Records what the startup load pass did.
+    ///
+    /// A builder step rather than a constructor argument, because it is only known after the engine is built — and the
+    /// engine is the host's own decision ([`Self::with_plugins`] explains why it may be absent at all).
+    #[must_use]
+    pub fn with_plugin_loads(mut self, loads: synra_core::plugin::LoadedSummary) -> Self {
+        *self.plugin_loads.get_mut() = loads;
+        self
+    }
+
+    /// Records why no engine was built.
+    #[must_use]
+    pub fn with_engine_refusal(mut self, reason: impl Into<String>) -> Self {
+        self.engine_refusal = Some(reason.into());
+        self
+    }
+
+    /// The startup load report, for a command that has to explain a card.
+    pub fn plugin_loads(&self) -> parking_lot::MutexGuard<'_, synra_core::plugin::LoadedSummary> {
+        self.plugin_loads.lock()
+    }
+
+    /// Notes that one plugin is now loaded, without re-running the whole pass.
+    ///
+    /// Used by the commands that change a plugin's life after startup — enabling, updating — so their answer is the
+    /// same one the list reads. The lock is taken and released here; a caller must not hold it while loading, because
+    /// compiling a plugin under the same lock every card read takes is a list that stops while a plugin compiles.
+    pub fn note_plugin_loaded(&self, id: synra_protocol::ids::PluginId) {
+        self.plugin_loads.lock().record_loaded(id);
+    }
+
+    /// Notes that one plugin failed to load, replacing any earlier claim that it did.
+    pub fn note_plugin_refused(&self, plugin_id: &str, reason: String) {
+        self.plugin_loads.lock().record_refused(plugin_id, reason);
     }
 
     /// Adds the discovery worker the scan needs.
