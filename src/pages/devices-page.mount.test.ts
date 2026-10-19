@@ -165,6 +165,7 @@ describe('the devices page', () => {
         fileName: 'message.txt'
       }
     })
+    expect(wrapper.text()).toContain(messages.devices.sentMessage)
     wrapper.unmount()
   })
 
@@ -192,6 +193,7 @@ describe('the devices page', () => {
     expect(mocks.call).toHaveBeenCalledWith('transfer_send_file', {
       request: { to: DEVICES[0]!.deviceId, path: 'C:/files/notes.txt' }
     })
+    expect(wrapper.text()).toContain(messages.devices.sentFile('notes.txt'))
     wrapper.unmount()
   })
 

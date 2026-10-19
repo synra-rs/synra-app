@@ -41,6 +41,17 @@
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
 
+    <!-- ★ A send that worked is worth one line. The transfer itself appears on the home page, but a person who pressed
+         Send is standing on this screen and needs an answer here rather than an absence of errors. -->
+    <AAlert
+      v-if="sent"
+      type="success"
+      show-icon
+      closable
+      :message="sent"
+      @close="sent = undefined"
+    />
+
     <!--
       A pairing request is time-sensitive — the peer's connection is waiting on this answer — so it sits above the list rather
       than inside a device's row: the row may be scrolled away, and the prompt belongs to *this* device, not to that one.
@@ -271,7 +282,7 @@
  * that needs the user to act.
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Modal as AModal, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag, Textarea as ATextarea } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Empty as AEmpty, List as AList, Modal as AModal, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag, Textarea as ATextarea } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -285,6 +296,9 @@ const pairing = usePairingStore()
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/** The sentence a completed send leaves behind. Cleared on the next send, or when the user closes it. */
+const sent = ref<string | undefined>(undefined)
 
 /**
  * The two scans `ScanOptions` describes, as this page asks for them.
@@ -467,6 +481,7 @@ async function sendText(): Promise<void> {
     return
   repeat.value = sendText
   error.value = undefined
+  sent.value = undefined
   sendingText.value = true
   const answer = await kernel.call<string>('transfer_send_text', {
     request: {
@@ -482,6 +497,7 @@ async function sendText(): Promise<void> {
   }
   sendTo.value = undefined
   draft.value = ''
+  sent.value = messages.devices.sentMessage
 }
 
 /** The device whose file picker is open. */
@@ -497,6 +513,7 @@ const pickingFile = ref<string | undefined>(undefined)
 async function pickAndSendFile(card: { deviceId: string }): Promise<void> {
   repeat.value = () => pickAndSendFile(card)
   error.value = undefined
+  sent.value = undefined
   pickingFile.value = card.deviceId
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
@@ -512,6 +529,8 @@ async function pickAndSendFile(card: { deviceId: string }): Promise<void> {
     })
     if (!answer.ok)
       refuse(answer.error)
+    else
+      sent.value = messages.devices.sentFile(selected.split(/[\\/]/).pop() ?? selected)
   }
   catch {
     error.value = { code: 'internal', message: 'error.internal' }

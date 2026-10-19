@@ -37,6 +37,9 @@ export const devices = {
   sendPlaceholder: 'What do you want to send?',
   sendAction: 'Send',
   sendCancel: 'Cancel',
+  /** What a completed send leaves on the screen. */
+  sentMessage: 'Sent the message.',
+  sentFile: (name: string): string => `Sent ${name}.`,
   online: 'Reachable',
   offline: 'Not reachable'
 } as const
