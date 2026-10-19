@@ -12,7 +12,13 @@
     :description="detail"
     class="mb-4"
     @close="notices.dismiss()"
-  />
+  >
+    <template v-if="showAction" #action>
+      <AButton size="small" @click="review">
+        {{ messages.notices.review }}
+      </AButton>
+    </template>
+  </AAlert>
 </template>
 
 <script setup lang="ts">
@@ -29,14 +35,31 @@
  * Because a kernel newer than the window may send a notice this build has never heard of. Printing the key would put an
  * engine word on screen (R34); showing nothing would make the event look lost. A generic sentence is the honest middle.
  */
-import { Alert as AAlert } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { messages } from '../messages'
 import { useNoticesStore } from '../stores/notices'
 
 const notices = useNoticesStore()
+const router = useRouter()
 const notice = computed(() => notices.latest)
+
+/** A package notice has somewhere to go: the plugin that was installed or updated. */
+const showAction = computed(() => {
+  const message = notice.value?.message
+  return message === 'notice.installed'
+    || message === 'notice.updated'
+    || message === 'notice.alreadyInstalled'
+    || message === 'notice.newerInstalled'
+})
+
+/** Opens the plugins page and clears the banner: the next step is on that page. */
+function review(): void {
+  notices.dismiss()
+  void router.push('/plugins')
+}
 
 /** A link this build does not understand is a warning rather than a success. */
 const alertType = computed(() => notice.value?.message === 'notice.unknownLink' ? 'warning' : 'success')
