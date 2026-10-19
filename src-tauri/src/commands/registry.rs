@@ -774,21 +774,15 @@ fn max_age_ms(headers: &std::collections::BTreeMap<String, String>) -> Option<i6
 ///
 /// Shared by the preview and the install so the two cannot disagree about which version the user saw.
 fn choose<'a>(document: &'a Packument, plugin_id: &str, version: Option<&str>) -> Result<&'a Version, synra_ipc::IpcError> {
-    match version {
-        Some(version) => document.at(version).ok_or_else(|| {
-            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "pluginId": plugin_id,
-                "version": version,
-                "reason": "the registry does not publish that version",
-            }))
-        }),
-        None => document.latest().ok_or_else(|| {
-            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "pluginId": plugin_id,
-                "reason": "the registry has no `latest` tag for it",
-            }))
-        }),
-    }
+    // ★ Exact, range or `latest`, decided by the packument — one place for both hosts. The previous version compared the
+    // request with the map's keys, so `^1.9` was "not published" even when it matched.
+    document.select(version).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+            "pluginId": plugin_id,
+            "version": version,
+            "reason": error.to_string(),
+        }))
+    })
 }
 
 /// What the file a packument points at says about its own size.
