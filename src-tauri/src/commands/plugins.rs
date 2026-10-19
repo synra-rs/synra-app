@@ -332,25 +332,41 @@ fn run_install(
         let mut db = state.db();
         let now = synra_store::sqlite::now_ms();
         let facts = synra_plugin_host::verify::HostFacts::desktop();
-        if replace {
-            synra_core::install::update_from_directory(
+        // ★ A path that is a file is a `.synra` package; a path that is a directory is the unpacked form. Both are the
+        // product's own containers, and the interface's "install a package" flow hands over whichever the user picked.
+        match (replace, path.is_file()) {
+            (false, false) => synra_core::install::from_directory(
                 &mut db,
                 set.backend(),
                 &state.paths.plugins_dir(),
                 path,
                 now,
                 facts,
-            )
-        }
-        else {
-            synra_core::install::from_directory(
+            ),
+            (false, true) => synra_core::install::from_package(
                 &mut db,
                 set.backend(),
                 &state.paths.plugins_dir(),
                 path,
                 now,
                 facts,
-            )
+            ),
+            (true, false) => synra_core::install::update_from_directory(
+                &mut db,
+                set.backend(),
+                &state.paths.plugins_dir(),
+                path,
+                now,
+                facts,
+            ),
+            (true, true) => synra_core::install::update_from_package(
+                &mut db,
+                set.backend(),
+                &state.paths.plugins_dir(),
+                path,
+                now,
+                facts,
+            ),
         }
     };
     let installed = outcome.map_err(|refusal| {
@@ -1040,6 +1056,44 @@ mod tests {
         assert_eq!(
             state.metrics.snapshot().get("plugin_install_total{result=ok,stage=complete}"),
             Some(&synra_observe::metrics::Value::Counter(1))
+        );
+    }
+
+    #[test]
+    fn installing_a_package_file_uses_the_same_pipeline() {
+        // ★ A `.synra` is the shape sync and the registry both produce, and a user can have one on disk. Passing it to the
+        // directory-only path used to refuse with "not a directory" even though the unpacker and the installer were both
+        // already there.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        let source = package(root.path());
+        let archive = root.path().join("hello.synra");
+        synra_core::install::package_directory(&source, &archive).expect("the package is written");
+
+        let report = plugins_install(
+            &state,
+            &InstallSourceDto::Path { path: archive.to_string_lossy().into_owned() },
+        )
+        .expect("the package installs");
+
+        assert_eq!(report.plugin_id.as_str(), "@acme/hello");
+        assert_eq!(report.version, "1.0.0");
+        assert!(!report.enabled);
+        let installed = state.paths.plugin_dir("@acme/hello");
+        assert!(
+            installed.join("source.json").is_file(),
+            "no source note in {installed:?}: {:?}",
+            std::fs::read_dir(&installed).map(|entries| entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
+                .collect::<Vec<_>>())
+        );
+        let note: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(installed.join("source.json")).expect("the note"))
+                .expect("JSON");
+        assert_eq!(
+            std::fs::canonicalize(note["path"].as_str().expect("a path")).expect("canonical"),
+            std::fs::canonicalize(&archive).expect("a canonical archive"),
+            "the installed note names the package, not the unpacked temporary directory"
         );
     }
 

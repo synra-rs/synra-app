@@ -440,7 +440,10 @@ pub fn check_update(
 /// A missing or unreadable manifest answers an empty list rather than failing the check: an update that cannot be compared
 /// is still an update, and refusing to say so would hide the version bump behind a parse error.
 fn installed_capabilities(state: &AppState, plugin_id: &str) -> Vec<String> {
-    let path = state.paths.plugins_dir().join(plugin_id).join("manifest.json");
+    // ★ `plugin_dir`, not a raw join: a scoped id contains a separator, and the directory the installer writes is the
+    // sanitised one. Joining the id here looked for `plugins/@acme/hello` while the artifact was at `plugins/acme+hello`,
+    // so every update of a scoped plugin was compared against an empty capability set.
+    let path = state.paths.plugin_dir(plugin_id).join("manifest.json");
     std::fs::read_to_string(path)
         .ok()
         .and_then(|text| serde_json::from_str::<synra_plugin_api::Manifest>(&text).ok())
