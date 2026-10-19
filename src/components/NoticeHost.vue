@@ -90,9 +90,18 @@ const headline = computed(() => {
 
 const detail = computed(() => {
   const value = notice.value
-  if (!value || value.message !== 'notice.received')
+  if (!value)
     return undefined
-  const path = value.params.path
-  return typeof path === 'string' ? messages.notices.savedTo(path) : undefined
+  if (value.message === 'notice.received') {
+    const path = value.params.path
+    return typeof path === 'string' ? messages.notices.savedTo(path) : undefined
+  }
+  // ★ The install report's warnings are sentences from the verifier — "the package is not signed" is the one a user
+  // most needs when a file was opened from the desktop. They are shown under the headline rather than dropped.
+  if (value.message === 'notice.installed') {
+    const warnings = value.params.warnings
+    return Array.isArray(warnings) && warnings.length > 0 ? warnings.map(String).join(' ') : undefined
+  }
+  return undefined
 })
 </script>

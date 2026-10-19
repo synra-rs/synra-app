@@ -62,12 +62,18 @@ describe('the notice host', () => {
   })
 
   it('says when a package opened from disk has installed', async () => {
-    useNoticesStore().apply(notice('notice.installed', { pluginId: '@acme/hello', version: '1.2.0' }))
+    useNoticesStore().apply(notice('notice.installed', {
+      pluginId: '@acme/hello',
+      version: '1.2.0',
+      warnings: ['The package is not signed.']
+    }))
 
     const { wrapper } = mountHost()
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.notices.installed('@acme/hello', '1.2.0'))
+    // ★ The verifier's warning is the part a file opened from the desktop most needs: it is not signed.
+    expect(wrapper.text()).toContain('The package is not signed.')
     wrapper.unmount()
   })
 

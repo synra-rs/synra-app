@@ -819,6 +819,7 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                                             params: serde_json::json!({
                                                 "pluginId": report.plugin_id,
                                                 "version": report.version,
+                                                "warnings": report.warnings,
                                             }),
                                         });
                                     }
