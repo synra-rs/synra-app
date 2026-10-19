@@ -49,6 +49,15 @@ const headline = computed(() => {
     return messages.notices.received(String(value.params.name ?? ''))
   if (value.message === 'notice.installed')
     return messages.notices.installed(String(value.params.pluginId ?? ''), String(value.params.version ?? ''))
+  if (value.message === 'notice.alreadyInstalled')
+    return messages.notices.alreadyInstalled(String(value.params.pluginId ?? ''), String(value.params.version ?? ''))
+  if (value.message === 'notice.newerInstalled') {
+    return messages.notices.newerInstalled(
+      String(value.params.pluginId ?? ''),
+      String(value.params.installed ?? ''),
+      String(value.params.offered ?? '')
+    )
+  }
   if (value.message === 'notice.unknownLink')
     return messages.notices.unknownLink(String(value.params.url ?? ''))
   return messages.notices.generic

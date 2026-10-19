@@ -58,6 +58,20 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('says when a package is newer than the one on disk', async () => {
+    useNoticesStore().apply(notice('notice.newerInstalled', {
+      pluginId: '@acme/hello',
+      installed: '2.0.0',
+      offered: '1.0.0'
+    }))
+
+    const wrapper = mount(NoticeHost)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.notices.newerInstalled('@acme/hello', '2.0.0', '1.0.0'))
+    wrapper.unmount()
+  })
+
   it('says when a synra link is not one this build understands', async () => {
     // ★ The deep-link handler focuses the window for any `synra://` link; doing that silently for an unknown one would
     // look like it worked. The notice is the sentence that says it did not.

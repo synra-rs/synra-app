@@ -803,41 +803,68 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 match synra_core::install::package_manifest(&package) {
                     Ok(manifest) => {
                         let id = manifest.id.as_str();
-                        let installed = state
-                            .db()
-                            .plugins()
-                            .is_ok_and(|rows| rows.iter().any(|row| row.plugin_id == id));
-                        if installed {
-                            match commands::plugins::update_directory(&state, id, &package) {
-                                Ok(()) => {
-                                    state.publish(synra_ipc::event::KernelEvent::Notice {
-                                        message: "notice.installed".to_owned(),
-                                        params: serde_json::json!({
-                                            "pluginId": id,
-                                            "version": manifest.version,
-                                        }),
-                                    });
-                                }
-                                Err(error) => {
-                                    eprintln!("synra: {} could not be updated: {error:?}", package.display());
+                        let active = state.db().active_plugin(id).ok().flatten();
+                        match active {
+                            Some(row) => {
+                                match synra_core::compare_plugin_versions(&row.version, &manifest.version) {
+                                    std::cmp::Ordering::Less => {
+                                        match commands::plugins::update_directory(&state, id, &package) {
+                                            Ok(()) => {
+                                                state.publish(synra_ipc::event::KernelEvent::Notice {
+                                                    message: "notice.installed".to_owned(),
+                                                    params: serde_json::json!({
+                                                        "pluginId": id,
+                                                        "version": manifest.version,
+                                                    }),
+                                                });
+                                            }
+                                            Err(error) => {
+                                                eprintln!(
+                                                    "synra: {} could not be updated: {error:?}",
+                                                    package.display()
+                                                );
+                                            }
+                                        }
+                                    }
+                                    std::cmp::Ordering::Equal => {
+                                        state.publish(synra_ipc::event::KernelEvent::Notice {
+                                            message: "notice.alreadyInstalled".to_owned(),
+                                            params: serde_json::json!({
+                                                "pluginId": id,
+                                                "version": row.version,
+                                            }),
+                                        });
+                                    }
+                                    std::cmp::Ordering::Greater => {
+                                        // ★ A double-clicked older package is not an instruction to downgrade. The window
+                                        // still comes forward, and the notice says why nothing changed.
+                                        state.publish(synra_ipc::event::KernelEvent::Notice {
+                                            message: "notice.newerInstalled".to_owned(),
+                                            params: serde_json::json!({
+                                                "pluginId": id,
+                                                "installed": row.version,
+                                                "offered": manifest.version,
+                                            }),
+                                        });
+                                    }
                                 }
                             }
-                        }
-                        else {
-                            let source =
-                                synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
-                            match commands::plugins::plugins_install(&state, &source) {
-                                Ok(report) => {
-                                    state.publish(synra_ipc::event::KernelEvent::Notice {
-                                        message: "notice.installed".to_owned(),
-                                        params: serde_json::json!({
-                                            "pluginId": report.plugin_id,
-                                            "version": report.version,
-                                        }),
-                                    });
-                                }
-                                Err(error) => {
-                                    eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                            None => {
+                                let source =
+                                    synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
+                                match commands::plugins::plugins_install(&state, &source) {
+                                    Ok(report) => {
+                                        state.publish(synra_ipc::event::KernelEvent::Notice {
+                                            message: "notice.installed".to_owned(),
+                                            params: serde_json::json!({
+                                                "pluginId": report.plugin_id,
+                                                "version": report.version,
+                                            }),
+                                        });
+                                    }
+                                    Err(error) => {
+                                        eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                                    }
                                 }
                             }
                         }
