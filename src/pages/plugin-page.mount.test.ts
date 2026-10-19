@@ -122,6 +122,18 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('colours an active plugin as success, which is the word the kernel now returns', async () => {
+    // ★ The kernel used to answer `running` for a loaded plugin while this page's colour table and fixtures used `active`.
+    // The green tag existed and was unreachable, so a running plugin looked as neutral as one with no state at all.
+    mocks.call.mockResolvedValue({ ok: true, value: [card({ state: 'active', enabled: true })] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(wrapper.find('.ant-tag-success').exists(), 'an active plugin is not shown as success').toBe(true)
+    wrapper.unmount()
+  })
+
   it('warns when a loaded plugin is over its limits', async () => {
     // ★ The health rung, which the shell used to leave as `None` for every card. A degraded plugin is still `enabled` and
     // may still say `running`, so the state tag cannot tell this story — the warning and the quota's own sentence do.

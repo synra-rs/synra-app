@@ -901,7 +901,10 @@ fn life_state(
         return "unreadable";
     }
     if loaded {
-        return "running";
+        // ★ `active`, the word the design's lifecycle and the page's own colour table already use. It used to say
+        // `running`, which matched neither: the page's `active` green tag was unreachable, and a plugin that was loaded
+        // and activated showed the same neutral tag as one that had no state at all.
+        return "active";
     }
     if load_refused {
         // ★ `faulted`, which the design names and the page already colours red, rather than `unavailable`. The load
@@ -2665,7 +2668,7 @@ mod tests {
 
         let cards = plugins_list(&state).expect("the list");
         let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
-        assert_eq!(card.state, "running");
+        assert_eq!(card.state, "active");
         assert_eq!(card.state_reason, None, "a running plugin needs no excuse");
     }
 
@@ -2830,7 +2833,7 @@ mod tests {
 
         let cards = plugins_list(&state).expect("the list");
         let card = cards.first().expect("the installed plugin");
-        assert!(card.state != "running");
+        assert!(card.state != "active");
         assert_eq!(card.state_reason.as_deref(), Some("this build has no plugin engine"));
     }
 
@@ -2868,7 +2871,7 @@ mod tests {
 
         let card = super::plugins_consent_respond(&state, ID, &["log:*".to_owned()])
             .expect("the decision is recorded");
-        assert_eq!(card.state, "running", "the card the consent returns shows the plugin already loaded");
+        assert_eq!(card.state, "active", "the card the consent returns shows the plugin already loaded");
         assert!(state.plugin_set().expect("an engine").lock().contains(&PluginId::parse(ID).expect("an id")));
     }
 
