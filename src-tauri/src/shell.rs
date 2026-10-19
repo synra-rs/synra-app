@@ -112,9 +112,11 @@ mod wrappers {
     pub async fn pairing_request(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         device_id: String,
-    ) -> Result<(), IpcError> {
+    ) -> Result<String, IpcError> {
         let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_request(&state, &device_id)).await
+        super::blocking(move || commands::pairing::pairing_request(&state, &device_id))
+            .await
+            .map(|request_id| request_id.to_string())
     }
 
     /// Answers a pairing request that is waiting.

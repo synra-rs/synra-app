@@ -60,6 +60,7 @@ import {
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
+  pairing_request: ['deviceId'],
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
   plugins_publisher_decide: ['publisherId', 'trust'],
@@ -136,16 +137,20 @@ export class FakeKernel implements Bridge {
           // Nothing to wait for and nothing to publish: the scan is over before the answer, which is what the shell
           // answers today.
           this.#stopScan()
-          return null
+          return 'scan-cached'
         }
         this.#startScan()
-        // `null` is the divergence `commands.test.ts` records: the shell answers with the new scan's id and this fake does
-        // not invent one, because the page reads only `ok` and the arity the contract declares is `One`.
-        return null
+        // ★ The shell answers the new scan's id, and `One` means one value — a string is one. Returning `null` was the
+        // fake disagreeing with the contract in the one direction a fake must not: more permissive than the shell.
+        return 'scan-network'
       }
       case 'devices_scan_cancel':
         this.#stopScan()
         return null
+      case 'pairing_request':
+        // `One`, and 08's signature is `Result<RequestId>`; the fake answers an id rather than a null the shell never
+        // returns. The page ignores it, but the arity is now honest.
+        return '77777777-7777-4777-8777-777777777777'
       case 'plugins_publishers':
         // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
         return []
@@ -249,12 +254,11 @@ export class FakeKernel implements Bridge {
         // ★ A bare array, for the same reason as `plugins_list` above: `Many`.
         return TRANSFERS.map(transfer => ({ ...transfer }))
       case 'transfer_send_text':
-        // ★ `One` in the contract, but the shell returns a `TransferId` scalar (08's signature); see the divergence note
-        // in `commands.test.ts`. The page ignores the value, so `null` is the honest fake answer.
-        return null
+        // `One` is one value, and the shell returns the transfer's id — a string. The page does not read it, but the fake
+        // still answers the shape the contract allows rather than a `null` the shell never returns.
+        return '55555555-5555-4555-8555-555555555555'
       case 'transfer_send_file':
-        // The same `One`/scalar divergence as `transfer_send_text`.
-        return null
+        return '66666666-6666-4666-8666-666666666666'
       case 'config_get':
         // ★ The kernel's own shape, not a flat bag of settings.
         //

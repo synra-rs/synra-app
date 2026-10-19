@@ -33,9 +33,10 @@ describe('a call that is missing an argument the shell requires', () => {
   })
 
   it('is answered once the argument is there', async () => {
+    // The answer is the scan's id — `One` is one value, and the shell returns a string.
     await expect(
       new FakeKernel().invoke('devices_scan_start', { opts: { includePaired: false, cachedOnly: true } })
-    ).resolves.toBeNull()
+    ).resolves.toBe('scan-cached')
   })
 
   it('rejects a key the command declares even when the fake ignores the value', async () => {

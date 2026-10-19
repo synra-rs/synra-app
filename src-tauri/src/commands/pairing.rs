@@ -37,7 +37,7 @@ use crate::state::AppState;
 ///
 /// [`ErrorCode::Unsupported`] when the identifier is unknown or has no address, [`ErrorCode::DeviceNotFound`] when the device is
 /// not in the scan table at all, and [`ErrorCode::TransferFailed`] for a dial or a peer that refused.
-pub fn pairing_request(state: &AppState, device_id: &str) -> Result<(), IpcError> {
+pub fn pairing_request(state: &AppState, device_id: &str) -> Result<RequestId, IpcError> {
     let to = device_id.parse::<DeviceId>().map_err(|error| {
         IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"deviceId": device_id, "reason": error.to_string()}))
@@ -140,7 +140,9 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<(), IpcError
         .map_err(internal)?;
 
     state.publish(synra_ipc::event::KernelEvent::PairingResolved { request_id });
-    Ok(())
+    // ★ The id is the answer, as 08's signature says (`Result<RequestId, IpcError>`). The page ignores it today, but a
+    // command declared `One` that returns nothing made the contract's own arity a lie.
+    Ok(request_id)
 }
 
 /// Reads the link until the answer to a pairing request arrives.
