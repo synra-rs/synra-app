@@ -25,7 +25,18 @@ const mocks = vi.hoisted(() => ({
   subscribe: vi.fn()
 }))
 
+const autostart = vi.hoisted(() => ({
+  isEnabled: vi.fn(),
+  enable: vi.fn(),
+  disable: vi.fn()
+}))
+
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@tauri-apps/plugin-autostart', () => ({
+  isEnabled: autostart.isEnabled,
+  enable: autostart.enable,
+  disable: autostart.disable
+}))
 
 const SettingsPage = (await import('./SettingsPage.vue')).default
 const { IDENTITY } = await import('../ipc/fake-kernel-fixtures')
@@ -83,6 +94,12 @@ beforeEach(() => {
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
+  autostart.isEnabled.mockReset()
+  autostart.isEnabled.mockResolvedValue(false)
+  autostart.enable.mockReset()
+  autostart.enable.mockResolvedValue(undefined)
+  autostart.disable.mockReset()
+  autostart.disable.mockResolvedValue(undefined)
 })
 
 describe('the settings page', () => {
@@ -178,7 +195,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(3)
+    expect(switches).toHaveLength(4)
     const cancelSwitch = switches[1]
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
@@ -402,6 +419,22 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain(messages.settings.metrics.startup)
     expect(wrapper.text()).toContain('350 ms')
     expect(wrapper.text()).toContain(messages.settings.metrics.startupWithin)
+    wrapper.unmount()
+  })
+
+  it('asks the platform to start at login', async () => {
+    // ★ The registration belongs to the platform. The page reads `isEnabled` on mount and calls `enable`/`disable`; it
+    // does not keep a preference of its own, because a stored copy can disagree with what the OS actually does.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const launch = wrapper.findAllComponents({ name: 'ASwitch' })[3]
+    expect(launch).toBeDefined()
+    await launch?.vm.$emit('change', true)
+    await flushPromises()
+
+    expect(autostart.enable).toHaveBeenCalled()
     wrapper.unmount()
   })
 

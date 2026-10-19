@@ -713,6 +713,12 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         // ★ The one native dialog this application needs: choosing a file to send. It is a plugin rather than a
         // dependency of the webview, and its permission is named in `capabilities/default.json` beside `core:default`.
         .plugin(tauri_plugin_dialog::init())
+        // ★ Registering the application to start with the session is the platform's job; the settings page only asks
+        // the plugin to switch it on or off. Starting with the arguments we were launched with, not a second copy.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         // ★ One shortcut, and it does the thing a tray app needs: bring the window back without hunting for it. The
         // handler is here rather than in a page because a page is not running when the window is hidden.
         .plugin(

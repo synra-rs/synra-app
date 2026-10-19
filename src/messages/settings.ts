@@ -43,6 +43,13 @@ export const settings = {
     remove: 'Ask again'
   },
   /** What a transfer asks before it is abandoned; the friction is a preference, not a fixed rule. */
+  /** Whether Synra starts with the user's session. The platform owns the registration; the switch only asks. */
+  startup: {
+    title: 'Startup',
+    launchAtLogin: 'Launch at login',
+    launchAtLoginDetail: 'Start Synra when you sign in, so paired devices can reach this one.',
+    unavailable: 'This build cannot register itself to start at login.'
+  },
   transfers: {
     title: 'Transfers',
     cancelAsk: 'Ask before cancelling',

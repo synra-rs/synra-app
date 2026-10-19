@@ -122,6 +122,27 @@
     </section>
 
     <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.startup.title }}
+      </h2>
+      <div class="row-between gap-4">
+        <div class="stack">
+          <span class="text-sm">{{ messages.settings.startup.launchAtLogin }}</span>
+          <span class="text-xs text-ink-dim">{{ messages.settings.startup.launchAtLoginDetail }}</span>
+        </div>
+        <ASwitch
+          :checked="launchAtLogin"
+          :disabled="launchAtLoginUnavailable"
+          :loading="savingLaunchAtLogin"
+          @change="(checked) => saveLaunchAtLogin(checked === true)"
+        />
+      </div>
+      <p v-if="launchAtLoginUnavailable" class="m-0 text-xs text-ink-dim">
+        {{ messages.settings.startup.unavailable }}
+      </p>
+    </section>
+
+    <section class="stack gap-3">
       <h2 class="text-base font-medium">
         {{ messages.settings.trusted.title }}
       </h2>
@@ -557,6 +578,45 @@ async function saveCancel(value: boolean): Promise<void> {
 const notifyOnReceive = ref(true)
 const savingNotify = ref(false)
 
+/** Whether the platform has Synra registered to start with the session. */
+const launchAtLogin = ref(false)
+const savingLaunchAtLogin = ref(false)
+/** True when this build or platform cannot register the application to start at login. */
+const launchAtLoginUnavailable = ref(false)
+
+/** Reads the registration rather than a saved preference: the platform is the source of truth. */
+async function loadLaunchAtLogin(): Promise<void> {
+  try {
+    const { isEnabled } = await import('@tauri-apps/plugin-autostart')
+    launchAtLogin.value = await isEnabled()
+  }
+  catch {
+    // A platform without an autostart mechanism is a missing convenience, not a page error: the switch says so and stays
+    // off, and the rest of the page is still usable.
+    launchAtLoginUnavailable.value = true
+  }
+}
+
+/** Asks the platform to register or unregister this application. */
+async function saveLaunchAtLogin(value: boolean): Promise<void> {
+  savingLaunchAtLogin.value = true
+  error.value = undefined
+  try {
+    const { disable, enable } = await import('@tauri-apps/plugin-autostart')
+    if (value)
+      await enable()
+    else
+      await disable()
+    launchAtLogin.value = value
+  }
+  catch {
+    error.value = { code: 'internal', message: 'error.internal' }
+  }
+  finally {
+    savingLaunchAtLogin.value = false
+  }
+}
+
 watch(
   () => settings.value('transfers.notifyOnReceive'),
   (value) => {
@@ -918,6 +978,7 @@ onUnmounted(() => {
 })
 
 onMounted(load)
+onMounted(loadLaunchAtLogin)
 
 /** The notice's Retry: everything this page read, not only the two answers the first mount asked for. */
 async function reload(): Promise<void> {

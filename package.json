@@ -16,6 +16,7 @@
   "dependencies": {
     "@synra/client": "workspace:*",
     "@synra/protocol": "workspace:*",
+    "@tauri-apps/plugin-autostart": "^2.7.0",
     "@tauri-apps/plugin-dialog": "^2.8.3",
     "ant-design-vue": "4.2.6",
     "pinia": "^4.1.0",

@@ -138,6 +138,7 @@ tauri = { version = "2", optional = true, features = [ "tray-icon", "unstable" ]
 uuid = { version = "1", features = [ "v4" ] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
 
 [build-dependencies]
 
