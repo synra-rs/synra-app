@@ -146,6 +146,23 @@
               >
                 {{ messages.devices.pair }}
               </AButton>
+
+              <!--
+                ★ Only a paired device can be forgotten: an unpaired discovery is not something this device agreed to
+                know, so "forget it" would be a button about a relationship that does not exist. The confirmation is
+                inline rather than a second page: pairing is the expensive step, and forgetting undoes it.
+              -->
+              <APopconfirm
+                v-if="card.paired && !!card.deviceId"
+                :title="messages.devices.forgetTitle"
+                :ok-text="messages.devices.forget"
+                :cancel-text="messages.devices.forgetCancel"
+                @confirm="forget(card.deviceId)"
+              >
+                <AButton size="small" danger :loading="forgetting === card.deviceId">
+                  {{ messages.devices.forget }}
+                </AButton>
+              </APopconfirm>
             </div>
           </div>
         </AList.Item>
@@ -192,7 +209,7 @@
  * that needs the user to act.
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -322,6 +339,27 @@ async function pair(deviceId: string): Promise<void> {
   pairingBusy.value = undefined
   if (answer.ok)
     // The card's "paired" tag is the kernel's, so the list is re-read rather than patched here.
+    await loadSnapshot()
+  else
+    refuse(answer.error)
+}
+
+/** The device whose forget command is in flight. */
+const forgetting = ref<string | undefined>(undefined)
+
+/**
+ * Forgets a paired device, after the confirmation.
+ *
+ * The event removes the card too, but the snapshot is re-read for the same reason pairing re-reads it: the list is the
+ * kernel's answer about what this device knows, and patching it here would make the page a second source of truth.
+ */
+async function forget(deviceId: string): Promise<void> {
+  repeat.value = () => forget(deviceId)
+  error.value = undefined
+  forgetting.value = deviceId
+  const answer = await kernel.call<null>('devices_forget', { deviceId })
+  forgetting.value = undefined
+  if (answer.ok)
     await loadSnapshot()
   else
     refuse(answer.error)

@@ -28,6 +28,7 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 const DevicesPage = (await import('./DevicesPage.vue')).default
 const { useDevicesStore } = await import('../stores/devices')
 const { DEVICES, IDENTITY } = await import('../ipc/fake-kernel-fixtures')
+const { messages } = await import('../messages')
 
 function installBrowserApis(): void {
   window.matchMedia = ((query: string) => ({
@@ -85,6 +86,29 @@ describe('the devices page', () => {
     expect(wrapper.text()).toContain(DEVICES[0]!.displayName)
     // One read: mount. The card came from the store, not from a second call.
     expect(mocks.call).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('asks before forgetting a paired device, then calls the command', async () => {
+    // ★ Forgetting undoes the expensive step: the next send to that device has to pair again. The confirmation is the
+    // page's, and the command is only reached through it — a button that forgot on the first click would be one click
+    // away from a decision the user cannot undo.
+    mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } })
+
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+
+    const forget = wrapper.findAll('button').find(button => button.text() === messages.devices.forget)
+    expect(forget, 'a paired device has no forget button').toBeDefined()
+
+    // ★ The popconfirm is a component, not a DOM assertion: jsdom does not run antd's portal transition, and what this
+    // test is about is that the command is behind the confirmation rather than on the first click.
+    const confirmation = wrapper.findComponent({ name: 'APopconfirm' })
+    expect(confirmation.exists(), 'the confirmation is missing').toBe(true)
+    await confirmation.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('devices_forget', { deviceId: DEVICES[0]!.deviceId })
     wrapper.unmount()
   })
 })

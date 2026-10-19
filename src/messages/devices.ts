@@ -25,6 +25,10 @@ export const devices = {
   pairingCode: 'Compare this code on both screens',
   pairingAccept: 'Accept',
   pairingDecline: 'Decline',
+  /** Undoes a pairing. Confirmed inline because the next send to that device will have to pair again. */
+  forget: 'Forget',
+  forgetTitle: 'Forget this device? It will have to be paired again.',
+  forgetCancel: 'Keep',
   online: 'Reachable',
   offline: 'Not reachable'
 } as const
