@@ -17,8 +17,22 @@
       -->
       <ADescriptions v-if="identity" :column="1" bordered>
         <ADescriptions.Item :label="messages.settings.field.name">
-          <div class="stack gap-0.5">
-            <span>{{ identity.displayName }}</span>
+          <div v-if="renaming" class="row flex-wrap gap-2">
+            <AInput v-model:value="nameDraft" class="max-w-xs" @press-enter="saveName" />
+            <AButton size="small" type="primary" :loading="savingName" @click="saveName">
+              {{ messages.settings.field.save }}
+            </AButton>
+            <AButton size="small" :disabled="savingName" @click="cancelRename">
+              {{ messages.settings.field.cancel }}
+            </AButton>
+          </div>
+          <div v-else class="stack gap-0.5">
+            <div class="row flex-wrap gap-2">
+              <span>{{ identity.displayName }}</span>
+              <AButton size="small" @click="startRename">
+                {{ messages.settings.field.rename }}
+              </AButton>
+            </div>
             <!-- The hint is a line of its own, not a parenthetical after the name (R21 retires `WORD — fragment`). -->
             <span v-if="identity.nameIsDefault" class="text-xs text-ink-dim">
               {{ messages.settings.field.nameIsGenerated }}
@@ -440,6 +454,47 @@ const saving = ref<PreferenceKey | undefined>(undefined)
  * setting the user cannot see or remove.
  */
 const devices = useDevicesStore()
+
+/** Whether the name row is an input, and what the input holds while it is. */
+const renaming = ref(false)
+const nameDraft = ref('')
+const savingName = ref(false)
+
+function startRename(): void {
+  nameDraft.value = identity.value?.displayName ?? ''
+  renaming.value = true
+  error.value = undefined
+}
+
+function cancelRename(): void {
+  renaming.value = false
+}
+
+/**
+ * Writes the name, then re-reads the identity twice over.
+ *
+ * # Why two reads
+ *
+ * The page's own row and the sidebar both show this name, and they come from different places: the page reads
+ * `identity_get` into a local ref, the sidebar reads the devices store. Re-reading and writing both is what keeps them the
+ * same sentence — a rename that updated only one would leave the app disagreeing with itself until a restart.
+ */
+async function saveName(): Promise<void> {
+  savingName.value = true
+  error.value = undefined
+  const answer = await kernel.call<null>('identity_set_display_name', { name: nameDraft.value })
+  savingName.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  const refreshed = await kernel.call<IdentitySnapshot>('identity_get')
+  if (refreshed.ok) {
+    identity.value = refreshed.value
+    devices.identity = refreshed.value
+  }
+  renaming.value = false
+}
 
 const trusted = computed<readonly { id: string, name: string }[]>(() => {
   const value = settings.value('transfers.acceptFrom')

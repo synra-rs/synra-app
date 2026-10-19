@@ -11,6 +11,9 @@ export const settings = {
   field: {
     name: 'Name',
     nameIsGenerated: 'generated — you can rename it',
+    rename: 'Rename',
+    save: 'Save',
+    cancel: 'Cancel',
     platform: 'Platform',
     kernel: 'Kernel',
     deviceId: 'Device id'

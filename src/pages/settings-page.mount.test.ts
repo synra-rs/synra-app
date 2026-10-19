@@ -97,6 +97,48 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('renames this device through the kernel and shows the name it read back', async () => {
+    // ★ `identity_set_display_name` had a command, tests and no caller. A rename has to be followed by a read: the
+    // answer is `Unit`, and the page's row and the sidebar are two different copies of the name.
+    let reads = 0
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'diag_metrics')
+        return { ok: true, value: NO_METRICS }
+      if (command === 'config_get')
+        return { ok: true, value: { values: {}, overridden: [] } }
+      if (command === 'identity_get') {
+        reads += 1
+        return {
+          ok: true,
+          value: reads === 1 ? IDENTITY : { ...IDENTITY, displayName: 'Kitchen tablet', nameIsDefault: false }
+        }
+      }
+      if (command === 'identity_set_display_name')
+        return { ok: true, value: null }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const rename = wrapper.findAll('button').find(button => button.text() === messages.settings.field.rename)
+    expect(rename, 'the rename button is missing').toBeDefined()
+    await rename?.trigger('click')
+
+    const input = wrapper.find('input')
+    expect(input.exists(), 'the name input did not open').toBe(true)
+    await input.setValue('Kitchen tablet')
+
+    const save = wrapper.findAll('button').find(button => button.text() === messages.settings.field.save)
+    expect(save, 'the save button is missing').toBeDefined()
+    await save?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('identity_set_display_name', { name: 'Kitchen tablet' })
+    expect(wrapper.text()).toContain('Kitchen tablet')
+    wrapper.unmount()
+  })
+
   it('shows a preference the kernel has a value for', async () => {
     // ★ The bug this locks down: the page's own key names ('theme') are labels, and the kernel's are dotted ('ui.theme').
     // Reading the label returned `undefined`, so both controls showed "unset" no matter what was configured.
