@@ -20,6 +20,9 @@
       <AButton :loading="sharing" :disabled="shareText.trim() === ''" @click="share">
         {{ messages.home.share.action }}
       </AButton>
+      <AButton :loading="sharingClipboard" @click="shareClipboard">
+        {{ messages.home.share.clipboard }}
+      </AButton>
     </div>
 
     <!--
@@ -278,6 +281,9 @@ const shareText = ref('')
 /** Whether the dispatch is in flight. */
 const sharing = ref(false)
 
+/** Whether the clipboard dispatch is in flight. */
+const sharingClipboard = ref(false)
+
 /**
  * Starts an intent from the text in the box.
  *
@@ -299,6 +305,26 @@ async function share(): Promise<void> {
     return
   }
   shareText.value = ''
+  await load()
+}
+
+/**
+ * Shares whatever is on the clipboard.
+ *
+ * The shell reads it exactly once, for this request, and refuses an empty clipboard. The page never reads it: a page
+ * that could would be able to look at the clipboard whenever it liked.
+ */
+async function shareClipboard(): Promise<void> {
+  error.value = undefined
+  sharingClipboard.value = true
+  const answer = await kernel.call<string>('intent_dispatch', {
+    source: { kind: 'clipboard' }
+  })
+  sharingClipboard.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
   await load()
 }
 

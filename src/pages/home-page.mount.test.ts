@@ -120,6 +120,22 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('shares the clipboard without the page reading it', async () => {
+    // ★ The shell reads the clipboard once, for this request. A page that read it itself could look whenever it liked;
+    // the command is the whole permission.
+    answer({ intent_list: [], intent_dispatch: '11111111-1111-4111-8111-111111111111' })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.home.share.clipboard)
+    expect(button, 'the share-clipboard button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('intent_dispatch', { source: { kind: 'clipboard' } })
+    wrapper.unmount()
+  })
+
   it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
     // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
     // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.
