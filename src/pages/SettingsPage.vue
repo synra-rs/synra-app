@@ -306,11 +306,11 @@
             :key="`${report.atMs}-${report.location ?? ''}`"
             class="stack gap-1 text-xs"
           >
-            <span class="font-mono text-ink-dim">
+            <span class="text-ink-dim font-mono">
               {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
             </span>
             <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
-            <span v-if="report.location" class="font-mono text-ink-dim">{{ report.location }}</span>
+            <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
           </li>
         </ul>
       </div>
@@ -549,6 +549,10 @@ async function exportDiagnostics(): Promise<void> {
 const crashesDismissed = ref(false)
 /** The dismiss is in flight; a second click would be a second delete. */
 const dismissing = ref(false)
+/** The reports the user asked to see, or undefined before they asked. Read on request: the section is not a startup cost. */
+const crashes = ref<readonly CrashReport[] | undefined>(undefined)
+/** The report read is in flight. */
+const loadingCrashes = ref(false)
 
 /** Deletes the crash reports that make the next start enter safe mode. */
 async function dismissCrashes(): Promise<void> {
@@ -563,11 +567,6 @@ async function dismissCrashes(): Promise<void> {
   crashesDismissed.value = true
   crashes.value = []
 }
-
-/** The reports the user asked to see, or undefined before they asked. Read on request: the section is not a startup cost. */
-const crashes = ref<readonly CrashReport[] | undefined>(undefined)
-/** The report read is in flight. */
-const loadingCrashes = ref(false)
 
 /** Reads the crash reports, newest first, and shows them. */
 async function showCrashes(): Promise<void> {

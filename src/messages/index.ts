@@ -32,6 +32,7 @@
  * file is only the assembly.
  */
 
+import { crash } from './crash'
 import { devices } from './devices'
 import { actions, errors, kernelErrors } from './errors'
 import { home } from './home'
@@ -52,6 +53,8 @@ export const messages = {
   home,
 
   devices,
+
+  crash,
 
   plugins,
 

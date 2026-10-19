@@ -78,6 +78,7 @@
 
       <main class="min-h-0 overflow-y-auto px-4 py-5 text-base lg:px-10 md:px-8 sm:px-6">
         <div class="mx-auto max-w-3xl w-full">
+          <CrashNotice />
           <RouterView />
         </div>
       </main>
@@ -141,6 +142,7 @@ import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as AS
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import CrashNotice from './components/CrashNotice.vue'
 import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'
 import { PAGES } from './router'
