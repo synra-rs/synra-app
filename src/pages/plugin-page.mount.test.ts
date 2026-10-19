@@ -24,10 +24,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn()
+  subscribe: vi.fn(),
+  open: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 
 const PluginsPage = (await import('./PluginsPage.vue')).default
 const { usePluginsStore } = await import('../stores/plugins')
@@ -98,9 +100,31 @@ beforeEach(() => {
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
+  mocks.open.mockReset()
 })
 
 describe('the plugins page', () => {
+  it('fills the install path from the platform directory picker', async () => {
+    // ★ The path was a hand-typed string. The picker answers the same string the input takes, so the install path itself
+    // is unchanged — only the way it is produced is.
+    mocks.open.mockResolvedValue('C:/plugins/hello')
+    mocks.call.mockResolvedValue({ ok: true, value: [] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const choose = wrapper.findAll('button').find(button => button.text() === messages.plugins.chooseDirectory)
+    expect(choose, 'the choose-folder button is missing').toBeDefined()
+    await choose?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }))
+    const field = wrapper.findAll('input').find(input => (input.element as HTMLInputElement).type === 'text')
+    expect(field, 'the install input is missing').toBeDefined()
+    expect((field!.element as HTMLInputElement).value).toBe('C:/plugins/hello')
+    wrapper.unmount()
+  })
+
   it('asks for the list when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 

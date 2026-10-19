@@ -21,6 +21,14 @@
       <AButton :loading="installing" :disabled="installPath.trim() === ''" @click="install">
         {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
       </AButton>
+
+      <!--
+        ★ A directory path typed by hand is the one form here that can be got wrong without noticing. The picker answers
+        the same string the input takes, so the install path itself is unchanged.
+      -->
+      <AButton v-if="installMode === 'path'" :loading="choosing" @click="chooseDirectory">
+        {{ messages.plugins.chooseDirectory }}
+      </AButton>
     </div>
 
     <!--
@@ -982,6 +990,36 @@ const installOptions = computed(() => [
 
 /** Whether an install is in flight, so the button says so and cannot be pressed twice. */
 const installing = ref(false)
+
+/** Whether the directory picker is open. */
+const choosing = ref(false)
+
+/**
+ * Asks the platform for a directory and puts its path in the input.
+ *
+ * The dialog is loaded on demand, so a test or a build without the plugin does not fail before the user asks for it. A
+ * cancelled picker leaves the field alone rather than clearing what the user typed.
+ */
+async function chooseDirectory(): Promise<void> {
+  choosing.value = true
+  error.value = undefined
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: messages.plugins.chooseDirectory
+    })
+    if (typeof selected === 'string')
+      installPath.value = selected
+  }
+  catch {
+    error.value = { code: 'internal', message: 'error.internal' }
+  }
+  finally {
+    choosing.value = false
+  }
+}
 
 /** The update the registry published, by plugin, for the cards that were asked about. */
 const updates = ref<Record<string, UpdateInfo>>({})
