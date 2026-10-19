@@ -7,6 +7,11 @@
 export const home = {
   title: 'Home',
 
+  share: {
+    placeholder: 'Paste a link or some text to share',
+    action: 'Share'
+  },
+
   /**
    * The wire (R27): the one thing on this screen worth spending boldness on, and the only place glass and glow are
    * allowed to mean something. Every string here describes a **real** state — there is no decorative animation, and

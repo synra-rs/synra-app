@@ -99,6 +99,27 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('dispatches the text the user shares from the desk', async () => {
+    // ★ The page listed intents but could not start one. The box is the desktop's share entry; the command is the
+    // contract's `share` source, not a page-specific shortcut.
+    answer({ intent_list: [], intent_dispatch: '11111111-1111-4111-8111-111111111111' })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const field = wrapper.find(`input[placeholder="${messages.home.share.placeholder}"]`)
+    expect(field.exists(), 'the share box is missing').toBe(true)
+    await field.setValue('https://example.test/a-link')
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.home.share.action)
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('intent_dispatch', {
+      source: { kind: 'share', text: 'https://example.test/a-link', title: null }
+    })
+    expect((field.element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
   it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
     // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
     // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.

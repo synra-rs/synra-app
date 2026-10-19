@@ -7,6 +7,22 @@
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
+      ★ The desktop's own share entry. Everything else on this page is about intents that arrived from somewhere else;
+      without this box the app could show what it received and never let the user start one.
+    -->
+    <div class="row gap-2">
+      <AInput
+        v-model:value="shareText"
+        :placeholder="messages.home.share.placeholder"
+        allow-clear
+        @press-enter="share"
+      />
+      <AButton :loading="sharing" :disabled="shareText.trim() === ''" @click="share">
+        {{ messages.home.share.action }}
+      </AButton>
+    </div>
+
+    <!--
       ★ The wire (R27). This is the one thing on this screen worth spending boldness on, and the only place the frosted
       material and the glow are allowed to mean something: `floating` is the glass (R43), and `shadow-glow` appears only
       when the line is *live* (R45 — glow is a state, not a skin).
@@ -226,7 +242,7 @@
  * worth looking at.
  */
 import type { IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -255,6 +271,36 @@ const { intents, transfers } = storeToRefs(intentsStore)
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
+/** The text the user is sharing from this window. */
+const shareText = ref('')
+
+/** Whether the dispatch is in flight. */
+const sharing = ref(false)
+
+/**
+ * Starts an intent from the text in the box.
+ *
+ * The source is the contract's `share` variant, not a URL-only shortcut: the same text may become a link, a note or a
+ * plugin action depending on what the user installed, and deciding that here would be the page routing around the board.
+ */
+async function share(): Promise<void> {
+  const text = shareText.value.trim()
+  if (text === '')
+    return
+  error.value = undefined
+  sharing.value = true
+  const answer = await kernel.call<string>('intent_dispatch', {
+    source: { kind: 'share', text, title: null }
+  })
+  sharing.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  shareText.value = ''
+  await load()
+}
 
 /**
  * The files already in the inbox, newest first.

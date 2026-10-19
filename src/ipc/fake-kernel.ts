@@ -61,6 +61,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
   pairing_request: ['deviceId'],
+  intent_dispatch: ['source'],
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
   plugins_publisher_decide: ['publisherId', 'trust'],
@@ -240,6 +241,9 @@ export class FakeKernel implements Bridge {
         // the one failure mode a fake cannot catch by itself — which is why `commands.test.ts` now asserts every shape
         // here against `command.rs`.
         return PLUGINS.map(plugin => ({ ...plugin }))
+      case 'intent_dispatch':
+        // `One` id: the board's identifier for the intent the share became.
+        return '11111111-1111-4111-8111-111111111111'
       case 'intent_list':
         // ★ A bare array, because the contract says this command returns `Many` — the shape the home page got wrong.
         //
