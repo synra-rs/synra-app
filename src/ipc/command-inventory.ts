@@ -61,6 +61,8 @@ export const REGISTERED = [
   'transfer_open',
   // ★ Show the file in the file manager; the same inbox containment check as opening it.
   'transfer_reveal',
+  // ★ Remove a received file; destructive, so the page asks first and the shell checks the path is in the inbox.
+  'transfer_discard',
   // ★ The audit trail: the ring had no writer until a plugin instance was given a session.
   'plugins_audit',
   // The other half of that section: 18 §5.2 asks to clear one plugin's history, and reading it was only half the item.

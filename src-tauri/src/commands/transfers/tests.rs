@@ -717,6 +717,28 @@ fn opening_a_received_file_is_contained_to_the_inbox() {
 }
 
 #[test]
+fn discarding_a_received_file_removes_only_an_inbox_file() {
+    // ★ Deleting by path is the one command here that can destroy something. The containment check is what keeps it from
+    // being "delete any file the webview can name"; the outside file is asserted to still exist.
+    let (_root, state) = crate::testing::file_state();
+    let inbox = state.paths.data_dir().join(synra_core::inbound::INBOX_DIR);
+    std::fs::create_dir_all(&inbox).expect("the inbox");
+    let inside = inbox.join("done.txt");
+    std::fs::write(&inside, b"goodbye").expect("a received file");
+    let outside = state.paths.data_dir().join("identity.toml");
+    std::fs::write(&outside, b"keep me").expect("a file outside the inbox");
+
+    assert_eq!(
+        super::transfer_discard(&state, &outside.to_string_lossy()).expect_err("outside is refused").code,
+        synra_protocol::ErrorCode::InvalidArgument
+    );
+    assert!(outside.exists(), "the refusal deleted the wrong file");
+
+    super::transfer_discard(&state, &inside.to_string_lossy()).expect("the inbox file is removed");
+    assert!(!inside.exists(), "the received file is still there");
+}
+
+#[test]
 fn a_text_send_is_named_after_the_request_rather_than_the_clock() {
     // ★ The receiver names the arriving file after this path. `message-<ms>.txt` threw away the only part a person
     // recognises; the stem now comes from the request, and a stem with a separator in it stays a name rather than a path.

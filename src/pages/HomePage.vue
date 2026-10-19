@@ -183,6 +183,16 @@
               <AButton size="small" :loading="opening === file.path" @click="openReceived(file)">
                 {{ messages.home.receivedFiles.open }}
               </AButton>
+              <APopconfirm
+                :title="messages.home.receivedFiles.deleteConfirm"
+                :ok-text="messages.home.receivedFiles.delete"
+                :cancel-text="messages.home.receivedFiles.keep"
+                @confirm="discardReceived(file)"
+              >
+                <AButton size="small" danger :loading="discarding === file.path">
+                  {{ messages.home.receivedFiles.delete }}
+                </AButton>
+              </APopconfirm>
             </div>
           </div>
         </AList.Item>
@@ -372,6 +382,27 @@ const opening = ref<string | undefined>(undefined)
 
 /** The received file whose Show-in-folder command is in flight. */
 const revealing = ref<string | undefined>(undefined)
+
+/** The received file whose delete is in flight. */
+const discarding = ref<string | undefined>(undefined)
+
+/**
+ * Deletes a received file, after the row's confirmation.
+ *
+ * The list is updated only when the shell says the file is gone: removing the row first would show a file as deleted
+ * while the command could still refuse. The shell runs the same inbox containment check as Open and Reveal.
+ */
+async function discardReceived(file: ReceivedFile): Promise<void> {
+  error.value = undefined
+  discarding.value = file.path
+  const answer = await kernel.call<null>('transfer_discard', { path: file.path })
+  discarding.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  received.value = received.value.filter(candidate => candidate.path !== file.path)
+}
 
 /**
  * Shows a received file in the platform's file manager.

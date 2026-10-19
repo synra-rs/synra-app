@@ -49,6 +49,9 @@ export const home = {
     title: 'Received files',
     empty: 'No file has landed in the inbox yet.',
     open: 'Open',
-    showInFolder: 'Show in folder'
+    showInFolder: 'Show in folder',
+    delete: 'Delete',
+    deleteConfirm: 'Delete this file from the inbox?',
+    keep: 'Keep'
   }
 } as const

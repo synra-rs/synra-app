@@ -136,6 +136,7 @@ describe('the home page', () => {
       intent_list: [],
       transfer_open: null,
       transfer_reveal: null,
+      transfer_discard: null,
       transfer_received: [
         { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
         { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2_048, receivedAtMs: 1 }
@@ -161,6 +162,14 @@ describe('the home page', () => {
     await reveal?.trigger('click')
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('transfer_reveal', { path: 'C:/inbox/notes.txt' })
+
+    const question = wrapper.findAllComponents({ name: 'APopconfirm' }).at(0)
+    expect(question, 'deleting a received file asks first').toBeDefined()
+    await question?.vm.$emit('confirm')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('transfer_discard', { path: 'C:/inbox/notes.txt' })
+    expect(wrapper.text()).not.toContain('notes.txt')
+    expect(wrapper.text()).toContain('photo.png')
     wrapper.unmount()
   })
 

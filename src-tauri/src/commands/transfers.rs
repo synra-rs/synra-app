@@ -328,6 +328,21 @@ pub fn transfer_reveal(state: &crate::state::AppState, path: &str) -> Result<(),
     })
 }
 
+/// Deletes a received file from the inbox.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and [`ErrorCode::Internal`] when the file
+/// exists but cannot be removed. The containment check is the same one Open and Reveal use: a command that deletes by path
+/// must not be able to delete anything the user did not receive.
+pub fn transfer_discard(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+    let file = inbox_file(state, path)?;
+    std::fs::remove_file(&file).map_err(|error| {
+        synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })
+}
+
 /// Abandons a transfer, and answers whether there was one.
 ///
 /// # Why this refuses an unknown identifier
