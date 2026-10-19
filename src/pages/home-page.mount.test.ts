@@ -136,6 +136,34 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('lets the user accept an intent on a candidate device', async () => {
+    // ★ A candidate is a decision, not a status line. The page listed intents and never called `intent_decide`, so an
+    // intent could arrive and nothing could start it.
+    const intent = {
+      intentId: '01HQ00000000000000000INTNT1',
+      traceId: '01HQ00000000000000000TRACE1',
+      state: 'awaiting',
+      candidates: [
+        { pluginId: '@synra/notes', title: 'Notes', deviceId: '11111111-1111-4111-8111-111111111111', online: true }
+      ],
+      startedAtMs: 1
+    }
+    answer({ intent_list: [intent], intent_decide: null })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const accept = wrapper.findAll('button').find(button => button.text() === messages.home.received.accept)
+    expect(accept, 'the accept action is missing').toBeDefined()
+    await accept?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('intent_decide', {
+      intentId: intent.intentId,
+      decision: { decision: 'accept', deviceId: intent.candidates[0]!.deviceId }
+    })
+    wrapper.unmount()
+  })
+
   it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
     // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
     // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.

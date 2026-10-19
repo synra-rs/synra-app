@@ -62,6 +62,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_cancel: ['scanId'],
   pairing_request: ['deviceId'],
   intent_dispatch: ['source'],
+  intent_decide: ['intentId', 'decision'],
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
   plugins_publisher_decide: ['publisherId', 'trust'],
@@ -244,6 +245,9 @@ export class FakeKernel implements Bridge {
       case 'intent_dispatch':
         // `One` id: the board's identifier for the intent the share became.
         return '11111111-1111-4111-8111-111111111111'
+      case 'intent_decide':
+        // `Unit`: the board records the decision and publishes its own update.
+        return null
       case 'intent_list':
         // ★ A bare array, because the contract says this command returns `Many` — the shape the home page got wrong.
         //

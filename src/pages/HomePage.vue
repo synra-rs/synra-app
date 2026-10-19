@@ -162,15 +162,48 @@
 
       <AList v-else size="small">
         <AList.Item v-for="intent in intents" :key="intent.intentId">
-          <div class="row gap-3">
-            <ATag class="m-0">
-              {{ intent.state }}
-            </ATag>
-            <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
-            <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
-            <span v-if="intent.traceId" class="truncate text-xs text-ink-dim font-mono" :title="intent.traceId">
-              {{ messages.home.received.trace }} {{ intent.traceId }}
-            </span>
+          <div class="stack gap-2">
+            <div class="row gap-3">
+              <ATag class="m-0">
+                {{ intent.state }}
+              </ATag>
+              <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
+              <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
+              <span v-if="intent.traceId" class="truncate text-xs text-ink-dim font-mono" :title="intent.traceId">
+                {{ messages.home.received.trace }} {{ intent.traceId }}
+              </span>
+            </div>
+
+            <!--
+              ★ A candidate is a decision, not a status line. The kernel says which devices could run it; the page's job
+              is to let the user pick one, and declining is the other half of that decision.
+            -->
+            <div v-for="candidate in intent.candidates" :key="candidate.deviceId" class="row-between gap-2">
+              <span class="min-w-0 truncate text-xs">
+                {{ candidate.title }}
+                <span class="text-ink-dim font-mono">{{ candidate.deviceId }}</span>
+                <span v-if="!candidate.online" class="text-ink-dim"> · {{ messages.home.received.offline }}</span>
+              </span>
+              <AButton
+                size="small"
+                :disabled="!candidate.online"
+                :loading="deciding === intent.intentId"
+                @click="accept(intent, candidate)"
+              >
+                {{ messages.home.received.accept }}
+              </AButton>
+            </div>
+
+            <div v-if="intent.candidates.length > 0" class="row gap-2">
+              <AButton
+                size="small"
+                danger
+                :loading="deciding === intent.intentId"
+                @click="decline(intent)"
+              >
+                {{ messages.home.received.decline }}
+              </AButton>
+            </div>
           </div>
         </AList.Item>
       </AList>
@@ -244,7 +277,7 @@
  * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
  * worth looking at.
  */
-import type { IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
+import type { IntentCandidate, IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -451,6 +484,35 @@ async function load(): Promise<void> {
 
 /** The received file whose Open command is in flight. */
 const opening = ref<string | undefined>(undefined)
+
+/** The intent whose decision is in flight, so its buttons can say so and cannot be pressed twice. */
+const deciding = ref<string | undefined>(undefined)
+
+/** Sends a decision for one intent and reloads the board's picture. */
+async function decide(intent: IntentSnapshot, decision: Record<string, unknown>): Promise<void> {
+  error.value = undefined
+  deciding.value = intent.intentId
+  const answer = await kernel.call<null>('intent_decide', {
+    intentId: intent.intentId,
+    decision
+  })
+  deciding.value = undefined
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  await load()
+}
+
+/** Runs an intent on the device the user picked. */
+async function accept(intent: IntentSnapshot, candidate: IntentCandidate): Promise<void> {
+  await decide(intent, { decision: 'accept', deviceId: candidate.deviceId })
+}
+
+/** Refuses an intent. The other side is told, which is why the reason is `null` rather than omitted. */
+async function decline(intent: IntentSnapshot): Promise<void> {
+  await decide(intent, { decision: 'decline', reason: null })
+}
 
 /** The received file whose Show-in-folder command is in flight. */
 const revealing = ref<string | undefined>(undefined)

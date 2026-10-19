@@ -97,6 +97,10 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   plugins_list: undefined,
   // The command is `One` **and takes an `intent_id`**: it answers about one intent rather than listing them.
   intent_snapshot: { intentId: '01HQ00000000000000000INTNT1' },
+  intent_decide: {
+    intentId: '01HQ00000000000000000INTNT1',
+    decision: { decision: 'acceptDefault' }
+  },
   // The listing read, which is `Many`: the payload is the array rather than an envelope around it.
   intent_list: undefined,
   transfer_list: undefined,
