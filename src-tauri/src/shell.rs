@@ -569,6 +569,14 @@ mod wrappers {
         commands::diag::diag_logs_tail(&state, lines)
     }
 
+    /// Deletes the crash reports that would make the next start enter safe mode.
+    #[tauri::command]
+    pub fn diag_crash_dismiss(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<(), IpcError> {
+        commands::diag::diag_crash_dismiss(&state)
+    }
+
     /// What the shell's metrics hold.
     ///
     /// ★ No arguments, and that is the command's whole interface.
@@ -633,6 +641,7 @@ mod wrappers {
             diag_export,
             diag_probes,
             diag_logs_tail,
+            diag_crash_dismiss,
             diag_metrics,
         ]
     }

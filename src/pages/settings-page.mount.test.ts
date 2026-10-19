@@ -400,6 +400,30 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('dismisses the crash reports that would start the next run in safe mode', async () => {
+    // ★ Safe mode is decided from the reports on disk, so "ignore" has to delete them. A page that only hid the prompt
+    // would ask again next start — which is exactly how a person learns to click through it without reading.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_crash_dismiss: null
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const button = wrapper
+      .findAll('button')
+      .find(candidate => candidate.text() === messages.settings.diagnostics.dismissCrashes)
+    expect(button, 'the dismiss button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('diag_crash_dismiss')
+    expect(wrapper.text()).toContain(messages.settings.diagnostics.dismissed)
+    wrapper.unmount()
+  })
+
   it('reads the recent log when its section is opened', async () => {
     // ★ Read on open, not on mount: a log copied at load is stale by the time a user scrolls to it, and it is the
     // largest thing this page can ask for. The queued `toggle` is the browser's own event, as in the audit section.

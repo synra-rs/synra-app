@@ -598,3 +598,30 @@ fn the_window_asks_the_same_probe_questions_the_cli_does() {
         "a status outside the contract's three words"
     );
 }
+
+#[test]
+fn dismissing_crashes_clears_the_reports_that_would_enter_safe_mode() {
+    // ★ "Ignore" has to be durable: a prompt that leaves the report behind shows itself again next start, which is how
+    // a person learns to click through it. This is the button that turns a fixed installation back into a normal one.
+    let state = testing::state();
+    let store = synra_observe::crash::CrashStore::at(state.paths.crash_dir());
+    for offset in 0..synra_observe::crash::SAFE_MODE_THRESHOLD {
+        store
+            .write(&synra_observe::crash::CrashReport::new(
+                1_000 + i64::try_from(offset).expect("a small offset"),
+                "0.1.0",
+                Some("src/plugin.rs:42".to_owned()),
+                Some("the plugin panicked".to_owned()),
+                None,
+                None,
+                None,
+            ))
+            .expect("the report is written");
+    }
+    assert!(!store.verdict(1_000).allows_plugins(), "the fixture did not reach safe mode");
+
+    super::diag_crash_dismiss(&state).expect("the reports are dismissed");
+
+    assert!(store.is_empty(), "a report survived the dismiss");
+    assert!(store.verdict(1_000).allows_plugins(), "the next start would still be in safe mode");
+}

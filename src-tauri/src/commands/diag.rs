@@ -313,6 +313,26 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
     Ok(synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines)
 }
 
+/// Deletes the crash reports that make the next start enter safe mode.
+///
+/// # Why "dismiss" deletes rather than remembers
+///
+/// Because the verdict is built from the reports on disk: a prompt that was answered "ignore" and left the file behind
+/// would show the same prompt again next start, which is how a person learns to click through it without reading. The
+/// reports are diagnostic material and are already included in an exported bundle, so the user who wants them keeps the
+/// bundle; the one who says "ignore" gets a clean start.
+///
+/// # Errors
+///
+/// [`IpcError::Internal`] when a report exists but cannot be removed. A missing directory is not an error.
+pub fn diag_crash_dismiss(state: &AppState) -> Result<(), IpcError> {
+    let store = synra_observe::crash::CrashStore::at(state.paths.crash_dir());
+    store.clear().map_err(|error| {
+        IpcError::unknown(synra_protocol::ErrorCode::Internal)
+            .with_params(serde_json::json!({"reason": error.to_string()}))
+    })
+}
+
 /// What the shell's metrics currently hold.
 ///
 /// Why this command returns the snapshot rather than a rendering of it.

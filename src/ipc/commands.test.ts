@@ -107,6 +107,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // `Many`: a bare array, which is what the arity says the payload is.
   diag_logs_tail: { lines: 100 },
   diag_probes: undefined,
+  diag_crash_dismiss: undefined,
   // `One`: the contract declares this command as `One`, and the fake now answers the removal's report. The value here is
   // the **arguments** this test invokes with, so both required keys are present.
   plugins_uninstall: { pluginId: '@acme/hello', removeData: true },
@@ -137,7 +138,7 @@ const MAYBE_COMMAND = 'plugins_check_update'
 const KNOWN_DIVERGENCE = 'devices_scan_start'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 48
+const DECLARED_COMMANDS = 49
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

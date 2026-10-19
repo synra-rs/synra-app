@@ -73,7 +73,11 @@ export const settings = {
     onlyProblems: 'Only problems',
     /** The shell's own recent log, for a user who wants to see it before exporting. */
     logs: 'Recent log',
-    logsEmpty: 'The log is empty.'
+    logsEmpty: 'The log is empty.',
+    /** The crash prompt's "ignore": safe mode is decided from the reports on disk. */
+    dismissCrashes: 'Dismiss crash reports',
+    dismissDetail: 'A repeated crash is why the next start may begin without plugins. Dismissing the reports makes it start normally again; export a bundle first if you want to keep them.',
+    dismissed: 'Dismissed. The next start will load plugins again.'
   },
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {

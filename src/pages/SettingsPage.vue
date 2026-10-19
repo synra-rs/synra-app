@@ -279,6 +279,24 @@
       </div>
 
       <!--
+        ★ The crash prompt's "ignore". Safe mode is decided from the reports on disk, so leaving them behind means the
+        next start asks again — this is the action that makes a fixed installation start normally.
+      -->
+      <div class="stack gap-2">
+        <p class="m-0 text-xs text-ink-dim">
+          {{ messages.settings.diagnostics.dismissDetail }}
+        </p>
+        <div class="row items-center gap-2">
+          <AButton danger :loading="dismissing" @click="dismissCrashes">
+            {{ messages.settings.diagnostics.dismissCrashes }}
+          </AButton>
+          <span v-if="crashesDismissed" class="text-xs text-ink-dim">
+            {{ messages.settings.diagnostics.dismissed }}
+          </span>
+        </div>
+      </div>
+
+      <!--
         ★ Run on request, not on mount: the probes bind ports, write a file and read the clock, so running them on every
         visit would make navigating to settings do work the user did not ask for. The section explains what it checks
         because a user deciding whether to press it needs to know it is not a network test.
@@ -506,6 +524,24 @@ async function exportDiagnostics(): Promise<void> {
     return
   }
   exported.value = answer.value
+}
+
+/** Whether the crash reports were dismissed in this visit. */
+const crashesDismissed = ref(false)
+/** The dismiss is in flight; a second click would be a second delete. */
+const dismissing = ref(false)
+
+/** Deletes the crash reports that make the next start enter safe mode. */
+async function dismissCrashes(): Promise<void> {
+  dismissing.value = true
+  error.value = undefined
+  const answer = await kernel.call<null>('diag_crash_dismiss')
+  dismissing.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  crashesDismissed.value = true
 }
 
 /** The probes' last report, or undefined before the user has asked for one. */
