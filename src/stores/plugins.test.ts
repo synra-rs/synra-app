@@ -73,6 +73,29 @@ describe('the plugins store', () => {
     expect(store.plugin('b')?.state).toBe('active')
   })
 
+  it('shows a degraded rung beside an active plugin, without faulting it', () => {
+    // ★ `degraded` is not `faulted`: the plugin still runs, at a reduced quota. The card's state stays `active`; the
+    // health report is where the sentence belongs.
+    const store = usePluginsStore()
+    store.applySnapshot([card('a', {
+      state: 'active',
+      health: {
+        health: 'good',
+        explanation: 'ordinary',
+        callsAdmitted: 4,
+        callsRefused: 0,
+        usage: null
+      }
+    })])
+
+    expect(store.markHealth('a', 'degraded', 'it asked too often')).toBe(true)
+
+    expect(store.plugin('a')?.state).toBe('active')
+    expect(store.plugin('a')?.health?.health).toBe('degraded')
+    expect(store.plugin('a')?.health?.explanation).toBe('it asked too often')
+    expect(store.plugin('a')?.health?.callsAdmitted).toBe(4)
+  })
+
   it('forgets a card, which is what an uninstall leaves behind', () => {
     // The kernel has no removal event: a card for a plugin that no longer exists would be a card about nothing.
     const store = usePluginsStore()
