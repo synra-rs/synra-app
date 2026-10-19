@@ -107,6 +107,18 @@
           @change="(checked) => saveCancel(checked === true)"
         />
       </div>
+
+      <div class="row-between gap-4">
+        <div class="stack">
+          <span class="text-sm">{{ messages.settings.transfers.notify }}</span>
+          <span class="text-xs text-ink-dim">{{ messages.settings.transfers.notifyDetail }}</span>
+        </div>
+        <ASwitch
+          :checked="notifyOnReceive"
+          :loading="savingNotify"
+          @change="(checked) => saveNotify(checked === true)"
+        />
+      </div>
     </section>
 
     <section class="stack gap-3">
@@ -537,6 +549,30 @@ async function saveCancel(value: boolean): Promise<void> {
     patch: { set: { 'transfers.confirmCancel': value } }
   })
   savingCancel.value = false
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
+
+/** Whether a system notification is shown when a file arrives. Absent means the design's default, on. */
+const notifyOnReceive = ref(true)
+const savingNotify = ref(false)
+
+watch(
+  () => settings.value('transfers.notifyOnReceive'),
+  (value) => {
+    notifyOnReceive.value = value !== false
+  },
+  { immediate: true }
+)
+
+/** Writes the receive-notification preference. */
+async function saveNotify(value: boolean): Promise<void> {
+  savingNotify.value = true
+  error.value = undefined
+  const answer = await kernel.call<null>('config_set', {
+    patch: { set: { 'transfers.notifyOnReceive': value } }
+  })
+  savingNotify.value = false
   if (!answer.ok)
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }

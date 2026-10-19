@@ -75,6 +75,21 @@ fn received_notification(transfer: &synra_core::listener::FinishedTransfer) -> O
     Some(("Synra".to_owned(), format!("Received {name}")))
 }
 
+/// Whether the user wants a system notification for a received file.
+///
+/// Absence is `true`: the design's default is to tell someone a file arrived, and a missing row is "they have not turned
+/// it off", not "they turned it on". A row that does not parse is also the default — the kernel wrote it, so a bad value
+/// is a bug, and silently muting the notification would hide it.
+fn notifications_enabled(state: &AppState) -> bool {
+    state
+        .db()
+        .config()
+        .ok()
+        .and_then(|rows| rows.into_iter().find(|row| row.key == "transfers.notifyOnReceive"))
+        .and_then(|row| serde_json::from_str::<bool>(&row.value).ok())
+        .unwrap_or(true)
+}
+
 /// Binds the port this device is reachable on, and records it in the state.
 ///
 /// # Why this is separate from [`spawn`]
@@ -239,7 +254,9 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     }
                     // ★ The window may not be in front. Best effort: a platform that cannot show a notification is a
                     // missing convenience, not a reason to fail a transfer that already landed.
-                    if let Some((title, body)) = received_notification(transfer) {
+                    if let Some((title, body)) = received_notification(transfer)
+                        && notifications_enabled(&finished_state)
+                    {
                         use synra_platform::Platform as _;
                         let _ = finished_state.platform.notify(&title, &body);
                     }
@@ -501,5 +518,17 @@ mod tests {
             received_notification(&received(None)),
             Some(("Synra".to_owned(), "Received notes.txt".to_owned()))
         );
+    }
+
+    #[test]
+    fn the_notification_switch_is_on_unless_the_user_turned_it_off() {
+        let state = crate::testing::state();
+        assert!(super::notifications_enabled(&state), "the default is to tell someone a file arrived");
+
+        state
+            .db()
+            .set_config("transfers.notifyOnReceive", &serde_json::json!(false), 1_000)
+            .expect("the switch");
+        assert!(!super::notifications_enabled(&state), "the switch was ignored");
     }
 }

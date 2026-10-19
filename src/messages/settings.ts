@@ -46,7 +46,9 @@ export const settings = {
   transfers: {
     title: 'Transfers',
     cancelAsk: 'Ask before cancelling',
-    cancelAskDetail: 'Confirm before a transfer in flight is abandoned.'
+    cancelAskDetail: 'Confirm before a transfer in flight is abandoned.',
+    notify: 'Notify when a file arrives',
+    notifyDetail: 'A system notification, so a transfer that lands while the window is elsewhere is not missed.'
   },
   /** How long the durable audit trail is kept. The kernel sweeps the table when it starts. */
   audit: {

@@ -178,7 +178,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(2)
+    expect(switches).toHaveLength(3)
     const cancelSwitch = switches[1]
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
@@ -186,6 +186,24 @@ describe('the settings page', () => {
 
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
       patch: { set: { 'transfers.confirmCancel': false } }
+    })
+    wrapper.unmount()
+  })
+
+  it('writes the receive-notification switch under its own key', async () => {
+    // ★ Absent means on: the design wants a file that arrives while the window is elsewhere to be noticed, so a page that
+    // treated absent as off would silence it without anybody asking.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const notifySwitch = wrapper.findAllComponents({ name: 'ASwitch' })[2]
+    expect(notifySwitch).toBeDefined()
+    await notifySwitch?.vm.$emit('change', false)
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'transfers.notifyOnReceive': false } }
     })
     wrapper.unmount()
   })
