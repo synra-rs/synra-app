@@ -122,6 +122,16 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('says when a drop had nothing it could do', async () => {
+    useNoticesStore().apply(notice('notice.dropIgnored', {}))
+
+    const { wrapper } = mountHost()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.notices.dropIgnored)
+    wrapper.unmount()
+  })
+
   it('says when a synra link is not one this build understands', async () => {
     // ★ The deep-link handler focuses the window for any `synra://` link; doing that silently for an unknown one would
     // look like it worked. The notice is the sentence that says it did not.

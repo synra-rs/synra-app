@@ -16,6 +16,8 @@ export const notices = {
   /** The package is older than what is installed; a double-click is not an instruction to downgrade. */
   newerInstalled: (pluginId: string, installed: string, offered: string): string =>
     `${pluginId} ${installed} is newer than ${offered}; nothing was replaced.`,
+  /** A drop that did not install anything: this shell has no destination for other files yet. */
+  dropIgnored: 'Only .synra packages can be dropped here.',
   /** A `synra://` link this build does not understand; it focused the window but did nothing. */
   unknownLink: (url: string): string => `This build does not understand this link: ${url}`,
   /** A notice key this build does not know still has to say something rather than print the key. */

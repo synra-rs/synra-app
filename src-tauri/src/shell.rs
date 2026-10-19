@@ -805,10 +805,21 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 let handle = app.handle().clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                        let mut opened = false;
                         for path in paths {
                             if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra")) {
                                 open_package(&handle, path);
+                                opened = true;
                             }
+                        }
+                        // ★ A drop that installed nothing is not a successful gesture. Other files have no destination
+                        // yet, so say that rather than leaving the window looking like it ignored the user.
+                        if !opened && !paths.is_empty() {
+                            let state = handle.state::<std::sync::Arc<AppState>>();
+                            state.publish(synra_ipc::event::KernelEvent::Notice {
+                                message: "notice.dropIgnored".to_owned(),
+                                params: serde_json::json!({}),
+                            });
                         }
                     }
                 });

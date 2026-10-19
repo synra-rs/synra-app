@@ -87,6 +87,8 @@ const headline = computed(() => {
       String(value.params.offered ?? '')
     )
   }
+  if (value.message === 'notice.dropIgnored')
+    return messages.notices.dropIgnored
   if (value.message === 'notice.unknownLink')
     return messages.notices.unknownLink(String(value.params.url ?? ''))
   return messages.notices.generic
