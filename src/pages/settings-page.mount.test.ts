@@ -356,6 +356,37 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('compares the whole start against the cold-start budget', async () => {
+    // ★ The panel already lists every series; this is the one reading whose value is a **threshold**. A number nobody
+    // compares is not a budget, and an unobserved series must not read as "0 ms and within budget".
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_metrics: {
+        values: [
+          {
+            key: { name: 'startup_duration_ms', labels: [['phase', 'state']] },
+            value: { kind: 'histogram', value: { bounds: [1], buckets: [1, 0], count: 1, sum: 40 } }
+          },
+          {
+            key: { name: 'startup_duration_ms', labels: [['phase', 'total']] },
+            value: { kind: 'histogram', value: { bounds: [1, 10, 100, 1000], buckets: [0, 0, 0, 2, 0], count: 2, sum: 700 } }
+          }
+        ],
+        overflowedTotal: 0,
+        maxSeriesPerMetric: 1_000
+      }
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.settings.metrics.startup)
+    expect(wrapper.text()).toContain('350 ms')
+    expect(wrapper.text()).toContain(messages.settings.metrics.startupWithin)
+    wrapper.unmount()
+  })
+
   it('says when the snapshot is incomplete rather than drawing it as the whole', async () => {
     // ★ The cap is a real answer about the data ("some series were folded"), not a warning to suppress: a panel that drew
     // twenty rows and stayed silent would be a panel claiming the recorder holds twenty things.

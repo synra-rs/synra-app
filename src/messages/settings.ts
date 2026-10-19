@@ -104,6 +104,10 @@ export const settings = {
     detail: 'Counters, gauges and histograms recorded by this process. The panel re-reads them every few seconds and contains no payload content.',
     refresh: 'Refresh',
     empty: 'No metric has been recorded yet.',
+    /** The M4 cold-start budget, read from the one series that measures the whole shell start. */
+    startup: 'Startup',
+    startupWithin: 'within the 500 ms budget',
+    startupOver: 'over the 500 ms budget',
     /** 一个直方图的两个可读数字：多少次观测、平均多少。 */
     histogram: (count: number, mean: string): string => `${count} samples, mean ${mean}`,
     /** 有观测被折进 overflow 序列时，快照不再是全集 —— 说出来，而不是画一条看起来完整的列表。 */

@@ -203,6 +203,13 @@
       <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-xs text-ink-dim">
         {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
       </p>
+      <div v-if="startup" class="row flex-wrap items-baseline gap-2 text-xs">
+        <span class="text-ink-dim">{{ messages.settings.metrics.startup }}</span>
+        <span class="font-mono">{{ startup.ms.toFixed(0) }} ms</span>
+        <span :class="startup.within ? 'text-ink-dim' : 'text-error'">
+          {{ startup.within ? messages.settings.metrics.startupWithin : messages.settings.metrics.startupOver }}
+        </span>
+      </div>
       <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
       <AList v-else-if="metrics" size="small">
         <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)">
@@ -796,6 +803,23 @@ const METRICS_POLL_MS = 5_000
 
 /** The last metric snapshot, if one has been read. `undefined` means "not asked yet", which is not "empty". */
 const metrics = ref<MetricsSnapshot | undefined>(undefined)
+
+/**
+ * The whole-start observation, against the one budget M4 names.
+ *
+ * The panel still lists every series; this is the one reading whose **value** is a threshold, and a number nobody compares
+ * is not a budget. A missing or unobserved series is `undefined`, not "0 ms and within budget".
+ */
+const startup = computed(() => {
+  const series = metrics.value?.values.find(sample =>
+    sample.key.name === 'startup_duration_ms'
+    && sample.key.labels.some(([name, value]) => name === 'phase' && value === 'total')
+  )
+  if (!series || series.value.kind !== 'histogram' || series.value.value.count === 0)
+    return undefined
+  const mean = series.value.value.sum / series.value.value.count
+  return { within: mean <= 500, ms: mean }
+})
 
 /** Whether the Refresh button's read is in flight. Polling does not set it: the button is not what is happening. */
 const refreshing = ref(false)
