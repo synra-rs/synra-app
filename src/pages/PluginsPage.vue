@@ -248,6 +248,14 @@
               show-icon
             />
 
+            <!--
+              ★ Why it is not running, when the state word cannot carry the reason. Safe mode is the case that made this
+              necessary: the host started without plugins after a crash loop, every card is `unavailable`, and the only
+              sentence that tells the user what to fix is the host's own explanation. A page that guessed from `state`
+              would tell them a plugin is broken when the host decided not to start any of them.
+            -->
+            <AAlert v-if="plugin.stateReason" type="warning" show-icon :message="plugin.stateReason" />
+
             <dl class="m-0 row flex-wrap gap-4 text-xs">
               <div class="row gap-1">
                 <dt class="m-0 text-ink-dim">

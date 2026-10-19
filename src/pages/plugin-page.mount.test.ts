@@ -173,6 +173,23 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('says why the host did not start a plugin, instead of only calling it unavailable', async () => {
+    // ★ Safe mode: every card is `unavailable` because the host chose not to start any plugin after a crash loop, and a
+    // state word alone sends the user looking for a broken artifact. The sentence is the host's own — the page must not
+    // invent one — so the assertion is on the exact text it was given.
+    const why = 'it crashed 3 times at src/plugin.rs:42; starting without plugins so this can be fixed'
+    mocks.call.mockResolvedValue({
+      ok: true,
+      value: [card({ state: 'unavailable', stateReason: why })]
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(why)
+    wrapper.unmount()
+  })
+
   it('asks about the data in a dialog before removing a plugin', async () => {
     // ★ The destructive half of removal: the command always accepted `removeData`, and the page sent `false` without ever
     // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the
