@@ -795,22 +795,55 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 }
             }
             // ★ A `.synra` file opened from the desktop. The installer already owns the checks; this only turns the
-            // argument into the source the install command takes.
+            // argument into the source the install command takes, and decides whether it is a first install or an
+            // update — `plugins_install` refuses a plugin that is already installed, and a double-click on a newer
+            // package is an update, not a mistake.
             if let Some(package) = crate::launch::package_from_args(std::env::args()) {
                 let state = app.state::<std::sync::Arc<AppState>>();
-                let source = synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
-                match commands::plugins::plugins_install(&state, &source) {
-                    Ok(report) => {
-                        state.publish(synra_ipc::event::KernelEvent::Notice {
-                            message: "notice.installed".to_owned(),
-                            params: serde_json::json!({
-                                "pluginId": report.plugin_id,
-                                "version": report.version,
-                            }),
-                        });
+                match synra_core::install::package_manifest(&package) {
+                    Ok(manifest) => {
+                        let id = manifest.id.as_str();
+                        let installed = state
+                            .db()
+                            .plugins()
+                            .is_ok_and(|rows| rows.iter().any(|row| row.plugin_id == id));
+                        if installed {
+                            match commands::plugins::update_directory(&state, id, &package) {
+                                Ok(()) => {
+                                    state.publish(synra_ipc::event::KernelEvent::Notice {
+                                        message: "notice.installed".to_owned(),
+                                        params: serde_json::json!({
+                                            "pluginId": id,
+                                            "version": manifest.version,
+                                        }),
+                                    });
+                                }
+                                Err(error) => {
+                                    eprintln!("synra: {} could not be updated: {error:?}", package.display());
+                                }
+                            }
+                        }
+                        else {
+                            let source =
+                                synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
+                            match commands::plugins::plugins_install(&state, &source) {
+                                Ok(report) => {
+                                    state.publish(synra_ipc::event::KernelEvent::Notice {
+                                        message: "notice.installed".to_owned(),
+                                        params: serde_json::json!({
+                                            "pluginId": report.plugin_id,
+                                            "version": report.version,
+                                        }),
+                                    });
+                                }
+                                Err(error) => {
+                                    eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                                }
+                            }
+                        }
                     }
                     Err(error) => {
-                        eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                        eprintln!("synra: {} is not a readable package: {error:?}", package.display());
                     }
                 }
                 crate::window::show_main(app.handle());

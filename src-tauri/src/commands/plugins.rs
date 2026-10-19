@@ -613,13 +613,15 @@ pub(crate) fn update_directory(
     Ok(())
 }
 
-/// The version a directory package declares, when it is a directory at all.
+/// The version a package declares, whether it is a directory or a `.synra` archive.
 ///
-/// A `.synra` archive is not read here: extracting it just to learn a version would duplicate the installer's own
-/// unpacking, and an update from an archive is allowed to skip migration (the caller documents that in the command).
+/// A directory's manifest is read in place; an archive is unpacked into a temporary directory by
+/// `synra_core::install::package_manifest`, which throws the files away and keeps the manifest. Without that, an update
+/// from a `.synra` file skipped the migration — the one step that has to run against the old instance before its bytes
+/// are replaced.
 fn source_version(path: &std::path::Path) -> Option<String> {
     if path.is_file() {
-        return None;
+        return synra_core::install::package_manifest(path).ok().map(|manifest| manifest.version);
     }
     let text = std::fs::read_to_string(path.join("manifest.json")).ok()?;
     let manifest = synra_plugin_api::Manifest::from_json(&text).ok()?;
