@@ -8,7 +8,9 @@ export const plugins = {
   empty: 'No plugin is installed.',
   /** The filter above the installed list; it matches the id, the title and the description. */
   filterPlaceholder: 'Filter installed plugins',
+  /** Why the installed list is empty when a filter kept everything out. */
   noMatch: 'No installed plugin matches that filter.',
+  clearFilter: 'Clear filter',
   /** How an install names its source: a directory on this device, or a package in the configured registry. */
   installMode: {
     path: 'From a directory',

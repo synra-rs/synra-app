@@ -220,7 +220,11 @@
       </AButton>
     </AEmpty>
 
-    <AEmpty v-else-if="visible.length === 0" :description="messages.plugins.noMatch" />
+    <AEmpty v-else-if="visible.length === 0" :description="messages.plugins.noMatch">
+      <AButton size="small" @click="clearFilter">
+        {{ messages.plugins.clearFilter }}
+      </AButton>
+    </AEmpty>
 
     <!--
       A plugin is a substantial object — a name, three machine facts, a description, two permission lists and possibly
@@ -643,6 +647,13 @@ const installed = computed(() => [...plugins.value])
 
 /** The filter the user typed, matched against id, title and description. */
 const query = ref('')
+
+/** Drops a filter that kept every card out — including one a package notice supplied. */
+function clearFilter(): void {
+  query.value = ''
+  // The query in the address bar is what put the filter there; leaving it would bring the same empty list back on reload.
+  window.history.replaceState({}, '', '/plugins')
+}
 
 /** What the list draws: the installed plugins the filter keeps. */
 const visible = computed(() => {

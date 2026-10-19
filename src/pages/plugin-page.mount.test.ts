@@ -171,6 +171,28 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('offers to clear a filter that keeps every card out', async () => {
+    // ★ A notice can name a plugin that is no longer installed. The empty list has to offer the way back rather than
+    // leaving the user to discover that the box above is a filter.
+    window.history.replaceState({}, '', '/?plugin=@acme/missing')
+    mocks.call.mockImplementation(async (command: string) => command === 'plugins_list'
+      ? { ok: true, value: [card()] }
+      : { ok: true, value: [] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.plugins.noMatch)
+    const clear = wrapper.findAll('button').find(button => button.text() === messages.plugins.clearFilter)
+    expect(clear, 'the empty list has no clear action').toBeDefined()
+    await clear?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Hello')
+    expect(window.location.search).toBe('')
+    wrapper.unmount()
+  })
+
   it('asks for the list when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 
