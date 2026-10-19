@@ -71,6 +71,10 @@ pub mod tray_menu;
 #[cfg(feature = "tauri-shell")]
 pub mod shell;
 
+// ★ `synra://` links: a parser that can be tested, and a handler that needs the window.
+#[cfg(feature = "tauri-shell")]
+pub mod deeplink;
+
 // ★ The tray needs an event loop, so it is behind the same gate as the window; [`tray_menu`] holds the part that does not.
 #[cfg(feature = "tauri-shell")]
 pub mod tray;

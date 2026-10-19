@@ -719,6 +719,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // ★ `synra://` links. The plugin owns the scheme registration and the event; `deeplink.rs` owns what a link
+        // means, and the setup below only hands it the URLs.
+        .plugin(tauri_plugin_deep_link::init())
         // ★ One shortcut, and it does the thing a tray app needs: bring the window back without hunting for it. The
         // handler is here rather than in a page because a page is not running when the window is hidden.
         .plugin(
@@ -775,6 +778,22 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 &bridge_cancel,
             );
             app.manage(std::sync::Arc::new(state));
+            {
+                use tauri_plugin_deep_link::DeepLinkExt as _;
+                let handle = app.handle().clone();
+                let _ = app
+                    .deep_link()
+                    .on_open_url(move |event| crate::deeplink::receive(&handle, event.urls()));
+                // ★ A cold start that *is* the link: the event may have been emitted before this listener existed, and
+                // `get_current` is the plugin's answer for that window.
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    crate::deeplink::receive(app.handle(), urls);
+                }
+                #[cfg(any(windows, target_os = "linux"))]
+                if let Err(error) = app.deep_link().register_all() {
+                    eprintln!("synra: the synra:// scheme could not be registered: {error}");
+                }
+            }
             // ★ A shortcut another application already owns is a missing convenience, not a reason to lose the window —
             // so the failure is reported and the rest of setup continues.
             {
