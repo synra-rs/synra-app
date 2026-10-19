@@ -112,6 +112,39 @@ pub fn plugins_consent_respond(
     Ok(card)
 }
 
+/// Records every plugin directory the database does not know about.
+///
+/// # Why the shell needs this at all
+///
+/// Because it has its own data directory. The daemon runs the same scan over *its* `plugins/`, so a directory an author
+/// copied into the window's data directory was invisible in the window while the identical directory beside the daemon
+/// appeared — two answers to "what is installed" on one machine. The scan records and does not trust: a row it writes is
+/// disabled and untrusted, so this is visibility, not approval.
+///
+/// # Errors
+///
+/// None. A directory that is not a plugin is a `problem` in the returned list; the caller prints it, because the
+/// difference between "nothing is installed" and "the installation is half-copied" is one a user has to be told.
+#[cfg(any(feature = "tauri-shell", test))]
+pub(crate) fn discover_plugins(
+    state: &AppState,
+    now_ms: i64,
+) -> Vec<synra_core::plugin::Discovered> {
+    let found = {
+        let db = state.db();
+        synra_core::plugin::record_discovered_plugins(&db, &state.paths.plugins_dir(), now_ms)
+    };
+    for discovered in &found {
+        match &discovered.problem {
+            Some(problem) => {
+                eprintln!("synra-app: {} was not recorded as a plugin: {problem}", discovered.plugin_id);
+            }
+            None => eprintln!("synra-app: {} was found and recorded as installed, switched off", discovered.plugin_id),
+        }
+    }
+    found
+}
+
 /// Loads every installed plugin the database says should run.
 ///
 /// # Why this is a shell function and not a startup-only step
@@ -1091,9 +1124,9 @@ fn directory_size(root: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_RETENTION_KEY, install_directory, load_installed_plugins, plugins_audit, plugins_audit_clear,
-        plugins_catalog_search, plugins_check_update, plugins_consent_respond, plugins_install, plugins_list,
-        plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
+        AUDIT_RETENTION_KEY, discover_plugins, install_directory, load_installed_plugins, plugins_audit,
+        plugins_audit_clear, plugins_catalog_search, plugins_check_update, plugins_consent_respond, plugins_install,
+        plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
     };
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
@@ -2605,6 +2638,28 @@ mod tests {
         assert_eq!(card.state, "unavailable");
         let reason = card.state_reason.as_deref().expect("a refusal must say why");
         assert!(reason.contains("artifact"), "{reason}");
+    }
+
+    #[test]
+    fn a_directory_copied_into_this_shells_data_dir_becomes_a_card() {
+        // ★ The shell has its own `plugins/` directory, and before this it never scanned it: a directory an author
+        // copied in was invisible in the window while the same directory beside the daemon appeared. Discovery records
+        // and does not trust, so the card is `awaiting_consent` rather than running.
+        let (_root, state) = testing::file_state();
+        write_loadable_files(&state);
+        assert!(state.db().plugins().expect("rows").is_empty(), "nothing is recorded yet");
+
+        let found = discover_plugins(&state, testing::FIXED_NOW_MS);
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].plugin_id, ID);
+        assert!(found[0].problem.is_none(), "{found:?}");
+        let cards = plugins_list(&state).expect("the list");
+        let card = cards.first().expect("the discovered plugin");
+        // A discovered directory is written disabled and untrusted, and `disabled` is the first word: the user has not
+        // switched it on, so the fact that consent has also not been answered is not the card's headline.
+        assert_eq!(card.state, "disabled");
+        assert!(!card.enabled && card.granted.is_empty(), "a copied directory is not an approval");
     }
 
     #[test]

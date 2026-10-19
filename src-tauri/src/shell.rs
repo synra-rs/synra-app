@@ -973,6 +973,10 @@ fn with_plugins_or_refuse(
     state: AppState,
     verdict: &synra_observe::crash::StartupVerdict,
 ) -> AppState {
+    // ★ Before the engine, because it is about what is on disk rather than what can run. A directory an author copied
+    // into this shell's data directory becomes a row here — disabled and untrusted, so the consent screen is still the
+    // gate — and the list can show it even in a build with no engine at all.
+    let _ = commands::plugins::discover_plugins(&state, state.started_at_ms);
     // ★ The engine the platform wants, asked for rather than assumed.
     //
     // `BackendKind::default_for` is the table the kernel keeps for exactly this question, and a shell that named
