@@ -20,15 +20,14 @@ export const settings = {
   },
   preferences: 'Preferences',
   /**
-   * The two keys this page reads, in the user's words.
+   * The one key this page reads, in the user's words.
    *
    * The page's own key names are not the kernel's — its configuration is addressed by dotted paths (`ui.theme`) —
    * so these are labels rather than the key printed into the interface, which is also what keeps a user-visible
    * string out of the template (R31).
    */
   preference: {
-    theme: 'Theme',
-    autoSyncPlugins: 'Update plugins automatically'
+    theme: 'Theme'
   },
   /** Why the theme row has no control, where a control would be. */
   themeFixed: 'One palette ships with the host; plugins read this value rather than choosing another.',

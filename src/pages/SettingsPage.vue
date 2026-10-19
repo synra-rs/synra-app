@@ -75,19 +75,12 @@
             <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
           </span>
 
-          <ASwitch
-            v-if="key === 'autoSyncPlugins'"
-            :checked="settings.value(configKey(key)) === true"
-            :loading="saving === key"
-            @change="(checked) => save(key, checked === true)"
-          />
-
           <!--
               ★ One theme, and the sentence says so. A select with no options looked like a control the page had failed
               to fill; `ui.theme` is a record the kernel keeps and plugins read, not a preference this device can change
               (28 §6 R22). The value itself is printed above.
             -->
-          <span v-else class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
+          <span class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
         </div>
       </div>
     </section>
@@ -459,7 +452,7 @@ import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
-/** The keys this page knows about, in the order they are shown. */const KEYS = ['theme', 'autoSyncPlugins'] as const
+/** The keys this page knows about, in the order they are shown. */const KEYS = ['theme'] as const
 
 type PreferenceKey = typeof KEYS[number]
 
@@ -482,9 +475,6 @@ function configKey(key: PreferenceKey): string {
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
-
-/** The key being written, so its control can say so and cannot be pressed twice. */
-const saving = ref<PreferenceKey | undefined>(undefined)
 
 /**
  * The devices this one accepts files from without asking.
@@ -884,16 +874,6 @@ async function forgetTrusted(deviceId: string): Promise<void> {
  * would be a second description of the same fact — and the two would disagree the first time the kernel normalised a value
  * or refused the write.
  */
-async function save(key: PreferenceKey, value: boolean): Promise<void> {
-  saving.value = key
-  error.value = undefined
-  const patch = { set: { [configKey(key)]: value } }
-  const answer = await kernel.call<null>('config_set', { patch })
-  saving.value = undefined
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
 /** How often the recorder is re-read while this page is open. */
 const METRICS_POLL_MS = 5_000
 

@@ -40,7 +40,6 @@ vi.mock('@tauri-apps/plugin-autostart', () => ({
 
 const SettingsPage = (await import('./SettingsPage.vue')).default
 const { IDENTITY } = await import('../ipc/fake-kernel-fixtures')
-const { useSettingsStore } = await import('../stores/settings')
 const ErrorNotice = (await import('../components/ErrorNotice.vue')).default
 const { messages } = await import('../messages')
 
@@ -168,25 +167,6 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
-  it('writes the switch under the kernel key, and does not touch the store itself', async () => {
-    // ★ Two claims in one: the patch names `ui.autoSyncPlugins` (the kernel's key, not the page's label), and the page does
-    // **not** set the value locally — the kernel's `ConfigUpdated` event is what will change the store, so the switch must
-    // still show the old value until that arrives.
-    answer({ config_get: { values: { 'ui.autoSyncPlugins': false }, overridden: [] }, identity_get: IDENTITY })
-    const wrapper = mount(SettingsPage)
-    await flushPromises()
-
-    await wrapper.findComponent({ name: 'ASwitch' }).vm.$emit('change', true)
-    await flushPromises()
-
-    expect(mocks.call).toHaveBeenCalledWith('config_set', {
-      patch: { set: { 'ui.autoSyncPlugins': true } }
-    })
-    const store = useSettingsStore()
-    expect(store.value('ui.autoSyncPlugins')).toBe(false)
-    wrapper.unmount()
-  })
-
   it('writes the cancel-confirmation preference under its own key', async () => {
     // ★ Absent means "ask": the page shows the switch on, and turning it off stores the one value that changes the
     // behaviour. A page that treated absent as off would remove the question without anybody asking it to.
@@ -195,8 +175,8 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(4)
-    const cancelSwitch = switches[1]
+    expect(switches).toHaveLength(3)
+    const cancelSwitch = switches[0]
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
     await flushPromises()
@@ -214,7 +194,7 @@ describe('the settings page', () => {
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    const notifySwitch = wrapper.findAllComponents({ name: 'ASwitch' })[2]
+    const notifySwitch = wrapper.findAllComponents({ name: 'ASwitch' })[1]
     expect(notifySwitch).toBeDefined()
     await notifySwitch?.vm.$emit('change', false)
     await flushPromises()
@@ -429,7 +409,7 @@ describe('the settings page', () => {
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    const launch = wrapper.findAllComponents({ name: 'ASwitch' })[3]
+    const launch = wrapper.findAllComponents({ name: 'ASwitch' })[2]
     expect(launch).toBeDefined()
     await launch?.vm.$emit('change', true)
     await flushPromises()
