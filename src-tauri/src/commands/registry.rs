@@ -1101,7 +1101,7 @@ pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcErr
         }))
     })?;
     let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
-    let outcome = crate::commands::plugins::update_directory(state, package.path());
+    let outcome = crate::commands::plugins::update_directory(state, plugin_id, package.path());
     package.cleanup();
     outcome
 }

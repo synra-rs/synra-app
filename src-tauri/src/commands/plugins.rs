@@ -490,11 +490,44 @@ pub(crate) fn install_directory(
 /// # Errors
 ///
 /// As [`install_directory`], plus `update` when nothing is installed at that identifier.
-pub(crate) fn update_directory(state: &AppState, path: &std::path::Path) -> Result<(), IpcError> {
-    let installed = run_install(state, path, true)?;
-    // ★ The old compiled form is still in the set: a plugin that was running before the update would keep answering
-    // from the bytes the user just replaced. The row was rewritten first, so reloading here reads the new manifest and
-    // the new artifact.
+pub(crate) fn update_directory(
+    state: &AppState,
+    plugin_id: &str,
+    path: &std::path::Path,
+) -> Result<(), IpcError> {
+    let id = parse(plugin_id)?;
+    // ★ The old instance is asked to migrate **before** its bytes are replaced. Only the old code knows what it wrote,
+    // and a migration failure has to leave a working version installed — after the replacement there would be nothing
+    // to fall back to.
+    let old_version =
+        state.plugin_set().ok().and_then(|set| set.lock().version(&id).map(str::to_owned));
+    if let Some(old) = old_version {
+        if let Some(new) = source_version(path)
+            && new != old
+        {
+            let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0);
+            let plugins = state.plugin_set()?;
+            let mut set = plugins.lock();
+            synra_core::plugin::migrate(&mut set, &id, &old, &new, now).map_err(|reason| {
+                IpcError::unknown(synra_protocol::ErrorCode::PluginTrapped)
+                    .with_params(serde_json::json!({"pluginId": plugin_id, "reason": reason}))
+            })?;
+        }
+        // The old instance is stopped before its files change: a compiled plugin still holding the previous artifact
+        // would answer from bytes the update is about to replace.
+        apply_unload(state, &id);
+    }
+
+    let installed = match run_install(state, path, true) {
+        Ok(installed) => installed,
+        Err(error) => {
+            // The update did not happen, so the old version is put back. It was unloaded above; reloading is the same
+            // call an enable makes, and a failure here is already carried by the original error.
+            let _ = apply_lifecycle(state, &id);
+            announce(state, &id);
+            return Err(error);
+        }
+    };
     let id = parse(&installed.plugin_id)?;
     // ★ A refusal here is not a failed update. The new version is on disk and its row is written; what failed is
     // starting it, most often because the new manifest changed and the user has to confirm its capabilities again.
@@ -503,6 +536,19 @@ pub(crate) fn update_directory(state: &AppState, path: &std::path::Path) -> Resu
     let _ = apply_lifecycle(state, &id);
     announce(state, &id);
     Ok(())
+}
+
+/// The version a directory package declares, when it is a directory at all.
+///
+/// A `.synra` archive is not read here: extracting it just to learn a version would duplicate the installer's own
+/// unpacking, and an update from an archive is allowed to skip migration (the caller documents that in the command).
+fn source_version(path: &std::path::Path) -> Option<String> {
+    if path.is_file() {
+        return None;
+    }
+    let text = std::fs::read_to_string(path.join("manifest.json")).ok()?;
+    let manifest = synra_plugin_api::Manifest::from_json(&text).ok()?;
+    Some(manifest.version)
 }
 
 /// The pipeline both install and update run: verify, stage, move, record.
@@ -1158,15 +1204,25 @@ mod tests {
     /// The backend answers from a table rather than compiling Wasm: what is being tested is the shell's command — the
     /// source it accepts, the report it returns and the row that lands — and the pipeline behind it has its own tests.
     fn with_engine(state: crate::state::AppState) -> crate::state::AppState {
+        with_scripted_engine(state).0
+    }
+
+    /// The same engine, with the backend kept so a test can script one entry point.
+    fn with_scripted_engine(
+        state: crate::state::AppState,
+    ) -> (crate::state::AppState, synra_plugin_host::ScriptedBackend) {
         let host = std::sync::Arc::new(crate::plugin_host::DesktopHost::with_platform(
             std::sync::Arc::clone(&state.db),
             std::sync::Arc::clone(&state.platform),
         ));
-        let backend =
-            synra_plugin_host::Backend::new(std::sync::Arc::new(synra_plugin_host::ScriptedBackend::new()));
-        state.with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(
-            synra_core::dispatch::PluginSet::new(backend, host),
-        )))
+        let scripted = synra_plugin_host::ScriptedBackend::new();
+        let backend = synra_plugin_host::Backend::new(std::sync::Arc::new(scripted.clone()));
+        (
+            state.with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(
+                synra_core::dispatch::PluginSet::new(backend, host),
+            ))),
+            scripted,
+        )
     }
 
     /// A package directory a local install will accept: a manifest and a component.
@@ -2572,6 +2628,23 @@ mod tests {
             .expect("the decisions");
     }
 
+    /// A directory package for a newer version, as the registry updater unpacks one.
+    fn write_update_source(root: &std::path::Path, version: &str) -> std::path::PathBuf {
+        let directory = root.join(format!("update-{version}"));
+        std::fs::create_dir_all(&directory).expect("a package directory");
+        let manifest = format!(
+            r#"{{"id": "{ID}", "version": "{version}", "title": "Chat",
+                "publisher": {{"id": "synra-official"}}, "sdk": {{"min": "0.1.0"}},
+                "wit": "{}",
+                "capabilities": [{{"cap": "log:*"}}],
+                "runtime": {{"headless": {{"artifact": "plugin.wasm", "stateful": false}}}}}}"#,
+            synra_plugin_host::host_world()
+        );
+        std::fs::write(directory.join("manifest.json"), manifest).expect("a manifest");
+        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        directory
+    }
+
     #[test]
     fn the_shell_loads_an_installed_plugin_rather_than_leaving_its_set_empty() {
         // ★ The whole point of this round: before it, `with_plugins_or_refuse` built an empty `PluginSet` and never
@@ -2682,6 +2755,70 @@ mod tests {
         // switched it on, so the fact that consent has also not been answered is not the card's headline.
         assert_eq!(card.state, "disabled");
         assert!(!card.enabled && card.granted.is_empty(), "a copied directory is not an approval");
+    }
+
+    #[test]
+    fn an_update_asks_the_old_version_to_migrate_before_replacing_it() {
+        // ★ The data being moved is the old plugin's, and the old code is the only code that knows what it wrote. A
+        // migration that runs after the replacement has no working version to fall back to.
+        let (root, state) = testing::file_state();
+        let state = with_engine(state);
+        loadable(&state);
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        let state = state.with_plugin_loads(summary);
+        let id = PluginId::parse(ID).expect("an id");
+        assert!(state.plugin_set().expect("an engine").lock().contains(&id));
+
+        let source = write_update_source(root.path(), "2.0.0");
+        super::update_directory(&state, ID, &source).expect("the update is applied");
+
+        let active = state.db().active_plugin(ID).expect("the version table").expect("an active version");
+        assert_eq!(active.version, "2.0.0");
+    }
+
+    #[test]
+    fn a_migration_that_refuses_stops_the_update_and_leaves_the_old_version() {
+        let (root, state) = testing::file_state();
+        let (state, backend) = with_scripted_engine(state);
+        loadable(&state);
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        let state = state.with_plugin_loads(summary);
+        let id = PluginId::parse(ID).expect("an id");
+        backend.script_for(
+            ID,
+            &synra_plugin_host::Work::Migrate {
+                from_version: "1.0.0".to_owned(),
+                to_version: "2.0.0".to_owned(),
+            },
+            synra_plugin_host::Scripted::Failed {
+                code: "invalidArgument".to_owned(),
+                message: "this data cannot move".to_owned(),
+            },
+        );
+
+        let source = write_update_source(root.path(), "2.0.0");
+        let refused = super::update_directory(&state, ID, &source).expect_err("the migration refused");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::PluginTrapped);
+        let reason = refused.params["reason"].as_str().expect("the refusal names the reason");
+        assert!(
+            reason.contains("this data cannot move"),
+            "the plugin's own sentence is carried: {reason}"
+        );
+        // The old version is still installed and still loaded: a failed migration changed nothing the user can see.
+        // The manifest on disk is the evidence that `run_install` was never reached, and the set's version is the
+        // evidence that the old compiled form is still the one answering.
+        let manifest = std::fs::read_to_string(state.paths.plugin_dir(ID).join("manifest.json"))
+            .expect("the old manifest");
+        assert!(manifest.contains("\"1.0.0\""), "the update wrote a new version despite the refusal: {manifest}");
+        assert_eq!(state.plugin_set().expect("an engine").lock().version(&id), Some("1.0.0"));
     }
 
     #[test]
