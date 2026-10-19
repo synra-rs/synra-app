@@ -70,8 +70,19 @@
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
           <div class="stack gap-2">
             <div class="row-between gap-3">
-              <span class="truncate text-sm">{{ transfer.peerName }}</span>
+              <div class="min-w-0 stack gap-0.5">
+                <span class="truncate text-sm">{{ transfer.peerName }}</span>
+                <!-- A file's name is what a user recognises; a text send has none, and an empty line is better than "text". -->
+                <span v-if="transfer.fileName" class="truncate text-xs text-ink-dim">{{ transfer.fileName }}</span>
+              </div>
               <div class="row gap-2">
+                <!--
+                  The direction is a word, not a colour: the same row is used for both, and "receiving" is the fact that
+                  decides which side the cancel command reaches (the listener's identifier or the sender's worker).
+                -->
+                <ATag class="m-0">
+                  {{ directionOf(transfer) }}
+                </ATag>
                 <ATag class="m-0">
                   {{ transfer.state }}
                 </ATag>
@@ -217,6 +228,11 @@ function progressLabel(transfer: TransferSnapshot): string {
   return messages.home.inFlight.progress
     .replace('{done}', formatBytes(transfer.receivedBytes))
     .replace('{total}', formatBytes(transfer.totalBytes))
+}
+
+/** The direction as a word, because it decides which side of the link the cancel command reaches. */
+function directionOf(transfer: TransferSnapshot): string {
+  return transfer.direction === 'receive' ? messages.home.inFlight.receiving : messages.home.inFlight.sending
 }
 
 /** Asks the kernel to abandon a transfer, whichever direction it is moving. */

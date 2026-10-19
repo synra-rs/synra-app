@@ -30,6 +30,7 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 const HomePage = (await import('./HomePage.vue')).default
 const { useIntentsStore } = await import('../stores/intents')
 const { INTENT } = await import('../ipc/fake-kernel-fixtures')
+const { messages } = await import('../messages')
 
 function installBrowserApis(): void {
   window.matchMedia = ((query: string) => ({
@@ -121,6 +122,8 @@ describe('the home page', () => {
 
     expect(mocks.call).toHaveBeenCalledWith('transfer_list')
     expect(wrapper.text()).toContain('Study PC')
+    expect(wrapper.text()).toContain('notes.txt')
+    expect(wrapper.text()).toContain(messages.home.inFlight.receiving)
     expect(wrapper.text()).toContain('50%')
     wrapper.unmount()
   })

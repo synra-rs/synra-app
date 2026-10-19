@@ -24,9 +24,11 @@ export const home = {
   },
 
   inFlight: {
-    title: 'Sending now',
-    empty: 'Nothing is on its way to another device.',
+    title: 'In flight',
+    empty: 'Nothing is moving to or from another device.',
     action: 'Choose a device',
+    sending: 'Sending',
+    receiving: 'Receiving',
     cancel: 'Cancel',
     confirm: 'Abandon this transfer?',
     abandon: 'Abandon',
