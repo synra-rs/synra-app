@@ -18,6 +18,7 @@ export const devices = {
   scanTotal: 'Total',
   empty: 'No device has been found yet.',
   emptyAction: 'Scan for devices',
+  cancelScan: 'Cancel scan',
   paired: 'Paired',
   unpaired: 'Not paired',
   pair: 'Pair',

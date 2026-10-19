@@ -89,6 +89,41 @@ describe('the devices page', () => {
     wrapper.unmount()
   })
 
+  it('cancels a running scan by the id the start command answered', async () => {
+    // ★ The start command always answered a scan id; the page threw it away, so a scan could only be waited out.
+    let snapshots = 0
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot') {
+        snapshots += 1
+        return {
+          ok: true,
+          value: { identity: IDENTITY, devices: [], scanning: snapshots > 1 ? { scanId: 'scan-1', found: 0, elapsedMs: 1, totalMs: 3_000 } : undefined }
+        }
+      }
+      if (command === 'devices_scan_start')
+        return { ok: true, value: 'scan-1' }
+      if (command === 'devices_scan_cancel')
+        return { ok: true, value: null }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+
+    const scan = wrapper.findAll('button').find(button => button.text() === messages.devices.scan)
+    expect(scan, 'the scan button is missing').toBeDefined()
+    await scan?.trigger('click')
+    await flushPromises()
+
+    const cancel = wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)
+    expect(cancel, 'a running scan has no cancel').toBeDefined()
+    await cancel?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('devices_scan_cancel', { scanId: 'scan-1' })
+    wrapper.unmount()
+  })
+
   it('asks before forgetting a paired device, then calls the command', async () => {
     // ★ Forgetting undoes the expensive step: the next send to that device has to pair again. The confirmation is the
     // page's, and the command is only reached through it — a button that forgot on the first click would be one click

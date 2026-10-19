@@ -14,14 +14,29 @@
         than streaming events, so waiting for the store to say otherwise would leave the button live and unlabelled for the
         second and a half the network is being asked.
       -->
-      <AButton
-        type="primary"
-        :loading="scanning"
-        :disabled="scanning"
-        @click="scan"
-      >
-        {{ scanning ? messages.devices.scanning : messages.devices.scan }}
-      </AButton>
+      <div class="row gap-2">
+        <AButton
+          type="primary"
+          :loading="scanning"
+          :disabled="scanning"
+          @click="scan"
+        >
+          {{ scanning ? messages.devices.scanning : messages.devices.scan }}
+        </AButton>
+
+        <!--
+          ★ The scan id is what the cancel command identifies, and the start command has always answered it. The page
+          threw it away, so a scan could only be waited out; `devices_scan_cancel` had a command and no caller.
+        -->
+        <AButton
+          v-if="scanId && devices.scanning"
+          danger
+          :loading="cancellingScan"
+          @click="cancelScan"
+        >
+          {{ messages.devices.cancelScan }}
+        </AButton>
+      </div>
     </div>
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
@@ -324,6 +339,10 @@ onMounted(loadSnapshot)
  */
 const pairingBusy = ref<string | undefined>(undefined)
 
+/** The running scan's identifier, which is what `devices_scan_cancel` takes. */
+const scanId = ref<string | undefined>(undefined)
+const cancellingScan = ref(false)
+
 /**
  * Asks a discovered device to pair.
  *
@@ -418,6 +437,11 @@ async function scan(): Promise<void> {
         refuse(cached.error)
         return
       }
+      // A cached scan is over before it answers, so there is nothing to cancel.
+      scanId.value = undefined
+    }
+    else {
+      scanId.value = started.value
     }
 
     // ★ The list is where a scan shows itself, so it is re-read whichever mode answered the call.
@@ -429,5 +453,28 @@ async function scan(): Promise<void> {
   finally {
     busy.value = false
   }
+}
+
+/**
+ * Stops the running scan.
+ *
+ * The identifier comes from `devices_scan_start`'s answer; the command refuses one that is not the scan it is running, so
+ * a stale click cannot stop a later scan.
+ */
+async function cancelScan(): Promise<void> {
+  const id = scanId.value
+  if (!id)
+    return
+  repeat.value = cancelScan
+  error.value = undefined
+  cancellingScan.value = true
+  const answer = await kernel.call<null>('devices_scan_cancel', { scanId: id })
+  cancellingScan.value = false
+  if (!answer.ok) {
+    refuse(answer.error)
+    return
+  }
+  scanId.value = undefined
+  await loadSnapshot()
 }
 </script>
