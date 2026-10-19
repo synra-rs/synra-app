@@ -379,7 +379,7 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
     state.metrics.gauge_set(
         &synra_observe::metrics::SeriesKey::new("late_results", []),
         i64::try_from(
-            synra_core::late_queue::LateQueue::in_data_dir(&state.paths.data_dir()).len(),
+            synra_core::late_queue::LateQueue::in_data_dir(state.paths.data_dir()).len(),
         )
         .unwrap_or(i64::MAX),
     );
