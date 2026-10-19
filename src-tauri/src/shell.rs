@@ -799,8 +799,19 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             if let Some(package) = crate::launch::package_from_args(std::env::args()) {
                 let state = app.state::<std::sync::Arc<AppState>>();
                 let source = synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
-                if let Err(error) = commands::plugins::plugins_install(&state, &source) {
-                    eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                match commands::plugins::plugins_install(&state, &source) {
+                    Ok(report) => {
+                        state.publish(synra_ipc::event::KernelEvent::Notice {
+                            message: "notice.installed".to_owned(),
+                            params: serde_json::json!({
+                                "pluginId": report.plugin_id,
+                                "version": report.version,
+                            }),
+                        });
+                    }
+                    Err(error) => {
+                        eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                    }
                 }
                 crate::window::show_main(app.handle());
             }
