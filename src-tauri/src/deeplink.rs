@@ -5,12 +5,42 @@
 //! Because "which URLs are a share" is a decision that can be tested without a window, an event loop or a deep-link
 //! registration. The handler below adds the two side effects — dispatch, and showing the window — and nothing else.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use synra_ipc::dto::IntentSourceDto;
 use tauri::Manager as _;
 
 use crate::state::AppState;
+
+/// How long the same URL is treated as the cold-start duplicate it usually is.
+///
+/// The plugin can deliver a launch URL twice — once through `on_open_url` and once through `get_current` — and both
+/// happen within milliseconds. A person clicking the same link twice is not doing it inside this window.
+const DUPLICATE_WINDOW: Duration = Duration::from_secs(2);
+
+#[derive(Default)]
+struct Recent {
+    seen: HashMap<String, Instant>,
+}
+
+impl Recent {
+    /// Whether this URL should be handled now, recording it when it should.
+    fn accept(&mut self, url: &str, now: Instant) -> bool {
+        self.seen.retain(|_, at| now.duration_since(*at) < DUPLICATE_WINDOW);
+        if self.seen.contains_key(url) {
+            return false;
+        }
+        self.seen.insert(url.to_owned(), now);
+        true
+    }
+}
+
+fn recent() -> &'static Mutex<Recent> {
+    static RECENT: OnceLock<Mutex<Recent>> = OnceLock::new();
+    RECENT.get_or_init(|| Mutex::new(Recent::default()))
+}
 
 /// The text a `synra://share` link carries, or `None` for anything this build does not understand.
 ///
@@ -45,6 +75,13 @@ pub fn receive(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
         return;
     };
     for url in urls {
+        let fresh = recent()
+            .lock()
+            .map(|mut recent| recent.accept(url.as_str(), Instant::now()))
+            .unwrap_or(true);
+        if !fresh {
+            continue;
+        }
         if let Some(text) = share_text(url.as_str()) {
             let _ = crate::commands::intent::intent_dispatch(
                 &state,
@@ -66,7 +103,25 @@ pub fn receive(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
 
 #[cfg(test)]
 mod tests {
-    use super::share_text;
+    use std::time::{Duration, Instant};
+
+    use super::{Recent, share_text};
+
+    #[test]
+    fn the_same_link_is_handled_once_per_cold_start() {
+        // ★ `get_current` and `on_open_url` can both deliver a launch URL within milliseconds. Two intents from one click
+        // is a bug the user sees as a duplicate card; the window is short enough that a deliberate second click still
+        // gets through.
+        let mut recent = Recent::default();
+        let start = Instant::now();
+
+        assert!(recent.accept("synra://share?text=hi", start));
+        assert!(!recent.accept("synra://share?text=hi", start + Duration::from_millis(1)));
+        assert!(
+            recent.accept("synra://share?text=hi", start + Duration::from_secs(3)),
+            "a later click is a new share"
+        );
+    }
 
     #[test]
     fn a_share_link_carries_its_text() {
