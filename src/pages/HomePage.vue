@@ -180,7 +180,7 @@
             -->
             <div v-for="candidate in intent.candidates" :key="candidate.deviceId" class="row-between gap-2">
               <span class="min-w-0 truncate text-xs">
-                {{ candidate.title }}
+                {{ candidate.title }} · {{ deviceName(candidate.deviceId) }}
                 <span class="text-ink-dim font-mono">{{ candidate.deviceId }}</span>
                 <span v-if="!candidate.online" class="text-ink-dim"> · {{ messages.home.received.offline }}</span>
               </span>
@@ -527,6 +527,11 @@ async function decline(intent: IntentSnapshot): Promise<void> {
  */
 function canDecline(intent: IntentSnapshot): boolean {
   return !['succeeded', 'failed', 'noHandler', 'timedOut', 'refused', 'cancelled'].includes(intent.state)
+}
+
+/** The name a person gave the device, when the device list knows it; the id is still shown beside it. */
+function deviceName(deviceId: string): string {
+  return devices.byId.get(deviceId)?.displayName ?? deviceId
 }
 
 /** The board's state as a person's word; an unknown state is shown as the engine spelled it rather than blank. */
