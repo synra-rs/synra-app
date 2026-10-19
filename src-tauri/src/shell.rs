@@ -794,85 +794,24 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     eprintln!("synra: the synra:// scheme could not be registered: {error}");
                 }
             }
-            // ★ A `.synra` file opened from the desktop. The installer already owns the checks; this only turns the
-            // argument into the source the install command takes, and decides whether it is a first install or an
-            // update — `plugins_install` refuses a plugin that is already installed, and a double-click on a newer
-            // package is an update, not a mistake.
+            // ★ A `.synra` file opened from the desktop. The opener is shared with drag-and-drop and the macOS "open
+            // document" event, so all three entry points decide install/update the same way.
             if let Some(package) = crate::launch::package_from_args(std::env::args()) {
-                let state = app.state::<std::sync::Arc<AppState>>();
-                match synra_core::install::package_manifest(&package) {
-                    Ok(manifest) => {
-                        let id = manifest.id.as_str();
-                        let active = state.db().active_plugin(id).ok().flatten();
-                        let action = crate::launch::action(
-                            active.as_ref().map(|row| row.version.as_str()),
-                            &manifest.version,
-                        );
-                        match action {
-                            crate::launch::PackageAction::Install => {
-                                let source =
-                                    synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
-                                match commands::plugins::plugins_install(&state, &source) {
-                                    Ok(report) => {
-                                        state.publish(synra_ipc::event::KernelEvent::Notice {
-                                            message: "notice.installed".to_owned(),
-                                            params: serde_json::json!({
-                                                "pluginId": report.plugin_id,
-                                                "version": report.version,
-                                                "warnings": report.warnings,
-                                            }),
-                                        });
-                                    }
-                                    Err(error) => {
-                                        eprintln!("synra: {} could not be installed: {error:?}", package.display());
-                                    }
-                                }
-                            }
-                            crate::launch::PackageAction::Update => {
-                                match commands::plugins::update_directory(&state, id, &package) {
-                                    Ok(report) => {
-                                        state.publish(synra_ipc::event::KernelEvent::Notice {
-                                            message: "notice.updated".to_owned(),
-                                            params: serde_json::json!({
-                                                "pluginId": id,
-                                                "version": report.version,
-                                                "warnings": report.warnings,
-                                            }),
-                                        });
-                                    }
-                                    Err(error) => {
-                                        eprintln!("synra: {} could not be updated: {error:?}", package.display());
-                                    }
-                                }
-                            }
-                            crate::launch::PackageAction::AlreadyInstalled => {
-                                state.publish(synra_ipc::event::KernelEvent::Notice {
-                                    message: "notice.alreadyInstalled".to_owned(),
-                                    params: serde_json::json!({
-                                        "pluginId": id,
-                                        "version": manifest.version,
-                                    }),
-                                });
-                            }
-                            crate::launch::PackageAction::NewerInstalled => {
-                                // ★ A double-clicked older package is not an instruction to downgrade. The window still
-                                // comes forward, and the notice says why nothing changed.
-                                state.publish(synra_ipc::event::KernelEvent::Notice {
-                                    message: "notice.newerInstalled".to_owned(),
-                                    params: serde_json::json!({
-                                        "pluginId": id,
-                                        "installed": active.as_ref().map_or("", |row| row.version.as_str()),
-                                        "offered": manifest.version,
-                                    }),
-                                });
+                open_package(app.handle(), &package);
+            }
+            // ★ Dragging a package onto the window is the same gesture as double-clicking it. Other files are ignored:
+            // this shell has nowhere to send them yet, and pretending otherwise would be a drop target that does nothing.
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                        for path in paths {
+                            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra")) {
+                                open_package(&handle, path);
                             }
                         }
                     }
-                    Err(error) => {
-                        eprintln!("synra: {} is not a readable package: {error:?}", package.display());
-                    }
-                }
-                crate::window::show_main(app.handle());
+                });
             }
             // ★ A shortcut another application already owns is a missing convenience, not a reason to lose the window —
             // so the failure is reported and the rest of setup continues.
@@ -916,6 +855,89 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(wrappers::handler())
 }
 
+/// Installs or updates the `.synra` package at `package`, then brings the window forward.
+///
+/// # Why one function
+///
+/// Three operating-system entries lead here — a command-line argument, a drag-and-drop, and macOS's "open document" event
+/// — and all three have to make the same install/update/already-installed decision. A copy per entry would drift, and the
+/// version comparison is exactly the kind of thing that drifts silently.
+fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
+    let state = app.state::<std::sync::Arc<AppState>>();
+    match synra_core::install::package_manifest(package) {
+        Ok(manifest) => {
+            let id = manifest.id.as_str();
+            let active = state.db().active_plugin(id).ok().flatten();
+            let action = crate::launch::action(
+                active.as_ref().map(|row| row.version.as_str()),
+                &manifest.version,
+            );
+            match action {
+                crate::launch::PackageAction::Install => {
+                    let source = synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
+                    match commands::plugins::plugins_install(&state, &source) {
+                        Ok(report) => {
+                            state.publish(synra_ipc::event::KernelEvent::Notice {
+                                message: "notice.installed".to_owned(),
+                                params: serde_json::json!({
+                                    "pluginId": report.plugin_id,
+                                    "version": report.version,
+                                    "warnings": report.warnings,
+                                }),
+                            });
+                        }
+                        Err(error) => {
+                            eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                        }
+                    }
+                }
+                crate::launch::PackageAction::Update => {
+                    match commands::plugins::update_directory(&state, id, package) {
+                        Ok(report) => {
+                            state.publish(synra_ipc::event::KernelEvent::Notice {
+                                message: "notice.updated".to_owned(),
+                                params: serde_json::json!({
+                                    "pluginId": id,
+                                    "version": report.version,
+                                    "warnings": report.warnings,
+                                }),
+                            });
+                        }
+                        Err(error) => {
+                            eprintln!("synra: {} could not be updated: {error:?}", package.display());
+                        }
+                    }
+                }
+                crate::launch::PackageAction::AlreadyInstalled => {
+                    state.publish(synra_ipc::event::KernelEvent::Notice {
+                        message: "notice.alreadyInstalled".to_owned(),
+                        params: serde_json::json!({
+                            "pluginId": id,
+                            "version": manifest.version,
+                        }),
+                    });
+                }
+                crate::launch::PackageAction::NewerInstalled => {
+                    // ★ A double-clicked older package is not an instruction to downgrade. The window still comes
+                    // forward, and the notice says why nothing changed.
+                    state.publish(synra_ipc::event::KernelEvent::Notice {
+                        message: "notice.newerInstalled".to_owned(),
+                        params: serde_json::json!({
+                            "pluginId": id,
+                            "installed": active.as_ref().map_or("", |row| row.version.as_str()),
+                            "offered": manifest.version,
+                        }),
+                    });
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("synra: {} is not a readable package: {error:?}", package.display());
+        }
+    }
+    crate::window::show_main(app);
+}
+
 /// Builds and runs the window, reporting what stopped it rather than unwinding.
 ///
 /// # Why closing the window hides it
@@ -936,6 +958,23 @@ pub fn run_window() -> Result<(), String> {
         // the process ends is what closes the listener's port and lets the current discovery turn finish its write.
         if let tauri::RunEvent::ExitRequested { .. } = &event {
             stop_background(app);
+        }
+        // ★ macOS delivers an opened file as an Apple Event, not as an argv entry. The same opener serves it; `synra://`
+        // links arrive here too, so they go through the deep-link receiver the plugin uses.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = &event {
+            for url in urls {
+                if url.scheme() == "file" {
+                    if let Ok(path) = url.to_file_path()
+                        && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra"))
+                    {
+                        open_package(app, &path);
+                    }
+                }
+                else {
+                    crate::deeplink::receive(app, vec![url.clone()]);
+                }
+            }
         }
         if let tauri::RunEvent::WindowEvent {
             label,
