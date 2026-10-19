@@ -3806,6 +3806,7 @@ dependencies = [
  "synra-plugin-host",
  "synra-plugin-ui",
  "synra-protocol",
+ "synra-registry",
  "synra-store",
  "thiserror 2.0.21",
  "zip",

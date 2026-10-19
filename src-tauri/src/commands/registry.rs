@@ -15,9 +15,9 @@
 //!
 //! # What is heard
 //!
-//! The tarball is opened by [`synra_registry::extract_tgz`] into a directory under the cache, and then the **existing**
-//! install pipeline runs over it. Signature checks, archive limits, the manifest and the store all stay in one place; this
-//! module is transport.
+//! The tarball is verified and opened by [`synra_core::install::unpack_published_tarball`] into a directory under the
+//! cache — the same function the daemon's registry install calls — and then the **existing** install pipeline runs over
+//! it. Signature checks, archive limits, the manifest and the store all stay in one place; this module is transport.
 //!
 //! # What the preview is
 //!
@@ -39,7 +39,7 @@ use synra_ipc::dto::{
 };
 use synra_protocol::ErrorCode;
 use synra_protocol::PluginId;
-use synra_registry::{Limits as ArchiveLimits, Packument, Version, extract_tgz};
+use synra_registry::{Packument, Version};
 
 use crate::state::AppState;
 
@@ -875,37 +875,6 @@ fn resolve_tarball(index_url: &str, tarball: &str) -> Result<String, String> {
 }
 
 /// A tarball extracted under the cache, and the files it wrote so they can be removed without a recursive delete.
-struct PackageDir {
-    directory: std::path::PathBuf,
-    files: Vec<std::path::PathBuf>,
-}
-
-impl PackageDir {
-    fn path(&self) -> &std::path::Path {
-        &self.directory
-    }
-
-    /// Removes the files, then the directories that are now empty, then the root.
-    fn cleanup(self) {
-        for file in self.files.iter().rev() {
-            let _ = std::fs::remove_file(file);
-        }
-        let mut parents: Vec<std::path::PathBuf> = self
-            .files
-            .iter()
-            .filter_map(|file| file.parent().map(std::path::Path::to_path_buf))
-            .collect();
-        parents.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
-        parents.dedup();
-        for parent in parents {
-            if parent.starts_with(&self.directory) {
-                let _ = std::fs::remove_dir(parent);
-            }
-        }
-        let _ = std::fs::remove_dir(&self.directory);
-    }
-}
-
 /// Downloads the chosen version's tarball and opens it into a fresh cache directory.
 fn download(
     state: &AppState,
@@ -913,7 +882,7 @@ fn download(
     source: &Base,
     chosen: &synra_registry::Version,
     index_url: Option<&str>,
-) -> Result<PackageDir, synra_ipc::IpcError> {
+) -> Result<synra_core::install::UnpackedTarball, synra_ipc::IpcError> {
     let mut candidates = Vec::new();
     if source.kind == Kind::Static {
         // ★ A static index may name a tarball relative to itself: the author who uploads files usually does not know the
@@ -981,59 +950,21 @@ fn download(
         return Err(synra_ipc::IpcError::unknown(code)
             .with_params(serde_json::json!({"tarball": chosen.dist.tarball, "reason": reason})));
     };
-    // ★ The declared digest is checked **before** anything is unpacked. The packument is a claim by the same server that
-    // served the bytes; without this comparison a mirror that answered with other bytes would be installed as the
-    // published package. A document with no integrity string is refused rather than trusted: there is nothing to compare.
-    verify_tarball(chosen.dist.integrity.as_deref(), &chosen.dist.tarball, &bytes)?;
-
-    let directory = state
-        .paths
-        .cache_dir()
-        .join("registry")
-        .join(uuid::Uuid::new_v4().to_string());
-    let files = extract_tgz(&bytes, &directory, Some("package"), ArchiveLimits::default()).map_err(|error| {
-        // The extractor removes what it wrote; this removes the now-empty root it created.
-        let _ = std::fs::remove_dir(&directory);
-        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+    // ★ Verify and unpack are the kernel's, not this host's: the digest is checked before a single entry is written,
+    // by the same function the daemon's registry install calls. A document with no integrity string is refused rather
+    // than trusted — there is nothing to compare the bytes against.
+    let staging = state.paths.cache_dir().join("registry");
+    synra_core::install::unpack_published_tarball(
+        &bytes,
+        chosen.dist.integrity.as_deref(),
+        &chosen.dist.tarball,
+        &staging,
+        synra_store::sqlite::now_ms(),
+    )
+    .map_err(|refusal| {
+        synra_ipc::IpcError::unknown(refusal.code()).with_params(serde_json::json!({
             "tarball": chosen.dist.tarball,
-            "reason": error.to_string(),
-        }))
-    })?;
-    Ok(PackageDir { directory, files })
-}
-
-/// Checks the bytes a mirror served against the digest the document declares.
-///
-/// # Why a helper rather than an inline check
-///
-/// Because "what happens when the document carries no digest" is a decision, and the decision has to be testable without a
-/// network. A missing digest is not a reason to skip the check — a publisher that cannot state one has not said which
-/// bytes are theirs — so it is refused with the same shape as a mismatch.
-fn verify_tarball(
-    declared: Option<&str>,
-    tarball: &str,
-    bytes: &[u8],
-) -> Result<(), synra_ipc::IpcError> {
-    let Some(declared) = declared else {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(
-            serde_json::json!({
-                "tarball": tarball,
-                "reason": "the registry's entry carries no integrity string, and bytes nothing vouches for are not installed",
-            }),
-        ));
-    };
-    synra_plugin_host::registry::check_integrity(tarball, declared, bytes)
-        .map(|_| ())
-        .map_err(|failure| {
-        use synra_plugin_host::registry::FetchFailure;
-        let code = match failure {
-            FetchFailure::IntegrityMismatch { .. } => ErrorCode::IntegrityMismatch,
-            FetchFailure::Network { .. } => ErrorCode::DeviceOffline,
-            _ => ErrorCode::Unsupported,
-        };
-        synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
-            "tarball": tarball,
-            "reason": failure.to_string(),
+            "reason": format!("{}: {}", refusal.stage, refusal.reason),
         }))
     })
 }
@@ -1141,7 +1072,6 @@ pub fn install_from_source(
 mod tests {
     use super::publisher_mismatch;
     use std::collections::BTreeMap;
-    use synra_protocol::error::ErrorCode;
 
     #[test]
     fn a_relative_tarball_is_resolved_against_the_index() {
@@ -1165,27 +1095,6 @@ mod tests {
         // author did not mean to publish.
         assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "../secret.tgz").is_err());
         assert!(super::resolve_tarball("https://bucket.example/a/hello.json", "").is_err());
-    }
-
-    #[test]
-    fn a_tarball_without_integrity_is_refused() {
-        // ★ No digest is not "skip the check": there is nothing to compare the bytes with, and installing them would be
-        // trusting whatever answered the connection.
-        let error = super::verify_tarball(None, "https://registry.example/x.tgz", b"bytes")
-            .expect_err("nothing to verify against");
-        assert_eq!(error.code, ErrorCode::Unsupported);
-    }
-
-    #[test]
-    fn a_tarball_must_match_the_declared_digest() {
-        let bytes = b"the published tarball";
-        let declared = synra_core::ObjectDigest::of(bytes).as_sri().to_string();
-        super::verify_tarball(Some(&declared), "https://registry.example/x.tgz", bytes)
-            .expect("the bytes match");
-
-        let error = super::verify_tarball(Some(&declared), "https://registry.example/x.tgz", b"other bytes")
-            .expect_err("a mismatch is refused");
-        assert_eq!(error.code, ErrorCode::IntegrityMismatch);
     }
 
     #[test]
