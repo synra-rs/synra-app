@@ -753,6 +753,24 @@ pub fn transfer_send_file_start(
     Ok(start_send(state, request.to, address, sender, row, None, None))
 }
 
+/// Where a text send's temporary file goes.
+///
+/// # Why the request's name is used, with a timestamp
+///
+/// Because the receiver names the arriving file after this path, and `message-<ms>.txt` threw away the one thing a person
+/// recognises. The stem is sanitised rather than trusted: it comes from the interface, and a name with a separator in it
+/// must not become a path. The timestamp keeps two sends of the same name from overwriting each other before the worker
+/// removes the file.
+fn outbox_path(outbox: &std::path::Path, file_name: &str, now_ms: u64) -> std::path::PathBuf {
+    let stem = std::path::Path::new(file_name)
+        .file_stem()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(synra_store::sanitise_component)
+        .filter(|stem| !stem.is_empty() && stem != "_")
+        .unwrap_or_else(|| "message".to_owned());
+    outbox.join(format!("{stem}-{now_ms}.txt"))
+}
+
 /// Prepares and starts a text send, answering the transfer's identifier.
 ///
 /// # Errors
@@ -770,7 +788,7 @@ pub fn transfer_send_text_start(
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
     })?;
-    let path = outbox.join(format!("message-{}.txt", unix_millis()));
+    let path = outbox_path(&outbox, &request.file_name, unix_millis());
     std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
@@ -1109,7 +1127,7 @@ pub fn transfer_send_text(
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
     })?;
-    let path = outbox.join(format!("message-{}.txt", unix_millis()));
+    let path = outbox_path(&outbox, &request.file_name, unix_millis());
     std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))

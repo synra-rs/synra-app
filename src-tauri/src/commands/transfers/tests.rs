@@ -671,3 +671,20 @@ fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
         "an aborted transfer has no rate: it did not move its bytes"
     );
 }
+
+#[test]
+fn a_text_send_is_named_after_the_request_rather_than_the_clock() {
+    // ★ The receiver names the arriving file after this path. `message-<ms>.txt` threw away the only part a person
+    // recognises; the stem now comes from the request, and a stem with a separator in it stays a name rather than a path.
+    let outbox = std::path::Path::new("/outbox");
+
+    let named = super::outbox_path(outbox, "notes.txt", 42);
+    assert_eq!(named.file_name().and_then(std::ffi::OsStr::to_str), Some("notes-42.txt"));
+
+    let escaped = super::outbox_path(outbox, "../../evil.txt", 42);
+    assert_eq!(escaped.file_name().and_then(std::ffi::OsStr::to_str), Some("evil-42.txt"));
+    assert_eq!(escaped.parent(), Some(outbox), "the name escaped the outbox");
+
+    let anonymous = super::outbox_path(outbox, "..", 42);
+    assert_eq!(anonymous.file_name().and_then(std::ffi::OsStr::to_str), Some("message-42.txt"));
+}

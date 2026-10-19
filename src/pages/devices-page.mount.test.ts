@@ -124,6 +124,47 @@ describe('the devices page', () => {
     wrapper.unmount()
   })
 
+  it('sends a text to a paired, reachable device', async () => {
+    // ★ The app could receive and not send. `transfer_send_text` had a command and no caller; this is the shortest
+    // complete send path, because the kernel turns the text into a file on the other side.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } }
+      if (command === 'transfer_send_text')
+        return { ok: true, value: '66666666-6666-4666-8666-666666666666' }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+
+    const send = wrapper.findAll('button').find(button => button.text() === messages.devices.sendText)
+    expect(send, 'a reachable paired device has no send action').toBeDefined()
+    await send?.trigger('click')
+    await flushPromises()
+
+    const modal = wrapper.findComponent({ name: 'AModal' })
+    expect(modal.exists(), 'the send dialog did not open').toBe(true)
+
+    const textarea = document.querySelector('textarea')
+    expect(textarea, 'the dialog has no text field').not.toBeNull()
+    textarea!.value = 'hello from the test'
+    textarea!.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+
+    await modal.vm.$emit('ok')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('transfer_send_text', {
+      request: {
+        to: DEVICES[0]!.deviceId,
+        text: 'hello from the test',
+        fileName: 'message.txt'
+      }
+    })
+    wrapper.unmount()
+  })
+
   it('asks before forgetting a paired device, then calls the command', async () => {
     // ★ Forgetting undoes the expensive step: the next send to that device has to pair again. The confirmation is the
     // page's, and the command is only reached through it — a button that forgot on the first click would be one click

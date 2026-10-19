@@ -178,11 +178,45 @@
                   {{ messages.devices.forget }}
                 </AButton>
               </APopconfirm>
+
+              <!--
+                ★ A paired device that is reachable is the one thing a send needs. The command has existed since the
+                transfer pipeline landed and the interface had no caller, so the app could receive but not send.
+              -->
+              <AButton
+                v-if="card.paired && card.online && !!card.deviceId"
+                size="small"
+                type="primary"
+                @click="askSendText(card)"
+              >
+                {{ messages.devices.sendText }}
+              </AButton>
             </div>
           </div>
         </AList.Item>
       </template>
     </AList>
+
+    <!--
+      ★ Text first because a text send is a complete send: it needs no file dialog, and the command turns it into a file
+      on the other side anyway. The modal is the library's, so the focus trap and the Escape key are not this page's.
+    -->
+    <AModal
+      :open="sendTo !== undefined"
+      :title="sendTitle"
+      :ok-text="messages.devices.sendAction"
+      :cancel-text="messages.devices.sendCancel"
+      :confirm-loading="sendingText"
+      :ok-button-props="{ disabled: draft.trim().length === 0 }"
+      @ok="sendText"
+      @cancel="closeSend"
+    >
+      <ATextarea
+        v-model:value="draft"
+        :rows="4"
+        :placeholder="messages.devices.sendPlaceholder"
+      />
+    </AModal>
   </section>
 </template>
 
@@ -224,7 +258,7 @@
  * that needs the user to act.
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Modal as AModal, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag, Textarea as ATextarea } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -382,6 +416,59 @@ async function forget(deviceId: string): Promise<void> {
     await loadSnapshot()
   else
     refuse(answer.error)
+}
+
+/** The device a text is being written for, and the draft itself. */
+const sendTo = ref<{ id: string, name: string } | undefined>(undefined)
+const draft = ref('')
+const sendingText = ref(false)
+
+const sendTitle = computed(() =>
+  sendTo.value ? messages.devices.sendTitle(sendTo.value.name) : ''
+)
+
+function askSendText(card: { deviceId: string, displayName: string }): void {
+  sendTo.value = { id: card.deviceId, name: card.displayName }
+  draft.value = ''
+  error.value = undefined
+}
+
+function closeSend(): void {
+  if (!sendingText.value) {
+    sendTo.value = undefined
+    draft.value = ''
+  }
+}
+
+/**
+ * Sends the draft as a file.
+ *
+ * The kernel writes the text into the outbox and sends that file, so the receiving side sees an ordinary attachment; the
+ * name in the request is what that file is called. The transfer itself is not waited for here: it appears in the home
+ * list through `transferUpdated`, which is the same path every other send uses.
+ */
+async function sendText(): Promise<void> {
+  const target = sendTo.value
+  const text = draft.value.trim()
+  if (!target || text.length === 0)
+    return
+  repeat.value = sendText
+  error.value = undefined
+  sendingText.value = true
+  const answer = await kernel.call<string>('transfer_send_text', {
+    request: {
+      to: target.id,
+      text,
+      fileName: 'message.txt'
+    }
+  })
+  sendingText.value = false
+  if (!answer.ok) {
+    refuse(answer.error)
+    return
+  }
+  sendTo.value = undefined
+  draft.value = ''
 }
 
 /** Answers a request that is waiting, then forgets it: whichever side settled it, the prompt is over. */

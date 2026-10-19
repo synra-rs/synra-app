@@ -100,6 +100,8 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   intent_list: undefined,
   transfer_list: undefined,
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
+  // `One`: the transfer's identifier. The fake requires the request bag the wrapper takes, not its fields.
+  transfer_send_text: { request: { to: '11111111-1111-4111-8111-111111111111', text: 'hi', fileName: 'message.txt' } },
   plugins_publishers: undefined,
   // `One`, with the option bag the wrapper requires: the page builds it, and a fake that ignored it would answer a shape
   // the page could not have produced.
@@ -126,17 +128,20 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
 const MAYBE_COMMAND = 'plugins_check_update'
 
 /**
- * ★ The one command where the fake knowingly disagrees with the contract, and why it is written down rather than fixed.
+ * The commands where the fake knowingly disagrees with the contract, and why they are written down rather than fixed.
  *
- * `command.rs` declares `devices_scan_start` as `One`, and the shell returns the new scan's id — `Result<String, IpcError>`
- * in `src-tauri/src/shell.rs`. The fake answers `null`, and `DevicesPage.vue` reads only `answer.ok`, so the divergence
- * is invisible to the app today and was invisible to every test before this file.
+ * `devices_scan_start`: `command.rs` declares `One`, and the shell returns the new scan's id — `Result<String, IpcError>`
+ * in `src-tauri/src/shell.rs`. The fake answers `null`, and `DevicesPage.vue` reads only `answer.ok`, so the divergence is
+ * invisible to the app today.
  *
- * It is listed here rather than quietly given a pass so that the day the page starts reading that id — which is what the
- * arity says it may — this test is the thing that says the fake cannot supply it. Fixing it now would mean inventing a
- * scan id in the fake, which is a behaviour change to production code and not this change's job.
+ * `transfer_send_text`: the same gap. `command.rs` declares `One`, and 08's signature is `Result<TransferId, IpcError>` —
+ * a scalar, not an object. The send UI does not read the id either, so the fake answers `null`; the alternative was to
+ * make the shell return an object the design never specified.
+ *
+ * They are listed here rather than quietly given a pass so that the day a page starts reading one of those ids — which is
+ * what the arity says it may — this test is the thing that says the fake cannot supply it.
  */
-const KNOWN_DIVERGENCE = 'devices_scan_start'
+const KNOWN_DIVERGENCE = new Set(['devices_scan_start', 'transfer_send_text'])
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
 const DECLARED_COMMANDS = 50
@@ -166,9 +171,9 @@ describe('every answer the fake gives, against the arity the kernel declares', (
       // assertion `{ plugins: […] }` fails, which is the drift this file exists to catch.
       expect(Array.isArray(answer), `${command} is declared ${String(declared)}, so the payload must not be an array`).toBe(false)
 
-      if (command === KNOWN_DIVERGENCE) {
+      if (KNOWN_DIVERGENCE.has(command)) {
         // Asserted as it is rather than skipped: the divergence has to stay exactly this, so a change to it is noticed.
-        expect(answer, `${command} is the one recorded divergence`).toBeNull()
+        expect(answer, `${command} is a recorded divergence`).toBeNull()
         return
       }
 
