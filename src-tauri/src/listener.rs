@@ -33,6 +33,19 @@ use tauri::Manager as _;
 
 use crate::state::AppState;
 
+/// The name a received file landed under, or `None` for a bundle.
+fn received_name(transfer: &synra_core::listener::FinishedTransfer) -> Option<String> {
+    if transfer.bundle.is_some() {
+        return None;
+    }
+    Some(
+        transfer
+            .path
+            .file_name()
+            .map_or_else(|| transfer.path.display().to_string(), |name| name.to_string_lossy().into_owned()),
+    )
+}
+
 /// The notice a received file leaves, or `None` for a bundle.
 ///
 /// # Why a bundle is silent here
@@ -41,13 +54,7 @@ use crate::state::AppState;
 /// where that news belongs. Saying "received @acme/chat" beside "installed @acme/chat" would be two sentences about one
 /// arrival.
 fn received_notice(transfer: &synra_core::listener::FinishedTransfer) -> Option<synra_ipc::event::KernelEvent> {
-    if transfer.bundle.is_some() {
-        return None;
-    }
-    let name = transfer
-        .path
-        .file_name()
-        .map_or_else(|| transfer.path.display().to_string(), |name| name.to_string_lossy().into_owned());
+    let name = received_name(transfer)?;
     Some(synra_ipc::event::KernelEvent::Notice {
         message: "notice.received".to_owned(),
         params: serde_json::json!({
@@ -55,6 +62,17 @@ fn received_notice(transfer: &synra_core::listener::FinishedTransfer) -> Option<
             "path": transfer.path.display().to_string(),
         }),
     })
+}
+
+/// The system notification a received file asks for, or `None` for a bundle.
+///
+/// # Why this is separate from the in-app notice
+///
+/// Because the window may not be in front. The notice banner is for the person looking at the screen; the system
+/// notification is for the person who is not — and a file that arrives silently is one they discover by accident.
+fn received_notification(transfer: &synra_core::listener::FinishedTransfer) -> Option<(String, String)> {
+    let name = received_name(transfer)?;
+    Some(("Synra".to_owned(), format!("Received {name}")))
 }
 
 /// Binds the port this device is reachable on, and records it in the state.
@@ -218,6 +236,12 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     // looking at the screen. A bundle is different: it was installed, and the plugins page says so.
                     if let Some(notice) = received_notice(transfer) {
                         finished_state.publish(notice);
+                    }
+                    // ★ The window may not be in front. Best effort: a platform that cannot show a notification is a
+                    // missing convenience, not a reason to fail a transfer that already landed.
+                    if let Some((title, body)) = received_notification(transfer) {
+                        use synra_platform::Platform as _;
+                        let _ = finished_state.platform.notify(&title, &body);
                     }
                     outcome
                 },
@@ -432,7 +456,7 @@ fn local_of(identity: &synra_core::identity::Identity) -> synra_core::peer::Loca
 
 #[cfg(test)]
 mod tests {
-    use super::received_notice;
+    use super::{received_notice, received_notification};
 
     fn received(bundle: Option<&str>) -> synra_core::listener::FinishedTransfer {
         synra_core::listener::FinishedTransfer {
@@ -466,5 +490,16 @@ mod tests {
     #[test]
     fn a_plugin_bundle_is_silent_because_installing_it_is_the_news() {
         assert!(received_notice(&received(Some("@acme/chat"))).is_none());
+        assert!(received_notification(&received(Some("@acme/chat"))).is_none());
+    }
+
+    #[test]
+    fn a_received_file_also_asks_for_a_system_notification() {
+        // ★ The banner is for the person looking at the screen; this is for the person who is not. A file that arrives
+        // silently is one they discover by accident.
+        assert_eq!(
+            received_notification(&received(None)),
+            Some(("Synra".to_owned(), "Received notes.txt".to_owned()))
+        );
     }
 }
