@@ -830,12 +830,13 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                             }
                             crate::launch::PackageAction::Update => {
                                 match commands::plugins::update_directory(&state, id, &package) {
-                                    Ok(()) => {
+                                    Ok(report) => {
                                         state.publish(synra_ipc::event::KernelEvent::Notice {
                                             message: "notice.updated".to_owned(),
                                             params: serde_json::json!({
                                                 "pluginId": id,
-                                                "version": manifest.version,
+                                                "version": report.version,
+                                                "warnings": report.warnings,
                                             }),
                                         });
                                     }

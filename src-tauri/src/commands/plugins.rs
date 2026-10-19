@@ -549,7 +549,14 @@ pub(crate) fn install_directory(
     state: &AppState,
     path: &std::path::Path,
 ) -> Result<InstallReport, IpcError> {
-    let installed = run_install(state, path, false)?;
+    report_of(run_install(state, path, false)?)
+}
+
+/// The report an install or an update gives the caller.
+///
+/// One function rather than the same six fields at two call sites: an update's warnings are as much a fact as an
+/// install's, and the version that landed is read from the same place in both.
+fn report_of(installed: synra_core::install::Installed) -> Result<InstallReport, IpcError> {
     Ok(InstallReport {
         plugin_id: parse(&installed.plugin_id)?,
         version: installed.version,
@@ -569,7 +576,7 @@ pub(crate) fn update_directory(
     state: &AppState,
     plugin_id: &str,
     path: &std::path::Path,
-) -> Result<(), IpcError> {
+) -> Result<InstallReport, IpcError> {
     let id = parse(plugin_id)?;
     // ★ The old instance is asked to migrate **before** its bytes are replaced. Only the old code knows what it wrote,
     // and a migration failure has to leave a working version installed — after the replacement there would be nothing
@@ -610,7 +617,7 @@ pub(crate) fn update_directory(
     // the same division the consent command uses.
     let _ = apply_lifecycle(state, &id);
     announce(state, &id);
-    Ok(())
+    report_of(installed)
 }
 
 /// The version a package declares, whether it is a directory or a `.synra` archive.

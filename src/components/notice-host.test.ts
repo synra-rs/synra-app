@@ -78,12 +78,17 @@ describe('the notice host', () => {
   })
 
   it('says when a package replaced an older version', async () => {
-    useNoticesStore().apply(notice('notice.updated', { pluginId: '@acme/hello', version: '2.0.0' }))
+    useNoticesStore().apply(notice('notice.updated', {
+      pluginId: '@acme/hello',
+      version: '2.0.0',
+      warnings: ['This update asks for a new capability.']
+    }))
 
     const { wrapper } = mountHost()
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.notices.updated('@acme/hello', '2.0.0'))
+    expect(wrapper.text()).toContain('This update asks for a new capability.')
     wrapper.unmount()
   })
 
