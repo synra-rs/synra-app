@@ -698,11 +698,8 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed
-                        && let Some(window) = app.get_webview_window("main")
-                    {
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        crate::window::show_main(app);
                     }
                 })
                 .build(),
@@ -786,9 +783,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // ★ The window starts hidden (`visible: false` in `tauri.conf.json`) and is shown here, after the
             // single-instance check. A second launch would otherwise create and flash a window before deciding it has
             // nothing to do.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-            }
+            // ★ One function for "bring the window forward", shared with the tray. A second launch is the third caller,
+            // and three copies of show/unminimise/focus is how one of them ends up missing a step.
+            crate::window::show_main(app.handle());
             Ok(())
         })
         .invoke_handler(wrappers::handler())
