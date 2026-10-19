@@ -493,10 +493,18 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
         "cpu_percent",
         "threads",
         "db_write_duration_us",
+        "late_results",
     ];
     assert!(
         names.iter().all(|name| sampled.contains(name)),
         "something was counted before anything ran: {value}"
+    );
+    // ★ The queue gauge is a reading of a directory, not a count of something that happened, and an empty shell has an
+    // empty queue: zero is the truthful sample.
+    assert_eq!(
+        snapshot.get("late_results"),
+        Some(&synra_observe::metrics::Value::Gauge(0)),
+        "{value}"
     );
     // ★ A shell whose logger is not running writes no log gauges at all: zero would be "running and quiet", which is a
     // different fact from "not running".

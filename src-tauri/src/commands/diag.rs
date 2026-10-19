@@ -374,6 +374,15 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
             );
         }
     }
+    // ★ How many late answers are waiting for a delivery attempt. A queue that keeps growing is a device that is gone and a
+    // shell that keeps producing answers for it; the number is the only place that is visible without reading the directory.
+    state.metrics.gauge_set(
+        &synra_observe::metrics::SeriesKey::new("late_results", []),
+        i64::try_from(
+            synra_core::late_queue::LateQueue::in_data_dir(&state.paths.data_dir()).len(),
+        )
+        .unwrap_or(i64::MAX),
+    );
     Ok(state.metrics.snapshot())
 }
 
