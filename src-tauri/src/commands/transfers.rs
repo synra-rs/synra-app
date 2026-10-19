@@ -267,6 +267,50 @@ pub fn transfer_received(state: &crate::state::AppState) -> Vec<synra_ipc::dto::
     files
 }
 
+/// Resolves a received-file path, refusing anything outside the inbox.
+///
+/// # Why the containment check is here rather than in the interface
+///
+/// The path comes from the bridge, and `open_path` launches whatever the operating system associates with it. A webview
+/// that could name `~/.ssh` would turn "open the file I received" into "open anything on this disk" — the check has to
+/// be on the side that knows where received files live.
+fn inbox_file(state: &crate::state::AppState, path: &str) -> Result<std::path::PathBuf, synra_ipc::IpcError> {
+    let inbox = state
+        .paths
+        .data_dir()
+        .join(synra_core::inbound::INBOX_DIR);
+    let root = inbox.canonicalize().map_err(|error| {
+        synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": format!("the inbox is not readable: {error}")}))
+    })?;
+    let file = std::path::Path::new(path).canonicalize().map_err(|error| {
+        synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })?;
+    if !file.starts_with(&root) || !file.is_file() {
+        return Err(synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"path": path, "reason": "it is not a file in the inbox"})));
+    }
+    Ok(file)
+}
+
+/// Opens a received file with the platform's default application.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and `Unsupported` when the platform refuses
+/// to launch it. The refusal carries the reason; opening a file is the one action where "nothing happened" is hardest to
+/// diagnose from the screen alone.
+pub fn transfer_open(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+    use synra_platform::Platform as _;
+
+    let file = inbox_file(state, path)?;
+    state.platform.open_path(&file).map_err(|error| {
+        synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })
+}
+
 /// Abandons a transfer, and answers whether there was one.
 ///
 /// # Why this refuses an unknown identifier

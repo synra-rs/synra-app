@@ -101,6 +101,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   intent_list: undefined,
   transfer_list: undefined,
   transfer_received: undefined,
+  transfer_open: { path: 'C:/inbox/notes.txt' },
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
   // `One`: the transfer's identifier. The fake requires the request bag the wrapper takes, not its fields.
   transfer_send_text: { request: { to: '11111111-1111-4111-8111-111111111111', text: 'hi', fileName: 'message.txt' } },
@@ -131,7 +132,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
 const MAYBE_COMMAND = 'plugins_check_update'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 51
+const DECLARED_COMMANDS = 52
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

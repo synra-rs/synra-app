@@ -175,7 +175,12 @@
               <span class="truncate text-sm">{{ file.fileName }}</span>
               <span class="truncate text-xs text-ink-dim font-mono">{{ file.path }}</span>
             </div>
-            <span class="shrink-0 text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
+            <div class="row shrink-0 gap-2">
+              <span class="text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
+              <AButton size="small" :loading="opening === file.path" @click="openReceived(file)">
+                {{ messages.home.receivedFiles.open }}
+              </AButton>
+            </div>
           </div>
         </AList.Item>
       </AList>
@@ -338,6 +343,24 @@ async function load(): Promise<void> {
   }
   intentsStore.applySnapshot({ intents: intentAnswer.value, transfers: transferAnswer.value })
   received.value = receivedAnswer.value
+}
+
+/** The received file whose Open command is in flight. */
+const opening = ref<string | undefined>(undefined)
+
+/**
+ * Opens a received file with the platform's default application.
+ *
+ * The shell checks the path is inside the inbox before launching anything; this side only carries the one the list
+ * returned. A refusal is shown where every other one on this page is.
+ */
+async function openReceived(file: ReceivedFile): Promise<void> {
+  error.value = undefined
+  opening.value = file.path
+  const answer = await kernel.call<null>('transfer_open', { path: file.path })
+  opening.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 onMounted(load)

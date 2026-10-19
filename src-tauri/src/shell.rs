@@ -256,6 +256,15 @@ mod wrappers {
         commands::transfers::transfer_received(&state)
     }
 
+    /// Opens a file that landed in the inbox, with the platform's default application.
+    #[tauri::command]
+    pub fn transfer_open(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        path: String,
+    ) -> Result<(), IpcError> {
+        commands::transfers::transfer_open(&state, &path)
+    }
+
     /// Records that a plugin page has drawn, after checking the session it was given.
     ///
     /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
@@ -644,6 +653,7 @@ mod wrappers {
             transfer_send_text,
             transfer_list,
             transfer_received,
+            transfer_open,
             plugins_audit,
             plugins_audit_clear,
             plugins_sync_plan,

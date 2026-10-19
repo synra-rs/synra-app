@@ -694,6 +694,29 @@ fn the_received_list_reads_the_inbox_and_skips_installed_bundles() {
 }
 
 #[test]
+fn opening_a_received_file_is_contained_to_the_inbox() {
+    // ★ `open_path` launches whatever the OS associates with the path. Without this check a webview could name any file on
+    // the disk and have the user open it; the inbox is the only place a received file is allowed to be.
+    let (_root, state) = crate::testing::file_state();
+    let inbox = state.paths.data_dir().join(synra_core::inbound::INBOX_DIR);
+    std::fs::create_dir_all(&inbox).expect("the inbox");
+    let inside = inbox.join("notes.txt");
+    std::fs::write(&inside, b"hello").expect("a received file");
+    let outside = state.paths.data_dir().join("identity.toml");
+    std::fs::write(&outside, b"secret").expect("a file outside the inbox");
+
+    assert!(super::inbox_file(&state, &inside.to_string_lossy()).is_ok());
+    assert_eq!(
+        super::inbox_file(&state, &outside.to_string_lossy()).expect_err("outside is refused").code,
+        synra_protocol::ErrorCode::InvalidArgument
+    );
+    assert_eq!(
+        super::inbox_file(&state, &inbox.join("missing.txt").to_string_lossy()).expect_err("missing is refused").code,
+        synra_protocol::ErrorCode::InvalidArgument
+    );
+}
+
+#[test]
 fn a_text_send_is_named_after_the_request_rather_than_the_clock() {
     // ★ The receiver names the arriving file after this path. `message-<ms>.txt` threw away the only part a person
     // recognises; the stem now comes from the request, and a stem with a separator in it stays a name rather than a path.

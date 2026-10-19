@@ -47,6 +47,7 @@ export const home = {
   /** The files in the inbox — the history an in-flight row cannot be. */
   receivedFiles: {
     title: 'Received files',
-    empty: 'No file has landed in the inbox yet.'
+    empty: 'No file has landed in the inbox yet.',
+    open: 'Open'
   }
 } as const

@@ -70,6 +70,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_reload: ['pluginId'],
   transfer_send_text: ['request'],
   transfer_send_file: ['request'],
+  transfer_open: ['path'],
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
@@ -256,6 +257,9 @@ export class FakeKernel implements Bridge {
       case 'transfer_received':
         // `Many`: an empty inbox is the ordinary fresh-install case.
         return []
+      case 'transfer_open':
+        // `Unit`: the platform did the opening, and there is nothing to return.
+        return null
       case 'transfer_send_text':
         // `One` is one value, and the shell returns the transfer's id — a string. The page does not read it, but the fake
         // still answers the shape the contract allows rather than a `null` the shell never returns.

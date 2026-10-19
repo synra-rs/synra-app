@@ -133,6 +133,7 @@ describe('the home page', () => {
     // history is a read of the inbox, not a remembered table.
     answer({
       intent_list: [],
+      transfer_open: null,
       transfer_received: [
         { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
         { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2_048, receivedAtMs: 1 }
@@ -146,6 +147,12 @@ describe('the home page', () => {
     expect(wrapper.text()).toContain(messages.home.receivedFiles.title)
     expect(wrapper.text()).toContain('notes.txt')
     expect(wrapper.text()).toContain('C:/inbox/notes.txt')
+
+    const open = wrapper.findAll('button').find(button => button.text() === messages.home.receivedFiles.open)
+    expect(open, 'a received file has no open action').toBeDefined()
+    await open?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('transfer_open', { path: 'C:/inbox/notes.txt' })
     wrapper.unmount()
   })
 
