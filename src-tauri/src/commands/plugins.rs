@@ -852,6 +852,16 @@ fn snapshot(
 ) -> PluginSnapshot {
     let manifest = read_manifest(state, &row.plugin_id);
     let is_loaded = loaded.is_some_and(|ids| ids.contains(plugin_id));
+    // ★ A plugin can be loaded and still unusable: the health ladder's last rung is `Lifecycle::Faulted`, and the set
+    // holds it. Without this read the card said `active` for a plugin every call now refuses — the state word was
+    // derived from "is it in the map" rather than from what the map says.
+    let fault_reason: Option<String> = state.plugin_set().ok().and_then(|set| {
+        let set = set.lock();
+        match set.lifecycle(plugin_id).map(synra_plugin_host::Lifecycle::state) {
+            Some(synra_plugin_host::State::Faulted { reason, .. }) => Some(reason.clone()),
+            _ => None,
+        }
+    });
     let decisions = state.db().plugin_grants(&row.plugin_id).unwrap_or_default();
     // ★ One read of the load report for both the state word and its sentence. The lock is taken here, the strings are
     // cloned out, and neither helper needs the guard — a second acquisition under the first would be a deadlock.
@@ -859,7 +869,7 @@ fn snapshot(
         let loads = state.plugin_loads();
         (loads.refusal_for(&row.plugin_id).map(str::to_owned), loads.safe_mode.clone())
     };
-    let state_word = life_state(row, is_loaded, manifest.is_some(), refused.is_some());
+    let state_word = life_state(row, is_loaded, fault_reason.is_some(), manifest.is_some(), refused.is_some());
 
     PluginSnapshot {
         plugin_id: plugin_id.clone(),
@@ -873,7 +883,13 @@ fn snapshot(
         state: state_word.to_owned(),
         // ★ The sentence behind the state word, from the layer that decided. Without it `unavailable` covers a crash
         // loop, a missing artifact and a build without an engine, and the user is sent to the wrong place.
-        state_reason: state_reason(state, state_word, is_loaded, refused.as_deref(), safe_mode.as_deref()),
+        state_reason: state_reason(
+            state,
+            state_word,
+            is_loaded,
+            refused.as_deref().or(fault_reason.as_deref()),
+            safe_mode.as_deref(),
+        ),
         hybrid: manifest.as_ref().is_some_and(|manifest| {
             manifest.runtime.headless.is_some() && manifest.runtime.ui.is_some()
         }),
@@ -939,6 +955,7 @@ fn health_dto(report: &synra_plugin_host::quota::QuotaReport) -> PluginHealthDto
 fn life_state(
     row: &synra_store::PluginRow,
     loaded: bool,
+    faulted: bool,
     manifest_readable: bool,
     load_refused: bool,
 ) -> &'static str {
@@ -952,6 +969,11 @@ fn life_state(
     }
     if !manifest_readable {
         return "unreadable";
+    }
+    if faulted {
+        // ★ The health ladder's last rung. Loaded bytes are not a working plugin: every call is refused above, and the
+        // card has to say so rather than showing the green tag a running plugin gets.
+        return "faulted";
     }
     if loaded {
         // ★ `active`, the word the design's lifecycle and the page's own colour table already use. It used to say
@@ -1254,6 +1276,22 @@ mod tests {
     use crate::testing;
 
     const ID: &str = "@synra-plugin/chat";
+
+    #[test]
+    fn a_faulted_plugin_is_not_drawn_as_active() {
+        // ★ The set holds the bytes and the lifecycle holds the fault. "Loaded" was the whole question before, so a
+        // plugin the health ladder had stopped calling still got the green tag of one that was running.
+        let row = synra_store::PluginRow {
+            plugin_id: ID.to_owned(),
+            enabled: true,
+            trusted: true,
+            health: "faulted".to_owned(),
+            installed_at_ms: 0,
+            updated_at_ms: 0,
+        };
+        assert_eq!(super::life_state(&row, true, true, true, false), "faulted");
+        assert_eq!(super::life_state(&row, true, false, true, false), "active");
+    }
 
     /// A state with a scripted engine, because installing needs one and the fixture builds a shell without.
     ///
