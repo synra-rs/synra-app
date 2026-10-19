@@ -31,6 +31,14 @@
       "icons/128x128.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["synra"],
+        "mimeType": "application/x-synra",
+        "name": "Synra plugin package",
+        "description": "A signed plugin package that Synra installs when it is opened."
+      }
     ]
   },
   "plugins": {

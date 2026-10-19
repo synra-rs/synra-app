@@ -794,6 +794,16 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     eprintln!("synra: the synra:// scheme could not be registered: {error}");
                 }
             }
+            // ★ A `.synra` file opened from the desktop. The installer already owns the checks; this only turns the
+            // argument into the source the install command takes.
+            if let Some(package) = crate::launch::package_from_args(std::env::args()) {
+                let state = app.state::<std::sync::Arc<AppState>>();
+                let source = synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
+                if let Err(error) = commands::plugins::plugins_install(&state, &source) {
+                    eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                }
+                crate::window::show_main(app.handle());
+            }
             // ★ A shortcut another application already owns is a missing convenience, not a reason to lose the window —
             // so the failure is reported and the rest of setup continues.
             {

@@ -75,6 +75,10 @@ pub mod shell;
 #[cfg(feature = "tauri-shell")]
 pub mod deeplink;
 
+// ★ Opening a package from the operating system, the same way a deep link opens a share.
+#[cfg(feature = "tauri-shell")]
+pub mod launch;
+
 // ★ The tray needs an event loop, so it is behind the same gate as the window; [`tray_menu`] holds the part that does not.
 #[cfg(feature = "tauri-shell")]
 pub mod tray;
