@@ -569,6 +569,14 @@ mod wrappers {
         commands::diag::diag_logs_tail(&state, lines)
     }
 
+    /// The crash reports the next start would decide safe mode from, newest first.
+    #[tauri::command]
+    pub fn diag_crashes(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Vec<synra_observe::crash::CrashReport>, IpcError> {
+        commands::diag::diag_crashes(&state)
+    }
+
     /// Deletes the crash reports that would make the next start enter safe mode.
     #[tauri::command]
     pub fn diag_crash_dismiss(
@@ -642,6 +650,7 @@ mod wrappers {
             diag_probes,
             diag_logs_tail,
             diag_crash_dismiss,
+            diag_crashes,
             diag_metrics,
         ]
     }

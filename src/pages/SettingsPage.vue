@@ -290,10 +290,29 @@
           <AButton danger :loading="dismissing" @click="dismissCrashes">
             {{ messages.settings.diagnostics.dismissCrashes }}
           </AButton>
+          <AButton :loading="loadingCrashes" @click="showCrashes">
+            {{ messages.settings.diagnostics.showCrashes }}
+          </AButton>
           <span v-if="crashesDismissed" class="text-xs text-ink-dim">
             {{ messages.settings.diagnostics.dismissed }}
           </span>
         </div>
+        <ul v-if="crashes" class="m-0 stack gap-2 p-0">
+          <li v-if="crashes.length === 0" class="text-xs text-ink-dim">
+            {{ messages.settings.diagnostics.crashesEmpty }}
+          </li>
+          <li
+            v-for="report in crashes"
+            :key="`${report.atMs}-${report.location ?? ''}`"
+            class="stack gap-1 text-xs"
+          >
+            <span class="font-mono text-ink-dim">
+              {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
+            </span>
+            <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
+            <span v-if="report.location" class="font-mono text-ink-dim">{{ report.location }}</span>
+          </li>
+        </ul>
       </div>
 
       <!--
@@ -366,7 +385,7 @@
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
-import type { ConfigSnapshot, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
+import type { ConfigSnapshot, CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
   Checkbox as ACheckbox,
@@ -542,6 +561,25 @@ async function dismissCrashes(): Promise<void> {
     return
   }
   crashesDismissed.value = true
+  crashes.value = []
+}
+
+/** The reports the user asked to see, or undefined before they asked. Read on request: the section is not a startup cost. */
+const crashes = ref<readonly CrashReport[] | undefined>(undefined)
+/** The report read is in flight. */
+const loadingCrashes = ref(false)
+
+/** Reads the crash reports, newest first, and shows them. */
+async function showCrashes(): Promise<void> {
+  loadingCrashes.value = true
+  error.value = undefined
+  const answer = await kernel.call<readonly CrashReport[]>('diag_crashes')
+  loadingCrashes.value = false
+  if (!answer.ok) {
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    return
+  }
+  crashes.value = answer.value
 }
 
 /** The probes' last report, or undefined before the user has asked for one. */

@@ -424,6 +424,38 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('shows the crash reports on request, newest first as the kernel answers them', async () => {
+    // ★ "查看详情" reads on request. A page that read them on mount would make every visit to settings touch a directory
+    // the user did not ask about, and the reports are the one diagnostic that can contain a panic message.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_crashes: [
+        {
+          atMs: 2_000,
+          version: '0.1.0',
+          location: 'src/plugin.rs:42',
+          message: 'the plugin panicked'
+        }
+      ]
+    })
+
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const button = wrapper
+      .findAll('button')
+      .find(candidate => candidate.text() === messages.settings.diagnostics.showCrashes)
+    expect(button, 'the show button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('diag_crashes')
+    expect(wrapper.text()).toContain('the plugin panicked')
+    expect(wrapper.text()).toContain('src/plugin.rs:42')
+    wrapper.unmount()
+  })
+
   it('reads the recent log when its section is opened', async () => {
     // ★ Read on open, not on mount: a log copied at load is stale by the time a user scrolls to it, and it is the
     // largest thing this page can ask for. The queued `toggle` is the browser's own event, as in the audit section.

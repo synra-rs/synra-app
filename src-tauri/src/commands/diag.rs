@@ -313,6 +313,25 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
     Ok(synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines)
 }
 
+/// The crash reports the next start would decide safe mode from, newest first.
+///
+/// # Why newest first
+///
+/// Because the prompt is about the run that just ended, and a list read top-down should start with it. `read_all` reads
+/// the directory in whatever order the filesystem returns; sorting here is what makes the order a promise of the command
+/// rather than an accident of the filesystem.
+///
+/// # Errors
+///
+/// Never in practice: an unreadable report is skipped by `read_all`, and a missing directory is an empty list.
+pub fn diag_crashes(
+    state: &AppState,
+) -> Result<Vec<synra_observe::crash::CrashReport>, IpcError> {
+    let mut reports = synra_observe::crash::CrashStore::at(state.paths.crash_dir()).read_all();
+    reports.sort_by_key(|report| std::cmp::Reverse(report.at_ms));
+    Ok(reports)
+}
+
 /// Deletes the crash reports that make the next start enter safe mode.
 ///
 /// # Why "dismiss" deletes rather than remembers

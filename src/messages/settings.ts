@@ -76,6 +76,9 @@ export const settings = {
     logsEmpty: 'The log is empty.',
     /** The crash prompt's "ignore": safe mode is decided from the reports on disk. */
     dismissCrashes: 'Dismiss crash reports',
+    showCrashes: 'Show crash reports',
+    crashesEmpty: 'No crash report is on disk.',
+    crashNoMessage: 'the panic carried no message',
     dismissDetail: 'A repeated crash is why the next start may begin without plugins. Dismissing the reports makes it start normally again; export a bundle first if you want to keep them.',
     dismissed: 'Dismissed. The next start will load plugins again.'
   },

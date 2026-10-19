@@ -89,6 +89,8 @@ export const REGISTERED = [
   // ★ The crash prompt's "ignore": deleting the reports is what makes the next start normal, and the button is in the
   // diagnostics section beside the export that already carries them.
   'diag_crash_dismiss',
+  // ★ The "查看详情" half: the reports themselves, newest first, read on request rather than on mount.
+  'diag_crashes',
   // ★ And the metrics command, which came up the same way the log tail did: the gate has counted into a `RingRecorder`
   // since it learned to count, and what was missing here was a sink behind `AppState` rather than the command itself.
   // The reason it used to carry — "no metrics sink is behind AppState" — was true, and it was the *only* thing in the way.

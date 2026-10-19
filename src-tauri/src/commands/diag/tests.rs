@@ -625,3 +625,33 @@ fn dismissing_crashes_clears_the_reports_that_would_enter_safe_mode() {
     assert!(store.is_empty(), "a report survived the dismiss");
     assert!(store.verdict(1_000).allows_plugins(), "the next start would still be in safe mode");
 }
+
+#[test]
+fn the_crash_list_is_newest_first_because_the_prompt_is_about_the_last_run() {
+    // ★ The filesystem's order is not a promise; the command's order is. Two reports written oldest-first must come back
+    // newest-first, or the list a person reads starts at the wrong end of the story.
+    // ★ A directory of this test's own. `testing::state()` sits on one shared scratch path, so the dismiss test's
+    // reports were visible here and the list came back four long instead of two.
+    let root = testing::Root::fresh("crash-list");
+    let state = testing::state_in(&root);
+    let store = synra_observe::crash::CrashStore::at(state.paths.crash_dir());
+    for at_ms in [1_000, 2_000] {
+        store
+            .write(&synra_observe::crash::CrashReport::new(
+                at_ms,
+                "0.1.0",
+                Some(format!("src/plugin.rs:{at_ms}")),
+                Some("the plugin panicked".to_owned()),
+                None,
+                None,
+                None,
+            ))
+            .expect("the report is written");
+    }
+
+    let reports = super::diag_crashes(&state).expect("the list answers");
+
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0].at_ms, 2_000, "the newest report is not first");
+    assert_eq!(reports[1].at_ms, 1_000);
+}

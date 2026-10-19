@@ -171,6 +171,9 @@ export class FakeKernel implements Bridge {
       case 'diag_crash_dismiss':
         // `Unit`: the reports are gone, and there is nothing to return.
         return null
+      case 'diag_crashes':
+        // `Many`: a bare array. A fresh dev installation has no crash report, which is the ordinary case.
+        return []
       case 'diag_probes':
         // `One`: the report the page renders. Two statuses, so a caller that ignored `status` still sees both branches.
         return {
