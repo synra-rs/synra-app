@@ -554,7 +554,7 @@ function intentStateColor(state: string): string {
  * sentence. An unknown pair still says something true rather than printing either the key or the code.
  */
 function intentError(intent: IntentSnapshot): string {
-  const error = intent.error as { code?: string, message?: string } | undefined
+  const error = intent.error
   if (!error)
     return ''
   return messages.kernelErrors[error.message as keyof typeof messages.kernelErrors]
