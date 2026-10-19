@@ -706,6 +706,13 @@ async function revokePendingPublisher(): Promise<void> {
 }
 
 onMounted(load)
+onMounted(() => {
+  // ★ A package notice can link straight to the plugin it was about. The filter is the page's existing one, so arriving
+  // with `?plugin=x` shows the same list the user would get by typing `x` — no second filtering rule.
+  const plugin = new URLSearchParams(window.location.search).get('plugin')
+  if (plugin !== null && plugin.trim() !== '')
+    query.value = plugin
+})
 
 /** Reads the installed plugins and the publishers this device has met. */
 async function load(): Promise<void> {

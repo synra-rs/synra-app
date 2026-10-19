@@ -118,6 +118,7 @@ describe('the notice host', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/plugins')
+    expect(router.currentRoute.value.query.plugin).toBe('@acme/hello')
     wrapper.unmount()
   })
 

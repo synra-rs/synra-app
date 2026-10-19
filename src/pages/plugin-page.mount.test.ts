@@ -20,7 +20,7 @@
 import type { PluginSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -103,6 +103,10 @@ beforeEach(() => {
   mocks.open.mockReset()
 })
 
+afterEach(() => {
+  window.history.replaceState({}, '', '/')
+})
+
 describe('the plugins page', () => {
   it('fills the install path from the platform directory picker', async () => {
     // ★ The path was a hand-typed string. The picker answers the same string the input takes, so the install path itself
@@ -147,6 +151,23 @@ describe('the plugins page', () => {
     const field = wrapper.findAll('input').find(input => (input.element as HTMLInputElement).type === 'text')
     expect(field, 'the install input is missing').toBeDefined()
     expect((field!.element as HTMLInputElement).value).toBe('C:/plugins/hello.synra')
+    wrapper.unmount()
+  })
+
+  it('filters the installed list to a plugin named in the query', async () => {
+    // ★ A package notice links to the plugin it was about. The query fills the page's existing filter rather than adding a
+    // second way to select a card.
+    window.history.replaceState({}, '', '/?plugin=@acme/hello')
+    mocks.call.mockImplementation(async (command: string) => command === 'plugins_list'
+      ? { ok: true, value: [card()] }
+      : { ok: true, value: [] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const filter = wrapper.find(`input[placeholder="${messages.plugins.filterPlaceholder}"]`)
+    expect((filter.element as HTMLInputElement).value).toBe('@acme/hello')
+    expect(wrapper.text()).toContain('Hello')
     wrapper.unmount()
   })
 

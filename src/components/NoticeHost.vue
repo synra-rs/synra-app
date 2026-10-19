@@ -57,8 +57,12 @@ const showAction = computed(() => {
 
 /** Opens the plugins page and clears the banner: the next step is on that page. */
 function review(): void {
+  const value = notice.value
+  const pluginId = value?.params.pluginId
   notices.dismiss()
-  void router.push('/plugins')
+  void router.push(typeof pluginId === 'string'
+    ? { path: '/plugins', query: { plugin: pluginId } }
+    : '/plugins')
 }
 
 /** A link this build does not understand is a warning rather than a success. */
