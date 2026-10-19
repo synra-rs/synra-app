@@ -192,6 +192,26 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('says why an intent failed without printing the kernel key', async () => {
+    // ★ `IntentSnapshot.error` carries a code and a message **key**, not a sentence. A page that printed either would put
+    // an engine word on screen; the fallback chain is the one `ErrorNotice` already uses.
+    const intent = {
+      intentId: '01HQ00000000000000000INTNT3',
+      traceId: '01HQ00000000000000000TRACE3',
+      state: 'failed',
+      candidates: [],
+      error: { code: 'plugin_faulted', message: 'error.somethingUnmapped', retryable: false },
+      startedAtMs: 1
+    }
+    answer({ intent_list: [intent] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.errors.plugin_faulted)
+    expect(wrapper.text()).not.toContain('error.somethingUnmapped')
+    wrapper.unmount()
+  })
+
   it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
     // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
     // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.

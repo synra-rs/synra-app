@@ -204,6 +204,11 @@
                 {{ messages.home.received.decline }}
               </AButton>
             </div>
+
+            <!-- ★ The kernel's error is a code plus a message **key**; the sentence is this side's (R34). -->
+            <p v-if="intent.error" class="m-0 text-xs">
+              <span class="text-error">{{ intentError(intent) }}</span>
+            </p>
           </div>
         </AList.Item>
       </AList>
@@ -540,6 +545,21 @@ function intentStateColor(state: string): string {
   if (state === 'dispatching')
     return 'processing'
   return 'default'
+}
+
+/**
+ * Why an intent failed, in this side's words.
+ *
+ * The same lookup `ErrorNotice` does, and for the same reason: `IpcError.message` is a key and the code is finer than a
+ * sentence. An unknown pair still says something true rather than printing either the key or the code.
+ */
+function intentError(intent: IntentSnapshot): string {
+  const error = intent.error as { code?: string, message?: string } | undefined
+  if (!error)
+    return ''
+  return messages.kernelErrors[error.message as keyof typeof messages.kernelErrors]
+    ?? messages.errors[error.code as keyof typeof messages.errors]
+    ?? messages.errors.unknown
 }
 
 /** The received file whose Show-in-folder command is in flight. */
