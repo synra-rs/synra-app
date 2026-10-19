@@ -113,6 +113,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // `Unit`: the answer has no shape to hold a caller to, which is the claim this entry makes alongside the declaration.
   plugins_audit_clear: { pluginId: '@acme/hello' },
   plugins_update: { pluginId: '@acme/hello' },
+  plugins_reload: { pluginId: '@acme/hello' },
   plugins_publisher_decide: { publisherId: '@acme', trust: 'trusted' },
   plugins_preview: { pluginId: '@acme/hello' },
   plugins_catalog_search: { query: { query: 'hello' } },
@@ -136,7 +137,7 @@ const MAYBE_COMMAND = 'plugins_check_update'
 const KNOWN_DIVERGENCE = 'devices_scan_start'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 47
+const DECLARED_COMMANDS = 48
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

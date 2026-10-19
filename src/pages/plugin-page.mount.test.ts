@@ -202,6 +202,27 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('offers a retry for a faulted plugin and asks the kernel to load it again', async () => {
+    // ★ The row is enabled and trusted; what failed was starting it, so turning the switch off and on was the only way
+    // to ask again. The button is the difference between "try now" and changing a flag the user did not mean to change.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_reload')
+        return { ok: true, value: card({ state: 'active', enabled: true }) }
+      return { ok: true, value: [card({ state: 'faulted', enabled: true, stateReason: 'it failed to start' })] }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const retry = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.retry)
+    expect(retry, 'a faulted plugin has no retry').toBeDefined()
+    await retry?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_reload', { pluginId: '@acme/hello' })
+    wrapper.unmount()
+  })
+
   it('asks about the data in a dialog before removing a plugin', async () => {
     // ★ The destructive half of removal: the command always accepted `removeData`, and the page sent `false` without ever
     // asking. The dialog renders in place (`get-container=false`), so this test can tick the box that decides it — the

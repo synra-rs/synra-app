@@ -407,6 +407,37 @@ pub(crate) fn install_package(
     .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
 }
 
+/// Tries one plugin's load again without touching its flags.
+///
+/// # Why this exists
+///
+/// A faulted plugin is installed, enabled and trusted; what failed was starting it. The only way to ask again was to
+/// switch it off and on, which is a flag change the user did not want and which the page had to explain as a workaround.
+/// This is the same `apply_lifecycle` an enable runs, on a row that is already where it should be.
+///
+/// # Errors
+///
+/// [`IpcError::PluginNotInstalled`] when no row exists, and `Internal` when the list cannot be read. A load that fails is
+/// **not** an error: the answer is the card, and its `stateReason` is the sentence the loader produced.
+pub fn plugins_reload(state: &AppState, plugin_id: &str) -> Result<PluginSnapshot, IpcError> {
+    let id = parse(plugin_id)?;
+    let row = state
+        .db()
+        .plugins()
+        .map_err(internal)?
+        .into_iter()
+        .find(|row| row.plugin_id == id.as_str())
+        .ok_or_else(|| {
+            IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+                .with_params(serde_json::json!({"pluginId": plugin_id}))
+        })?;
+
+    let _ = apply_lifecycle(state, &id);
+    announce(state, &id);
+    let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
+    Ok(snapshot(state, &row, &id, loaded.as_deref()))
+}
+
 /// Asks the registry whether a newer version is published for an installed plugin.
 ///
 /// # Errors
@@ -2844,6 +2875,44 @@ mod tests {
             .expect("the old manifest");
         assert!(manifest.contains("\"1.0.0\""), "the update wrote a new version despite the refusal: {manifest}");
         assert_eq!(state.plugin_set().expect("an engine").lock().version(&id), Some("1.0.0"));
+    }
+
+    #[test]
+    fn retrying_a_faulted_plugin_loads_it_once_the_cause_is_gone() {
+        // ★ The retry path: the row is already enabled and trusted, so the only thing that has to change is the set.
+        // This is what the page's Retry button calls, and it must not need a flag to flip.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        let directory = state.paths.plugin_dir(ID);
+        loadable(&state);
+        let artifact = directory.join("plugin.wasm");
+        let bytes = std::fs::read(&artifact).expect("the artifact");
+        std::fs::remove_file(&artifact).expect("the artifact is removed");
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        let state = state.with_plugin_loads(summary);
+        let cards = plugins_list(&state).expect("the list");
+        assert_eq!(cards[0].state, "faulted");
+
+        std::fs::write(&artifact, bytes).expect("the artifact is back");
+        let card = super::plugins_reload(&state, ID).expect("the reload answers with the card");
+
+        assert_eq!(card.state, "active", "the retry did not load the plugin: {card:?}");
+        assert!(
+            state.plugin_set().expect("an engine").lock().contains(&PluginId::parse(ID).expect("an id")),
+            "the card says active but the set is empty"
+        );
+    }
+
+    #[test]
+    fn retrying_a_plugin_that_is_not_installed_is_a_refusal() {
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        let refused = super::plugins_reload(&state, ID).expect_err("no row to reload");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::PluginNotInstalled);
     }
 
     #[test]

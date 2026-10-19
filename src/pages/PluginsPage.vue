@@ -494,6 +494,19 @@
                 {{ messages.plugins.updateAction }}
               </AButton>
 
+              <!--
+                ★ A faulted plugin is enabled and trusted; what failed was starting it. Retry asks again without
+                changing either switch, which is the difference between "try it now" and "turn it off and on".
+              -->
+              <AButton
+                v-if="plugin.state === 'faulted'"
+                size="small"
+                :loading="reloading === plugin.pluginId"
+                @click="retry(plugin)"
+              >
+                {{ messages.plugins.retry }}
+              </AButton>
+
               <AButton size="small" danger @click="askRemove(plugin)">
                 {{ messages.plugins.removeAction }}
               </AButton>
@@ -1078,6 +1091,24 @@ async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
   delete next[plugin.pluginId]
   updates.value = next
   await load()
+}
+
+/** The plugin whose load is being tried again. */
+const reloading = ref<string | undefined>(undefined)
+
+/**
+ * Asks the kernel to load a faulted plugin again.
+ *
+ * The answer is the card, and the kernel publishes `pluginUpdated` beside it, so the store is what the page re-renders
+ * from. A refusal leaves the card as the kernel described it rather than replacing it with a second sentence.
+ */
+async function retry(plugin: PluginSnapshot): Promise<void> {
+  reloading.value = plugin.pluginId
+  error.value = undefined
+  const answer = await kernel.call<PluginSnapshot>('plugins_reload', { pluginId: plugin.pluginId })
+  reloading.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 /** The package a registry install would fetch, shown before anything is downloaded. */

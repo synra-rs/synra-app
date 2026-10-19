@@ -66,6 +66,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_preview: ['pluginId'],
   plugins_check_update: ['pluginId'],
   plugins_update: ['pluginId'],
+  plugins_reload: ['pluginId'],
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
@@ -207,6 +208,9 @@ export class FakeKernel implements Bridge {
         return null
       case 'plugins_update':
         return null
+      case 'plugins_reload':
+        // `One`: the answer is the card, and the fake answers the plugin the caller asked about.
+        return { ...PLUGINS[0] }
       case 'plugins_list':
         // ★ A bare array, because the kernel's own table says this command returns `Many`.
         //

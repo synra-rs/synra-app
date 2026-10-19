@@ -364,6 +364,15 @@ mod wrappers {
         commands::plugins::plugins_update(&state, &plugin_id)
     }
 
+    /// Tries a faulted plugin's load again without changing its switches.
+    #[tauri::command]
+    pub fn plugins_reload(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<PluginSnapshot, IpcError> {
+        commands::plugins::plugins_reload(&state, &plugin_id)
+    }
+
     /// Asks the registry whether a newer version is published for an installed plugin.
     #[tauri::command]
     pub fn plugins_check_update(
@@ -598,6 +607,7 @@ mod wrappers {
             plugins_request_registry_search,
             plugins_check_update,
             plugins_update,
+            plugins_reload,
             plugins_uninstall,
             plugin_ui_open,
             plugin_ui_ready,
