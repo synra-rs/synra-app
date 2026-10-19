@@ -29,6 +29,7 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 
 const HomePage = (await import('./HomePage.vue')).default
 const { useIntentsStore } = await import('../stores/intents')
+const { useNoticesStore } = await import('../stores/notices')
 const { INTENT } = await import('../ipc/fake-kernel-fixtures')
 const { messages } = await import('../messages')
 
@@ -153,6 +154,40 @@ describe('the home page', () => {
     await open?.trigger('click')
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('transfer_open', { path: 'C:/inbox/notes.txt' })
+    wrapper.unmount()
+  })
+
+  it('re-reads the inbox when a received notice arrives', async () => {
+    // ★ The list is a snapshot; the notice is the live fact. Without this, a file received while the page is open gets a
+    // banner but not a row, and the next person to look for it finds nothing until a reload.
+    let reads = 0
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'intent_list' || command === 'transfer_list')
+        return { ok: true, value: [] }
+      if (command === 'transfer_received') {
+        reads += 1
+        return {
+          ok: true,
+          value: reads === 1
+            ? []
+            : [{ fileName: 'arrived.txt', path: 'C:/inbox/arrived.txt', bytes: 7, receivedAtMs: 3 }]
+        }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('arrived.txt')
+
+    useNoticesStore().apply({
+      type: 'notice',
+      payload: { message: 'notice.received', params: { name: 'arrived.txt', path: 'C:/inbox/arrived.txt' } }
+    } as never)
+    await flushPromises()
+
+    expect(reads).toBe(2)
+    expect(wrapper.text()).toContain('arrived.txt')
     wrapper.unmount()
   })
 

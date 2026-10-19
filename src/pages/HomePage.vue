@@ -215,7 +215,7 @@
 import type { IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -224,6 +224,7 @@ import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useIntentsStore } from '../stores/intents'
+import { useNoticesStore } from '../stores/notices'
 import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
@@ -239,16 +240,34 @@ const askBeforeCancel = computed(() => settings.value('transfers.confirmCancel')
 const intentsStore = useIntentsStore()
 const { intents, transfers } = storeToRefs(intentsStore)
 
+/** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
+const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+
 /**
  * The files already in the inbox, newest first.
  *
- * Read, not subscribed: a received file arrives as a `notice`, and a page that re-read the inbox on every notice would be
- * the polling this boundary exists to avoid. The list is for finding something that arrived earlier, not for watching.
+ * Read once at mount, and re-read only when a `notice.received` arrives: a page that polled would be the polling this
+ * boundary exists to avoid, while a page that never re-read would show the inbox as it was when the window opened.
  */
 const received = ref<readonly ReceivedFile[]>([])
 
-/** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
-const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
+/** Reads only the inbox list, for the refresh a notice triggers. */
+async function refreshReceived(): Promise<void> {
+  const answer = await kernel.call<readonly ReceivedFile[]>('transfer_received')
+  if (answer.ok)
+    received.value = answer.value
+  else
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
+
+// ★ A file that arrives while this page is open is a `notice`; the notice banner appears wherever the user is, and this
+// is what keeps the list behind it from being a picture of the inbox at mount time. Only a received notice re-reads: the
+// store is shared with other kinds, and a re-read for one of those would be a query nobody asked for.
+const notices = useNoticesStore()
+watch(() => notices.latest, (latest) => {
+  if (latest?.message === 'notice.received')
+    void refreshReceived()
+})
 
 /** The transfer being cancelled, so its button can say so and cannot be pressed twice. */
 const cancelling = ref<string | undefined>(undefined)
