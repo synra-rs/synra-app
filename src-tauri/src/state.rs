@@ -262,6 +262,7 @@ impl AppState {
     /// [`IpcError`] when the identity cannot be read or written. A shell with no identity has nothing to show a user
     /// and nothing to present to a peer, so this is a start-up refusal rather than a degraded mode.
     pub fn new(mut db: SynraDb, paths: Paths, platform: &str, now_ms: i64) -> Result<Self, IpcError> {
+        let started = std::time::Instant::now();
         let identity = Identity::load(&db, platform, now_ms).map_err(internal)?;
         // Written back because `load` generates one on a fresh installation, and a generated identity that is only in
         // memory is a device that appears new to every peer on every start — which loses every pairing, silently.
@@ -354,6 +355,15 @@ impl AppState {
     // nothing in this shell swept them. The retention window is configured (`audit.retentionDays`), defaulting to the
     // design's seven days; see `prune_audit`.
     crate::commands::plugins::prune_audit(&state, now_ms);
+    // ★ What it cost to get here — the shell's own half of M4's cold-start budget. Recorded on the recorder the
+    // performance panel reads, so "cold start < 500 ms" can be checked against a number rather than a stopwatch.
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new(
+            "startup_duration_ms",
+            [("phase".to_owned(), "state".to_owned())],
+        ),
+        started.elapsed().as_secs_f64() * 1_000.0,
+    );
     Ok(state)
     }
 
@@ -584,6 +594,18 @@ pub(crate) fn internal(error: impl std::fmt::Display) -> IpcError {
 #[cfg(test)]
 mod tests {
     use synra_observe::metrics::Value;
+
+    #[test]
+    fn constructing_the_state_records_how_long_it_took() {
+        // ★ M4 asks for a cold start under 500 ms. A budget that is never written down on the machine is a sentence, not a
+        // test; this is the number the performance panel reads.
+        let state = crate::testing::state();
+
+        assert!(
+            state.metrics.snapshot().get("startup_duration_ms{phase=state}").is_some(),
+            "the state's own construction time is not recorded"
+        );
+    }
 
     #[test]
     fn the_shells_host_counts_into_the_shells_recorder() {

@@ -885,6 +885,7 @@ where
 }
 
 fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
+    let startup = std::time::Instant::now();
     let data_dir = app
         .path()
         .app_data_dir()
@@ -942,7 +943,17 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     let state = AppState::new(db, paths, platform, now_ms())
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
+    let plugins_started = std::time::Instant::now();
     let mut state = with_plugins_or_refuse(state, &verdict);
+    // ★ The plugin pass is the part M4's cold-start budget is most likely to blow: every enabled plugin is compiled and
+    // activated before the window appears. Measured separately from the state so a number that grows points at a cause.
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new(
+            "startup_duration_ms",
+            [("phase".to_owned(), "plugins".to_owned())],
+        ),
+        plugins_started.elapsed().as_secs_f64() * 1_000.0,
+    );
     // ★ Bind the listener **before** discovery, so the announcement can carry the port a peer should dial. The order is the
     // whole fix: announcing the discovery port meant every pairing dialled the responder, which accepts datagrams and not links.
     state = crate::listener::bind(state);
@@ -955,6 +966,16 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     if let Err(error) = state.start_logging() {
         eprintln!("synra-app: logging is not running: {error}");
     }
+
+    // ★ The whole path from the first line of `app_state` to here, which is what "cold start" means for this shell: the
+    // window has not been shown yet, and everything the first paint depends on has run.
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new(
+            "startup_duration_ms",
+            [("phase".to_owned(), "total".to_owned())],
+        ),
+        startup.elapsed().as_secs_f64() * 1_000.0,
+    );
 
     Ok(state)
 }

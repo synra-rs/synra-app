@@ -457,13 +457,13 @@ fn the_exclusions_are_the_same_whether_the_user_shared_more_or_less() {
 }
 
 #[test]
-fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
+fn a_fresh_shell_reports_what_building_it_measured_and_nothing_else() {
     // """ + S + """ The module's rule, on the command that had the least of it: a command either answers or says why it cannot,
     // and never invents an answer.
     //
-    // A shell that has not yet refused anything has **no** metrics, which is a different fact from "this build cannot tell
-    // you" — and the interface renders those two differently. So an empty snapshot is the answer, and `Ok` is right: the
-    // caller gets a list with nothing in it rather than an error it would have to special-case.
+    // A shell that has done nothing but start has only the measurements of starting (its own construction time and the
+    // writes that construction makes) — and that is a different fact from "this build cannot tell you", which the
+    // interface renders separately. So the answer is `Ok` with those rows, not an error a caller must special-case.
     let root = testing::Root::fresh("diag-metrics-empty");
     let state = testing::state_in(&root);
 
@@ -493,6 +493,9 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
         "cpu_percent",
         "threads",
         "db_write_duration_us",
+        // ★ Building the state is itself a measurement now: `startup_duration_ms{phase=state}` is the cold-start number,
+        // so a fresh shell has this row before any command has run. It is a real observation, not an invented sample.
+        "startup_duration_ms",
         "late_results",
     ];
     assert!(
