@@ -78,6 +78,18 @@
 
       <main class="min-h-0 overflow-y-auto px-4 py-5 text-base lg:px-10 md:px-8 sm:px-6">
         <div class="mx-auto max-w-3xl w-full">
+          <!--
+            ★ The one global fact that changes what every page can do. A device row can say "not reachable", but that is
+            about one peer; this is about the machine, and every sharing path needs it.
+          -->
+          <div
+            v-if="!online"
+            role="alert"
+            class="mb-4 border border-line rounded-lg bg-raised px-4 py-3 text-sm"
+          >
+            <span class="font-medium">{{ messages.app.offline }}</span>
+            <span class="text-ink-dim"> {{ messages.app.offlineDetail }}</span>
+          </div>
           <CrashNotice />
           <NoticeHost />
           <RouterView />
@@ -147,12 +159,15 @@ import CrashNotice from './components/CrashNotice.vue'
 import NoticeHost from './components/NoticeHost.vue'
 import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'
+import { messages } from './messages'
+import { useNetworkStatus } from './network'
 import { PAGES } from './router'
 import { useDevicesStore } from './stores/devices'
 
 const route = useRoute()
 const router = useRouter()
 const devices = useDevicesStore()
+const online = useNetworkStatus()
 
 /** True in the rail form: below `lg` (64rem), which is also R12's `minWidth` floor for the expanded form. */
 const rail = ref(false)

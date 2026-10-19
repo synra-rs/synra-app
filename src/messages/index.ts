@@ -46,7 +46,9 @@ export type { ErrorCode } from './errors'
 
 export const messages = {
   app: {
-    name: 'Synra'
+    name: 'Synra',
+    offline: 'Network unavailable.',
+    offlineDetail: 'Sharing and pairing will fail until it comes back.'
   },
 
   nav,
