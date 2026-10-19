@@ -90,6 +90,12 @@ pub fn plugins_consent_respond(
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     }
 
+    // ★ A plugin can be enabled *before* it is trusted — the switch is a preference and consent is the gate — so
+    // recording the decision may be the moment it becomes runnable. Loading here is what makes that true immediately
+    // rather than at the next start. A refusal is recorded on the load report by `apply_lifecycle`, and the card below
+    // carries it; the consent itself succeeded, so this command still answers with the card.
+    let _ = apply_lifecycle(state, &id);
+
     let row = state
         .db()
         .plugins()
@@ -146,6 +152,99 @@ pub(crate) fn load_installed_plugins(
         eprintln!("synra-app: {} was not loaded: {}", refused.plugin_id, refused.reason);
     }
     summary
+}
+
+/// The revocation list shipped beside the data directory, or an empty one.
+///
+/// # Why a missing file is not an error
+///
+/// Because the list ships with the application and the ordinary install may not have one: "nothing is revoked" and
+/// "there is no list" are different facts, but they lead to the same action here, and refusing to work over the second
+/// would trade a working application for a diagnostic absence. A file that **is** there and cannot be read is reported,
+/// because silently ignoring a revocation list is the one failure in this area a user would never forgive.
+pub(crate) fn revocations(state: &AppState) -> synra_plugin_api::revocation::RevocationList {
+    let path = state.paths.data_dir().join("revocations.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return synra_plugin_api::revocation::RevocationList::empty();
+    };
+    match synra_plugin_api::revocation::RevocationList::parse(&text) {
+        Ok(list) => {
+            if !list.is_empty() {
+                eprintln!("synra: {} revocation entries read from {}", list.len(), path.display());
+            }
+            list
+        }
+        Err(error) => {
+            eprintln!(
+                "synra: {} could not be read as a revocation list ({error}); no plugin is disabled on its account",
+                path.display()
+            );
+            synra_plugin_api::revocation::RevocationList::empty()
+        }
+    }
+}
+
+/// Brings one plugin's compiled form in line with the row the user just changed.
+///
+/// # Why a command calls this
+///
+/// Because start-up is not the only moment a plugin begins or stops running. Enabling after install, confirming the
+/// capabilities of an already-enabled plugin, and updating all change the answer to "should this run", and a host that
+/// only loaded at start-up would make all three require a restart. The design's lifecycle says enable is *activating*;
+/// this is the function that makes that true without moving a WebView.
+///
+/// # Errors
+///
+/// The reason the engine or the manifest refused, so an enable can tell the user instead of leaving a switch on over a
+/// plugin that is not running. The refusal is recorded on the load report first, so the card carries the same sentence
+/// the command returns.
+fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
+    let Ok(plugins) = state.plugin_set() else {
+        // No engine: the row is the user's decision and the card explains why nothing runs. A command that failed here
+        // would make "the plugin is on but this build cannot run it" look like the switch did not take.
+        return Ok(());
+    };
+    let should_run = {
+        let db = state.db();
+        let rows = db.plugins().map_err(|error| format!("the plugin rows could not be read: {error}"))?;
+        // The database lock is released before the set is taken: the two locks are never held in one order here, so
+        // there is no second order for another command to deadlock on.
+        drop(db);
+        rows.into_iter().find(|row| row.plugin_id == id.as_str()).is_some_and(|row| row.should_run())
+    };
+    if !should_run {
+        apply_unload(state, id);
+        return Ok(());
+    }
+
+    let revocations = revocations(state);
+    let mut set = plugins.lock();
+    let outcome = {
+        let db = state.db();
+        synra_core::plugin::load_plugin(&mut set, &db, &state.paths.plugins_dir(), id.as_str(), &revocations)
+    };
+    // ★ The set's lock is gone before the report is written. `announce` and `plugins_list` take the same lock, and this
+    // mutex is not reentrant — a same-thread deadlock whose only symptom is a window that stops answering.
+    drop(set);
+    match outcome {
+        Ok(loaded) => {
+            state.note_plugin_loaded(loaded);
+            Ok(())
+        }
+        Err(reason) => {
+            state.note_plugin_refused(id.as_str(), reason.clone());
+            Err(reason)
+        }
+    }
+}
+
+/// Drops one plugin's compiled form and its place in the load report.
+fn apply_unload(state: &AppState, id: &PluginId) {
+    if let Ok(plugins) = state.plugin_set() {
+        // A separate scope so the set's lock is released before the report's lock is taken.
+        let _ = plugins.lock().unload(id);
+    }
+    state.plugin_loads.lock().record_unloaded(id);
 }
 
 /// Every publisher this device has met, and what it has decided about each.
@@ -357,7 +456,22 @@ pub(crate) fn install_directory(
 ///
 /// As [`install_directory`], plus `update` when nothing is installed at that identifier.
 pub(crate) fn update_directory(state: &AppState, path: &std::path::Path) -> Result<(), IpcError> {
-    run_install(state, path, true).map(|_| ())
+    let installed = run_install(state, path, true)?;
+    // ★ The old compiled form is still in the set: a plugin that was running before the update would keep answering
+    // from the bytes the user just replaced. The row was rewritten first, so reloading here reads the new manifest and
+    // the new artifact.
+    let id = parse(&installed.plugin_id)?;
+    match apply_lifecycle(state, &id) {
+        Ok(()) => {
+            announce(state, &id);
+            Ok(())
+        }
+        Err(reason) => {
+            announce(state, &id);
+            Err(IpcError::unknown(synra_protocol::ErrorCode::PluginTrapped)
+                .with_params(serde_json::json!({"pluginId": id.as_str(), "reason": reason})))
+        }
+    }
 }
 
 /// The pipeline both install and update run: verify, stage, move, record.
@@ -455,6 +569,9 @@ pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -
         return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     }
+    // ★ The compiled form goes with the row. A plugin whose files are gone but whose instance is still in the set can
+    // still match a share and run — from an artifact the user just deleted.
+    apply_unload(state, &id);
     // ★ The store measures before and after: `bytes_freed` is what is no longer on disk, not what was there before a
     // locked directory survived. The count beside `leftovers` is the number a user reading "freed" is owed.
     let removal = synra_store::PluginFiles::new(state.paths.clone())
@@ -560,8 +677,16 @@ fn set_enabled(state: &AppState, plugin_id: &str, enabled: bool) -> Result<(), I
     // ★ The interface learns about it here rather than on its next snapshot. The frontend has had an event dispatcher
     // since before there was anything to dispatch; a switch that flipped in the store and nowhere else is what that
     // gap looked like from the window.
+    //
+    // ★ And the set follows the row: enabling loads, disabling unloads. Without this the switch would only take effect
+    // at the next start, which is a different product than "enable" promises.
+    let lifecycle = apply_lifecycle(state, &id);
     announce(state, &id);
-    Ok(())
+    match lifecycle {
+        Ok(()) => Ok(()),
+        Err(reason) => Err(IpcError::unknown(synra_protocol::ErrorCode::PluginTrapped)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "reason": reason}))),
+    }
 }
 
 /// Tells the interface that a plugin's card changed, when it can be read back.
@@ -2366,7 +2491,7 @@ mod tests {
     /// ★ The directory comes from `Paths::plugin_dir`, the same function the installer, removal and sweep use. A fixture
     /// that joined the raw id here would put the manifest somewhere the loader never looks, and the test would then be
     /// asserting a layout no installation has.
-    fn loadable(state: &crate::state::AppState) {
+    fn write_loadable_files(state: &crate::state::AppState) -> String {
         let manifest = format!(
             r#"{{"id": "{ID}", "version": "1.0.0", "title": "Chat",
                 "publisher": {{"id": "synra-official"}}, "sdk": {{"min": "0.1.0"}},
@@ -2379,6 +2504,11 @@ mod tests {
         std::fs::create_dir_all(&directory).expect("the plugin directory");
         std::fs::write(directory.join("manifest.json"), &manifest).expect("a manifest");
         std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        manifest
+    }
+
+    fn loadable(state: &crate::state::AppState) {
+        let manifest = write_loadable_files(state);
         state
             .db()
             .insert_plugin(ID, true, true, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
@@ -2492,5 +2622,65 @@ mod tests {
         let card = cards.first().expect("the installed plugin");
         assert!(card.state != "running");
         assert_eq!(card.state_reason.as_deref(), Some("this build has no plugin engine"));
+    }
+
+    #[test]
+    fn enabling_and_disabling_move_the_plugin_in_and_out_of_the_set() {
+        // ★ Enable is "activating" in the design's state machine, not a flag to be honoured at the next start. The
+        // assertion is on the set because that is what decides whether a share can be answered.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        loadable(&state);
+        state
+            .db()
+            .set_plugin_enabled(ID, false, testing::FIXED_NOW_MS)
+            .expect("switched off");
+        let id = PluginId::parse(ID).expect("an id");
+
+        super::plugins_enable(&state, ID).expect("it enables and loads");
+        assert!(state.plugin_set().expect("an engine").lock().contains(&id), "enable did not load it");
+
+        super::plugins_disable(&state, ID).expect("it disables and unloads");
+        assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "disable did not unload it");
+    }
+
+    #[test]
+    fn confirming_an_enabled_plugins_capabilities_loads_it_without_a_restart() {
+        // ★ The consent flow can run after the switch: the user enables a plugin, is asked what it may do, and approves.
+        // Before this, the set stayed empty until the next launch and the plugin looked broken for no stated reason.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        write_loadable_files(&state);
+        state
+            .db()
+            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .expect("a plugin row");
+
+        let card = super::plugins_consent_respond(&state, ID, &["log:*".to_owned()])
+            .expect("the decision is recorded");
+        assert_eq!(card.state, "running", "the card the consent returns shows the plugin already loaded");
+        assert!(state.plugin_set().expect("an engine").lock().contains(&PluginId::parse(ID).expect("an id")));
+    }
+
+    #[test]
+    fn uninstalling_takes_the_plugin_out_of_the_set() {
+        // ★ A removed plugin whose compiled form stayed in the set could still answer a share, from an artifact the
+        // user just deleted.
+        let (_root, state) = testing::file_state();
+        let state = with_engine(state);
+        loadable(&state);
+        let summary = load_installed_plugins(
+            &state,
+            &synra_observe::crash::StartupVerdict::Clean,
+            &synra_plugin_api::revocation::RevocationList::empty(),
+        );
+        assert_eq!(summary.len(), 1);
+        let state = state.with_plugin_loads(summary);
+        let id = PluginId::parse(ID).expect("an id");
+        assert!(state.plugin_set().expect("an engine").lock().contains(&id));
+
+        super::plugins_uninstall(&state, ID, false).expect("it is removed");
+        assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "the compiled form stayed behind");
+        assert_eq!(state.plugin_loads().len(), 0, "the report still claims it is loaded");
     }
 }

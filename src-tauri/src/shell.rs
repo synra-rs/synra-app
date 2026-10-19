@@ -1022,7 +1022,7 @@ fn with_plugins_or_refuse(
                     // never called the loader, so every plugin was listed, could be enabled, and was never askable —
                     // `intent_dispatch` matched nothing and `life_state` called it `unavailable` forever.
                     let state = state.with_plugins(Arc::new(Mutex::new(set)));
-                    let revocations = revocations_or_empty(&state.paths);
+                    let revocations = commands::plugins::revocations(&state);
                     let summary = commands::plugins::load_installed_plugins(&state, verdict, &revocations);
                     state.with_plugin_loads(summary)
                 }
@@ -1044,36 +1044,6 @@ fn with_plugins_or_refuse(
             // again per command would be two statements of one fact, and the second is the one nobody reads.
             eprintln!("synra: plugins will not run in this build: {error}");
             state.with_engine_refusal(format!("this build has no plugin engine: {error}"))
-        }
-    }
-}
-
-/// The revocation list shipped beside the data directory, or an empty one.
-///
-/// # Why a missing file is not an error
-///
-/// Because the list ships with the application and the ordinary install may not have one: "nothing is revoked" and
-/// "there is no list" are different facts, but they lead to the same action here, and refusing to open the window over
-/// the second would trade a working application for a diagnostic absence. A file that **is** there and cannot be read is
-/// reported, because silently ignoring a revocation list is the one failure in this area a user would never forgive.
-fn revocations_or_empty(paths: &Paths) -> synra_plugin_api::revocation::RevocationList {
-    let path = paths.data_dir().join("revocations.json");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return synra_plugin_api::revocation::RevocationList::empty();
-    };
-    match synra_plugin_api::revocation::RevocationList::parse(&text) {
-        Ok(list) => {
-            if !list.is_empty() {
-                eprintln!("synra: {} revocation entries read from {}", list.len(), path.display());
-            }
-            list
-        }
-        Err(error) => {
-            eprintln!(
-                "synra: {} could not be read as a revocation list ({error}); no plugin is disabled on its account",
-                path.display()
-            );
-            synra_plugin_api::revocation::RevocationList::empty()
         }
     }
 }
