@@ -33,6 +33,30 @@ use tauri::Manager as _;
 
 use crate::state::AppState;
 
+/// The notice a received file leaves, or `None` for a bundle.
+///
+/// # Why a bundle is silent here
+///
+/// Because a bundle is not a file the user has to find: it was installed, and the plugins page — and its own event — is
+/// where that news belongs. Saying "received @acme/chat" beside "installed @acme/chat" would be two sentences about one
+/// arrival.
+fn received_notice(transfer: &synra_core::listener::FinishedTransfer) -> Option<synra_ipc::event::KernelEvent> {
+    if transfer.bundle.is_some() {
+        return None;
+    }
+    let name = transfer
+        .path
+        .file_name()
+        .map_or_else(|| transfer.path.display().to_string(), |name| name.to_string_lossy().into_owned());
+    Some(synra_ipc::event::KernelEvent::Notice {
+        message: "notice.received".to_owned(),
+        params: serde_json::json!({
+            "name": name,
+            "path": transfer.path.display().to_string(),
+        }),
+    })
+}
+
 /// Binds the port this device is reachable on, and records it in the state.
 ///
 /// # Why this is separate from [`spawn`]
@@ -189,6 +213,12 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         started.map(|started| started.elapsed()),
                         false,
                     );
+                    // ★ And the receiver gets told where it landed. The row disappears when the transfer finishes, so
+                    // without this the file simply stops being visible — the one person who needs to find it is the one
+                    // looking at the screen. A bundle is different: it was installed, and the plugins page says so.
+                    if let Some(notice) = received_notice(transfer) {
+                        finished_state.publish(notice);
+                    }
                     outcome
                 },
             );
@@ -398,4 +428,43 @@ fn local_of(identity: &synra_core::identity::Identity) -> synra_core::peer::Loca
         synra_protocol::session::PlatformKind::Desktop,
         env!("CARGO_PKG_VERSION"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::received_notice;
+
+    fn received(bundle: Option<&str>) -> synra_core::listener::FinishedTransfer {
+        synra_core::listener::FinishedTransfer {
+            transfer_id: None,
+            path: std::path::PathBuf::from("/inbox/notes.txt"),
+            byte_length: 12,
+            bundle: bundle.map(|id| synra_protocol::ids::PluginId::parse(id).expect("an id")),
+            digest: "sha256-AAAA".to_owned(),
+            version: None,
+            sync_session_id: None,
+            peer: synra_protocol::ids::DeviceId::new(),
+        }
+    }
+
+    #[test]
+    fn a_received_file_is_announced_with_its_name_and_where_it_landed() {
+        // ★ The row disappears when the transfer finishes. Without this notice the file simply stops being visible, and
+        // the person who needs to find it has no idea which directory it went to.
+        let notice = received_notice(&received(None)).expect("a file leaves a notice");
+
+        match notice {
+            synra_ipc::event::KernelEvent::Notice { message, params } => {
+                assert_eq!(message, "notice.received");
+                assert_eq!(params["name"], "notes.txt");
+                assert_eq!(params["path"], "/inbox/notes.txt");
+            }
+            other => panic!("expected a notice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_plugin_bundle_is_silent_because_installing_it_is_the_news() {
+        assert!(received_notice(&received(Some("@acme/chat"))).is_none());
+    }
 }

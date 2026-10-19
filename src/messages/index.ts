@@ -37,6 +37,7 @@ import { devices } from './devices'
 import { actions, errors, kernelErrors } from './errors'
 import { home } from './home'
 import { nav } from './nav'
+import { notices } from './notices'
 import { plugins } from './plugins'
 import { settings } from './settings'
 import { transfers } from './transfers'
@@ -49,6 +50,8 @@ export const messages = {
   },
 
   nav,
+
+  notices,
 
   home,
 

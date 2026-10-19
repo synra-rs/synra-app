@@ -28,6 +28,7 @@ import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
+import { useNoticesStore } from './stores/notices'
 import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
@@ -110,6 +111,13 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   })
   dispatcher.on('transferFinished', (event) => {
     intents.apply(event)
+  })
+
+  // ★ The one event with no page of its own: a received file is news wherever the user happens to be. The store keeps the
+  // latest and the root draws it; a notice that arrived while another was showing replaces it rather than queueing.
+  const notices = useNoticesStore()
+  dispatcher.on('notice', (event) => {
+    notices.apply(event)
   })
 
   // ★ A pairing request arrives while the user may be on any screen, so it goes to a store rather than to the page: the peer's
