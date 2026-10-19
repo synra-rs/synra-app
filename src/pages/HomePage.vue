@@ -194,7 +194,7 @@
               </AButton>
             </div>
 
-            <div v-if="intent.candidates.length > 0" class="row gap-2">
+            <div v-if="canDecline(intent)" class="row gap-2">
               <AButton
                 size="small"
                 danger
@@ -512,6 +512,16 @@ async function accept(intent: IntentSnapshot, candidate: IntentCandidate): Promi
 /** Refuses an intent. The other side is told, which is why the reason is `null` rather than omitted. */
 async function decline(intent: IntentSnapshot): Promise<void> {
   await decide(intent, { decision: 'decline', reason: null })
+}
+
+/**
+ * Whether the intent is still the user's to refuse.
+ *
+ * A finished intent has nothing to decline, and a `Decline` button on one would offer an action the kernel refuses. The
+ * three terminal words are the board's own; everything else is still waiting on something.
+ */
+function canDecline(intent: IntentSnapshot): boolean {
+  return !['done', 'failed', 'cancelled'].includes(intent.state)
 }
 
 /** The received file whose Show-in-folder command is in flight. */

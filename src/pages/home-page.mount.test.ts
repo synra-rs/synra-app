@@ -164,6 +164,32 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('lets the user decline an intent that found no handler', async () => {
+    // ★ With no candidates there is no Accept, but the share is still the user's to refuse. The old rule tied Decline to
+    // "has candidates", so an intent stuck at `no_handler` had no action at all.
+    const intent = {
+      intentId: '01HQ00000000000000000INTNT2',
+      traceId: '01HQ00000000000000000TRACE2',
+      state: 'no_handler',
+      candidates: [],
+      startedAtMs: 1
+    }
+    answer({ intent_list: [intent], intent_decide: null })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const decline = wrapper.findAll('button').find(button => button.text() === messages.home.received.decline)
+    expect(decline, 'a share with no handler cannot be refused').toBeDefined()
+    await decline?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('intent_decide', {
+      intentId: intent.intentId,
+      decision: { decision: 'decline', reason: null }
+    })
+    wrapper.unmount()
+  })
+
   it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
     // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
     // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.
