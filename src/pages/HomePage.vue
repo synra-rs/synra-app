@@ -156,6 +156,30 @@
         </AList.Item>
       </AList>
     </section>
+
+    <!--
+      ★ The history the in-flight list cannot be. A transfer's row is removed when it finishes, and the file stays in the
+      inbox; this is where a person finds what arrived earlier without being told to open a directory by hand.
+    -->
+    <section class="stack gap-3">
+      <h2 class="text-base font-medium">
+        {{ messages.home.receivedFiles.title }}
+      </h2>
+
+      <AEmpty v-if="received.length === 0" :description="messages.home.receivedFiles.empty" />
+
+      <AList v-else size="small">
+        <AList.Item v-for="file in received" :key="file.path">
+          <div class="row-between gap-3">
+            <div class="min-w-0 stack gap-0.5">
+              <span class="truncate text-sm">{{ file.fileName }}</span>
+              <span class="truncate text-xs text-ink-dim font-mono">{{ file.path }}</span>
+            </div>
+            <span class="shrink-0 text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
+          </div>
+        </AList.Item>
+      </AList>
+    </section>
   </section>
 </template>
 
@@ -183,7 +207,7 @@
  * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
  * worth looking at.
  */
-import type { IntentSnapshot, SuggestedAction, TransferSnapshot } from '@synra/protocol'
+import type { IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref } from 'vue'
@@ -209,6 +233,14 @@ const askBeforeCancel = computed(() => settings.value('transfers.confirmCancel')
 // and the two would disagree about exactly the thing the user is waiting to see.
 const intentsStore = useIntentsStore()
 const { intents, transfers } = storeToRefs(intentsStore)
+
+/**
+ * The files already in the inbox, newest first.
+ *
+ * Read, not subscribed: a received file arrives as a `notice`, and a page that re-read the inbox on every notice would be
+ * the polling this boundary exists to avoid. The list is for finding something that arrived earlier, not for watching.
+ */
+const received = ref<readonly ReceivedFile[]>([])
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
@@ -282,13 +314,14 @@ const wireLive = computed(() => wire.value.state === 'connected' || wire.value.s
 async function load(): Promise<void> {
   error.value = undefined
 
-  // ★ Both lists, because both panels are on this page and the store is the one place they meet. `intent_list` was
-  // called alone while `transfer_list` had no transport behind it; that is no longer true — the shell has a listener and
-  // a transfer registry — so a transfer that started before this window opened was invisible here until an event moved
-  // it. A snapshot read is what makes the first paint true.
-  const [intentAnswer, transferAnswer] = await Promise.all([
+  // ★ Three lists, because three panels are on this page. `intent_list` was called alone while `transfer_list` had no
+  // transport behind it; that is no longer true — the shell has a listener and a transfer registry — so a transfer that
+  // started before this window opened was invisible here until an event moved it. `transfer_received` is the history the
+  // in-flight list cannot be: a finished row is removed, and the file stays in the inbox.
+  const [intentAnswer, transferAnswer, receivedAnswer] = await Promise.all([
     kernel.call<readonly IntentSnapshot[]>('intent_list'),
-    kernel.call<readonly TransferSnapshot[]>('transfer_list')
+    kernel.call<readonly TransferSnapshot[]>('transfer_list'),
+    kernel.call<readonly ReceivedFile[]>('transfer_received')
   ])
 
   if (!intentAnswer.ok) {
@@ -299,7 +332,12 @@ async function load(): Promise<void> {
     error.value = { code: transferAnswer.error.code, message: transferAnswer.error.message, actions: transferAnswer.error.actions }
     return
   }
+  if (!receivedAnswer.ok) {
+    error.value = { code: receivedAnswer.error.code, message: receivedAnswer.error.message, actions: receivedAnswer.error.actions }
+    return
+  }
   intentsStore.applySnapshot({ intents: intentAnswer.value, transfers: transferAnswer.value })
+  received.value = receivedAnswer.value
 }
 
 onMounted(load)

@@ -248,6 +248,14 @@ mod wrappers {
         commands::transfers::transfer_list(&state)
     }
 
+    /// The files that have landed in the inbox, newest first.
+    #[tauri::command]
+    pub fn transfer_received(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Vec<synra_ipc::dto::ReceivedFile> {
+        commands::transfers::transfer_received(&state)
+    }
+
     /// Records that a plugin page has drawn, after checking the session it was given.
     ///
     /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
@@ -635,6 +643,7 @@ mod wrappers {
             transfer_send_file,
             transfer_send_text,
             transfer_list,
+            transfer_received,
             plugins_audit,
             plugins_audit_clear,
             plugins_sync_plan,

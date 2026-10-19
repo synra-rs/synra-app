@@ -673,6 +673,27 @@ fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
 }
 
 #[test]
+fn the_received_list_reads_the_inbox_and_skips_installed_bundles() {
+    // ★ The list is the directory, not a table: a row that outlived the file would send a user to a path that is gone.
+    let (_root, state) = crate::testing::file_state();
+    let inbox = state.paths.data_dir().join(synra_core::inbound::INBOX_DIR);
+    std::fs::create_dir_all(&inbox).expect("the inbox");
+    std::fs::write(inbox.join("notes.txt"), b"hello").expect("a file");
+    std::fs::write(inbox.join("photo.png"), b"png").expect("a file");
+    std::fs::write(inbox.join("plugin-@acme+chat.synra"), b"bundle").expect("a bundle");
+
+    let files = super::transfer_received(&state);
+
+    let names: Vec<&str> = files.iter().map(|file| file.file_name.as_str()).collect();
+    assert!(names.contains(&"notes.txt"), "{names:?}");
+    assert!(names.contains(&"photo.png"), "{names:?}");
+    assert!(!names.iter().any(|name| name.ends_with(".synra")), "an installed bundle is not a received file");
+    let notes = files.iter().find(|file| file.file_name == "notes.txt").expect("notes");
+    assert_eq!(notes.bytes, 5);
+    assert!(notes.path.ends_with("notes.txt"), "{}", notes.path);
+}
+
+#[test]
 fn a_text_send_is_named_after_the_request_rather_than_the_clock() {
     // ★ The receiver names the arriving file after this path. `message-<ms>.txt` threw away the only part a person
     // recognises; the stem now comes from the request, and a stem with a separator in it stays a name rather than a path.

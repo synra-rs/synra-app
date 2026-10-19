@@ -42,5 +42,11 @@ export const home = {
     action: 'Pair a device',
     /** The id a person pastes into `synra logs --trace` to follow one action across devices. */
     trace: 'Trace'
+  },
+
+  /** The files in the inbox — the history an in-flight row cannot be. */
+  receivedFiles: {
+    title: 'Received files',
+    empty: 'No file has landed in the inbox yet.'
   }
 } as const

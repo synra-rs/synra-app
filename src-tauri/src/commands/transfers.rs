@@ -214,6 +214,59 @@ pub fn transfer_list(state: &crate::state::AppState) -> Vec<TransferSnapshot> {
     state.transfers.list()
 }
 
+/// The files that have landed in this device's inbox, newest first.
+///
+/// # Why this scans the inbox instead of remembering
+///
+/// Because the inbox is where the file is. A table of received files that outlived the directory would send a user to a
+/// path that no longer exists, and a directory that outlived the table is the file the user is looking for. Package
+/// bundles are skipped: they were installed, and the plugins page is their history.
+///
+/// # Errors
+///
+/// Never in practice: an inbox that cannot be read is an empty history, which is what a fresh installation has.
+pub fn transfer_received(state: &crate::state::AppState) -> Vec<synra_ipc::dto::ReceivedFile> {
+    let inbox = state
+        .paths
+        .data_dir()
+        .join(synra_core::inbound::INBOX_DIR);
+    let Ok(entries) = std::fs::read_dir(&inbox) else {
+        return Vec::new();
+    };
+
+    let mut files: Vec<synra_ipc::dto::ReceivedFile> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            if !metadata.is_file() {
+                return None;
+            }
+            let path = entry.path();
+            if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("synra")) {
+                return None;
+            }
+            let received_at_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX));
+            Some(synra_ipc::dto::ReceivedFile {
+                file_name: path
+                    .file_name()
+                    .map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned()),
+                path: path.display().to_string(),
+                bytes: metadata.len(),
+                received_at_ms,
+            })
+        })
+        .collect();
+
+    // Newest first: the file a person is looking for is almost always the one that just arrived.
+    files.sort_by_key(|file| std::cmp::Reverse(file.received_at_ms));
+    files.truncate(50);
+    files
+}
+
 /// Abandons a transfer, and answers whether there was one.
 ///
 /// # Why this refuses an unknown identifier

@@ -253,6 +253,9 @@ export class FakeKernel implements Bridge {
       case 'transfer_list':
         // ★ A bare array, for the same reason as `plugins_list` above: `Many`.
         return TRANSFERS.map(transfer => ({ ...transfer }))
+      case 'transfer_received':
+        // `Many`: an empty inbox is the ordinary fresh-install case.
+        return []
       case 'transfer_send_text':
         // `One` is one value, and the shell returns the transfer's id — a string. The page does not read it, but the fake
         // still answers the shape the contract allows rather than a `null` the shell never returns.

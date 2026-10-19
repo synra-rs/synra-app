@@ -71,7 +71,7 @@ function router(): ReturnType<typeof createRouter> {
 function answer(byCommand: Record<string, unknown>) {
   // ★ `transfer_list` is seeded rather than left to be refused: the page reads both lists on mount by design, and a
   // fixture that refused the second one would put an error notice on every test here — including the ones about intents.
-  const answers: Record<string, unknown> = { transfer_list: [], ...byCommand }
+  const answers: Record<string, unknown> = { transfer_list: [], transfer_received: [], ...byCommand }
   mocks.call.mockImplementation(async (command: string) =>
     command in answers
       ? { ok: true, value: answers[command] }
@@ -125,6 +125,27 @@ describe('the home page', () => {
     expect(wrapper.text()).toContain('notes.txt')
     expect(wrapper.text()).toContain(messages.home.inFlight.receiving)
     expect(wrapper.text()).toContain('50%')
+    wrapper.unmount()
+  })
+
+  it('lists the files already in the inbox', async () => {
+    // ★ The in-flight list cannot answer this: its row is removed when the transfer finishes, and the file stays. The
+    // history is a read of the inbox, not a remembered table.
+    answer({
+      intent_list: [],
+      transfer_received: [
+        { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
+        { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2_048, receivedAtMs: 1 }
+      ]
+    })
+
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('transfer_received')
+    expect(wrapper.text()).toContain(messages.home.receivedFiles.title)
+    expect(wrapper.text()).toContain('notes.txt')
+    expect(wrapper.text()).toContain('C:/inbox/notes.txt')
     wrapper.unmount()
   })
 
