@@ -25,6 +25,7 @@ export const plugins = {
   installName: 'Plugin id, e.g. @acme/hello',
   /** The button that opens the platform's directory picker for a local install. */
   chooseDirectory: 'Choose folder',
+  choosePackage: 'Choose package',
   /** What a registry package says about itself, before any of it is downloaded. */
   preview: {
     title: 'Install this plugin?',

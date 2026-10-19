@@ -125,6 +125,31 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('fills the install path from a chosen .synra package', async () => {
+    // ★ The same input takes a directory or a package, and the pipeline branches on what it received. This picker only
+    // chooses which dialog opens; the filter is a hint, not the rule.
+    mocks.open.mockResolvedValue('C:/plugins/hello.synra')
+    mocks.call.mockResolvedValue({ ok: true, value: [] })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    const choose = wrapper.findAll('button').find(button => button.text() === messages.plugins.choosePackage)
+    expect(choose, 'the choose-package button is missing').toBeDefined()
+    await choose?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({
+      directory: false,
+      multiple: false,
+      filters: [{ name: 'Synra package', extensions: ['synra'] }]
+    }))
+    const field = wrapper.findAll('input').find(input => (input.element as HTMLInputElement).type === 'text')
+    expect(field, 'the install input is missing').toBeDefined()
+    expect((field!.element as HTMLInputElement).value).toBe('C:/plugins/hello.synra')
+    wrapper.unmount()
+  })
+
   it('asks for the list when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 

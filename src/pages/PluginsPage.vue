@@ -29,6 +29,9 @@
       <AButton v-if="installMode === 'path'" :loading="choosing" @click="chooseDirectory">
         {{ messages.plugins.chooseDirectory }}
       </AButton>
+      <AButton v-if="installMode === 'path'" :loading="choosing" @click="choosePackage">
+        {{ messages.plugins.choosePackage }}
+      </AButton>
     </div>
 
     <!--
@@ -1009,6 +1012,34 @@ async function chooseDirectory(): Promise<void> {
       directory: true,
       multiple: false,
       title: messages.plugins.chooseDirectory
+    })
+    if (typeof selected === 'string')
+      installPath.value = selected
+  }
+  catch {
+    error.value = { code: 'internal', message: 'error.internal' }
+  }
+  finally {
+    choosing.value = false
+  }
+}
+
+/**
+ * Asks the platform for a `.synra` package and puts its path in the input.
+ *
+ * The same input takes a directory or a package, and the install pipeline branches on which it received; this button only
+ * decides which kind of picker opens. The filter is a hint, not a rule: the pipeline re-checks what the file is.
+ */
+async function choosePackage(): Promise<void> {
+  choosing.value = true
+  error.value = undefined
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      directory: false,
+      multiple: false,
+      filters: [{ name: 'Synra package', extensions: ['synra'] }],
+      title: messages.plugins.choosePackage
     })
     if (typeof selected === 'string')
       installPath.value = selected
