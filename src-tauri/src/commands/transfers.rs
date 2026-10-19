@@ -311,6 +311,23 @@ pub fn transfer_open(state: &crate::state::AppState, path: &str) -> Result<(), s
     })
 }
 
+/// Shows a received file in the platform's file manager.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and `Unsupported` when the platform refuses
+/// to reveal it. The containment check is the same one [`transfer_open`] uses, because revealing a path tells the user
+/// what exists on their disk just as much as opening it does.
+pub fn transfer_reveal(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+    use synra_platform::Platform as _;
+
+    let file = inbox_file(state, path)?;
+    state.platform.reveal_path(&file, None).map_err(|error| {
+        synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
+            .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
+    })
+}
+
 /// Abandons a transfer, and answers whether there was one.
 ///
 /// # Why this refuses an unknown identifier

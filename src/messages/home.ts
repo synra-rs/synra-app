@@ -48,6 +48,7 @@ export const home = {
   receivedFiles: {
     title: 'Received files',
     empty: 'No file has landed in the inbox yet.',
-    open: 'Open'
+    open: 'Open',
+    showInFolder: 'Show in folder'
   }
 } as const

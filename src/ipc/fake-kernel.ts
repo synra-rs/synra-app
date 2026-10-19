@@ -71,6 +71,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   transfer_send_text: ['request'],
   transfer_send_file: ['request'],
   transfer_open: ['path'],
+  transfer_reveal: ['path'],
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
@@ -259,6 +260,9 @@ export class FakeKernel implements Bridge {
         return []
       case 'transfer_open':
         // `Unit`: the platform did the opening, and there is nothing to return.
+        return null
+      case 'transfer_reveal':
+        // `Unit`: the platform opened a file manager, and there is nothing to return.
         return null
       case 'transfer_send_text':
         // `One` is one value, and the shell returns the transfer's id — a string. The page does not read it, but the fake

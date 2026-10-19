@@ -135,6 +135,7 @@ describe('the home page', () => {
     answer({
       intent_list: [],
       transfer_open: null,
+      transfer_reveal: null,
       transfer_received: [
         { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
         { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2_048, receivedAtMs: 1 }
@@ -154,6 +155,12 @@ describe('the home page', () => {
     await open?.trigger('click')
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('transfer_open', { path: 'C:/inbox/notes.txt' })
+
+    const reveal = wrapper.findAll('button').find(button => button.text() === messages.home.receivedFiles.showInFolder)
+    expect(reveal, 'a received file has no show-in-folder action').toBeDefined()
+    await reveal?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('transfer_reveal', { path: 'C:/inbox/notes.txt' })
     wrapper.unmount()
   })
 

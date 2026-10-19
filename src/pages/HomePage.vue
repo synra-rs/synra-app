@@ -177,6 +177,9 @@
             </div>
             <div class="row shrink-0 gap-2">
               <span class="text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
+              <AButton size="small" :loading="revealing === file.path" @click="revealReceived(file)">
+                {{ messages.home.receivedFiles.showInFolder }}
+              </AButton>
               <AButton size="small" :loading="opening === file.path" @click="openReceived(file)">
                 {{ messages.home.receivedFiles.open }}
               </AButton>
@@ -366,6 +369,24 @@ async function load(): Promise<void> {
 
 /** The received file whose Open command is in flight. */
 const opening = ref<string | undefined>(undefined)
+
+/** The received file whose Show-in-folder command is in flight. */
+const revealing = ref<string | undefined>(undefined)
+
+/**
+ * Shows a received file in the platform's file manager.
+ *
+ * The shell runs the same inbox containment check as Open: revealing a path tells the user what is on their disk, and a
+ * webview that could name any path would turn "where did that file land" into a file browser.
+ */
+async function revealReceived(file: ReceivedFile): Promise<void> {
+  error.value = undefined
+  revealing.value = file.path
+  const answer = await kernel.call<null>('transfer_reveal', { path: file.path })
+  revealing.value = undefined
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /**
  * Opens a received file with the platform's default application.
