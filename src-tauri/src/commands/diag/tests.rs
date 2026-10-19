@@ -498,6 +498,9 @@ fn an_empty_shell_reports_no_metrics_rather_than_refusing() {
         names.iter().all(|name| sampled.contains(name)),
         "something was counted before anything ran: {value}"
     );
+    // ★ A shell whose logger is not running writes no log gauges at all: zero would be "running and quiet", which is a
+    // different fact from "not running".
+    assert!(!names.contains(&"log_lines"), "a log gauge was invented without a log: {value}");
 }
 
 #[test]

@@ -358,6 +358,22 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
             );
         }
     }
+    // ★ The log's own counters, sampled where the write path can be observed rather than in the log layer (which must not
+    // depend on metrics). Without these the shell's diagnostics could say nothing about a logger that is dropping lines,
+    // which is the one failure that looks like "nothing happened".
+    if let Some(guard) = state.log.as_ref() {
+        let stats = synra_observe::logging::stats_of(guard);
+        for (name, value) in [
+            ("log_lines", stats.lines()),
+            ("log_dropped", stats.dropped()),
+            ("log_write_errors", stats.write_errors()),
+        ] {
+            state.metrics.gauge_set(
+                &synra_observe::metrics::SeriesKey::new(name, []),
+                i64::try_from(value).unwrap_or(i64::MAX),
+            );
+        }
+    }
     Ok(state.metrics.snapshot())
 }
 
