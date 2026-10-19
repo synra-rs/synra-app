@@ -754,7 +754,13 @@ fn snapshot(
     let manifest = read_manifest(state, &row.plugin_id);
     let is_loaded = loaded.is_some_and(|ids| ids.contains(plugin_id));
     let decisions = state.db().plugin_grants(&row.plugin_id).unwrap_or_default();
-    let state_word = life_state(row, is_loaded, manifest.is_some());
+    // ★ One read of the load report for both the state word and its sentence. The lock is taken here, the strings are
+    // cloned out, and neither helper needs the guard — a second acquisition under the first would be a deadlock.
+    let (refused, safe_mode) = {
+        let loads = state.plugin_loads();
+        (loads.refusal_for(&row.plugin_id).map(str::to_owned), loads.safe_mode.clone())
+    };
+    let state_word = life_state(row, is_loaded, manifest.is_some(), refused.is_some());
 
     PluginSnapshot {
         plugin_id: plugin_id.clone(),
@@ -768,7 +774,7 @@ fn snapshot(
         state: state_word.to_owned(),
         // ★ The sentence behind the state word, from the layer that decided. Without it `unavailable` covers a crash
         // loop, a missing artifact and a build without an engine, and the user is sent to the wrong place.
-        state_reason: state_reason(state, &row.plugin_id, state_word, is_loaded),
+        state_reason: state_reason(state, state_word, is_loaded, refused.as_deref(), safe_mode.as_deref()),
         hybrid: manifest.as_ref().is_some_and(|manifest| {
             manifest.runtime.headless.is_some() && manifest.runtime.ui.is_some()
         }),
@@ -831,7 +837,12 @@ fn health_dto(report: &synra_plugin_host::quota::QuotaReport) -> PluginHealthDto
 /// Written as a single function over all four facts rather than derived by the interface, because the interface would
 /// then have its own copy of the rule and the two would disagree the first time a case appeared that neither had been
 /// written for.
-fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: bool) -> &'static str {
+fn life_state(
+    row: &synra_store::PluginRow,
+    loaded: bool,
+    manifest_readable: bool,
+    load_refused: bool,
+) -> &'static str {
     if !row.enabled {
         return "disabled";
     }
@@ -846,8 +857,14 @@ fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: boo
     if loaded {
         return "running";
     }
-    // Enabled, trusted, readable, and not loaded. `unavailable` rather than `broken`: the shell may simply have no engine,
-    // which is a property of this build rather than of the plugin.
+    if load_refused {
+        // ★ `faulted`, which the design names and the page already colours red, rather than `unavailable`. The load
+        // report has a reason for this plugin: its artifact was missing, its `activate` refused, its consent no longer
+        // matches the document. That is a fault, and calling it "unavailable" made the page's `faulted` branch dead code.
+        return "faulted";
+    }
+    // Enabled, trusted, readable, and not loaded — and no refusal to blame the plugin for. `unavailable` rather than
+    // `broken`: the shell may simply have no engine, which is a property of this build rather than of the plugin.
     "unavailable"
 }
 
@@ -862,13 +879,14 @@ fn life_state(row: &synra_store::PluginRow, loaded: bool, manifest_readable: boo
 /// # Why `unavailable` has a fallback sentence
 ///
 /// A plugin that is enabled, trusted and readable but absent from the set is a fact the report should have explained;
-/// when it did not, saying that much is better than leaving the card silent. The three reasons above it are the ones
-/// that actually happen.
+/// when it did not, saying that much is better than leaving the card silent. The reasons above it are the ones that
+/// actually happen.
 fn state_reason(
     state: &AppState,
-    plugin_id: &str,
     state_word: &str,
     loaded: bool,
+    refused: Option<&str>,
+    safe_mode: Option<&str>,
 ) -> Option<String> {
     if loaded {
         return None;
@@ -876,20 +894,19 @@ fn state_reason(
     if state_word == "unreadable" {
         return Some("its manifest could not be read".to_owned());
     }
+    if state_word == "faulted" {
+        // The load report names what stopped it. The fallback is for the case the report was cleared after the refusal
+        // was recorded — the state word is still the honest one, and a bare word beats a stale sentence.
+        return Some(refused.map_or_else(|| "it failed to start".to_owned(), str::to_owned));
+    }
     if state_word != "unavailable" {
         return None;
     }
-    // ★ One critical section, then the guard is gone. The sentence is cloned out before anything else can take this
-    // lock — the list holds it once for the whole page, and a second acquisition under the first would be a hang.
-    let (safe_mode, refused) = {
-        let loads = state.plugin_loads();
-        (loads.safe_mode.clone(), loads.refusal_for(plugin_id).map(str::to_owned))
-    };
     if let Some(reason) = safe_mode {
-        return Some(reason);
+        return Some(reason.to_owned());
     }
     if let Some(reason) = refused {
-        return Some(reason);
+        return Some(reason.to_owned());
     }
     if let Some(reason) = &state.engine_refusal {
         return Some(reason.clone());
@@ -2637,7 +2654,10 @@ mod tests {
 
         let cards = plugins_list(&state).expect("the list");
         let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
-        assert_eq!(card.state, "unavailable");
+        // ★ A recorded refusal is `faulted`, which the design names and the page already colours red. It used to say
+        // `unavailable`, leaving the page's faulted branch unreachable and making a broken plugin look like a build
+        // without an engine.
+        assert_eq!(card.state, "faulted");
         let reason = card.state_reason.as_deref().expect("a refusal must say why");
         assert!(reason.contains("artifact"), "{reason}");
     }
