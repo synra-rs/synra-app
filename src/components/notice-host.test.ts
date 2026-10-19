@@ -48,6 +48,19 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('says when a synra link is not one this build understands', async () => {
+    // ★ The deep-link handler focuses the window for any `synra://` link; doing that silently for an unknown one would
+    // look like it worked. The notice is the sentence that says it did not.
+    useNoticesStore().apply(notice('notice.unknownLink', { url: 'synra://settings' }))
+
+    const wrapper = mount(NoticeHost)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.notices.unknownLink('synra://settings'))
+    expect(wrapper.text()).not.toContain('notice.unknownLink')
+    wrapper.unmount()
+  })
+
   it('turns an unknown key into a sentence rather than printing it', async () => {
     useNoticesStore().apply(notice('notice.something-new', {}))
 

@@ -5,7 +5,7 @@
   -->
   <AAlert
     v-if="notice"
-    type="success"
+    :type="alertType"
     show-icon
     closable
     :message="headline"
@@ -38,12 +38,17 @@ import { useNoticesStore } from '../stores/notices'
 const notices = useNoticesStore()
 const notice = computed(() => notices.latest)
 
+/** A link this build does not understand is a warning rather than a success. */
+const alertType = computed(() => notice.value?.message === 'notice.unknownLink' ? 'warning' : 'success')
+
 const headline = computed(() => {
   const value = notice.value
   if (!value)
     return ''
   if (value.message === 'notice.received')
     return messages.notices.received(String(value.params.name ?? ''))
+  if (value.message === 'notice.unknownLink')
+    return messages.notices.unknownLink(String(value.params.url ?? ''))
   return messages.notices.generic
 })
 

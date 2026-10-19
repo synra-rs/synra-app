@@ -51,6 +51,14 @@ pub fn receive(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
                 &IntentSourceDto::Share { text, title: None },
             );
         }
+        else if url.scheme() == "synra" {
+            // ★ A link this build does not know is still a link the user clicked. Focusing the window silently would
+            // make it look as if something happened; the notice says what did not.
+            state.publish(synra_ipc::event::KernelEvent::Notice {
+                message: "notice.unknownLink".to_owned(),
+                params: serde_json::json!({ "url": url.as_str() }),
+            });
+        }
     }
     // ★ After the dispatch: the card the user is about to see is the one the share created.
     crate::window::show_main(app);

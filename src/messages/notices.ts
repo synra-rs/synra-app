@@ -7,6 +7,8 @@
 export const notices = {
   received: (name: string): string => `Received ${name}.`,
   savedTo: (path: string): string => `Saved to ${path}`,
+  /** A `synra://` link this build does not understand; it focused the window but did nothing. */
+  unknownLink: (url: string): string => `This build does not understand this link: ${url}`,
   /** A notice key this build does not know still has to say something rather than print the key. */
   generic: 'The kernel has something to say.'
 } as const
