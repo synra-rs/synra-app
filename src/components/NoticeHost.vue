@@ -49,6 +49,8 @@ const headline = computed(() => {
     return messages.notices.received(String(value.params.name ?? ''))
   if (value.message === 'notice.installed')
     return messages.notices.installed(String(value.params.pluginId ?? ''), String(value.params.version ?? ''))
+  if (value.message === 'notice.updated')
+    return messages.notices.updated(String(value.params.pluginId ?? ''), String(value.params.version ?? ''))
   if (value.message === 'notice.alreadyInstalled')
     return messages.notices.alreadyInstalled(String(value.params.pluginId ?? ''), String(value.params.version ?? ''))
   if (value.message === 'notice.newerInstalled') {

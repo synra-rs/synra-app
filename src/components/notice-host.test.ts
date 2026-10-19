@@ -58,6 +58,16 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('says when a package replaced an older version', async () => {
+    useNoticesStore().apply(notice('notice.updated', { pluginId: '@acme/hello', version: '2.0.0' }))
+
+    const wrapper = mount(NoticeHost)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.notices.updated('@acme/hello', '2.0.0'))
+    wrapper.unmount()
+  })
+
   it('says when a package is newer than the one on disk', async () => {
     useNoticesStore().apply(notice('notice.newerInstalled', {
       pluginId: '@acme/hello',

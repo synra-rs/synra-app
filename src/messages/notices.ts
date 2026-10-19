@@ -9,6 +9,8 @@ export const notices = {
   savedTo: (path: string): string => `Saved to ${path}`,
   /** A package opened from the desktop has landed; it is installed but not trusted or enabled. */
   installed: (pluginId: string, version: string): string => `Installed ${pluginId} ${version}.`,
+  /** A newer package replaced the version that was installed. */
+  updated: (pluginId: string, version: string): string => `Updated ${pluginId} to ${version}.`,
   /** The same version is already installed; double-clicking it again changed nothing. */
   alreadyInstalled: (pluginId: string, version: string): string => `${pluginId} ${version} is already installed.`,
   /** The package is older than what is installed; a double-click is not an instruction to downgrade. */

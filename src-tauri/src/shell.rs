@@ -804,52 +804,12 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     Ok(manifest) => {
                         let id = manifest.id.as_str();
                         let active = state.db().active_plugin(id).ok().flatten();
-                        match active {
-                            Some(row) => {
-                                match synra_core::compare_plugin_versions(&row.version, &manifest.version) {
-                                    std::cmp::Ordering::Less => {
-                                        match commands::plugins::update_directory(&state, id, &package) {
-                                            Ok(()) => {
-                                                state.publish(synra_ipc::event::KernelEvent::Notice {
-                                                    message: "notice.installed".to_owned(),
-                                                    params: serde_json::json!({
-                                                        "pluginId": id,
-                                                        "version": manifest.version,
-                                                    }),
-                                                });
-                                            }
-                                            Err(error) => {
-                                                eprintln!(
-                                                    "synra: {} could not be updated: {error:?}",
-                                                    package.display()
-                                                );
-                                            }
-                                        }
-                                    }
-                                    std::cmp::Ordering::Equal => {
-                                        state.publish(synra_ipc::event::KernelEvent::Notice {
-                                            message: "notice.alreadyInstalled".to_owned(),
-                                            params: serde_json::json!({
-                                                "pluginId": id,
-                                                "version": row.version,
-                                            }),
-                                        });
-                                    }
-                                    std::cmp::Ordering::Greater => {
-                                        // ★ A double-clicked older package is not an instruction to downgrade. The window
-                                        // still comes forward, and the notice says why nothing changed.
-                                        state.publish(synra_ipc::event::KernelEvent::Notice {
-                                            message: "notice.newerInstalled".to_owned(),
-                                            params: serde_json::json!({
-                                                "pluginId": id,
-                                                "installed": row.version,
-                                                "offered": manifest.version,
-                                            }),
-                                        });
-                                    }
-                                }
-                            }
-                            None => {
+                        let action = crate::launch::action(
+                            active.as_ref().map(|row| row.version.as_str()),
+                            &manifest.version,
+                        );
+                        match action {
+                            crate::launch::PackageAction::Install => {
                                 let source =
                                     synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
                                 match commands::plugins::plugins_install(&state, &source) {
@@ -866,6 +826,43 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                                         eprintln!("synra: {} could not be installed: {error:?}", package.display());
                                     }
                                 }
+                            }
+                            crate::launch::PackageAction::Update => {
+                                match commands::plugins::update_directory(&state, id, &package) {
+                                    Ok(()) => {
+                                        state.publish(synra_ipc::event::KernelEvent::Notice {
+                                            message: "notice.updated".to_owned(),
+                                            params: serde_json::json!({
+                                                "pluginId": id,
+                                                "version": manifest.version,
+                                            }),
+                                        });
+                                    }
+                                    Err(error) => {
+                                        eprintln!("synra: {} could not be updated: {error:?}", package.display());
+                                    }
+                                }
+                            }
+                            crate::launch::PackageAction::AlreadyInstalled => {
+                                state.publish(synra_ipc::event::KernelEvent::Notice {
+                                    message: "notice.alreadyInstalled".to_owned(),
+                                    params: serde_json::json!({
+                                        "pluginId": id,
+                                        "version": manifest.version,
+                                    }),
+                                });
+                            }
+                            crate::launch::PackageAction::NewerInstalled => {
+                                // ★ A double-clicked older package is not an instruction to downgrade. The window still
+                                // comes forward, and the notice says why nothing changed.
+                                state.publish(synra_ipc::event::KernelEvent::Notice {
+                                    message: "notice.newerInstalled".to_owned(),
+                                    params: serde_json::json!({
+                                        "pluginId": id,
+                                        "installed": active.as_ref().map_or("", |row| row.version.as_str()),
+                                        "offered": manifest.version,
+                                    }),
+                                });
                             }
                         }
                     }
