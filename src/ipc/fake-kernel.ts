@@ -68,6 +68,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_update: ['pluginId'],
   plugins_reload: ['pluginId'],
   transfer_send_text: ['request'],
+  transfer_send_file: ['request'],
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
   plugins_catalog_search: ['query'],
@@ -250,6 +251,9 @@ export class FakeKernel implements Bridge {
       case 'transfer_send_text':
         // ★ `One` in the contract, but the shell returns a `TransferId` scalar (08's signature); see the divergence note
         // in `commands.test.ts`. The page ignores the value, so `null` is the honest fake answer.
+        return null
+      case 'transfer_send_file':
+        // The same `One`/scalar divergence as `transfer_send_text`.
         return null
       case 'config_get':
         // ★ The kernel's own shape, not a flat bag of settings.

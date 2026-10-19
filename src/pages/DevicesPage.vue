@@ -191,6 +191,19 @@
               >
                 {{ messages.devices.sendText }}
               </AButton>
+
+              <!--
+                ★ The native picker is the platform's. The path it answers is what the transfer command takes, and the
+                plugin's permission is named in `capabilities/default.json` beside `core:default`.
+              -->
+              <AButton
+                v-if="card.paired && card.online && !!card.deviceId"
+                size="small"
+                :loading="pickingFile === card.deviceId"
+                @click="pickAndSendFile(card)"
+              >
+                {{ messages.devices.sendFile }}
+              </AButton>
             </div>
           </div>
         </AList.Item>
@@ -469,6 +482,43 @@ async function sendText(): Promise<void> {
   }
   sendTo.value = undefined
   draft.value = ''
+}
+
+/** The device whose file picker is open. */
+const pickingFile = ref<string | undefined>(undefined)
+
+/**
+ * Opens the platform's file picker and sends the chosen path.
+ *
+ * The dialog is loaded on demand: the import is a plugin, and a build without it (or a test) should not fail before
+ * the user asks to send a file. A cancelled dialog is not an error; a picker that cannot open is one, and it is shown
+ * with the same notice as every other failure on this page.
+ */
+async function pickAndSendFile(card: { deviceId: string }): Promise<void> {
+  repeat.value = () => pickAndSendFile(card)
+  error.value = undefined
+  pickingFile.value = card.deviceId
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: messages.devices.sendFile
+    })
+    if (typeof selected !== 'string')
+      return
+    const answer = await kernel.call<string>('transfer_send_file', {
+      request: { to: card.deviceId, path: selected }
+    })
+    if (!answer.ok)
+      refuse(answer.error)
+  }
+  catch {
+    error.value = { code: 'internal', message: 'error.internal' }
+  }
+  finally {
+    pickingFile.value = undefined
+  }
 }
 
 /** Answers a request that is waiting, then forgets it: whichever side settled it, the prompt is over. */

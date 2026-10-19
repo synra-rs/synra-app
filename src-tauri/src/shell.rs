@@ -663,6 +663,9 @@ mod wrappers {
 /// the window is built.
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
+        // ★ The one native dialog this application needs: choosing a file to send. It is a plugin rather than a
+        // dependency of the webview, and its permission is named in `capabilities/default.json` beside `core:default`.
+        .plugin(tauri_plugin_dialog::init())
         // ★ A plugin page is served from its own origin, and this is the only place that knows how: the address is split
         // against the ids the host actually opened (`hosted_ui`), and the file comes from that plugin's bundle through the
         // same path rules `ui_file` tests. Everything a request cannot have — another plugin's files, `..`, a missing

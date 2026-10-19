@@ -136,6 +136,7 @@ tauri = { version = "2", optional = true, features = [ "tray-icon", "unstable" ]
 # `issue_placeholder` uses, and what `open_request` used to call) is not. A v4 UUID gives 122 random bits, enough for a
 # token that expires in minutes; the type is a u128 either way.
 uuid = { version = "1", features = [ "v4" ] }
+tauri-plugin-dialog = "2"
 
 [build-dependencies]
 

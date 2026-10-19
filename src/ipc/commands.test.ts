@@ -102,6 +102,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
   // `One`: the transfer's identifier. The fake requires the request bag the wrapper takes, not its fields.
   transfer_send_text: { request: { to: '11111111-1111-4111-8111-111111111111', text: 'hi', fileName: 'message.txt' } },
+  transfer_send_file: { request: { to: '11111111-1111-4111-8111-111111111111', path: 'C:/files/notes.txt' } },
   plugins_publishers: undefined,
   // `One`, with the option bag the wrapper requires: the page builds it, and a fake that ignored it would answer a shape
   // the page could not have produced.
@@ -134,14 +135,14 @@ const MAYBE_COMMAND = 'plugins_check_update'
  * in `src-tauri/src/shell.rs`. The fake answers `null`, and `DevicesPage.vue` reads only `answer.ok`, so the divergence is
  * invisible to the app today.
  *
- * `transfer_send_text`: the same gap. `command.rs` declares `One`, and 08's signature is `Result<TransferId, IpcError>` —
- * a scalar, not an object. The send UI does not read the id either, so the fake answers `null`; the alternative was to
- * make the shell return an object the design never specified.
+ * `transfer_send_text` / `transfer_send_file`: the same gap. `command.rs` declares `One`, and 08's signature is
+ * `Result<TransferId, IpcError>` — a scalar, not an object. The send UI does not read the id either, so the fake answers
+ * `null`; the alternative was to make the shell return an object the design never specified.
  *
  * They are listed here rather than quietly given a pass so that the day a page starts reading one of those ids — which is
  * what the arity says it may — this test is the thing that says the fake cannot supply it.
  */
-const KNOWN_DIVERGENCE = new Set(['devices_scan_start', 'transfer_send_text'])
+const KNOWN_DIVERGENCE = new Set(['devices_scan_start', 'transfer_send_text', 'transfer_send_file'])
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
 const DECLARED_COMMANDS = 50

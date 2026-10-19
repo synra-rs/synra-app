@@ -20,10 +20,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn()
+  subscribe: vi.fn(),
+  open: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 
 const DevicesPage = (await import('./DevicesPage.vue')).default
 const { useDevicesStore } = await import('../stores/devices')
@@ -60,6 +62,7 @@ beforeEach(() => {
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
+  mocks.open.mockReset()
 })
 
 describe('the devices page', () => {
@@ -161,6 +164,33 @@ describe('the devices page', () => {
         text: 'hello from the test',
         fileName: 'message.txt'
       }
+    })
+    wrapper.unmount()
+  })
+
+  it('sends the path the native picker answers', async () => {
+    // ★ The picker is the platform's, and the path it answers is exactly what `transfer_send_file` takes. Mocking the
+    // plugin rather than the command is what proves the two are joined by the page.
+    mocks.open.mockResolvedValue('C:/files/notes.txt')
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } }
+      if (command === 'transfer_send_file')
+        return { ok: true, value: null }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+
+    const send = wrapper.findAll('button').find(button => button.text() === messages.devices.sendFile)
+    expect(send, 'a reachable paired device has no file send action').toBeDefined()
+    await send?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false, directory: false }))
+    expect(mocks.call).toHaveBeenCalledWith('transfer_send_file', {
+      request: { to: DEVICES[0]!.deviceId, path: 'C:/files/notes.txt' }
     })
     wrapper.unmount()
   })
