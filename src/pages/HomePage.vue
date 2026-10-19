@@ -20,6 +20,9 @@
       <AButton :loading="sharing" :disabled="shareText.trim() === ''" @click="share">
         {{ messages.home.share.action }}
       </AButton>
+      <AButton :loading="sharingFiles" @click="shareFiles">
+        {{ messages.home.share.files }}
+      </AButton>
     </div>
 
     <!--
@@ -278,6 +281,9 @@ const shareText = ref('')
 /** Whether the dispatch is in flight. */
 const sharing = ref(false)
 
+/** Whether the file picker or the file dispatch is in flight. */
+const sharingFiles = ref(false)
+
 /**
  * Starts an intent from the text in the box.
  *
@@ -300,6 +306,42 @@ async function share(): Promise<void> {
   }
   shareText.value = ''
   await load()
+}
+
+/**
+ * Shares files the user picks from this device.
+ *
+ * The picker is the platform's, and the paths are passed through unchanged: a page that resolved or rewrote them would
+ * be deciding which file the user meant. A cancelled picker dispatches nothing.
+ */
+async function shareFiles(): Promise<void> {
+  error.value = undefined
+  sharingFiles.value = true
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      multiple: true,
+      directory: false,
+      title: messages.home.share.chooseTitle
+    })
+    if (!selected)
+      return
+    const paths = Array.isArray(selected) ? selected : [selected]
+    const answer = await kernel.call<string>('intent_dispatch', {
+      source: { kind: 'shareFiles', paths }
+    })
+    if (!answer.ok) {
+      error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+      return
+    }
+    await load()
+  }
+  catch {
+    error.value = { code: 'internal', message: 'error.internal' }
+  }
+  finally {
+    sharingFiles.value = false
+  }
 }
 
 /**

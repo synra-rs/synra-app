@@ -9,7 +9,9 @@ export const home = {
 
   share: {
     placeholder: 'Paste a link or some text to share',
-    action: 'Share'
+    action: 'Share',
+    files: 'Share files',
+    chooseTitle: 'Choose files to share'
   },
 
   /**

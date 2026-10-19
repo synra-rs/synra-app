@@ -22,10 +22,12 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn()
+  subscribe: vi.fn(),
+  open: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 
 const HomePage = (await import('./HomePage.vue')).default
 const { useIntentsStore } = await import('../stores/intents')
@@ -86,6 +88,7 @@ beforeEach(() => {
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
+  mocks.open.mockReset()
 })
 
 describe('the home page', () => {
@@ -117,6 +120,26 @@ describe('the home page', () => {
       source: { kind: 'share', text: 'https://example.test/a-link', title: null }
     })
     expect((field.element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('shares the files the user picks, without rewriting their paths', async () => {
+    // ★ The picker answers what the user chose. A page that resolved or rewrote the paths would be deciding which file
+    // they meant, and the board's `shareFiles` source is the one that carries the decision.
+    mocks.open.mockResolvedValue(['C:/one.txt', 'C:/two.txt'])
+    answer({ intent_list: [], intent_dispatch: '11111111-1111-4111-8111-111111111111' })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.home.share.files)
+    expect(button, 'the share-files button is missing').toBeDefined()
+    await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ multiple: true, directory: false }))
+    expect(mocks.call).toHaveBeenCalledWith('intent_dispatch', {
+      source: { kind: 'shareFiles', paths: ['C:/one.txt', 'C:/two.txt'] }
+    })
     wrapper.unmount()
   })
 
