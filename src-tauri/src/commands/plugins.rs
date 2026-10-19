@@ -267,6 +267,28 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
         synra_core::plugin::activation_config(set.host().as_ref())
     };
     let mut set = plugins.lock();
+    // ★ A faulted plugin is retried as itself: clear the fault and call `activate` again. The old path unloaded and
+    // reloaded it, which threw away the compiled artifact and the lifecycle record just to reach the same call. Only a
+    // plugin the ladder actually faulted takes this path; every other reason to reload still reloads.
+    let faulted = matches!(
+        set.lifecycle(id).map(synra_plugin_host::Lifecycle::state),
+        Some(synra_plugin_host::State::Faulted { .. })
+    );
+    if faulted && set.clear_fault(id, u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0)).unwrap_or(false) {
+        let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0);
+        let outcome = synra_core::plugin::reactivate_loaded(&mut set, id, &activation, now);
+        drop(set);
+        return match outcome {
+            Ok(()) => {
+                state.note_plugin_loaded(id.clone());
+                Ok(())
+            }
+            Err(reason) => {
+                plugins.lock().unload(id);
+                Err(format!("it loaded but did not activate: {reason}"))
+            }
+        };
+    }
     let outcome = {
         let db = state.db();
         synra_core::plugin::load_plugin_with_config(
