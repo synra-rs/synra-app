@@ -413,7 +413,9 @@ pub fn check_update(
     let Some(latest) = document.latest() else {
         return Ok(None);
     };
-    if latest.version == active.version {
+    if !synra_registry::is_newer(&latest.version, &active.version) {
+        // ★ Not `!=`: a device can hold a version newer than the registry's latest (a rollback, a local build, a mirror
+        // that has not caught up), and reporting that as an update would offer a downgrade.
         return Ok(None);
     }
     let installed = installed_capabilities(state, plugin_id);
