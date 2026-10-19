@@ -627,7 +627,14 @@ mod tests {
 
         let listed = intent_list(&state).expect("the board can be read");
         assert_eq!(listed.len(), 1, "the one intent that was raised is the one that is listed");
-        assert_eq!(listed[0], intent_snapshot(&state, id).expect("the same intent"));
+        // ★ `started_at_ms` is the moment the snapshot was **read**, not the moment the intent began — the board's view
+        // does not carry the creation time (see `snapshot_of`'s note). Two reads therefore differ by however long the
+        // test took, and comparing the raw values made this test fail at a millisecond boundary. Every other field is
+        // the mapping this test exists for, so the read timestamp is the one field normalised here.
+        let single = intent_snapshot(&state, id).expect("the same intent");
+        let mut normalized = single.clone();
+        normalized.started_at_ms = listed[0].started_at_ms;
+        assert_eq!(listed[0], normalized, "the two reads describe the same intent");
         // ★ The trace the board generated reaches the interface: it is the id a user pastes into `synra logs --trace`, and
         // a snapshot that dropped it left the filter with nothing anyone could know.
         assert_eq!(listed[0].trace_id, trace, "the board's trace is the snapshot's trace");
