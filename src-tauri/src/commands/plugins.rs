@@ -461,17 +461,13 @@ pub(crate) fn update_directory(state: &AppState, path: &std::path::Path) -> Resu
     // from the bytes the user just replaced. The row was rewritten first, so reloading here reads the new manifest and
     // the new artifact.
     let id = parse(&installed.plugin_id)?;
-    match apply_lifecycle(state, &id) {
-        Ok(()) => {
-            announce(state, &id);
-            Ok(())
-        }
-        Err(reason) => {
-            announce(state, &id);
-            Err(IpcError::unknown(synra_protocol::ErrorCode::PluginTrapped)
-                .with_params(serde_json::json!({"pluginId": id.as_str(), "reason": reason})))
-        }
-    }
+    // ★ A refusal here is not a failed update. The new version is on disk and its row is written; what failed is
+    // starting it, most often because the new manifest changed and the user has to confirm its capabilities again.
+    // Returning an error would tell the user the update did not happen, so the sentence goes on the card instead —
+    // the same division the consent command uses.
+    let _ = apply_lifecycle(state, &id);
+    announce(state, &id);
+    Ok(())
 }
 
 /// The pipeline both install and update run: verify, stage, move, record.
