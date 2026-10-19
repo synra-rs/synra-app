@@ -1145,7 +1145,20 @@ fn with_plugins_or_refuse(
                         .with_audit_sink(crate::plugin_host::audit_sink(Arc::clone(&state.db)))
                         // ★ And the same recorder the `diag_metrics` command reads, so the counts a plugin's
                         // capability requests produce are reachable from the window rather than only from a log line.
-                        .with_metrics(Arc::clone(&state.metrics));
+                        .with_metrics(Arc::clone(&state.metrics))
+                        // ★ The health rung the card draws. `PluginHealthChanged` was in the contract and had no
+                        // publisher; the sink is the set's way of saying "this plugin moved" without depending on the
+                        // interface's event vocabulary.
+                        .with_health_sink(Arc::new({
+                            let events = Arc::clone(&state.events);
+                            move |id: &synra_protocol::ids::PluginId, health: &str, explanation: &str| {
+                                events.emit(synra_ipc::event::KernelEvent::PluginHealthChanged {
+                                    plugin_id: id.clone(),
+                                    health: health.to_owned(),
+                                    explanation: explanation.to_owned(),
+                                });
+                            }
+                        }));
                     // ★ The set is built, and then it is **filled**. Until this line the shell created an empty set and
                     // never called the loader, so every plugin was listed, could be enabled, and was never askable —
                     // `intent_dispatch` matched nothing and `life_state` called it `unavailable` forever.

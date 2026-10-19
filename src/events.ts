@@ -92,6 +92,11 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   dispatcher.on('pluginUpdated', (event) => {
     plugins.apply(event)
   })
+  // ★ A health change carries no card, but the card already on screen has to stop saying "active" the moment the
+  // ladder faults it. The store updates the one field it owns; the rest of the card is still what the last list said.
+  dispatcher.on('pluginHealthChanged', (event) => {
+    plugins.markHealth(event.payload.pluginId, event.payload.health, event.payload.explanation)
+  })
 
   // A configuration change carries the whole picture, so it is applied rather than re-read.
   const settings = useSettingsStore()

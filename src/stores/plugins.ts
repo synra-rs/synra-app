@@ -58,5 +58,22 @@ export const usePluginsStore = defineStore('plugins', () => {
     return plugins.value.find(plugin => plugin.pluginId === pluginId)
   }
 
-  return { apply, applySnapshot, forget, plugin, plugins, upsert }
+  /**
+   * Applies a health change.
+   *
+   * Only the faulted rung changes the card's `state`: `degraded` and `overreaching` are health facts a card may show
+   * beside "active", while `faulted` means every call is refused. The explanation is the ladder's own sentence, not one
+   * this store invents.
+   */
+  function markHealth(pluginId: string, health: string, explanation: string): boolean {
+    const at = plugins.value.findIndex(plugin => plugin.pluginId === pluginId)
+    if (at < 0 || health !== 'faulted')
+      return at >= 0
+    plugins.value = plugins.value.map((plugin, index) => index === at
+      ? { ...plugin, state: 'faulted', stateReason: explanation }
+      : plugin)
+    return true
+  }
+
+  return { apply, applySnapshot, forget, markHealth, plugin, plugins, upsert }
 })

@@ -61,6 +61,18 @@ describe('the plugins store', () => {
     expect(store.plugins).toHaveLength(1)
   })
 
+  it('marks one card faulted when the ladder says so, and leaves the rest alone', () => {
+    // ★ The event carries no card. Only the two fields the ladder decided change: the state word and its reason.
+    const store = usePluginsStore()
+    store.applySnapshot([card('a', { state: 'active' }), card('b', { state: 'active' })])
+
+    expect(store.markHealth('a', 'faulted', 'it trapped five times')).toBe(true)
+
+    expect(store.plugin('a')?.state).toBe('faulted')
+    expect(store.plugin('a')?.stateReason).toBe('it trapped five times')
+    expect(store.plugin('b')?.state).toBe('active')
+  })
+
   it('forgets a card, which is what an uninstall leaves behind', () => {
     // The kernel has no removal event: a card for a plugin that no longer exists would be a card about nothing.
     const store = usePluginsStore()
