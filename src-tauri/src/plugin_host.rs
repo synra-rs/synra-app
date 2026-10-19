@@ -75,6 +75,15 @@ impl DesktopHost {
         }
     }
 
+    /// One setting, as the store has it.
+    ///
+    /// The same shape as the daemon's host: the value is JSON text in the row, and `locale`/`darkMode` are the two
+    /// questions that read it.
+    fn setting(&self, key: &str) -> Option<String> {
+        let rows = self.db.lock().config().ok()?;
+        rows.into_iter().find(|row| row.key == key).map(|row| row.value)
+    }
+
     /// The capabilities the user granted this plugin, as the database records them.
     fn granted(&self, plugin: &PluginId) -> Vec<String> {
         self.db
@@ -212,13 +221,18 @@ impl Host for DesktopHost {
     }
 
     fn locale(&self) -> String {
-        // No interface setting is read here yet, and an infallible question cannot say "I do not know" — see the daemon's
-        // host, which has the same problem for the same reason.
-        String::new()
+        // ★ The interface's own setting, the same key `config_set` writes and `plugin_ui`'s injection reads. Returning
+        // an empty string made `activate(config.locale)` and `env.locale()` disagree with the language the window is
+        // actually drawn in.
+        self.setting("ui.locale")
+            .and_then(|value| serde_json::from_str::<String>(&value).ok())
+            .unwrap_or_default()
     }
 
     fn dark_mode(&self) -> bool {
-        false
+        self.setting("ui.darkMode")
+            .and_then(|value| serde_json::from_str::<bool>(&value).ok())
+            .unwrap_or(false)
     }
 
     fn can(&self, plugin: &PluginId, capability: &str) -> bool {
@@ -771,5 +785,19 @@ mod tests {
         assert_eq!(trail[0].capability, "device:list");
         assert_eq!(trail[0].outcome, "allowed");
         assert_eq!(trail[0].elapsed_ms, Some(3));
+    }
+
+    #[test]
+    fn the_host_reports_the_interfaces_locale_and_theme() {
+        // ★ The two settings `activate(config)` and `env.locale()` answer from. They used to be hardcoded to empty and
+        // false, so a plugin was told the interface was in no language and light while the window was `zh-CN` and dark.
+        let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
+        db.migrate().expect("the schema");
+        db.set_config("ui.locale", &serde_json::json!("zh-CN"), 1_000).expect("the locale");
+        db.set_config("ui.darkMode", &serde_json::json!(true), 1_000).expect("the theme");
+        let host = DesktopHost::new(Arc::new(Mutex::new(db)));
+
+        assert_eq!(host.locale(), "zh-CN");
+        assert!(host.dark_mode(), "the interface setting is dark and the host said light");
     }
 }
