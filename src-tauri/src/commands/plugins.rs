@@ -169,9 +169,19 @@ pub(crate) fn load_installed_plugins(
         return synra_core::plugin::LoadedSummary::default();
     };
     let mut set = plugins.lock();
+    // ★ The environment is read before the store lock. The loader is about to hold the store, and a host's `locale()`
+    // may need it; asking from inside the loader was a same-thread deadlock on the daemon side.
+    let activation = synra_core::plugin::activation_config(set.host().as_ref());
     let summary = {
         let db = state.db();
-        synra_core::plugin::load_installed(&mut set, &db, &state.paths.plugins_dir(), verdict, revocations)
+        synra_core::plugin::load_installed_with_config(
+            &mut set,
+            &db,
+            &state.paths.plugins_dir(),
+            verdict,
+            revocations,
+            &activation,
+        )
     };
     // ★ The set's lock is released before anything reads it again. `plugins_list` takes the same lock, and this mutex is
     // not reentrant — holding it across the list would be a same-thread self-deadlock whose symptom is a hung window.
@@ -251,10 +261,22 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
     }
 
     let revocations = revocations(state);
+    // ★ Read before the store lock, for the reason in `load_installed_plugins`: a host's locale may reach the store.
+    let activation = {
+        let set = plugins.lock();
+        synra_core::plugin::activation_config(set.host().as_ref())
+    };
     let mut set = plugins.lock();
     let outcome = {
         let db = state.db();
-        synra_core::plugin::load_plugin(&mut set, &db, &state.paths.plugins_dir(), id.as_str(), &revocations)
+        synra_core::plugin::load_plugin_with_config(
+            &mut set,
+            &db,
+            &state.paths.plugins_dir(),
+            id.as_str(),
+            &revocations,
+            &activation,
+        )
     };
     // ★ The set's lock is gone before the report is written. `announce` and `plugins_list` take the same lock, and this
     // mutex is not reentrant — a same-thread deadlock whose only symptom is a window that stops answering.
