@@ -164,8 +164,8 @@
         <AList.Item v-for="intent in intents" :key="intent.intentId">
           <div class="stack gap-2">
             <div class="row gap-3">
-              <ATag class="m-0">
-                {{ intent.state }}
+              <ATag class="m-0" :color="intentStateColor(intent.state)">
+                {{ intentStateLabel(intent.state) }}
               </ATag>
               <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
               <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
@@ -518,10 +518,28 @@ async function decline(intent: IntentSnapshot): Promise<void> {
  * Whether the intent is still the user's to refuse.
  *
  * A finished intent has nothing to decline, and a `Decline` button on one would offer an action the kernel refuses. The
- * three terminal words are the board's own; everything else is still waiting on something.
+ * board's final states are `IntentState::final_kinds` as the interface spells them, and `noHandler` is one of them.
  */
 function canDecline(intent: IntentSnapshot): boolean {
-  return !['done', 'failed', 'cancelled'].includes(intent.state)
+  return !['succeeded', 'failed', 'noHandler', 'timedOut', 'refused', 'cancelled'].includes(intent.state)
+}
+
+/** The board's state as a person's word; an unknown state is shown as the engine spelled it rather than blank. */
+function intentStateLabel(state: string): string {
+  return (messages.home.received.states as Record<string, string | undefined>)[state] ?? state
+}
+
+/** The tag's colour. Colour alone is not the state — the label says the same thing — but it is what makes a list scannable. */
+function intentStateColor(state: string): string {
+  if (state === 'succeeded')
+    return 'success'
+  if (state === 'failed' || state === 'timedOut' || state === 'refused')
+    return 'error'
+  if (state === 'noHandler')
+    return 'warning'
+  if (state === 'dispatching')
+    return 'processing'
+  return 'default'
 }
 
 /** The received file whose Show-in-folder command is in flight. */

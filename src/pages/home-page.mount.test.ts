@@ -142,7 +142,7 @@ describe('the home page', () => {
     const intent = {
       intentId: '01HQ00000000000000000INTNT1',
       traceId: '01HQ00000000000000000TRACE1',
-      state: 'awaiting',
+      state: 'choosing',
       candidates: [
         { pluginId: '@synra/notes', title: 'Notes', deviceId: '11111111-1111-4111-8111-111111111111', online: true }
       ],
@@ -164,13 +164,14 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
-  it('lets the user decline an intent that found no handler', async () => {
-    // ★ With no candidates there is no Accept, but the share is still the user's to refuse. The old rule tied Decline to
-    // "has candidates", so an intent stuck at `no_handler` had no action at all.
+  it('lets the user decline an intent while it is still matching', async () => {
+    // ★ With no candidates yet there is no Accept, but the share is still the user's to refuse. The old rule tied
+    // Decline to "has candidates", so an intent still matching had no action at all. A *finished* intent (`noHandler`)
+    // is the one that must not offer Decline.
     const intent = {
       intentId: '01HQ00000000000000000INTNT2',
       traceId: '01HQ00000000000000000TRACE2',
-      state: 'no_handler',
+      state: 'matching',
       candidates: [],
       startedAtMs: 1
     }
@@ -178,8 +179,9 @@ describe('the home page', () => {
     const wrapper = mount(HomePage, { global: { plugins: [router()] } })
     await flushPromises()
 
+    expect(wrapper.text()).toContain(messages.home.received.states.matching)
     const decline = wrapper.findAll('button').find(button => button.text() === messages.home.received.decline)
-    expect(decline, 'a share with no handler cannot be refused').toBeDefined()
+    expect(decline, 'a share still matching cannot be refused').toBeDefined()
     await decline?.trigger('click')
     await flushPromises()
 

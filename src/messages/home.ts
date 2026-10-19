@@ -49,6 +49,19 @@ export const home = {
     accept: 'Accept',
     decline: 'Decline',
     offline: 'offline',
+    /** The board's camelCase states, as words rather than as the engine spells them. */
+    states: {
+      matching: 'Finding a handler',
+      choosing: 'Choose a device',
+      confirming: 'Confirm',
+      dispatching: 'Running',
+      succeeded: 'Done',
+      failed: 'Failed',
+      noHandler: 'No handler',
+      timedOut: 'Timed out',
+      refused: 'Refused',
+      cancelled: 'Cancelled'
+    },
     /** The id a person pastes into `synra logs --trace` to follow one action across devices. */
     trace: 'Trace'
   },
