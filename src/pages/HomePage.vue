@@ -266,21 +266,24 @@ const wireLive = computed(() => wire.value.state === 'connected' || wire.value.s
 async function load(): Promise<void> {
   error.value = undefined
 
-  // ★ `intent_list` only. `transfer_list` was called here beside it, and this shell does not register it — there is no
-  // transport, so there is nothing to list. The call could therefore only fail, and it did so into a branch that ignored
-  // the failure: the panel showed "nothing on its way" whether the answer was "none" or "you cannot ask". An empty list
-  // that is known to be empty is the honest shape; the command returns when the transport does.
-  const answer = await kernel.call<readonly IntentSnapshot[]>('intent_list')
+  // ★ Both lists, because both panels are on this page and the store is the one place they meet. `intent_list` was
+  // called alone while `transfer_list` had no transport behind it; that is no longer true — the shell has a listener and
+  // a transfer registry — so a transfer that started before this window opened was invisible here until an event moved
+  // it. A snapshot read is what makes the first paint true.
+  const [intentAnswer, transferAnswer] = await Promise.all([
+    kernel.call<readonly IntentSnapshot[]>('intent_list'),
+    kernel.call<readonly TransferSnapshot[]>('transfer_list')
+  ])
 
-  if (answer.ok) {
-    intents.value = answer.value
-    transfers.value = []
+  if (!intentAnswer.ok) {
+    error.value = { code: intentAnswer.error.code, message: intentAnswer.error.message, actions: intentAnswer.error.actions }
     return
   }
-
-  // The refusal is reported rather than swallowed: a panel that renders "nothing on its way" when the kernel could not be
-  // asked is worse than an empty one, because it is an answer.
-  error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (!transferAnswer.ok) {
+    error.value = { code: transferAnswer.error.code, message: transferAnswer.error.message, actions: transferAnswer.error.actions }
+    return
+  }
+  intentsStore.applySnapshot({ intents: intentAnswer.value, transfers: transferAnswer.value })
 }
 
 onMounted(load)

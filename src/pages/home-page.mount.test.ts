@@ -68,9 +68,12 @@ function router(): ReturnType<typeof createRouter> {
  * page's test first went wrong.
  */
 function answer(byCommand: Record<string, unknown>) {
+  // ★ `transfer_list` is seeded rather than left to be refused: the page reads both lists on mount by design, and a
+  // fixture that refused the second one would put an error notice on every test here — including the ones about intents.
+  const answers: Record<string, unknown> = { transfer_list: [], ...byCommand }
   mocks.call.mockImplementation(async (command: string) =>
-    command in byCommand
-      ? { ok: true, value: byCommand[command] }
+    command in answers
+      ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
   )
 }
@@ -91,6 +94,34 @@ describe('the home page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('intent_list')
+    wrapper.unmount()
+  })
+
+  it('seeds the transfer panel from the snapshot, without waiting for an event', async () => {
+    // ★ The gap this closes: a transfer that started before this window opened had no event to arrive on, and the page
+    // rendered "nothing on its way" beside a transfer that was running. The first read is what makes the first paint true.
+    const transfer: TransferSnapshot = {
+      transferId: '44444444-4444-4444-8444-444444444444',
+      peerDevice: '11111111-1111-4111-8111-111111111111',
+      peerName: 'Study PC',
+      direction: 'receive',
+      kind: 'file',
+      state: 'receiving',
+      fileName: 'notes.txt',
+      receivedBytes: 5,
+      totalBytes: 10,
+      blocksDone: 0,
+      blocksTotal: 1,
+      startedAtMs: 1
+    }
+    answer({ intent_list: [], transfer_list: [transfer] })
+
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('transfer_list')
+    expect(wrapper.text()).toContain('Study PC')
+    expect(wrapper.text()).toContain('50%')
     wrapper.unmount()
   })
 
