@@ -274,8 +274,10 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
 /// Drops one plugin's compiled form and its place in the load report.
 fn apply_unload(state: &AppState, id: &PluginId) {
     if let Ok(plugins) = state.plugin_set() {
-        // A separate scope so the set's lock is released before the report's lock is taken.
-        let _ = plugins.lock().unload(id);
+        // ★ `deactivate` first: it is the plugin's one chance to release what it holds, and the loader that started it
+        // is what has to stop it. The set's lock is released by the guard leaving this block, before the report's lock.
+        let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0);
+        synra_core::plugin::deactivate(&mut plugins.lock(), id, now);
     }
     state.plugin_loads.lock().record_unloaded(id);
 }
