@@ -677,6 +677,12 @@ mod wrappers {
     }
 }
 
+/// The one global shortcut: summon the window when it is hidden behind other applications.
+///
+/// `CommandOrControl` rather than `Ctrl`: on macOS the conventional summon key is Command, and a shortcut that only works
+/// on two of the three desktops is the kind of platform detail a user discovers by it not working.
+const WAKE_SHORTCUT: &str = "CommandOrControl+Shift+Space";
+
 /// The shell, with the state it reads and the commands it answers, and no window opened yet.
 ///
 /// Split out of [`run_window`] so the two platforms can differ in how they *enter* the window — a desktop process
@@ -687,6 +693,20 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         // ★ The one native dialog this application needs: choosing a file to send. It is a plugin rather than a
         // dependency of the webview, and its permission is named in `capabilities/default.json` beside `core:default`.
         .plugin(tauri_plugin_dialog::init())
+        // ★ One shortcut, and it does the thing a tray app needs: bring the window back without hunting for it. The
+        // handler is here rather than in a page because a page is not running when the window is hidden.
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed
+                        && let Some(window) = app.get_webview_window("main")
+                    {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                })
+                .build(),
+        )
         // ★ A plugin page is served from its own origin, and this is the only place that knows how: the address is split
         // against the ids the host actually opened (`hosted_ui`), and the file comes from that plugin's bundle through the
         // same path rules `ui_file` tests. Everything a request cannot have — another plugin's files, `..`, a missing
@@ -732,6 +752,14 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 &bridge_cancel,
             );
             app.manage(std::sync::Arc::new(state));
+            // ★ A shortcut another application already owns is a missing convenience, not a reason to lose the window —
+            // so the failure is reported and the rest of setup continues.
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
+                if let Err(error) = app.global_shortcut().register(WAKE_SHORTCUT) {
+                    eprintln!("synra: the global shortcut could not be registered: {error}");
+                }
+            }
             // The bridge and the pairing watcher are the two threads that outlive the window but own no socket; their
             // tokens go in one value so the shutdown does not have to remember a second place.
             let pairing_cancel = synra_core::supervisor::Cancellation::new();
@@ -1133,4 +1161,20 @@ fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr as _;
+
+    #[test]
+    fn the_wake_shortcut_parses_before_it_is_registered() {
+        // Registering a string the platform cannot parse fails at runtime with the window already gone; parsing it here
+        // turns a typo into a failing test.
+        assert!(
+            tauri_plugin_global_shortcut::Shortcut::from_str(super::WAKE_SHORTCUT).is_ok(),
+            "{} is not a shortcut",
+            super::WAKE_SHORTCUT
+        );
+    }
 }
