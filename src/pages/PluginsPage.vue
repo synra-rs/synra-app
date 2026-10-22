@@ -736,14 +736,24 @@ async function revokePendingPublisher(): Promise<void> {
   pendingPublisher.value = undefined
 }
 
-onMounted(load)
-onMounted(() => {
+onMounted(async () => {
+  await load()
+  // ★ The background pass may have found updates before this page existed. Reading its answer is what makes the notice
+  // ("2 updates available") lead somewhere: the buttons are already here, not one Check per card away.
+  await loadKnownUpdates()
   // ★ A package notice can link straight to the plugin it was about. The filter is the page's existing one, so arriving
   // with `?plugin=x` shows the same list the user would get by typing `x` — no second filtering rule.
   const plugin = new URLSearchParams(window.location.search).get('plugin')
   if (plugin !== null && plugin.trim() !== '')
     query.value = plugin
 })
+
+/** Reads the updates the last background pass found, without asking the registry again. */
+async function loadKnownUpdates(): Promise<void> {
+  const answer = await kernel.call<UpdateInfo[]>('plugins_updates')
+  if (answer.ok && Array.isArray(answer.value))
+    updates.value = Object.fromEntries(answer.value.map(info => [info.pluginId, info]))
+}
 
 /** Reads the installed plugins and the publishers this device has met. */
 async function load(): Promise<void> {

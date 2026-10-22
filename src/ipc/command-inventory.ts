@@ -75,6 +75,7 @@ export const REGISTERED = [
   'plugins_sync_run',
   'plugins_publishers',
   'plugins_publisher_decide',
+  'plugins_updates',
   'plugins_check_update',
   'plugins_update',
   // ★ Retry a faulted plugin without flipping its switches: the row is already enabled and trusted, what failed was

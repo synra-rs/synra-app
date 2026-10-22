@@ -221,6 +221,9 @@ export class FakeKernel implements Bridge {
           headless: true,
           hasUi: false
         }
+      case 'plugins_updates':
+        // `Many`: the cached result of the last pass. None is the ordinary answer, and it is not an error.
+        return []
       case 'plugins_check_update':
         // `Maybe`: "no update" is `null`, and the fake answers the ordinary case rather than inventing one.
         return null

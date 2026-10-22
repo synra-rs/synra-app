@@ -401,6 +401,12 @@ mod wrappers {
         commands::plugins::plugins_update(&state, &plugin_id)
     }
 
+    /// The updates the last background pass found, so a page opened later can show them without asking the registry.
+    #[tauri::command]
+    pub fn plugins_updates(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Vec<synra_ipc::UpdateInfo> {
+        commands::plugins::plugins_updates(&state)
+    }
+
     /// Tries a faulted plugin's load again without changing its switches.
     #[tauri::command]
     pub fn plugins_reload(
@@ -668,6 +674,7 @@ mod wrappers {
             plugins_preview,
             plugins_catalog_search,
             plugins_request_registry_search,
+            plugins_updates,
             plugins_check_update,
             plugins_update,
             plugins_reload,

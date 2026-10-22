@@ -116,6 +116,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     denied: ['fs:read', 'net:fetch'],
     requested: ['platform:open-url', 'fs:read', 'net:fetch'],
     update: {
+      pluginId: '@synra-plugin/github',
       version: '0.3.0',
       needsNewConsent: true,
       addedCapabilities: ['net:fetch:api.github.com']

@@ -73,6 +73,13 @@ pub struct AppState {
     /// writes this map after every failed attempt and removes the entry when the intent is answered or ends.
     pub intent_retries:
         Arc<Mutex<std::collections::HashMap<synra_protocol::ids::IntentId, synra_ipc::IntentRetry>>>,
+    /// What the last update pass found, by plugin.
+    ///
+    /// ★ A cache rather than a second check: the background pass already asked the registry, and a page that asked
+    /// again on open would make "see which plugins have updates" a network operation. `plugins_check_update` refreshes
+    /// one entry; this is what makes the answer available to a page that was not open yet.
+    pub available_updates:
+        Arc<Mutex<std::collections::HashMap<synra_protocol::ids::PluginId, synra_ipc::UpdateInfo>>>,
     /// The plugins this shell can ask, when it has an engine.
     pub plugins: Option<Arc<Mutex<synra_core::dispatch::PluginSet>>>,
     /// What the startup load pass did: what runs, what did not, and why.
@@ -348,6 +355,7 @@ impl AppState {
             identity: Arc::new(Mutex::new(identity)),
             board: Arc::new(Mutex::new(board)),
             intent_retries: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            available_updates: Arc::new(Mutex::new(std::collections::HashMap::new())),
             plugins: None,
             plugin_loads: Mutex::new(synra_core::plugin::LoadedSummary::default()),
             engine_refusal: None,

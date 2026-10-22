@@ -436,6 +436,7 @@ describe('the plugins page', () => {
     mocks.call
       .mockResolvedValueOnce({ ok: true, value: [card()] })
       .mockResolvedValueOnce({ ok: true, value: [] })
+      .mockResolvedValueOnce({ ok: true, value: [] })
       .mockResolvedValueOnce({ ok: true, value: plan })
       .mockResolvedValueOnce({ ok: true, value: { updated: 1, unchanged: 0 } })
 
@@ -447,8 +448,8 @@ describe('the plugins page', () => {
     await button?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenNthCalledWith(3, 'plugins_sync_plan', { pluginId: '@acme/hello' })
-    expect(mocks.call).toHaveBeenNthCalledWith(4, 'plugins_sync_run', { plan })
+    expect(mocks.call).toHaveBeenNthCalledWith(4, 'plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(mocks.call).toHaveBeenNthCalledWith(5, 'plugins_sync_run', { plan })
     expect(wrapper.text()).toContain(messages.plugins.syncDone(1, 0, 0))
     wrapper.unmount()
   })
@@ -456,6 +457,7 @@ describe('the plugins page', () => {
   it('says there is nothing to send when every device already has it', async () => {
     mocks.call
       .mockResolvedValueOnce({ ok: true, value: [card()] })
+      .mockResolvedValueOnce({ ok: true, value: [] })
       .mockResolvedValueOnce({ ok: true, value: [] })
       .mockResolvedValueOnce({
         ok: true,
@@ -471,7 +473,7 @@ describe('the plugins page', () => {
     await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenCalledTimes(3)
+    expect(mocks.call).toHaveBeenCalledTimes(4)
     expect(wrapper.text()).toContain(messages.plugins.syncNothing)
     wrapper.unmount()
   })
@@ -639,6 +641,32 @@ describe('the plugins page', () => {
     expect(mocks.call).toHaveBeenCalledWith('plugins_update', { pluginId: '@acme/hello' })
     expect(wrapper.text()).toContain('Updated @acme/hello to 2.0.0')
     expect(wrapper.text()).toContain('the package is not signed')
+    wrapper.unmount()
+  })
+
+  it('shows the updates the background pass found without checking again', async () => {
+    // ★ The daily pass runs whether or not this page is open. Reading its cached answer is what turns "2 updates are
+    // available" into buttons on the right cards; asking the registry again on mount would make opening the page a
+    // network operation and the answer could disagree with the notice.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_updates') {
+        return {
+          ok: true,
+          value: [{ pluginId: '@acme/hello', version: '2.0.0', needsNewConsent: false, addedCapabilities: [] }]
+        }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_updates')
+    expect(wrapper.text()).toContain('Version 2.0.0 is published')
     wrapper.unmount()
   })
 
