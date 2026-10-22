@@ -1295,7 +1295,12 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
     assert!(finished.get("transferId").is_some(), "an id, not a completed send");
 
     // The worker fails against port 1 and removes its row; the test waits for that rather than for a fixed sleep.
-    for _ in 0..200 {
+    //
+    // ★ Ten seconds rather than two. The condition is right, but the budget assumed an idle machine: with the rest of the
+    // suite running in parallel the worker can take longer than two seconds to be scheduled and to see the refused dial,
+    // and the test then failed with "the failed send left no row" on a run where nothing was wrong. A condition-poll with
+    // a generous ceiling is still a condition-poll; the assertion below is what decides, not the clock.
+    for _ in 0..1_000 {
         if state.transfers.is_empty() {
             break;
         }
