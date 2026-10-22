@@ -182,6 +182,7 @@ fn retry_status(queue: &RetryQueue, id: IntentId) -> Option<synra_ipc::IntentRet
         attempts: status.attempts,
         max_attempts: status.max_attempts,
         gave_up: status.gave_up,
+        next_at_ms: status.next_at_ms,
     })
 }
 
@@ -454,7 +455,12 @@ mod tests {
         // in a second channel, so the two cannot disagree about how many times this device has tried.
         let state = crate::testing::state();
         let (id, ..) = dispatched(&state);
-        let retry = synra_ipc::IntentRetry { attempts: 2, max_attempts: 8, gave_up: false };
+        let retry = synra_ipc::IntentRetry {
+            attempts: 2,
+            max_attempts: 8,
+            gave_up: false,
+            next_at_ms: Some(99_000),
+        };
         publish(&state, id, Some(retry));
 
         let card = crate::commands::intent::intent_snapshot(&state, id).expect("a card");

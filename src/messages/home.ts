@@ -66,6 +66,8 @@ export const home = {
     trace: 'Trace',
     /** A dispatch nobody has answered is being sent again; the numbers are this process's effort, not the action's. */
     retrying: 'Retrying ({attempts}/{max})',
+    /** The same, with the clock time of the next attempt — an absolute time, so it stays true between events. */
+    retryingAt: 'Retrying ({attempts}/{max}), next try at {time}',
     /** The retry bound was reached; the intent is still dispatching and the next start tries again. */
     noAnswer: 'No answer yet. It will try again the next time the app starts.'
   },

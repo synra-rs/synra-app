@@ -195,12 +195,13 @@ describe('the home page', () => {
   it('says how many times a dispatch has been retried, and when it gave up', async () => {
     // ★ The kernel retries a dispatch nobody answers; without this line the card said "Running" through all of it, and
     // then went on saying it after the retry bound was reached.
+    const nextAtMs = Date.UTC(2026, 9, 22, 10, 42)
     const retrying = {
       intentId: '01HQ00000000000000000INTNT4',
       traceId: '01HQ00000000000000000TRACE4',
       state: 'dispatching',
       candidates: [],
-      retry: { attempts: 3, maxAttempts: 8, gaveUp: false },
+      retry: { attempts: 3, maxAttempts: 8, gaveUp: false, nextAtMs },
       startedAtMs: 1
     }
     const gaveUp = {
@@ -215,7 +216,8 @@ describe('the home page', () => {
     const wrapper = mount(HomePage, { global: { plugins: [router()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Retrying (3/8)')
+    const clock = new Date(nextAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    expect(wrapper.text()).toContain(`Retrying (3/8), next try at ${clock}`)
     expect(wrapper.text()).toContain(messages.home.received.noAnswer)
     wrapper.unmount()
   })
