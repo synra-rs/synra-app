@@ -5,6 +5,11 @@ name: checks
 # Two jobs, each running a command that already exists in this repository: the interface (`pnpm test`, `pnpm build`,
 # `pnpm shapes`) and the shell (`cargo test`, `cargo clippy`). Nothing here is a check that only CI knows how to do.
 #
+# ★ **This file has no trigger of its own.** It is a reusable workflow (`workflow_call`), invoked by `release.yaml` when
+# a `v*` tag is pushed. That is the one entry: merging to `main` does not run anything, and a broken commit is found at
+# release time rather than before it — the trade the sibling `synra-js` repository already chose, in the same words.
+# Adding `push`/`pull_request` back here would give "release" and "checks" two different permission sets in one run.
+#
 # ★ The sibling checkouts are not optional decoration.
 #
 # `src-tauri/Cargo.toml` reaches the kernel by **path** (`../../synra-rust-core/crates/…`) and
@@ -13,10 +18,7 @@ name: checks
 # uses. Without them this workflow could only test a copy of the app that does not exist.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -24,10 +26,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   interface:
@@ -47,6 +45,16 @@ jobs:
         with:
           repository: synra-rs/synra-js
           path: synra-js
+
+      # ★ The kernel is read by two checks in this job: `src/ipc/registration.test.ts` and `src/ipc/commands.test.ts`
+      # read `crates/synra-ipc/src/command.rs`, and `scripts/check-shapes.ts` compares that contract against the shell.
+      # Until this checkout existed the tests threw (and the guard *skipped* the comparison, which looked green) — the
+      # same "a green run and a never-compared run look alike" failure the type library's release workflow documents.
+      - name: Check out the kernel
+        uses: actions/checkout@v4
+        with:
+          repository: synra-rs/synra-core
+          path: synra-rust-core
 
       # ★ Pinned rather than "latest": the lockfile is `lockfileVersion: '9.0'`, and a pnpm major that reads a
       # different lockfile format would turn "the lockfile is out of date" into a red build that says nothing about
