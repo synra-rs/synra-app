@@ -188,6 +188,26 @@
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
+      ★ The report the update command returns, kept until the user dismisses it. The shell also publishes a toast from the
+      same report; a toast is gone in seconds, and "the package was not signed" is the kind of sentence a person wants to
+      be able to re-read without updating again.
+    -->
+    <AAlert
+      v-if="lastUpdate"
+      type="success"
+      show-icon
+      closable
+      :message="messages.plugins.updatedTo.replace('{pluginId}', lastUpdate.pluginId).replace('{version}', lastUpdate.version)"
+      @close="lastUpdate = undefined"
+    >
+      <template v-if="lastUpdate.warnings.length > 0" #description>
+        <p v-for="warning in lastUpdate.warnings" :key="warning" class="m-0">
+          {{ warning }}
+        </p>
+      </template>
+    </AAlert>
+
+    <!--
       R28: an empty state is an invitation with a next step. The next step is now the **form above** — this screen can
       install — so the button here is the honest second option: read the list again, for a plugin installed from
       somewhere else. It said "this screen cannot install anything yet" while that was true; leaving the sentence behind
@@ -1073,6 +1093,9 @@ async function choosePackage(): Promise<void> {
 /** The update the registry published, by plugin, for the cards that were asked about. */
 const updates = ref<Record<string, UpdateInfo>>({})
 
+/** The report of the last successful registry update, until the user dismisses it. */
+const lastUpdate = ref<{ pluginId: string; version: string; warnings: readonly string[] } | undefined>(undefined)
+
 /** What each plugin's audit ring said, once asked. `undefined` means "not asked yet". */
 const audit = ref<Record<string, AuditEntry[] | undefined>>({})
 
@@ -1177,6 +1200,11 @@ async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
   const next = { ...updates.value }
   delete next[plugin.pluginId]
   updates.value = next
+  lastUpdate.value = {
+    pluginId: answer.value.pluginId,
+    version: answer.value.version,
+    warnings: answer.value.warnings ?? []
+  }
   await load()
 }
 
