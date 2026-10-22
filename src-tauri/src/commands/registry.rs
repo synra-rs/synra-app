@@ -401,6 +401,10 @@ pub fn check_update(
     state: &AppState,
     plugin_id: &str,
 ) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
+    let plugin = synra_protocol::PluginId::parse(plugin_id).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
+    })?;
     let active = state.db().active_plugin(plugin_id).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
@@ -411,11 +415,13 @@ pub fn check_update(
     };
     let document = packument(state, plugin_id)?;
     let Some(latest) = document.latest() else {
+        state.available_updates.lock().remove(&plugin);
         return Ok(None);
     };
     if !synra_registry::is_newer(&latest.version, &active.version) {
         // ★ Not `!=`: a device can hold a version newer than the registry's latest (a rollback, a local build, a mirror
         // that has not caught up), and reporting that as an update would offer a downgrade.
+        state.available_updates.lock().remove(&plugin);
         return Ok(None);
     }
     let installed = installed_capabilities(state, plugin_id);
@@ -428,11 +434,16 @@ pub fn check_update(
         .into_iter()
         .filter(|capability| !installed.contains(capability))
         .collect();
-    Ok(Some(UpdateInfo {
+    let info = UpdateInfo {
+        plugin_id: plugin.clone(),
         version: latest.version.clone(),
         needs_new_consent: !added.is_empty(),
         added_capabilities: added,
-    }))
+    };
+    // ★ The cache is written where the answer is made, not by the caller: a manual check and the daily pass produce the
+    // same fact, and a caller that forgot to cache would leave the page showing an update that no longer exists.
+    state.available_updates.lock().insert(plugin, info.clone());
+    Ok(Some(info))
 }
 
 /// The capabilities in the manifest this device installed, read from the plugin's own directory.

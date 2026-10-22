@@ -519,8 +519,19 @@ pub fn plugins_preview(
 /// pipeline's refusals when the package cannot be fetched or verified.
 pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport, IpcError> {
     let report = crate::commands::registry::update(state, plugin_id)?;
+    // The cache said "an update is available"; it no longer is. Removing it here rather than waiting for the next pass
+    // is what stops the page offering the same update again right after it was installed.
+    state.available_updates.lock().remove(&report.plugin_id);
     announce_updated(state, &report);
     Ok(report)
+}
+
+/// The updates the last pass found, for a page that was not open when it ran.
+#[must_use]
+pub fn plugins_updates(state: &AppState) -> Vec<UpdateInfo> {
+    let mut updates: Vec<_> = state.available_updates.lock().values().cloned().collect();
+    updates.sort_by(|left, right| left.plugin_id.as_str().cmp(right.plugin_id.as_str()));
+    updates
 }
 
 /// Publishes the page-level "updated" notice, the same one the file-association path sends.
@@ -3080,6 +3091,32 @@ mod tests {
         super::plugins_uninstall(&state, ID, false).expect("it is removed");
         assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "the compiled form stayed behind");
         assert_eq!(state.plugin_loads().len(), 0, "the report still claims it is loaded");
+    }
+
+    #[test]
+    fn the_cached_updates_are_readable_by_a_page_that_was_not_open() {
+        // ★ The background pass runs whether or not the plugins page is open. This is how its answer reaches a page that
+        // mounts later, sorted so two readers see the same order.
+        let state = crate::testing::state();
+        for (plugin, version) in [("@acme/two", "3.0.0"), ("@acme/one", "2.0.0")] {
+            let plugin_id = synra_protocol::PluginId::parse(plugin).expect("a plugin id");
+            state.available_updates.lock().insert(
+                plugin_id.clone(),
+                synra_ipc::UpdateInfo {
+                    plugin_id,
+                    version: version.to_owned(),
+                    needs_new_consent: false,
+                    added_capabilities: Vec::new(),
+                },
+            );
+        }
+
+        let updates = super::plugins_updates(&state);
+
+        assert_eq!(updates.len(), 2);
+        assert_eq!(updates[0].plugin_id.as_str(), "@acme/one");
+        assert_eq!(updates[0].version, "2.0.0");
+        assert_eq!(updates[1].plugin_id.as_str(), "@acme/two");
     }
 
     #[test]

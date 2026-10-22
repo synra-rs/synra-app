@@ -65,21 +65,24 @@ pub fn enabled(state: &AppState) -> bool {
 /// three network facts on a page the user did not open would be worse than silence. The manual check on the plugins page
 /// is where a refusal is named.
 #[must_use]
-pub fn check_all(state: &AppState) -> Vec<(String, UpdateInfo)> {
+pub fn check_all(state: &AppState) -> Vec<UpdateInfo> {
     let Ok(rows) = state.db().plugins() else {
         return Vec::new();
     };
+    // ★ Cleared before the pass, not after: `check_update` writes the cache, and an entry left from a plugin that was
+    // uninstalled since the last pass would be an update for something this device no longer has.
+    state.available_updates.lock().clear();
     let mut updates = Vec::new();
     for row in rows {
         if let Ok(Some(info)) = crate::commands::registry::check_update(state, &row.plugin_id) {
-            updates.push((row.plugin_id, info));
+            updates.push(info);
         }
     }
     updates
 }
 
 /// Tells the interface how many updates the pass found.
-pub fn announce(state: &AppState, updates: &[(String, UpdateInfo)]) {
+pub fn announce(state: &AppState, updates: &[UpdateInfo]) {
     if updates.is_empty() {
         return;
     }
@@ -87,7 +90,7 @@ pub fn announce(state: &AppState, updates: &[(String, UpdateInfo)]) {
         message: "notice.updates".to_owned(),
         params: serde_json::json!({
             "count": updates.len(),
-            "plugins": updates.iter().map(|(plugin_id, _)| plugin_id.as_str()).collect::<Vec<_>>(),
+            "plugins": updates.iter().map(|info| info.plugin_id.as_str()).collect::<Vec<_>>(),
         }),
     });
 }
@@ -123,7 +126,7 @@ pub fn run(state: &Arc<AppState>, cancel: &Cancellation) {
                 eprintln!(
                     "synra: {} plugin update(s) available: {}",
                     updates.len(),
-                    updates.iter().map(|(plugin_id, _)| plugin_id.as_str()).collect::<Vec<_>>().join(", ")
+                    updates.iter().map(|info| info.plugin_id.as_str()).collect::<Vec<_>>().join(", ")
                 );
                 announce(state, &updates);
             }
@@ -152,15 +155,13 @@ fn sleep_unless_cancelled(cancel: &Cancellation, wait: Duration) -> bool {
 mod tests {
     use super::*;
 
-    fn update(plugin: &str) -> (String, UpdateInfo) {
-        (
-            plugin.to_owned(),
-            UpdateInfo {
-                version: "2.0.0".to_owned(),
-                needs_new_consent: false,
-                added_capabilities: Vec::new(),
-            },
-        )
+    fn update(plugin: &str) -> UpdateInfo {
+        UpdateInfo {
+            plugin_id: synra_protocol::PluginId::parse(plugin).expect("a plugin id"),
+            version: "2.0.0".to_owned(),
+            needs_new_consent: false,
+            added_capabilities: Vec::new(),
+        }
     }
 
     #[test]
