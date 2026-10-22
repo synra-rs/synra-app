@@ -282,7 +282,7 @@ mod tests {
             .expect("plugin");
         state
             .db()
-            .record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1)
+            .record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() })
             .expect("version");
         let subscriber = state.events.subscribe();
         let mut check = PluginUpdateCheck {
