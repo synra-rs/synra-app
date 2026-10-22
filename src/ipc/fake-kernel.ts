@@ -65,7 +65,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   intent_decide: ['intentId', 'decision'],
   intent_snapshot: ['intentId'],
   transfer_respond: ['transferId', 'accept'],
-  plugins_publisher_decide: ['publisherId', 'trust'],
+  plugins_publisher_decide: ['publisherId', 'fingerprint', 'trust'],
   plugins_preview: ['pluginId'],
   plugins_check_update: ['pluginId'],
   plugins_update: ['pluginId'],

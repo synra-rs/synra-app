@@ -486,6 +486,37 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('binds publisher decisions to the displayed fingerprint and shows a stale key refusal', async () => {
+    const fingerprint = 'AB12 CD34 EF56 7890'
+    mocks.call.mockImplementation(async (command: string, args?: { trust?: string }) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [] }
+      if (command === 'plugins_publishers') {
+        return {
+          ok: true,
+          value: [{ publisherId: '@acme', fingerprint, trust: 'seen', firstSeenMs: 1, decidedMs: null }]
+        }
+      }
+      if (command === 'plugins_publisher_decide') {
+        return args?.trust === 'trusted'
+          ? { ok: true, value: null }
+          : { ok: false, error: { code: 'invalid_argument', message: 'error.invalid_argument', retryable: false } }
+      }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+    expect(wrapper.text()).toContain(fingerprint)
+    await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.trust)?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: '@acme', fingerprint, trust: 'trusted' })
+    await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.revoke)?.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: '@acme', fingerprint, trust: 'revoked' })
+    expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('invalid_argument')
+    wrapper.unmount()
+  })
+
   it('installs from the registry when the mode says so', async () => {
     // ★ The mode is a control rather than a guess about the text: `@acme/hello` and `C:\plugins\hello` are both "a string
     // with a slash", and the source the command receives is what decides whether a network is touched.

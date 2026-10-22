@@ -358,41 +358,20 @@ pub fn plugins_publishers(state: &AppState) -> Result<Vec<synra_ipc::dto::Publis
 ///
 /// # Errors
 ///
-/// [`IpcError::InvalidArgument`] for an unknown trust value or a publisher this device has not met.
+/// [`IpcError::InvalidArgument`] for an unknown trust value, publisher, or a stale fingerprint.
 pub fn plugins_publisher_decide(
     state: &AppState,
     publisher_id: &str,
+    fingerprint: &str,
     trust: &str,
 ) -> Result<(), IpcError> {
-    use synra_protocol::ErrorCode;
-
-    let trust = match trust {
-        "trusted" => synra_store::TRUST_TRUSTED,
-        "seen" => synra_store::TRUST_SEEN,
-        "revoked" => synra_store::TRUST_REVOKED,
-        other => {
-            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "field": "trust",
-                "reason": format!("`{other}` is not one of seen, trusted, revoked"),
-            })))
-        }
-    };
-    if publisher_id.is_empty() || publisher_id.len() > 256 {
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": "publisherId", "reason": "it must be 1–256 bytes"})));
-    }
-    let changed = {
-        let db = state.db();
-        db.set_publisher_trust(publisher_id, trust, synra_store::sqlite::now_ms())
-            .map_err(internal)?
-    };
-    if changed {
-        Ok(())
-    }
-    else {
-        Err(IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"publisherId": publisher_id, "reason": "no signature from it was seen"})))
-    }
+    synra_core::publishers::decide(
+        &state.db(), publisher_id, fingerprint, trust, synra_store::sqlite::now_ms(),
+    )
+    .map(|_| ())
+    .map_err(|error| {
+        IpcError::unknown(error.code()).with_params(serde_json::json!({"reason":error.to_string()}))
+    })
 }
 
 /// Installs a `.synra` package a peer sent, with this shell's engine.
@@ -2753,19 +2732,24 @@ mod tests {
         // the row would let the interface trust a key no package ever carried.
         let state = crate::testing::state();
 
-        let refused = plugins_publisher_decide(&state, "@ghost", "trusted").expect_err("nobody has met it");
+        let fingerprint = "AB12 CD34 EF56 7890";
+        let refused = plugins_publisher_decide(&state, "@ghost", fingerprint, "trusted").expect_err("nobody has met it");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
 
         state
             .db()
             .record_publisher("@acme", "AB12 CD34 EF56 7890", "a2V5", 1_000)
             .expect("the key was seen");
-        plugins_publisher_decide(&state, "@acme", "trusted").expect("a known key can be trusted");
+        let refused = plugins_publisher_decide(&state, "@acme", "1111 2222 3333 4444", "trusted")
+            .expect_err("a different key must not be trusted");
+        assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
+        assert_eq!(plugins_publishers(&state).expect("rows")[0].trust, "seen");
+        plugins_publisher_decide(&state, "@acme", fingerprint, "trusted").expect("a known key can be trusted");
         let listed = plugins_publishers(&state).expect("a list");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].trust, "trusted");
 
-        let refused = plugins_publisher_decide(&state, "@acme", "maybe").expect_err("not a decision");
+        let refused = plugins_publisher_decide(&state, "@acme", fingerprint, "maybe").expect_err("not a decision");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
     }
 
