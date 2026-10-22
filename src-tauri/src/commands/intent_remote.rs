@@ -27,7 +27,7 @@
 use std::time::Duration;
 
 use synra_core::intent::remote::Outbound;
-use synra_core::link::{LinkError, PeerLink};
+use synra_core::link::PeerLink;
 use synra_ipc::IpcError;
 use synra_protocol::ErrorCode;
 use synra_protocol::envelope::Envelope;
@@ -98,52 +98,9 @@ fn exchange_on(
     outbound: &Outbound,
     wait: Option<Duration>,
 ) -> Result<Option<Envelope>, IpcError> {
-    link.send(&outbound.envelope).map_err(|error| {
-        IpcError::unknown(ErrorCode::TransportNotOpen).with_params(serde_json::json!({
-            "deviceId": outbound.to.to_string(),
-            "reason": format!("the envelope could not be written: {error}"),
-        }))
-    })?;
-
-    let answer = match wait {
-        None => None,
-        Some(wait) => {
-            // The link's own deadline is the negotiated session timeout, which is far longer than one action's budget.
-            // `REMOTE_RESULT_WAIT` is the caller's own deadline and the reason this override exists.
-            link.set_read_timeout(Some(wait));
-            match link.receive() {
-                Ok(reply) => {
-                    // ★ A peer that answers with something else is a protocol mistake, not a slow action. Saying so is
-                    // what stops an unexpected event from being silently treated as "still running".
-                    if reply.event.as_str() != synra_protocol::event::events::INTENT_RESULT {
-                        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                            serde_json::json!({
-                                "deviceId": outbound.to.to_string(),
-                                "reason": format!("it answered with {} instead of an intent result", reply.event),
-                            }),
-                        ));
-                    }
-                    Some(reply)
-                }
-                // ★ Not a failure: the action may still be running over there. The intent stays dispatching and the
-                // listener applies a late answer. See `REMOTE_RESULT_WAIT`.
-                Err(LinkError::TimedOut) => None,
-                Err(error) => {
-                    return Err(IpcError::unknown(ErrorCode::TransportNotOpen).with_params(
-                        serde_json::json!({
-                            "deviceId": outbound.to.to_string(),
-                            "reason": format!("the answer could not be read: {error}"),
-                        }),
-                    ));
-                }
-            }
-        }
-    };
-
-    // The goodbye is best-effort: the answer has already been read, and failing to announce that the connection is
-    // closing does not change what the user was told.
-    let _ = link.bye(if wait.is_some() { "intent answered" } else { "intent dispatched" });
-    Ok(answer)
+    // The half with the decisions in it is the kernel's, so the daemon answers "is this an answer?" the same way.
+    synra_core::intent::remote::exchange(link, outbound, wait)
+        .map_err(|error| IpcError::from_synra_error(&error))
 }
 
 /// How long a decision waits, decided by what the envelope is.
