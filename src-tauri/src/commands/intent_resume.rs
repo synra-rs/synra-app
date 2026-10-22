@@ -563,4 +563,19 @@ mod tests {
         assert!(queue.take_due(Instant::now() + Duration::from_secs(600)).is_empty());
         assert_eq!(queue.next_wait(Instant::now()), Duration::MAX);
     }
+
+    #[test]
+    fn the_loop_stops_when_it_is_cancelled() {
+        // ★ The shutdown path: the loop sleeps between attempts and up to thirty seconds when nothing is pending, so it has
+        // to notice a cancellation inside a slice rather than after the whole wait. A thread left sleeping through a quit
+        // is a process that will not close.
+        let state = crate::testing::state();
+        let cancel = Cancellation::new();
+        let token = cancel.clone();
+        let handle = std::thread::spawn(move || run(&state, &token, RetryPolicy::default()));
+
+        std::thread::sleep(Duration::from_millis(30));
+        cancel.cancel();
+        handle.join().expect("the loop returned after the cancellation");
+    }
 }
