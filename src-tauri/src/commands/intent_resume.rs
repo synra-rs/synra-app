@@ -202,11 +202,14 @@ struct RetryQueue {
     attempts: HashMap<IntentId, u32>,
     /// When the next attempt is due. Missing means "not waiting".
     due: HashMap<IntentId, Instant>,
+    /// Intents this pass stopped retrying. Kept rather than forgotten because the interface is told "no answer yet" —
+    /// the intent itself is still `Dispatching`, and the entry goes when the intent ends.
+    gave_up: HashSet<IntentId>,
 }
 
 impl RetryQueue {
     fn new(policy: RetryPolicy) -> Self {
-        Self { policy, attempts: HashMap::new(), due: HashMap::new() }
+        Self { policy, attempts: HashMap::new(), due: HashMap::new(), gave_up: HashSet::new() }
     }
 
     /// Schedules anything new, and forgets anything that is no longer in flight.
@@ -220,6 +223,7 @@ impl RetryQueue {
         let pending: HashSet<IntentId> = pending.into_iter().collect();
         self.attempts.retain(|id, _| pending.contains(id));
         self.due.retain(|id, _| pending.contains(id));
+        self.gave_up.retain(|id| pending.contains(id));
         for id in pending {
             if let std::collections::hash_map::Entry::Vacant(entry) = self.attempts.entry(id) {
                 entry.insert(1);
@@ -246,12 +250,13 @@ impl RetryQueue {
 
     /// Schedules the next attempt, or gives up when the bound is reached.
     ///
-    /// Returns whether another attempt was scheduled.
+    /// Returns whether another attempt was scheduled. Giving up keeps the entry and its count: the card says "no answer
+    /// after N tries", and dropping the entry at the same moment would leave the page with nothing to say.
     fn record_failure(&mut self, id: IntentId, now: Instant) -> bool {
         let attempt = self.attempts.entry(id).or_insert(0);
         *attempt = attempt.saturating_add(1);
         if *attempt > self.policy.max_attempts {
-            self.forget(id);
+            self.gave_up.insert(id);
             return false;
         }
         self.due.insert(id, now + self.policy.delay(id, *attempt));
@@ -262,6 +267,25 @@ impl RetryQueue {
     fn forget(&mut self, id: IntentId) {
         self.attempts.remove(&id);
         self.due.remove(&id);
+        self.gave_up.remove(&id);
+    }
+
+    /// What the interface is told about one intent's retries, when there is anything to tell.
+    ///
+    /// Nothing before the first retry has failed: an intent whose first attempt is still waiting is simply `Dispatching`,
+    /// and "retrying (0/8)" would describe work that has not happened yet.
+    fn status(&self, id: IntentId) -> Option<synra_ipc::IntentRetry> {
+        let next = *self.attempts.get(&id)?;
+        let attempts = next.saturating_sub(1);
+        let gave_up = self.gave_up.contains(&id);
+        if attempts == 0 && !gave_up {
+            return None;
+        }
+        Some(synra_ipc::IntentRetry {
+            attempts,
+            max_attempts: self.policy.max_attempts,
+            gave_up,
+        })
     }
 
     /// How long until the next attempt, or [`Duration::MAX`] when nothing is waiting.
@@ -271,6 +295,25 @@ impl RetryQueue {
             .map(|at| at.saturating_duration_since(now))
             .min()
             .unwrap_or(Duration::MAX)
+    }
+}
+
+/// Publishes one intent's retry status and tells the interface when it changed.
+///
+/// # Why the change check
+///
+/// Because every retry produces an event only when there is something new to see; a card that re-rendered with the same
+/// numbers would be noise on every failed dial.
+fn publish(state: &AppState, id: IntentId, status: Option<synra_ipc::IntentRetry>) {
+    let changed = {
+        let mut retries = state.intent_retries.lock();
+        match status {
+            Some(status) => retries.insert(id, status) != Some(status),
+            None => retries.remove(&id).is_some(),
+        }
+    };
+    if changed {
+        crate::commands::intent::announce(state, id);
     }
 }
 
@@ -311,12 +354,18 @@ pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
             // The intent may have ended between the snapshot and this moment.
             let Some((_, outbound)) = outstanding(state).into_iter().find(|(candidate, _)| *candidate == id) else {
                 queue.forget(id);
+                publish(state, id, None);
                 continue;
             };
             match attempt_with(state, id, &outbound, &mut deliver) {
-                Outcome::Answered => queue.forget(id),
+                Outcome::Answered => {
+                    queue.forget(id);
+                    publish(state, id, None);
+                }
                 Outcome::Unanswered | Outcome::Failed => {
-                    if !queue.record_failure(id, Instant::now()) {
+                    let more = queue.record_failure(id, Instant::now());
+                    publish(state, id, queue.status(id));
+                    if !more {
                         eprintln!(
                             "synra: intent {id} was re-sent {} times without an answer; it stays dispatching until it expires",
                             policy.max_attempts
@@ -537,7 +586,49 @@ mod tests {
             assert_eq!(more, retry < 3, "after retry {retry} another was scheduled: {more}");
         }
         assert!(queue.take_due(later + Duration::from_secs(60)).is_empty());
-        assert!(queue.attempts.is_empty(), "a given-up intent leaves no schedule behind");
+        assert!(queue.gave_up.contains(&id), "the entry is kept so the page can say why");
+        assert_eq!(
+            queue.status(id),
+            Some(synra_ipc::IntentRetry { attempts: 3, max_attempts: 3, gave_up: true })
+        );
+    }
+
+    #[test]
+    fn the_status_is_silent_until_a_retry_has_actually_failed() {
+        // ★ An intent whose first attempt is still waiting is `Dispatching`; "retrying (0/8)" would describe work that
+        // has not happened.
+        let mut queue = RetryQueue::new(RetryPolicy::default());
+        let id = IntentId::new();
+        let now = Instant::now();
+        queue.observe([id], now);
+        assert_eq!(queue.status(id), None);
+
+        let at = now + Duration::from_secs(60);
+        let _ = queue.take_due(at);
+        queue.record_failure(id, at);
+        assert_eq!(
+            queue.status(id),
+            Some(synra_ipc::IntentRetry { attempts: 1, max_attempts: 8, gave_up: false })
+        );
+
+        queue.forget(id);
+        assert_eq!(queue.status(id), None);
+    }
+
+    #[test]
+    fn the_published_status_reaches_the_snapshot_and_clears_when_the_intent_ends() {
+        // ★ The page reads the same `intent_snapshot` it always did; the retry count travels in that answer rather than
+        // in a second channel, so the two cannot disagree about how many times this device has tried.
+        let state = crate::testing::state();
+        let (id, ..) = dispatched(&state);
+        let retry = synra_ipc::IntentRetry { attempts: 2, max_attempts: 8, gave_up: false };
+        publish(&state, id, Some(retry));
+
+        let card = crate::commands::intent::intent_snapshot(&state, id).expect("a card");
+        assert_eq!(card.retry, Some(retry));
+
+        publish(&state, id, None);
+        assert_eq!(crate::commands::intent::intent_snapshot(&state, id).expect("a card").retry, None);
     }
 
     #[test]

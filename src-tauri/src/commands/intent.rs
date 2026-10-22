@@ -330,6 +330,9 @@ fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, 
         // and carries the sentence as a detail for a bug report. Until this line existed the field was always `None`, so the
         // page's "why did it fail?" line had nothing to show for a real failure.
         error: view.error.as_ref().map(IpcError::from_synra_error),
+        // ★ Read from the retry loop's shared map: the loop knows how many times it has sent this again, and the page
+        // cannot tell "the first attempt is still running" from "we have retried four times" by the state alone.
+        retry: state.intent_retries.lock().get(&intent_id).copied(),
         // ★ The moment it was raised, which the board has always carried. This used to be the moment the snapshot was
         // read: a field named "started" that answered "just now" for an intent that had been running for an hour.
         started_at_ms: view.created_at_ms,

@@ -66,6 +66,13 @@ pub struct AppState {
     pub host: SharedHost,
     /// The intents in flight, and what each is waiting for.
     pub board: Arc<Mutex<Board>>,
+    /// How the retry loop is doing with each dispatch: how many times it has sent it again, and whether it stopped.
+    ///
+    /// ★ The loop owns the schedule; this is the part the interface reads. It is a separate map rather than the queue
+    /// itself because the queue holds `Instant`s, a policy and cancellation, and none of that belongs in a DTO. The loop
+    /// writes this map after every failed attempt and removes the entry when the intent is answered or ends.
+    pub intent_retries:
+        Arc<Mutex<std::collections::HashMap<synra_protocol::ids::IntentId, synra_ipc::IntentRetry>>>,
     /// The plugins this shell can ask, when it has an engine.
     pub plugins: Option<Arc<Mutex<synra_core::dispatch::PluginSet>>>,
     /// What the startup load pass did: what runs, what did not, and why.
@@ -340,6 +347,7 @@ impl AppState {
             paths,
             identity: Arc::new(Mutex::new(identity)),
             board: Arc::new(Mutex::new(board)),
+            intent_retries: Arc::new(Mutex::new(std::collections::HashMap::new())),
             plugins: None,
             plugin_loads: Mutex::new(synra_core::plugin::LoadedSummary::default()),
             engine_refusal: None,

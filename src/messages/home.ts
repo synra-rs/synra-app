@@ -63,7 +63,11 @@ export const home = {
       cancelled: 'Cancelled'
     },
     /** The id a person pastes into `synra logs --trace` to follow one action across devices. */
-    trace: 'Trace'
+    trace: 'Trace',
+    /** A dispatch nobody has answered is being sent again; the numbers are this process's effort, not the action's. */
+    retrying: 'Retrying ({attempts}/{max})',
+    /** The retry bound was reached; the intent is still dispatching and the next start tries again. */
+    noAnswer: 'No answer yet. It will try again the next time the app starts.'
   },
 
   /** The files in the inbox — the history an in-flight row cannot be. */
