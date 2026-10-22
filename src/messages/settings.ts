@@ -102,6 +102,12 @@ export const settings = {
     remove: 'Remove',
     save: 'Save'
   },
+  /** The background check that tells a user a plugin has a newer version; it never installs by itself. */
+  updates: {
+    title: 'Plugin updates',
+    detail: 'Check the registry once a day and tell you when something installed has a newer version. Nothing is installed without asking.',
+    automatic: 'Check automatically'
+  },
   /**
    * 本进程记录器的指标。
    *

@@ -206,6 +206,28 @@
     </section>
 
     <!--
+      The background check is a courtesy, not a policy: it asks the registry once a day and tells the user, and never
+      installs. The design's automatic case needs trust and capability checks this build does not make yet, so the switch
+      is the whole of the setting.
+    -->
+    <section class="stack gap-3">
+      <h2 class="m-0 text-base font-medium">
+        {{ messages.settings.updates.title }}
+      </h2>
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.settings.updates.detail }}
+      </p>
+      <div class="row-between gap-4">
+        <span class="text-sm">{{ messages.settings.updates.automatic }}</span>
+        <ASwitch
+          :checked="checkUpdates"
+          :loading="savingCheckUpdates"
+          @change="(checked) => saveCheckUpdates(checked === true)"
+        />
+      </div>
+    </section>
+
+    <!--
       ★ `diag_metrics` had no caller before this panel, and 18 §4.2 names this panel as one of the three reasons the
       recorder exists. Each row is the key **as the kernel renders it**, so it can be matched against a log line or a
       diagnostic export rather than being a second naming scheme.
@@ -567,6 +589,30 @@ async function saveCancel(value: boolean): Promise<void> {
 /** Whether a system notification is shown when a file arrives. Absent means the design's default, on. */
 const notifyOnReceive = ref(true)
 const savingNotify = ref(false)
+
+/** Whether the daily registry check runs. Absent means on, which is the design's default. */
+const checkUpdates = ref(true)
+const savingCheckUpdates = ref(false)
+
+watch(
+  () => settings.value('plugins.auto_update'),
+  (value) => {
+    checkUpdates.value = value !== false
+  },
+  { immediate: true }
+)
+
+/** Writes the update-check preference. */
+async function saveCheckUpdates(value: boolean): Promise<void> {
+  savingCheckUpdates.value = true
+  error.value = undefined
+  const answer = await kernel.call<null>('config_set', {
+    patch: { set: { 'plugins.auto_update': value } }
+  })
+  savingCheckUpdates.value = false
+  if (!answer.ok)
+    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+}
 
 /** Whether the platform has Synra registered to start with the session. */
 const launchAtLogin = ref(false)

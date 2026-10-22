@@ -24,6 +24,7 @@ pub mod intent_remote;
 pub mod intent_resume;
 pub mod plugin_ui;
 pub mod pairing;
+pub mod plugin_updates;
 pub mod plugins;
 pub mod registry;
 /// Planning a sync: which devices are missing this device's plugin, asked of the devices themselves.

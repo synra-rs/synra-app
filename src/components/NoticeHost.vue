@@ -53,6 +53,7 @@ const showAction = computed(() => {
     || message === 'notice.updated'
     || message === 'notice.alreadyInstalled'
     || message === 'notice.newerInstalled'
+    || message === 'notice.updates'
 })
 
 /** Opens the plugins page and clears the banner: the next step is on that page. */
@@ -89,6 +90,8 @@ const headline = computed(() => {
   }
   if (value.message === 'notice.dropIgnored')
     return messages.notices.dropIgnored
+  if (value.message === 'notice.updates')
+    return messages.notices.updates(Number(value.params.count ?? 0))
   if (value.message === 'notice.unknownLink')
     return messages.notices.unknownLink(String(value.params.url ?? ''))
   return messages.notices.generic

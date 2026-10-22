@@ -175,7 +175,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(3)
+    expect(switches).toHaveLength(4)
     const cancelSwitch = switches[0]
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
@@ -183,6 +183,24 @@ describe('the settings page', () => {
 
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
       patch: { set: { 'transfers.confirmCancel': false } }
+    })
+    wrapper.unmount()
+  })
+
+  it('writes the update-check switch under its own key', async () => {
+    // ★ Absent means on: the design's default is a check every 24 hours, and a setting the user has never seen must not
+    // be the reason nothing is ever checked. Turning it off is the one value that changes the behaviour.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+
+    const updateSwitch = wrapper.findAllComponents({ name: 'ASwitch' })[3]
+    expect(updateSwitch).toBeDefined()
+    await updateSwitch?.vm.$emit('change', false)
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('config_set', {
+      patch: { set: { 'plugins.auto_update': false } }
     })
     wrapper.unmount()
   })

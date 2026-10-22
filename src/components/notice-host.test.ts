@@ -92,6 +92,19 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('says how many updates the daily check found', async () => {
+    // ★ One banner for the pass, not one per plugin: the next step is the same for all of them, and a stack of identical
+    // notices is what a person learns to close without reading.
+    useNoticesStore().apply(notice('notice.updates', { count: 2, plugins: ['@acme/one', '@acme/two'] }))
+
+    const { wrapper } = mountHost()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('2 plugin updates are available.')
+    expect(wrapper.text()).toContain(messages.notices.review)
+    wrapper.unmount()
+  })
+
   it('says when a package is newer than the one on disk', async () => {
     useNoticesStore().apply(notice('notice.newerInstalled', {
       pluginId: '@acme/hello',
