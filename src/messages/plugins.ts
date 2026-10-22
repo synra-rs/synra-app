@@ -22,6 +22,8 @@ export const plugins = {
   updateNoNewPermissions: 'It asks for the same permissions.',
   updateNewPermissions: 'It asks for more:',
   updateAction: 'Update',
+  /** The result of an update, kept on the page after the toast is gone. */
+  updatedTo: 'Updated {pluginId} to {version}',
   /** A faulted plugin's load can be tried again without changing its switches. */
   retry: 'Retry',
   installName: 'Plugin id, e.g. @acme/hello',

@@ -604,6 +604,44 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('keeps the update report on the page after the toast is gone', async () => {
+    // ★ The command has returned the report since §8.221; the page threw it away. A toast says the same thing for a few
+    // seconds, and "the package is not signed" is exactly the sentence a person wants to re-read.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_check_update')
+        return { ok: true, value: { version: '2.0.0', needsNewConsent: false, addedCapabilities: [] } }
+      if (command === 'plugins_update') {
+        return {
+          ok: true,
+          value: {
+            pluginId: '@acme/hello',
+            version: '2.0.0',
+            warnings: ['the package is not signed'],
+            enabled: false
+          }
+        }
+      }
+      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+    })
+
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text().includes('Check for updates'))?.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'Update')?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).toHaveBeenCalledWith('plugins_update', { pluginId: '@acme/hello' })
+    expect(wrapper.text()).toContain('Updated @acme/hello to 2.0.0')
+    expect(wrapper.text()).toContain('the package is not signed')
+    wrapper.unmount()
+  })
+
   it('filters the installed list by what a person remembers', async () => {
     // ★ A filter over the installed list, not a registry search: this shell has no registry client, and a box that
     // promised the catalogue would be a box that cannot deliver. Matched on title here; the id and description are the
