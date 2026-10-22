@@ -508,12 +508,37 @@ pub fn plugins_preview(
 
 /// Replaces an installed plugin with the newest version the registry publishes.
 ///
+/// # Returns
+///
+/// The install report, so the caller can read the version that landed and any warning the checks produced. It used to
+/// discard both: the data existed in the pipeline's answer and the command returned nothing.
+///
 /// # Errors
 ///
 /// `PluginNotInstalled` when no active version exists, `Unsupported` when no registry is configured, and the install
 /// pipeline's refusals when the package cannot be fetched or verified.
-pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<(), IpcError> {
-    crate::commands::registry::update(state, plugin_id)
+pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport, IpcError> {
+    let report = crate::commands::registry::update(state, plugin_id)?;
+    announce_updated(state, &report);
+    Ok(report)
+}
+
+/// Publishes the page-level "updated" notice, the same one the file-association path sends.
+///
+/// # Why the command does this as well as returning the report
+///
+/// Because the caller that updated from the plugin page does not currently render the report, and a warning about an
+/// unsigned package must not depend on which button started the update. The notice is the channel every update already
+/// has; the report is there for a caller that wants the detail without listening.
+fn announce_updated(state: &AppState, report: &InstallReport) {
+    state.publish(synra_ipc::event::KernelEvent::Notice {
+        message: "notice.updated".to_owned(),
+        params: serde_json::json!({
+            "pluginId": report.plugin_id.to_string(),
+            "version": report.version,
+            "warnings": report.warnings,
+        }),
+    });
 }
 
 /// Installs a plugin from a directory or the configured registry, through the checks, and reports what the user has to be
@@ -1298,7 +1323,7 @@ fn directory_size(root: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_RETENTION_KEY, discover_plugins, install_directory, load_installed_plugins, plugins_audit,
+        AUDIT_RETENTION_KEY, announce_updated, discover_plugins, install_directory, load_installed_plugins, plugins_audit,
         plugins_audit_clear, plugins_catalog_search, plugins_check_update, plugins_consent_respond, plugins_install,
         plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
     };
@@ -3055,5 +3080,35 @@ mod tests {
         super::plugins_uninstall(&state, ID, false).expect("it is removed");
         assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "the compiled form stayed behind");
         assert_eq!(state.plugin_loads().len(), 0, "the report still claims it is loaded");
+    }
+
+    #[test]
+    fn an_update_announces_its_version_and_its_warnings() {
+        // ★ The registry update path produced an `InstallReport` and then threw it away; the file-association path already
+        // announced the same report. A warning about an unsigned package must not depend on which button started the
+        // update, so both paths now send this notice.
+        let state = crate::testing::state();
+        let subscriber = state.events.subscribe();
+        let report = synra_ipc::InstallReport {
+            plugin_id: PluginId::parse(ID).expect("a plugin id"),
+            version: "2.0.0".to_owned(),
+            warnings: vec!["the package is not signed".to_owned()],
+            enabled: false,
+            publisher_id: None,
+            fingerprint: None,
+        };
+
+        announce_updated(&state, &report);
+
+        let delivery = state.events.take(subscriber).expect("one event");
+        match delivery.events().first() {
+            Some(synra_ipc::event::KernelEvent::Notice { message, params }) => {
+                assert_eq!(message, "notice.updated");
+                assert_eq!(params["pluginId"], ID);
+                assert_eq!(params["version"], "2.0.0");
+                assert_eq!(params["warnings"][0], "the package is not signed");
+            }
+            other => panic!("expected an update notice, got {other:?}"),
+        }
     }
 }

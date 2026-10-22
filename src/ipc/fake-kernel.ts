@@ -225,7 +225,14 @@ export class FakeKernel implements Bridge {
         // `Maybe`: "no update" is `null`, and the fake answers the ordinary case rather than inventing one.
         return null
       case 'plugins_update':
-        return null
+        // `One`: the shell returns the install report, so the caller can read the version and any warning. A fake that
+        // answered `null` here would let the page compile against a shape the kernel does not send.
+        return {
+          pluginId: String((args as { pluginId?: unknown } | undefined)?.pluginId ?? '@acme/hello'),
+          version: '1.2.0',
+          warnings: [],
+          enabled: false
+        }
       case 'plugins_reload':
         // `One`: the answer is the card, and the fake answers the plugin the caller asked about.
         return { ...PLUGINS[0] }

@@ -1168,7 +1168,7 @@ const updating = ref<string | undefined>(undefined)
 async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
   updating.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<null>('plugins_update', { pluginId: plugin.pluginId })
+  const answer = await kernel.call<InstallReport>('plugins_update', { pluginId: plugin.pluginId })
   updating.value = undefined
   if (!answer.ok) {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
