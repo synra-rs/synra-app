@@ -10,10 +10,13 @@ import type { ClientFeature, EnvNamespace, PlatformCapability } from '@synra/cli
 
 import type { InjectionContext } from './context'
 import { BACKED } from './capabilities'
+import { detectWebview } from './webview'
 
 /** The environment namespace, reading the context it was built with. */
 export function createEnvNamespace(context: InjectionContext, granted: ReadonlySet<string>): EnvNamespace {
   const supported = new Set(context.platformCapabilities)
+  // ★ Resolved once, at injection: the engine cannot change under a page, and a plugin may ask on every render.
+  const webview = detectWebview(typeof navigator === 'undefined' ? '' : navigator.userAgent, context.platform)
 
   return {
     // ★ These three read the context rather than naming a value. They used to be the literals `'desktop'`, `'windows'`
@@ -25,6 +28,7 @@ export function createEnvNamespace(context: InjectionContext, granted: ReadonlyS
     darkMode: () => context.darkMode,
     appVersion: () => context.appVersion,
     sdkVersion: () => context.sdkVersion,
+    webview: () => webview,
     // ★ Platform, not grant. A capability can be granted on a platform that cannot do it, and the interface has to
     // say a different thing in each case — so this answers only about the platform and `can` only about the grant.
     platformSupports: (capability: PlatformCapability) => supported.has(capability),
