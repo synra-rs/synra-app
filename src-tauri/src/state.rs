@@ -379,6 +379,21 @@ impl AppState {
     // ★ The intents table gets the same treatment, and for the same reason: a row is written on every change, so a shell
     // that restores without pruning grows a history it never reads. The window is the design's "24 hours after they
     // finish" (`17 §6`), and it is one constant in the kernel because the daemon sweeps the same table.
+    //
+    // ★ Before the sweep, the other half of a restored board: a `Dispatching` intent is work whose answer is still coming —
+    // but only for as long as the far side's late queue keeps it. Once that window has passed no answer can arrive, and a
+    // row that says "running" for ever is both wrong on the home page and uncollectable (the sweep only takes finished
+    // intents). The kernel decides; this writes the rows so the decision survives the next start too.
+    let expired = {
+        let mut board = state.board.lock();
+        synra_core::intent::persist::expire_unanswered(&mut board, now_ms)
+    };
+    for intent in &expired {
+        crate::commands::intent::checkpoint(&state, *intent);
+    }
+    if !expired.is_empty() {
+        eprintln!("synra: {} dispatched intent(s) ended without an answer", expired.len());
+    }
     match synra_core::intent::persist::collect(
         &state.db(),
         synra_core::intent::persist::INTENT_RETENTION_MS,
