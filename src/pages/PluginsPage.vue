@@ -357,20 +357,24 @@
               plugin, and a list of ten would make opening the page depend on ten round trips.
             -->
             <AAlert
-              v-if="updates[plugin.pluginId]"
-              type="info"
+              v-if="plugin.update"
+              :type="plugin.update.needsNewConsent ? 'warning' : 'info'"
               show-icon
-              :message="messages.plugins.updateFound.replace('{version}', updates[plugin.pluginId]?.version ?? '')"
+              :message="messages.plugins.updateFound.replace('{version}', plugin.update.version)"
             >
               <template #description>
-                <span v-if="(updates[plugin.pluginId]?.addedCapabilities ?? []).length === 0">
+                <span v-if="plugin.update.addedCapabilities.length === 0">
                   {{ messages.plugins.updateNoNewPermissions }}
                 </span>
                 <span v-else>
-                  {{ messages.plugins.updateNewPermissions }} {{ updates[plugin.pluginId]?.addedCapabilities.join(', ') }}
+                  {{ messages.plugins.updateNewPermissions }} {{ plugin.update.addedCapabilities.join(', ') }}
                 </span>
               </template>
             </AAlert>
+
+            <p v-if="plugin.updateCheckedAtMs !== undefined" class="m-0 text-xs text-ink-dim">
+              {{ messages.plugins.lastChecked.replace('{time}', new Date(plugin.updateCheckedAtMs).toLocaleString()) }}
+            </p>
 
             <!--
               What the plugin asked for, and what it was refused: the second list is the one that turns this screen from
@@ -520,7 +524,7 @@
               </AButton>
 
               <AButton
-                v-if="updates[plugin.pluginId]"
+                v-if="plugin.update"
                 type="primary"
                 size="small"
                 :loading="updating === plugin.pluginId"
@@ -546,31 +550,6 @@
                 {{ messages.plugins.removeAction }}
               </AButton>
             </div>
-
-            <!--
-              An update is a decision rather than routine news when it asks for something new, so it is an alert with
-              the version and the added permissions in it — and the permissions are named, not counted (R33's spirit:
-              the user is told what they are being asked to allow).
-            -->
-            <AAlert v-if="plugin.update" type="warning" show-icon :message="messages.plugins.updateAvailable">
-              <template #description>
-                <div class="stack gap-1">
-                  <span class="row gap-1 text-sm">
-                    <span class="text-ink-dim">{{ messages.plugins.version }}</span>
-                    <span class="font-mono">{{ plugin.update.version }}</span>
-                  </span>
-
-                  <template v-if="plugin.update.needsNewConsent">
-                    <span class="text-sm">{{ messages.plugins.updateNeedsConsent }}</span>
-                    <span class="row flex-wrap gap-1">
-                      <ATag v-for="capability in plugin.update.addedCapabilities" :key="capability" class="font-mono">
-                        {{ capability }}
-                      </ATag>
-                    </span>
-                  </template>
-                </div>
-              </template>
-            </AAlert>
           </div>
         </AList.Item>
       </template>
@@ -738,22 +717,12 @@ async function revokePendingPublisher(): Promise<void> {
 
 onMounted(async () => {
   await load()
-  // ★ The background pass may have found updates before this page existed. Reading its answer is what makes the notice
-  // ("2 updates available") lead somewhere: the buttons are already here, not one Check per card away.
-  await loadKnownUpdates()
   // ★ A package notice can link straight to the plugin it was about. The filter is the page's existing one, so arriving
   // with `?plugin=x` shows the same list the user would get by typing `x` — no second filtering rule.
   const plugin = new URLSearchParams(window.location.search).get('plugin')
   if (plugin !== null && plugin.trim() !== '')
     query.value = plugin
 })
-
-/** Reads the updates the last background pass found, without asking the registry again. */
-async function loadKnownUpdates(): Promise<void> {
-  const answer = await kernel.call<UpdateInfo[]>('plugins_updates')
-  if (answer.ok && Array.isArray(answer.value))
-    updates.value = Object.fromEntries(answer.value.map(info => [info.pluginId, info]))
-}
 
 /** Reads the installed plugins and the publishers this device has met. */
 async function load(): Promise<void> {
@@ -1100,11 +1069,8 @@ async function choosePackage(): Promise<void> {
   }
 }
 
-/** The update the registry published, by plugin, for the cards that were asked about. */
-const updates = ref<Record<string, UpdateInfo>>({})
-
 /** The report of the last successful registry update, until the user dismisses it. */
-const lastUpdate = ref<{ pluginId: string; version: string; warnings: readonly string[] } | undefined>(undefined)
+const lastUpdate = ref<{ pluginId: string, version: string, warnings: readonly string[] } | undefined>(undefined)
 
 /** What each plugin's audit ring said, once asked. `undefined` means "not asked yet". */
 const audit = ref<Record<string, AuditEntry[] | undefined>>({})
@@ -1184,14 +1150,15 @@ async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
   }
-  if (answer.value) {
-    updates.value = { ...updates.value, [plugin.pluginId]: answer.value }
-    return
+  const current = pluginsStore.plugin(plugin.pluginId)
+  if (current) {
+    const next = { ...current }
+    if (answer.value)
+      next.update = answer.value
+    else
+      delete next.update
+    pluginsStore.upsert(next)
   }
-  // No newer version: the previous answer, if any, is no longer true.
-  const next = { ...updates.value }
-  delete next[plugin.pluginId]
-  updates.value = next
 }
 
 /** The plugin whose update is being installed. */
@@ -1207,9 +1174,6 @@ async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
   }
-  const next = { ...updates.value }
-  delete next[plugin.pluginId]
-  updates.value = next
   lastUpdate.value = {
     pluginId: answer.value.pluginId,
     version: answer.value.version,

@@ -403,7 +403,7 @@ mod wrappers {
 
     /// The updates the last background pass found, so a page opened later can show them without asking the registry.
     #[tauri::command]
-    pub fn plugins_updates(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Vec<synra_ipc::UpdateInfo> {
+    pub fn plugins_updates(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<synra_ipc::UpdateInfo>, IpcError> {
         commands::plugins::plugins_updates(&state)
     }
 

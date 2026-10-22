@@ -18,6 +18,7 @@ export const plugins = {
   },
   /** An update the registry publishes for an installed plugin, which the user asked to look up. */
   checkUpdates: 'Check for updates',
+  lastChecked: 'Last checked {time}',
   updateFound: 'Version {version} is published',
   updateNoNewPermissions: 'It asks for the same permissions.',
   updateNewPermissions: 'It asks for more:',

@@ -19,8 +19,10 @@ import { computed, ref } from 'vue'
 export const usePairingStore = defineStore('pairing', () => {
   const pending = ref<readonly PairingPrompt[]>([])
 
-  /** Records a request. A second event for the same request is ignored: the desk publishes once, and a duplicate row would ask
-   * the user to compare the same code twice. */
+  /**
+   * Records a request. A second event for the same request is ignored: the desk publishes once, and a duplicate row would ask
+   * the user to compare the same code twice.
+   */
   function announce(prompt: PairingPrompt): void {
     if (pending.value.some(entry => entry.requestId === prompt.requestId))
       return

@@ -433,12 +433,15 @@ describe('the plugins page', () => {
       pluginId: '@acme/hello',
       targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: true, online: true }]
     }
-    mocks.call
-      .mockResolvedValueOnce({ ok: true, value: [card()] })
-      .mockResolvedValueOnce({ ok: true, value: [] })
-      .mockResolvedValueOnce({ ok: true, value: [] })
-      .mockResolvedValueOnce({ ok: true, value: plan })
-      .mockResolvedValueOnce({ ok: true, value: { updated: 1, unchanged: 0 } })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan')
+        return { ok: true, value: plan }
+      if (command === 'plugins_sync_run')
+        return { ok: true, value: { updated: 1, unchanged: 0 } }
+      return { ok: true, value: [] }
+    })
 
     const wrapper = mount(PluginsPage)
     await flushPromises()
@@ -448,24 +451,29 @@ describe('the plugins page', () => {
     await button?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenNthCalledWith(4, 'plugins_sync_plan', { pluginId: '@acme/hello' })
-    expect(mocks.call).toHaveBeenNthCalledWith(5, 'plugins_sync_run', { plan })
+    expect(mocks.call).toHaveBeenCalledWith('plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(mocks.call).toHaveBeenCalledWith('plugins_sync_run', { plan })
+    expect(mocks.call.mock.calls.findIndex(([command]) => command === 'plugins_sync_plan'))
+      .toBeLessThan(mocks.call.mock.calls.findIndex(([command]) => command === 'plugins_sync_run'))
     expect(wrapper.text()).toContain(messages.plugins.syncDone(1, 0, 0))
     wrapper.unmount()
   })
 
   it('says there is nothing to send when every device already has it', async () => {
-    mocks.call
-      .mockResolvedValueOnce({ ok: true, value: [card()] })
-      .mockResolvedValueOnce({ ok: true, value: [] })
-      .mockResolvedValueOnce({ ok: true, value: [] })
-      .mockResolvedValueOnce({
-        ok: true,
-        value: {
-          pluginId: '@acme/hello',
-          targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: false, online: true }]
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan') {
+        return {
+          ok: true,
+          value: {
+            pluginId: '@acme/hello',
+            targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: false, online: true }]
+          }
         }
-      })
+      }
+      return { ok: true, value: [] }
+    })
 
     const wrapper = mount(PluginsPage)
     await flushPromises()
@@ -473,7 +481,7 @@ describe('the plugins page', () => {
     await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)?.trigger('click')
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenCalledTimes(4)
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_sync_run', expect.anything())
     expect(wrapper.text()).toContain(messages.plugins.syncNothing)
     wrapper.unmount()
   })
@@ -650,23 +658,47 @@ describe('the plugins page', () => {
     // network operation and the answer could disagree with the notice.
     mocks.call.mockImplementation(async (command: string) => {
       if (command === 'plugins_list')
-        return { ok: true, value: [card()] }
+        return { ok: true, value: [card({ update: { pluginId: '@acme/hello', version: '2.0.0', needsNewConsent: false, addedCapabilities: [] } })] }
       if (command === 'plugins_publishers')
         return { ok: true, value: [] }
-      if (command === 'plugins_updates') {
-        return {
-          ok: true,
-          value: [{ pluginId: '@acme/hello', version: '2.0.0', needsNewConsent: false, addedCapabilities: [] }]
-        }
-      }
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
     const wrapper = mount(PluginsPage)
     await flushPromises()
 
-    expect(mocks.call).toHaveBeenCalledWith('plugins_updates')
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_check_update', expect.anything())
     expect(wrapper.text()).toContain('Version 2.0.0 is published')
+    wrapper.unmount()
+  })
+
+  it('shows a background answer while open and clears an update when the next answer is negative', async () => {
+    mocks.call.mockImplementation(async (command: string) => ({
+      ok: true,
+      value: command === 'plugins_list' ? [card()] : []
+    }))
+    const wrapper = mount(PluginsPage)
+    await flushPromises()
+    const store = usePluginsStore()
+    const checkedAt = 1_700_000_000_000
+    store.apply({
+      type: 'pluginUpdated',
+      payload: card({
+        update: { pluginId: '@acme/hello', version: '2.0.0', needsNewConsent: true, addedCapabilities: ['device:send:*'] },
+        updateCheckedAtMs: checkedAt
+      })
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Version 2.0.0 is published')
+    expect(wrapper.text()).toContain('device:send:*')
+    expect(wrapper.text()).toContain(messages.plugins.lastChecked.replace('{time}', new Date(checkedAt).toLocaleString()))
+    expect(wrapper.findAll('button').some(button => button.text() === messages.plugins.updateAction)).toBe(true)
+
+    store.apply({ type: 'pluginUpdated', payload: card({ updateCheckedAtMs: checkedAt + 1 }) })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('Version 2.0.0 is published')
+    expect(wrapper.findAll('button').some(button => button.text() === messages.plugins.updateAction)).toBe(false)
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_check_update', expect.anything())
     wrapper.unmount()
   })
 

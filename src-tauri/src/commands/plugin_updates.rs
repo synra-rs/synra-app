@@ -22,8 +22,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use synra_core::supervisor::Cancellation;
+use synra_ipc::IpcError;
 use synra_ipc::UpdateInfo;
 use synra_ipc::event::KernelEvent;
+use synra_protocol::{ErrorCode, PluginId};
+use synra_store::PluginUpdateCheck;
 
 use crate::state::AppState;
 
@@ -56,7 +59,7 @@ pub fn enabled(state: &AppState) -> bool {
         .unwrap_or(true)
 }
 
-/// Asks the registry about every installed plugin.
+/// Asks the registry about installed versions whose successful check is at least a day old.
 ///
 /// # Why per-plugin errors are swallowed
 ///
@@ -65,20 +68,75 @@ pub fn enabled(state: &AppState) -> bool {
 /// three network facts on a page the user did not open would be worse than silence. The manual check on the plugins page
 /// is where a refusal is named.
 #[must_use]
-pub fn check_all(state: &AppState) -> Vec<UpdateInfo> {
+pub fn check_all(state: &AppState, now_ms: i64, cancel: &Cancellation) -> Vec<UpdateInfo> {
     let Ok(rows) = state.db().plugins() else {
         return Vec::new();
     };
-    // ★ Cleared before the pass, not after: `check_update` writes the cache, and an entry left from a plugin that was
-    // uninstalled since the last pass would be an update for something this device no longer has.
-    state.available_updates.lock().clear();
+    let Ok(checks) = state.db().plugin_update_checks() else {
+        return Vec::new();
+    };
     let mut updates = Vec::new();
     for row in rows {
+        if cancel.is_cancelled() || !enabled(state) {
+            break;
+        }
+        let last_ms = checks
+            .iter()
+            .find(|check| check.plugin_id == row.plugin_id)
+            .map(|check| check.checked_at_ms);
+        if !due(last_ms, now_ms) {
+            continue;
+        }
         if let Ok(Some(info)) = crate::commands::registry::check_update(state, &row.plugin_id) {
             updates.push(info);
         }
     }
     updates
+}
+
+/// Converts a saved positive result to the IPC shape; negative checks have no update to offer.
+pub(super) fn info(check: &PluginUpdateCheck) -> Option<Result<UpdateInfo, IpcError>> {
+    check.available_version.as_ref().map(|version| {
+        let plugin_id = PluginId::parse(&check.plugin_id).map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"detail": error.to_string()}))
+        })?;
+        Ok(UpdateInfo {
+            plugin_id,
+            version: version.clone(),
+            needs_new_consent: !check.added_capabilities.is_empty(),
+            added_capabilities: check.added_capabilities.clone(),
+        })
+    })
+}
+
+/// Saves the answer before publishing its card, including the removal of a previously advertised update.
+pub(super) fn record(
+    state: &AppState,
+    check: &PluginUpdateCheck,
+) -> Result<Option<UpdateInfo>, IpcError> {
+    let saved = state
+        .db()
+        .save_plugin_update_check(check)
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"detail": error.to_string()}))
+        })?;
+    if !saved {
+        return Err(
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "pluginId": check.plugin_id,
+                "reason": "the installed version or registry changed while checking for updates",
+            })),
+        );
+    }
+    let result = info(check).transpose()?;
+    let plugin_id = PluginId::parse(&check.plugin_id).map_err(|error| {
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
+    })?;
+    super::plugins::announce(state, &plugin_id);
+    Ok(result)
 }
 
 /// Tells the interface how many updates the pass found.
@@ -106,50 +164,41 @@ fn due(last_ms: Option<i64>, now_ms: i64) -> bool {
     }
 }
 
-/// The loop: check once at start-up, then once a day, until cancelled.
+/// The loop: check due versions every five minutes, preserving successful checks across restarts.
 ///
 /// # Why the wait is walked in five-minute steps
 ///
 /// Because the setting can change while the loop is asleep, and a single sleep for a day would make "off" mean "off from
 /// tomorrow". The steps do not make the check more frequent: [`due`] still allows one every 24 hours.
 pub fn run(state: &Arc<AppState>, cancel: &Cancellation) {
-    let mut last_ms: Option<i64> = None;
     loop {
         if cancel.is_cancelled() {
             return;
         }
         let now = synra_store::sqlite::now_ms();
-        if enabled(state) && due(last_ms, now) {
-            let updates = check_all(state);
-            last_ms = Some(now);
+        if enabled(state) {
+            let updates = check_all(state, now, cancel);
             if !updates.is_empty() {
                 eprintln!(
                     "synra: {} plugin update(s) available: {}",
                     updates.len(),
-                    updates.iter().map(|info| info.plugin_id.as_str()).collect::<Vec<_>>().join(", ")
+                    updates
+                        .iter()
+                        .map(|info| info.plugin_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
                 announce(state, &updates);
             }
         }
-        if sleep_unless_cancelled(cancel, SLICE) {
+        if cancel.wait(SLICE) {
             return;
         }
     }
 }
 
-/// Sleeps in slices; returns whether the wait was cut short by a cancellation.
-fn sleep_unless_cancelled(cancel: &Cancellation, wait: Duration) -> bool {
-    let mut left = wait;
-    while !left.is_zero() {
-        if cancel.is_cancelled() {
-            return true;
-        }
-        let slice = left.min(SLICE);
-        std::thread::sleep(slice);
-        left = left.saturating_sub(slice);
-    }
-    cancel.is_cancelled()
-}
+#[cfg(test)]
+mod integration_tests;
 
 #[cfg(test)]
 mod tests {
@@ -167,11 +216,18 @@ mod tests {
     #[test]
     fn a_device_that_never_touched_the_setting_checks_for_updates() {
         let state = crate::testing::state();
-        assert!(enabled(&state), "absent means on, which is the design's 24-hour default");
+        assert!(
+            enabled(&state),
+            "absent means on, which is the design's 24-hour default"
+        );
 
         state
             .db()
-            .set_config(AUTO_UPDATE_KEY, &serde_json::Value::Bool(false), synra_store::sqlite::now_ms())
+            .set_config(
+                AUTO_UPDATE_KEY,
+                &serde_json::Value::Bool(false),
+                synra_store::sqlite::now_ms(),
+            )
             .expect("the setting is written");
         assert!(!enabled(&state), "the switch says off");
     }
@@ -203,7 +259,56 @@ mod tests {
         // effect, and this is what keeps those wakes from becoming registry requests.
         assert!(due(None, 0), "a device that has never checked is due");
         assert!(!due(Some(1_000), 1_000 + CHECK_EVERY_MS - 1), "not yet");
-        assert!(due(Some(1_000), 1_000 + CHECK_EVERY_MS), "the day has passed");
-        assert!(due(Some(10_000), 1_000), "a clock that went backwards is due, not silent");
+        assert!(
+            due(Some(1_000), 1_000 + CHECK_EVERY_MS),
+            "the day has passed"
+        );
+        assert!(
+            due(Some(10_000), 1_000),
+            "a clock that went backwards is due, not silent"
+        );
+    }
+
+    #[test]
+    fn a_saved_check_publishes_its_card_and_a_negative_check_clears_it() {
+        let state = crate::testing::state();
+        let plugin = "@acme/hello";
+        state
+            .db()
+            .insert_plugin(plugin, false, false, "good", 1, 1)
+            .expect("plugin");
+        state
+            .db()
+            .record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1)
+            .expect("version");
+        let subscriber = state.events.subscribe();
+        let mut check = PluginUpdateCheck {
+            plugin_id: plugin.to_owned(),
+            current_version: "1.0.0".to_owned(),
+            checked_at_ms: 123,
+            registry: None,
+            available_version: Some("2.0.0".to_owned()),
+            added_capabilities: vec!["log:*".to_owned()],
+        };
+        assert!(record(&state, &check).expect("positive result").is_some());
+        let delivery = state.events.take(subscriber).expect("card event");
+        let Some(KernelEvent::PluginUpdated(card)) = delivery.events().first() else {
+            panic!("expected a card event");
+        };
+        assert_eq!(
+            card.update.as_ref().map(|info| info.version.as_str()),
+            Some("2.0.0")
+        );
+        assert_eq!(card.update_checked_at_ms, Some(123));
+        check.available_version = None;
+        check.added_capabilities.clear();
+        check.checked_at_ms = 456;
+        assert!(record(&state, &check).expect("negative result").is_none());
+        let delivery = state.events.take(subscriber).expect("card event");
+        let Some(KernelEvent::PluginUpdated(card)) = delivery.events().first() else {
+            panic!("expected a card event");
+        };
+        assert!(card.update.is_none());
+        assert_eq!(card.update_checked_at_ms, Some(456));
     }
 }
