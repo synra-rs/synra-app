@@ -376,37 +376,27 @@ pub fn plugins_publisher_decide(
         IpcError::unknown(error.code()).with_params(serde_json::json!({"reason":error.to_string()}))
     })?;
     if row.trust == synra_store::TRUST_REVOKED {
-        // ★ A revocation is about the code that is already here, not only about the next install. The packages this
-        // key signed were accepted when it was trusted; leaving them enabled would make "revoke" a promise about a
-        // future download. v1 keeps one key per publisher, so the installed manifest's publisher id is the same set the
-        // signature would name; a key rotation protocol is still not implemented.
-        stop_publisher_plugins(state, &row.publisher_id);
+        // ★ A revocation is about the code that is already here, not only about the next install. The version row carries
+        // the signing key (migration 16), so this is an index lookup rather than a scan of every installed manifest — and
+        // it is the key that was revoked, not every plugin by the same publisher.
+        stop_signer_plugins(state, &row.fingerprint);
     }
     Ok(())
 }
 
-/// Disables and unloads every installed plugin the revoked publisher signed.
+/// Disables and unloads every active plugin the revoked key signed.
 ///
-/// Failures are logged rather than returned: the decision **is** recorded, and answering an error would tell the user
-/// the revocation did not happen. A plugin that could not be stopped keeps its row `enabled = 0`, so the next start
-/// does not bring it back.
-fn stop_publisher_plugins(state: &AppState, publisher_id: &str) {
-    let Ok(rows) = state.db().plugins() else {
+/// Failures are logged rather than returned: the decision **is** recorded, and answering an error would tell the user the
+/// revocation did not happen. A plugin that could not be stopped keeps its row `enabled = 0`, so the next start does not
+/// bring it back.
+fn stop_signer_plugins(state: &AppState, fingerprint: &str) {
+    let Ok(plugins) = state.db().active_plugins_by_fingerprint(fingerprint) else {
         return;
     };
-    for row in rows {
-        if !row.enabled && !row.trusted {
-            continue;
-        }
-        let manifest = std::fs::read_to_string(state.paths.plugin_dir(&row.plugin_id).join("manifest.json"))
-            .ok()
-            .and_then(|text| synra_plugin_api::Manifest::from_json(&text).ok());
-        if !manifest.is_some_and(|manifest| manifest.publisher.id == publisher_id) {
-            continue;
-        }
-        let _ = state.db().set_plugin_trusted(&row.plugin_id, false, synra_store::sqlite::now_ms());
-        if let Err(error) = set_enabled(state, &row.plugin_id, false) {
-            eprintln!("synra: the revoked plugin {} could not be stopped: {error:?}", row.plugin_id);
+    for plugin_id in plugins {
+        let _ = state.db().set_plugin_trusted(&plugin_id, false, synra_store::sqlite::now_ms());
+        if let Err(error) = set_enabled(state, &plugin_id, false) {
+            eprintln!("synra: the revoked plugin {plugin_id} could not be stopped: {error:?}");
         }
     }
 }
