@@ -568,6 +568,7 @@ mod tests {
                 ok: true,
                 result: "opened".to_owned(),
                 error: None,
+                error_code: None,
                 elapsed_ms: 2,
             },
             trace,
