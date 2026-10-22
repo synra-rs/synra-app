@@ -401,6 +401,12 @@ pub fn check_update(
     state: &AppState,
     plugin_id: &str,
 ) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
+    // Capture the source before fetching. The store checks it again in the write, so changing registries while a
+    // request is in flight cannot publish an answer from the previous source.
+    let registry = state.db().config().map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
+    })?.into_iter().find(|row| row.key == REGISTRY_KEY).map(|row| row.value);
     let plugin = synra_protocol::PluginId::parse(plugin_id).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
@@ -414,16 +420,17 @@ pub fn check_update(
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     };
     let document = packument(state, plugin_id)?;
-    let Some(latest) = document.latest() else {
-        state.available_updates.lock().remove(&plugin);
-        return Ok(None);
+    let latest = document.latest().filter(|latest| synra_registry::is_newer(&latest.version, &active.version));
+    let Some(latest) = latest else {
+        return super::plugin_updates::record(state, &synra_store::PluginUpdateCheck {
+            plugin_id: plugin.to_string(),
+            current_version: active.version,
+            checked_at_ms: synra_store::sqlite::now_ms(),
+            registry,
+            available_version: None,
+            added_capabilities: Vec::new(),
+        });
     };
-    if !synra_registry::is_newer(&latest.version, &active.version) {
-        // ★ Not `!=`: a device can hold a version newer than the registry's latest (a rollback, a local build, a mirror
-        // that has not caught up), and reporting that as an update would offer a downgrade.
-        state.available_updates.lock().remove(&plugin);
-        return Ok(None);
-    }
     let installed = installed_capabilities(state, plugin_id);
     let published: Vec<String> = latest
         .synra
@@ -434,16 +441,14 @@ pub fn check_update(
         .into_iter()
         .filter(|capability| !installed.contains(capability))
         .collect();
-    let info = UpdateInfo {
-        plugin_id: plugin.clone(),
-        version: latest.version.clone(),
-        needs_new_consent: !added.is_empty(),
+    super::plugin_updates::record(state, &synra_store::PluginUpdateCheck {
+        plugin_id: plugin.to_string(),
+        current_version: active.version,
+        checked_at_ms: synra_store::sqlite::now_ms(),
+        registry,
+        available_version: Some(latest.version.clone()),
         added_capabilities: added,
-    };
-    // ★ The cache is written where the answer is made, not by the caller: a manual check and the daily pass produce the
-    // same fact, and a caller that forgot to cache would leave the page showing an update that no longer exists.
-    state.available_updates.lock().insert(plugin, info.clone());
-    Ok(Some(info))
+    })
 }
 
 /// The capabilities in the manifest this device installed, read from the plugin's own directory.

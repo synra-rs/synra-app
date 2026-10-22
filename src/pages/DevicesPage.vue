@@ -59,7 +59,7 @@
       The code is the whole prompt. A device on the same network could otherwise ask in place of the one the user meant, and a
       comparison a person makes on two screens is what stops it.
     -->
-    <div v-for="prompt in pairing.pending" :key="prompt.requestId" class="stack gap-2 rounded p-3 ring-1 ring-warning">
+    <div v-for="prompt in pairing.pending" :key="prompt.requestId" class="ring-warning stack gap-2 rounded p-3 ring-1">
       <div class="row-between flex-wrap gap-2">
         <span class="text-sm font-medium">{{ messages.devices.pairingTitle }}</span>
         <span class="text-xs text-ink-dim">{{ prompt.displayName }} · {{ prompt.platform }} · {{ prompt.address }}</span>

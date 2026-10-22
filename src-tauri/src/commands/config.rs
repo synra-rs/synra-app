@@ -89,6 +89,19 @@ pub fn config_set(state: &AppState, patch: &ConfigPatch) -> Result<(), IpcError>
         db.apply_config(&changes, state.started_at_ms).map_err(|error| internal(&error))?;
     }
 
+    // Cached updates belong to the registry that answered them. Re-publish the cards after changing sources so an
+    // already open plugins page drops the old answers as soon as the configuration write succeeds.
+    if changes.iter().any(|change| change.key == super::registry::REGISTRY_KEY) {
+        let rows = state.db().plugins().map_err(|error| internal(&error))?;
+        for row in rows {
+            let id = synra_protocol::PluginId::parse(&row.plugin_id).map_err(|error| {
+                IpcError::unknown(ErrorCode::Internal)
+                    .with_params(serde_json::json!({"detail": error.to_string()}))
+            })?;
+            super::plugins::announce(state, &id);
+        }
+    }
+
     // ★ Read back, and compared.
     //
     // A write that matched no row reports success — SQLite does not tell a `DELETE` that found nothing from one that
@@ -170,6 +183,31 @@ mod tests {
         let state = testing::state();
         config_set(&state, &set(&[("ui.locale", serde_json::json!("zh"))])).expect("writes");
         assert_eq!(config_get(&state).expect("a snapshot").values, serde_json::json!({"ui.locale": "zh"}));
+    }
+
+    #[test]
+    fn changing_registries_announces_cards_without_the_previous_sources_updates() {
+        let state = testing::state();
+        let plugin = "@acme/hello";
+        state.db().insert_plugin(plugin, false, false, "good", 1, 1).expect("plugin");
+        state.db().record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1).expect("version");
+        state.db().save_plugin_update_check(&synra_store::PluginUpdateCheck {
+            plugin_id: plugin.to_owned(),
+            current_version: "1.0.0".to_owned(),
+            checked_at_ms: 123,
+            registry: None,
+            available_version: Some("2.0.0".to_owned()),
+            added_capabilities: Vec::new(),
+        }).expect("check");
+        let subscriber = state.events.subscribe();
+        config_set(&state, &set(&[("plugins.registry", serde_json::json!("https://registry.example"))])).expect("switch");
+        let delivery = state.events.take(subscriber).expect("events");
+        let card = delivery.events().iter().find_map(|event| match event {
+            synra_ipc::event::KernelEvent::PluginUpdated(card) => Some(card),
+            _ => None,
+        }).expect("card updated");
+        assert!(card.update.is_none());
+        assert!(card.update_checked_at_ms.is_none());
     }
 
     #[test]

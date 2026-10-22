@@ -732,13 +732,13 @@ async function checkCommandArguments(called: ReadonlySet<string>): Promise<void>
   if (stated === null) {
     failures.push({
       check: 'readme-counts',
-      detail: 'README.md no longer states how many commands are registered, so nothing checks it',
+      detail: 'README.md no longer states how many commands are registered, so nothing checks it'
     })
   }
   else if (stated[1] !== String(wrappers.size)) {
     failures.push({
       check: 'readme-counts',
-      detail: `README.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`,
+      detail: `README.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`
     })
   }
   const calledStated = /被调用 (\d+) 条/.exec(readme)

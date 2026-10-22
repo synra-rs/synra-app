@@ -107,7 +107,7 @@ pub fn plugins_consent_respond(
                 .with_params(serde_json::json!({"pluginId": plugin_id}))
         })?;
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
-    let card = snapshot(state, &row, &id, loaded.as_deref());
+    let card = snapshot(state, &row, &id, loaded.as_deref())?;
     state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(card.clone())));
     Ok(card)
 }
@@ -457,7 +457,7 @@ pub fn plugins_reload(state: &AppState, plugin_id: &str) -> Result<PluginSnapsho
     let _ = apply_lifecycle(state, &id);
     announce(state, &id);
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
-    Ok(snapshot(state, &row, &id, loaded.as_deref()))
+    snapshot(state, &row, &id, loaded.as_deref())
 }
 
 /// Asks the registry whether a newer version is published for an installed plugin.
@@ -519,19 +519,21 @@ pub fn plugins_preview(
 /// pipeline's refusals when the package cannot be fetched or verified.
 pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport, IpcError> {
     let report = crate::commands::registry::update(state, plugin_id)?;
-    // The cache said "an update is available"; it no longer is. Removing it here rather than waiting for the next pass
-    // is what stops the page offering the same update again right after it was installed.
-    state.available_updates.lock().remove(&report.plugin_id);
+    // The stored check belongs to the old version and is no longer returned after the installer changes the active row.
     announce_updated(state, &report);
     Ok(report)
 }
 
 /// The updates the last pass found, for a page that was not open when it ran.
-#[must_use]
-pub fn plugins_updates(state: &AppState) -> Vec<UpdateInfo> {
-    let mut updates: Vec<_> = state.available_updates.lock().values().cloned().collect();
-    updates.sort_by(|left, right| left.plugin_id.as_str().cmp(right.plugin_id.as_str()));
-    updates
+///
+/// # Errors
+///
+/// `Internal` when a saved check cannot be read.
+pub fn plugins_updates(state: &AppState) -> Result<Vec<UpdateInfo>, IpcError> {
+    state.db().plugin_update_checks().map_err(internal)?
+        .iter()
+        .filter_map(super::plugin_updates::info)
+        .collect()
 }
 
 /// Publishes the page-level "updated" notice, the same one the file-association path sends.
@@ -832,7 +834,7 @@ pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
             IpcError::unknown(synra_protocol::ErrorCode::Internal)
                 .with_params(serde_json::json!({"pluginId": row.plugin_id, "detail": error.to_string()}))
         })?;
-        snapshots.push(snapshot(state, &row, &plugin_id, loaded.as_deref()));
+        snapshots.push(snapshot(state, &row, &plugin_id, loaded.as_deref())?);
     }
     Ok(snapshots)
 }
@@ -891,7 +893,7 @@ fn set_enabled(state: &AppState, plugin_id: &str, enabled: bool) -> Result<(), I
 /// Failure to read the card is not a failure of the command: the write already happened, and refusing the command
 /// afterwards would tell the user their change did not take effect when it did — the same reasoning as an audit write
 /// that fails after the call it describes.
-fn announce(state: &AppState, plugin_id: &PluginId) {
+pub(super) fn announce(state: &AppState, plugin_id: &PluginId) {
     let Ok(rows) = state.db().plugins() else {
         return;
     };
@@ -899,7 +901,9 @@ fn announce(state: &AppState, plugin_id: &PluginId) {
         return;
     };
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
-    let card = snapshot(state, &row, plugin_id, loaded.as_deref());
+    let Ok(card) = snapshot(state, &row, plugin_id, loaded.as_deref()) else {
+        return;
+    };
     state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(card)));
 }
 
@@ -907,7 +911,7 @@ fn announce(state: &AppState, plugin_id: &PluginId) {
 ///
 /// # Errors
 ///
-/// Currently never. A plugin with no readable manifest falls back to its identifier for a name and reports no version,
+/// `Internal` for an unreadable update check. A plugin with no readable manifest falls back to its identifier for a name and reports no version,
 /// because a manifest that will not parse is something the install path should have refused and the interface needs *a*
 /// card either way — a user with a broken plugin needs to see it in order to remove it. The parse failure is not silently
 /// swallowed though: it is what puts the card in the `unreadable` state below.
@@ -916,7 +920,7 @@ fn snapshot(
     row: &synra_store::PluginRow,
     plugin_id: &PluginId,
     loaded: Option<&[PluginId]>,
-) -> PluginSnapshot {
+) -> Result<PluginSnapshot, IpcError> {
     let manifest = read_manifest(state, &row.plugin_id);
     let is_loaded = loaded.is_some_and(|ids| ids.contains(plugin_id));
     // ★ A plugin can be loaded and still unusable: the health ladder's last rung is `Lifecycle::Faulted`, and the set
@@ -937,8 +941,10 @@ fn snapshot(
         (loads.refusal_for(&row.plugin_id).map(str::to_owned), loads.safe_mode.clone())
     };
     let state_word = life_state(row, is_loaded, fault_reason.is_some(), manifest.is_some(), refused.is_some());
+    let update_check = state.db().plugin_update_check(&row.plugin_id).map_err(internal)?;
+    let update = update_check.as_ref().and_then(super::plugin_updates::info).transpose()?;
 
-    PluginSnapshot {
+    Ok(PluginSnapshot {
         plugin_id: plugin_id.clone(),
         // ★ The same function the removal uses, so the path in the dialog is the directory that will be deleted.
         data_path: state.paths.plugin_sandbox_dir(&row.plugin_id).display().to_string(),
@@ -981,12 +987,10 @@ fn snapshot(
         // they deliberately refused — and being unable to see what they refused is what makes them do it.
         granted: decisions.iter().filter(|d| d.granted).map(|d| d.capability.clone()).collect(),
         denied: decisions.iter().filter(|d| !d.granted).map(|d| d.capability.clone()).collect(),
-        // ★ `None` rather than a check performed here.
-        //
-        // Checking for an update is a network operation, and a list that made one would block the settings screen on
-        // every open. The design document has a separate command for it; this one answers from what is on disk.
-        update: None,
-    }
+        // Read the saved answer, never the registry. Only a check of the current installed version is returned.
+        update,
+        update_checked_at_ms: update_check.as_ref().map(|check| check.checked_at_ms),
+    })
 }
 
 /// A plugin's quota report, shaped for the card.
@@ -3097,21 +3101,22 @@ mod tests {
     fn the_cached_updates_are_readable_by_a_page_that_was_not_open() {
         // ★ The background pass runs whether or not the plugins page is open. This is how its answer reaches a page that
         // mounts later, sorted so two readers see the same order.
-        let state = crate::testing::state();
+        let (_root, state) = crate::testing::file_state();
         for (plugin, version) in [("@acme/two", "3.0.0"), ("@acme/one", "2.0.0")] {
-            let plugin_id = synra_protocol::PluginId::parse(plugin).expect("a plugin id");
-            state.available_updates.lock().insert(
-                plugin_id.clone(),
-                synra_ipc::UpdateInfo {
-                    plugin_id,
-                    version: version.to_owned(),
-                    needs_new_consent: false,
-                    added_capabilities: Vec::new(),
-                },
-            );
+            let db = state.db();
+            db.insert_plugin(plugin, false, false, "good", 1, 1).expect("plugin");
+            db.record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1).expect("version");
+            db.save_plugin_update_check(&synra_store::PluginUpdateCheck {
+                plugin_id: plugin.to_owned(),
+                current_version: "1.0.0".to_owned(),
+                checked_at_ms: 123,
+                registry: None,
+                available_version: Some(version.to_owned()),
+                added_capabilities: Vec::new(),
+            }).expect("check");
         }
-
-        let updates = super::plugins_updates(&state);
+        let restarted = crate::testing::reopen(&state);
+        let updates = super::plugins_updates(&restarted).expect("saved updates");
 
         assert_eq!(updates.len(), 2);
         assert_eq!(updates[0].plugin_id.as_str(), "@acme/one");
