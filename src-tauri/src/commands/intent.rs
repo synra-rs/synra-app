@@ -742,6 +742,38 @@ mod tests {
     }
 
     #[test]
+    fn a_dispatch_restored_after_the_late_window_is_no_longer_running() {
+        // ★ A restored `Dispatching` intent is work whose answer is still coming only for as long as the far side's late
+        // queue keeps it. After that window, "running" is a sentence no fact can make true — and the row can never be
+        // collected, because the retention sweep only takes finished intents.
+        let (root, state) = crate::testing::file_state();
+        let dispatched_at = crate::testing::FIXED_NOW_MS - synra_core::late_queue::MAX_AGE_MS - 1;
+        let (id, _, created) = state.board.lock().raise(
+            synra_core::intent::IntentSource::Direct {
+                plugin_id: synra_protocol::PluginId::parse("@acme/opener").expect("a plugin id"),
+                action: "open".to_owned(),
+                params: serde_json::json!({"url": "https://example.com"}),
+                target: synra_protocol::ids::DeviceId::new(),
+            },
+            synra_core::intent::Choice::Automatic,
+            None,
+            None,
+            dispatched_at,
+        );
+        assert!(created, "a direct source is raised rather than matched");
+        checkpoint(&state, id);
+
+        let reopened = crate::testing::reopen(&state);
+        let card = intent_list(&reopened)
+            .expect("the restored board answers")
+            .into_iter()
+            .find(|intent| intent.intent_id == id)
+            .expect("the intent came back");
+        assert_eq!(card.state, "timedOut", "no answer can arrive any more: {card:?}");
+        drop(root);
+    }
+
+    #[test]
     fn an_intent_a_peer_asked_this_window_to_run_is_written_down() {
         // ★ The remote direction, which is the one a restart hurts most: the peer is still waiting on the answer, and a
         // window that forgot the request would let the peer's retry run the action a second time. The listener calls
