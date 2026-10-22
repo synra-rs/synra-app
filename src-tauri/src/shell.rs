@@ -852,6 +852,27 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
             // does, and a restart would fail to bind a port the old one still holds.
             app.manage(crate::listener::spawn(app.handle()));
+            // ★ A dispatch that was in flight when the last process ended is sent again, once, with the same request
+            // identifier: the receiving side deduplicates on it, so this either runs the action once or returns the outcome
+            // that already happened. One pass on its own thread — the wait per intent is up to `REMOTE_RESULT_WAIT`, and
+            // the window must not wait for it to open.
+            {
+                let state = app.state::<std::sync::Arc<AppState>>().inner().clone();
+                let spawned = std::thread::Builder::new()
+                    .name("synra-intent-resume".to_owned())
+                    .spawn(move || {
+                        let report = crate::commands::intent_resume::resume(&state);
+                        if report.attempted > 0 {
+                            eprintln!(
+                                "synra: re-sent {} dispatch(es): {} answered, {} unanswered, {} failed",
+                                report.attempted, report.answered, report.unanswered, report.failed
+                            );
+                        }
+                    });
+                if let Err(error) = spawned {
+                    eprintln!("synra: the intent resume thread could not start: {error}");
+                }
+            }
             // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
             // could ask to pair and the window would look at it and never say so.
             crate::commands::pairing::watch(app.handle().clone(), &pairing_cancel);
