@@ -822,6 +822,25 @@ mod tests {
     }
 
     #[test]
+    fn a_timed_out_intent_tells_the_page_how_long_it_waited() {
+        // ★ The card's word is "Timed out"; the reason is the wait. Without this the user could not tell a matching
+        // window that closed from a device that never answered — both said the same three syllables.
+        let state = crate::testing::state();
+        let (id, _) = raise_an_intent(&state);
+        let _ = state.board.lock().time_out(id);
+
+        let card = intent_snapshot(&state, id).expect("a card");
+        assert_eq!(card.state, "timedOut");
+        let error = card.error.expect("the wait is carried");
+        assert_eq!(error.code, synra_protocol::ErrorCode::Timeout);
+        assert_eq!(error.message.as_str(), "error.timeout");
+        assert_eq!(
+            error.details.as_ref().and_then(|details| details.get("kernelMessage")),
+            Some(&serde_json::json!("nothing answered within 400 ms"))
+        );
+    }
+
+    #[test]
     fn a_refused_intent_tells_the_page_which_check_refused_it() {
         // "Refused" without a reason is the same dead end as "Failed" without one: the refusal type documents its detail as
         // a sentence the interface can show, and the view was dropping both it and its code.
