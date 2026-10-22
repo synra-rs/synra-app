@@ -197,6 +197,9 @@ fn revoking_a_publisher_stops_and_untrusts_its_installed_plugin() {
     // until the next start. Revoke is about what is here now.
     let (_root, state) = installed_state();
     let fingerprint = state.db().publishers().expect("publishers")[0].fingerprint.clone();
+    let active = state.db().active_plugin("@acme/hello").expect("row").expect("installed");
+    assert_eq!(active.publisher_id.as_deref(), Some("@acme"), "the version records its signer");
+    assert_eq!(active.fingerprint.as_deref(), Some(fingerprint.as_str()));
     let id = synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id");
     assert!(
         state.plugin_set().expect("a set").lock().contains(&id),
@@ -429,7 +432,7 @@ fn a_restart_keeps_daily_checks_and_an_offline_attempt_keeps_the_last_answer() {
         .expect("plugin");
     state
         .db()
-        .record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1)
+        .record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() })
         .expect("version");
     state
         .db()

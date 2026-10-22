@@ -212,7 +212,7 @@ mod tests {
         let state = testing::state();
         let plugin = "@acme/hello";
         state.db().insert_plugin(plugin, false, false, "good", 1, 1).expect("plugin");
-        state.db().record_plugin_version(plugin, "1.0.0", "wasm", "digest", "{}", 1).expect("version");
+        state.db().record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() }).expect("version");
         state.db().save_plugin_update_check(&synra_store::PluginUpdateCheck {
             plugin_id: plugin.to_owned(),
             current_version: "1.0.0".to_owned(),
