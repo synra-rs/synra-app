@@ -101,6 +101,7 @@ describe('the notice host', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('2 plugin updates are available.')
+    expect(wrapper.text()).toContain('@acme/one, @acme/two')
     expect(wrapper.text()).toContain(messages.notices.review)
     wrapper.unmount()
   })
