@@ -182,7 +182,8 @@ fn installed_state() -> (crate::testing::Root, AppState) {
     let first = root.path().join("first");
     signed_source(&first, "1.0.0", 7, 0);
     super::super::plugins::install_directory(&state, &first).expect("first install");
-    super::super::plugins::plugins_publisher_decide(&state, "@acme", "trusted")
+    let fingerprint = state.db().publishers().expect("publishers")[0].fingerprint.clone();
+    super::super::plugins::plugins_publisher_decide(&state, "@acme", &fingerprint, "trusted")
         .expect("trust publisher");
     super::super::plugins::plugins_consent_respond(&state, "@acme/hello", &["log:*".to_owned()])
         .expect("consent");

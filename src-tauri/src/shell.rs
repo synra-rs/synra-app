@@ -209,9 +209,10 @@ mod wrappers {
     pub fn plugins_publisher_decide(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         publisher_id: String,
+        fingerprint: String,
         trust: String,
     ) -> Result<(), IpcError> {
-        commands::plugins::plugins_publisher_decide(&state, &publisher_id, &trust)
+        commands::plugins::plugins_publisher_decide(&state, &publisher_id, &fingerprint, &trust)
     }
 
     /// Sends a file to a paired device, and answers the transfer it started.

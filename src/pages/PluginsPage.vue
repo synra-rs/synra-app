@@ -582,7 +582,7 @@
                 v-if="publisher.trust !== 'trusted'"
                 size="small"
                 :loading="deciding === publisher.publisherId"
-                @click="decidePublisher(publisher.publisherId, 'trusted')"
+                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'trusted')"
               >
                 {{ messages.plugins.publishers.trust }}
               </AButton>
@@ -590,7 +590,7 @@
                 v-if="publisher.trust !== 'revoked'"
                 size="small"
                 :loading="deciding === publisher.publisherId"
-                @click="decidePublisher(publisher.publisherId, 'revoked')"
+                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'revoked')"
               >
                 {{ messages.plugins.publishers.revoke }}
               </AButton>
@@ -702,7 +702,7 @@ async function trustPendingPublisher(): Promise<void> {
   const pending = pendingPublisher.value
   if (!pending)
     return
-  await decidePublisher(pending.id, 'trusted')
+  await decidePublisher(pending.id, pending.fingerprint, 'trusted')
   pendingPublisher.value = undefined
 }
 
@@ -711,7 +711,7 @@ async function revokePendingPublisher(): Promise<void> {
   const pending = pendingPublisher.value
   if (!pending)
     return
-  await decidePublisher(pending.id, 'revoked')
+  await decidePublisher(pending.id, pending.fingerprint, 'revoked')
   pendingPublisher.value = undefined
 }
 
@@ -761,10 +761,10 @@ async function load(): Promise<void> {
 }
 
 /** Trusts or revokes a publisher's key, then re-reads so the row shows the decision the kernel stored. */
-async function decidePublisher(publisherId: string, trust: 'trusted' | 'revoked'): Promise<void> {
+async function decidePublisher(publisherId: string, fingerprint: string, trust: 'trusted' | 'revoked'): Promise<void> {
   deciding.value = publisherId
   error.value = undefined
-  const answer = await kernel.call<null>('plugins_publisher_decide', { publisherId, trust })
+  const answer = await kernel.call<null>('plugins_publisher_decide', { publisherId, fingerprint, trust })
   deciding.value = undefined
   if (!answer.ok) {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
