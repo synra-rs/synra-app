@@ -192,6 +192,34 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('says how many times a dispatch has been retried, and when it gave up', async () => {
+    // ★ The kernel retries a dispatch nobody answers; without this line the card said "Running" through all of it, and
+    // then went on saying it after the retry bound was reached.
+    const retrying = {
+      intentId: '01HQ00000000000000000INTNT4',
+      traceId: '01HQ00000000000000000TRACE4',
+      state: 'dispatching',
+      candidates: [],
+      retry: { attempts: 3, maxAttempts: 8, gaveUp: false },
+      startedAtMs: 1
+    }
+    const gaveUp = {
+      intentId: '01HQ00000000000000000INTNT5',
+      traceId: '01HQ00000000000000000TRACE5',
+      state: 'dispatching',
+      candidates: [],
+      retry: { attempts: 8, maxAttempts: 8, gaveUp: true },
+      startedAtMs: 1
+    }
+    answer({ intent_list: [retrying, gaveUp] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Retrying (3/8)')
+    expect(wrapper.text()).toContain(messages.home.received.noAnswer)
+    wrapper.unmount()
+  })
+
   it('says why an intent failed without printing the kernel key', async () => {
     // ★ `IntentSnapshot.error` carries a code and a message **key**, not a sentence. A page that printed either would put
     // an engine word on screen; the fallback chain is the one `ErrorNotice` already uses.

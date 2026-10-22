@@ -175,6 +175,15 @@
             </div>
 
             <!--
+              ★ "Running" is true for two different situations: the first attempt is still waiting, or this device has
+              already sent it again several times. The kernel knows which; the card says it instead of leaving the user
+              with a word that never changes.
+            -->
+            <p v-if="intent.retry" class="m-0 text-xs text-ink-dim">
+              {{ retryLabel(intent.retry) }}
+            </p>
+
+            <!--
               ★ A candidate is a decision, not a status line. The kernel says which devices could run it; the page's job
               is to let the user pick one, and declining is the other half of that decision.
             -->
@@ -282,7 +291,7 @@
  * have one. That is the split the design asks for — the library owns the controls, the interface owns the one thing
  * worth looking at.
  */
-import type { IntentCandidate, IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
+import type { IntentCandidate, IntentRetry, IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -550,6 +559,20 @@ function intentStateColor(state: string): string {
   if (state === 'dispatching')
     return 'processing'
   return 'default'
+}
+
+/**
+ * How a dispatch's retries read.
+ *
+ * ★ The two sentences are different on purpose: one is work still being attempted, the other is this process having
+ * stopped. Neither changes the state word — the intent is still dispatching — so the words must not imply it failed.
+ */
+function retryLabel(retry: IntentRetry): string {
+  if (retry.gaveUp)
+    return messages.home.received.noAnswer
+  return messages.home.received.retrying
+    .replace('{attempts}', String(retry.attempts))
+    .replace('{max}', String(retry.maxAttempts))
 }
 
 /**
