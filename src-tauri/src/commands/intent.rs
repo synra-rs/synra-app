@@ -169,6 +169,7 @@ pub fn intent_dispatch(state: &AppState, source: &IntentSourceDto) -> Result<Int
     // from `routed`: the board is what `intent_list` will answer with, and a card assembled here would be a second
     // description of the same intent — the one that disagrees the first time the two are computed differently.
     announce(state, routed.intent_id);
+    checkpoint(state, routed.intent_id);
     Ok(routed.intent_id)
 }
 
@@ -269,9 +270,36 @@ pub fn intent_snapshot(state: &AppState, intent_id: IntentId) -> Result<IntentSn
 /// Silent when it cannot: the board losing an intent between the change and the announcement is a race the caller cannot
 /// repair, and publishing an error is not what an event is for. The interface's next `intent_list` is the truth either
 /// way, so a missed announcement costs one stale list rather than a wrong one.
-fn announce(state: &AppState, intent_id: IntentId) {
+pub(crate) fn announce(state: &AppState, intent_id: IntentId) {
     if let Ok(snapshot) = snapshot_of(state, intent_id) {
         state.publish(synra_ipc::event::KernelEvent::IntentUpdated(Box::new(snapshot)));
+    }
+}
+
+/// Writes one intent down, as the board now holds it.
+///
+/// # Why a failure is logged rather than returned
+///
+/// Because every caller reaches this **after** the change has happened. A command that reported "no" after the action ran
+/// would tell the user nothing occurred when something did; the honest pair is the answer plus a line saying the record
+/// did not reach the disk. The row mapping itself lives in the kernel because the daemon writes the same rows.
+pub(crate) fn checkpoint(state: &AppState, intent_id: IntentId) {
+    // ★ The board guard is released before the database is touched, for the reason the daemon documents: the board is
+    // the lock every intent command takes, and a write held under it would make the next raise wait for the disk.
+    let record = {
+        let board = state.board.lock();
+        synra_core::intent::persist::record_of(&board, intent_id, synra_store::sqlite::now_ms())
+    };
+    // Something the retention sweep dropped between the change and the write. There is nothing to record, and inventing
+    // a row would make the store hold an intent no board ever had.
+    let Some(record) = record else {
+        return;
+    };
+    if record.document.is_empty() {
+        eprintln!("synra: intent {intent_id} could not be serialised, so its row carries no document");
+    }
+    if let Err(error) = state.db().save_intent(&record) {
+        eprintln!("synra: intent {intent_id} was not written down: {error}");
     }
 }
 
@@ -382,6 +410,10 @@ pub fn intent_decide(
     // ★ Announced before the envelope leaves: a remote invocation may spend the whole wait on the wire, and the card has
     // to say "dispatching" while that happens. A refused delivery still announces, because the decision itself landed.
     announce(state, intent_id);
+    // ★ Written down before the envelope leaves as well: a remote dispatch is exactly the intent a restart would otherwise
+    // lose, and the peer is still waiting on it. The write happens after the decision, so it records `dispatching` rather
+    // than the state before it.
+    checkpoint(state, intent_id);
     if let Some(outbound) = &outbound {
         match crate::commands::intent_remote::deliver_decided(state, outbound) {
             Ok(Some(reply)) => {
@@ -389,6 +421,7 @@ pub fn intent_decide(
                 // `succeeded`/`failed`; a reply this device is not waiting on is ignored by `apply_result` itself.
                 orchestrate::apply_result(&state.board, &reply).map_err(|error| as_ipc(&error))?;
                 announce(state, intent_id);
+                checkpoint(state, intent_id);
             }
             // No answer inside the wait. The action may still be running over there, so nothing is invented: the intent
             // stays dispatching and the listener applies a late result.
@@ -419,6 +452,7 @@ pub fn intent_cancel(state: &AppState, intent_id: IntentId) -> Result<(), IpcErr
     // The panel shows a cancelled intent as cancelled rather than making it vanish: the board keeps it (`intent_list` is
     // `all`, not the live ones), so the announcement is the same announcement a decision makes.
     announce(state, intent_id);
+    checkpoint(state, intent_id);
     if let Some(outbound) = &change.outbound {
         crate::commands::intent_remote::deliver_decided(state, outbound)?;
     }
@@ -486,6 +520,11 @@ mod tests {
     /// with `Unsupported` when there is no engine at all. No manifest and no plugin is installed — an empty set is a
     /// *state*, not a stand-in.
     fn engine_state() -> crate::AppState {
+        engine_over(crate::testing::state())
+    }
+
+    /// The same engine over a state the caller built — a file-backed one, for a restart test.
+    fn engine_over(state: crate::AppState) -> crate::AppState {
         let backend = synra_plugin_host::Backend::new(std::sync::Arc::new(
             synra_plugin_host::engine::scripted::ScriptedBackend::new(),
         ));
@@ -493,7 +532,7 @@ mod tests {
             backend,
             std::sync::Arc::new(synra_plugin_host::testing::RefusingHost),
         );
-        crate::testing::state().with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(set)))
+        state.with_plugins(std::sync::Arc::new(parking_lot::Mutex::new(set)))
     }
 
     #[test]
@@ -681,5 +720,72 @@ mod tests {
 
         assert!(created, "a request that was never raised before raises a new intent");
         (id, trace)
+    }
+
+    #[test]
+    fn an_intent_this_window_raised_is_still_there_after_a_restart() {
+        // ★ The claim the shell could not make before: closing and reopening the window forgot every intent, so the home
+        // page came back empty and `synra logs --trace` had nothing to find. A file-backed state and its reopen are the
+        // only fixture that can see the difference between an in-memory board and a written one.
+        let (root, state) = crate::testing::file_state();
+        let state = engine_over(state);
+        let id = intent_dispatch(&state, &IntentSourceDto::Share { text: "hi".to_owned(), title: None })
+            .expect("an intent is raised");
+
+        let reopened = crate::testing::reopen(&state);
+        let listed = intent_list(&reopened).expect("the restored board answers");
+        assert!(
+            listed.iter().any(|intent| intent.intent_id == id),
+            "the intent came back: {listed:?}"
+        );
+        drop(root);
+    }
+
+    #[test]
+    fn an_intent_a_peer_asked_this_window_to_run_is_written_down() {
+        // ★ The remote direction, which is the one a restart hurts most: the peer is still waiting on the answer, and a
+        // window that forgot the request would let the peer's retry run the action a second time. The listener calls
+        // `announce` and `checkpoint` for exactly this path; this drives the same two functions over a real `accept_remote`.
+        let (root, state) = crate::testing::file_state();
+        let state = engine_over(state);
+        let local = state.identity.lock().device_id;
+        let peer = synra_protocol::ids::DeviceId::new();
+        let request = synra_protocol::ids::RequestId::new();
+        let mut envelope = synra_core::intent::remote::invoke(
+            peer,
+            local,
+            &synra_core::intent::remote::Invoke {
+                plugin_id: synra_protocol::PluginId::parse("@acme/opener").expect("a plugin id"),
+                plugin_version: "1.0.0".to_owned(),
+                action: "open".to_owned(),
+                args: serde_json::json!({"url": "https://example.com"}),
+            },
+            synra_protocol::ids::TraceId::new(),
+            1_000,
+        )
+        .expect("an invocation");
+        envelope.request_id = request;
+
+        let plugins = plugins(&state).expect("an engine");
+        // An empty plugin set: the request is raised and then fails to execute, which is still an intent with a row —
+        // and the lookup below is the one the listener uses.
+        let _ = orchestrate::accept_remote(plugins, &state.board, local, &envelope, 1_000)
+            .expect("the request is accepted");
+
+        let id = {
+            let board = state.board.lock();
+            board.recall(peer, request).map(|intent| intent.id)
+        }
+        .expect("the request raised an intent");
+        announce(&state, id);
+        checkpoint(&state, id);
+
+        let reopened = crate::testing::reopen(&state);
+        let listed = intent_list(&reopened).expect("the restored board answers");
+        assert!(
+            listed.iter().any(|intent| intent.intent_id == id),
+            "the peer's request came back: {listed:?}"
+        );
+        drop(root);
     }
 }
