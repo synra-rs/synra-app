@@ -843,31 +843,32 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 }
             }
             // The bridge and the pairing watcher are the two threads that outlive the window but own no socket; their
-            // tokens go in one value so the shutdown does not have to remember a second place.
+            // tokens go in one value so the shutdown does not have to remember a second place. The retry loop's token
+            // belongs in the same list: it sleeps between attempts, and nothing else would tell it the process is leaving.
             let pairing_cancel = synra_core::supervisor::Cancellation::new();
+            let resume_cancel = synra_core::supervisor::Cancellation::new();
             app.manage(Background {
-                cancels: vec![bridge_cancel, pairing_cancel.clone()],
+                cancels: vec![bridge_cancel, pairing_cancel.clone(), resume_cancel.clone()],
             });
             // ★ The listener starts after the state is managed, because it reads that state to build its host and router. The token
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
             // does, and a restart would fail to bind a port the old one still holds.
             app.manage(crate::listener::spawn(app.handle()));
-            // ★ A dispatch that was in flight when the last process ended is sent again, once, with the same request
-            // identifier: the receiving side deduplicates on it, so this either runs the action once or returns the outcome
-            // that already happened. One pass on its own thread — the wait per intent is up to `REMOTE_RESULT_WAIT`, and
-            // the window must not wait for it to open.
+            // ★ A dispatch that was in flight when the last process ended is sent again with the same request identifier —
+            // the receiving side deduplicates on it, so this either runs the action once or returns the outcome that already
+            // happened. The immediate pass runs first, then a bounded backoff keeps trying what is still in flight; the
+            // window does not wait for any of it.
             {
                 let state = app.state::<std::sync::Arc<AppState>>().inner().clone();
+                let token = resume_cancel.clone();
                 let spawned = std::thread::Builder::new()
                     .name("synra-intent-resume".to_owned())
                     .spawn(move || {
-                        let report = crate::commands::intent_resume::resume(&state);
-                        if report.attempted > 0 {
-                            eprintln!(
-                                "synra: re-sent {} dispatch(es): {} answered, {} unanswered, {} failed",
-                                report.attempted, report.answered, report.unanswered, report.failed
-                            );
-                        }
+                        crate::commands::intent_resume::run(
+                            &state,
+                            &token,
+                            crate::commands::intent_resume::RetryPolicy::default(),
+                        );
                     });
                 if let Err(error) = spawned {
                     eprintln!("synra: the intent resume thread could not start: {error}");
