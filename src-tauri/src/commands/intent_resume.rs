@@ -14,22 +14,25 @@
 //!
 //! # What this is, and what it is not
 //!
-//! One immediate pass at start-up, then a **bounded retry schedule**: [`RetryPolicy::default`] retries what is still in
-//! flight eight times, half a minute apart at first and five minutes at the cap, and then stops until the next start.
-//! It is **not** a queue: attempts are not persisted, there is no ordering, and a process that ends loses the schedule.
-//! "Offline queue" would be a claim about durability this does not have.
+//! One immediate pass at start-up, then the kernel's **bounded retry schedule** ([`RetryPolicy::default`]): what is still in
+//! flight is retried eight times, half a minute apart at first and five minutes at the cap, and then stops until the next
+//! start. The schedule itself is [`synra_core::intent::retry`], shared with the daemon; this file is the shell's half — the
+//! dial, the event, and the row.
 //!
 //! [`REMOTE_RESULT_WAIT`]: synra_core::dispatch::REMOTE_RESULT_WAIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::time::Duration;
 
 use synra_core::dispatch::orchestrate;
 use synra_core::intent::remote::Outbound;
-use synra_core::supervisor::{Cancellation, RestartPolicy, TaskId};
+use synra_core::intent::retry::RetryQueue;
+use synra_core::supervisor::Cancellation;
 use synra_ipc::IpcError;
 use synra_protocol::envelope::Envelope;
 use synra_protocol::ids::IntentId;
+
+pub use synra_core::intent::retry::RetryPolicy;
 
 use crate::state::AppState;
 
@@ -150,229 +153,6 @@ pub fn resume(state: &AppState) -> Resumed {
     })
 }
 
-/// How often a dispatch that is still in flight is sent again.
-///
-/// # Why these numbers
-///
-/// A dispatch that timed out has just spent [`synra_core::dispatch::REMOTE_RESULT_WAIT`] waiting; retrying immediately
-/// would be a busy loop against a device that is asleep. Half a minute is long enough for a peer to come back from a
-/// suspend and short enough to be useful; the cap is five minutes because a device that is off will be off for a while,
-/// and the attempt bound (eight) is what keeps a day's worth of retries from becoming a day's worth of dials.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetryPolicy {
-    /// The wait before the first retry.
-    pub initial: Duration,
-    /// The longest wait between retries.
-    pub max: Duration,
-    /// How many retries before this pass gives up until the next start.
-    pub max_attempts: u32,
-}
-
-impl Default for RetryPolicy {
-    fn default() -> Self {
-        Self {
-            initial: Duration::from_secs(30),
-            max: Duration::from_secs(300),
-            max_attempts: 8,
-        }
-    }
-}
-
-impl RetryPolicy {
-    /// The wait before retry number `attempt`, jittered by the intent's own name.
-    ///
-    /// ★ Reusing the supervisor's policy rather than writing a second backoff: the shape (double, cap, add a
-    /// name-derived jitter so two intents do not retry in lockstep) is already implemented and already tested.
-    fn delay(self, id: IntentId, attempt: u32) -> Duration {
-        RestartPolicy::Backoff { max_attempts: self.max_attempts, initial: self.initial, max: self.max }
-            .delay_for(attempt, &TaskId::new(id.to_string()))
-    }
-
-    /// The same wait in the store's clock, saturating rather than wrapping.
-    fn delay_ms(self, id: IntentId, attempt: u32) -> i64 {
-        i64::try_from(self.delay(id, attempt).as_millis()).unwrap_or(i64::MAX)
-    }
-}
-
-/// When each outstanding dispatch is next due, and how many times it has been retried.
-///
-/// # Why the clock is milliseconds rather than an `Instant`
-///
-/// Because the schedule has to survive a restart, and an `Instant` is meaningless to the next process. The queue speaks the
-/// same wall clock the store writes; a test moves a number forward instead of sleeping for five minutes.
-#[derive(Debug)]
-struct RetryQueue {
-    policy: RetryPolicy,
-    /// How many retries have been scheduled, counting the next one. Missing means "not seen yet".
-    attempts: HashMap<IntentId, u32>,
-    /// When the next attempt is due, in milliseconds since the epoch. Missing means "not waiting".
-    due: HashMap<IntentId, i64>,
-    /// Intents this pass stopped retrying. Kept rather than forgotten because the interface is told "no answer yet" —
-    /// the intent itself is still `Dispatching`, and the entry goes when the intent ends.
-    gave_up: HashSet<IntentId>,
-}
-
-impl RetryQueue {
-    fn new(policy: RetryPolicy) -> Self {
-        Self { policy, attempts: HashMap::new(), due: HashMap::new(), gave_up: HashSet::new() }
-    }
-
-    /// Rebuilds the schedule from stored rows.
-    ///
-    /// # What is restored, and what is deliberately not
-    ///
-    /// The attempt count and the next due time are restored, so a restart does not send the backoff back to thirty seconds.
-    /// A **given-up** row is not restored as given up: "gave up until the next start" is what the interface says, and the
-    /// next start is this one. Such a row is returned in the second half of the answer for the caller to delete, and the
-    /// intent gets a fresh first retry.
-    ///
-    /// Rows whose intent is no longer pending are returned the same way — a schedule for work that ended is not something
-    /// to keep.
-    fn restore(
-        policy: RetryPolicy,
-        rows: &[synra_store::IntentRetryRow],
-        pending: &HashSet<IntentId>,
-        now_ms: i64,
-    ) -> (Self, Vec<String>) {
-        let mut queue = Self::new(policy);
-        let mut stale = Vec::new();
-        let stored: HashMap<&str, &synra_store::IntentRetryRow> =
-            rows.iter().map(|row| (row.intent_id.as_str(), row)).collect();
-
-        for id in pending {
-            let key = id.to_string();
-            match stored.get(key.as_str()) {
-                Some(row) if !row.gave_up => {
-                    queue.attempts.insert(*id, row.attempts.saturating_add(1));
-                    // A stored time in the past is due now; the loop's `take_due` treats it that way without a special case.
-                    queue.due.insert(*id, row.next_at_ms.unwrap_or_else(|| now_ms + queue.policy.delay_ms(*id, 1)));
-                }
-                Some(row) => {
-                    stale.push(row.intent_id.clone());
-                    queue.attempts.insert(*id, 1);
-                    queue.due.insert(*id, now_ms + queue.policy.delay_ms(*id, 1));
-                }
-                None => {
-                    queue.attempts.insert(*id, 1);
-                    queue.due.insert(*id, now_ms + queue.policy.delay_ms(*id, 1));
-                }
-            }
-        }
-        for row in rows {
-            if !pending.iter().any(|id| id.to_string() == row.intent_id) {
-                stale.push(row.intent_id.clone());
-            }
-        }
-        (queue, stale)
-    }
-
-    /// Schedules anything new, and forgets anything that is no longer in flight.
-    ///
-    /// # Why the sweep is part of observing
-    ///
-    /// Because an intent can end for reasons this loop did not cause — the user cancelled it, the answer arrived on the
-    /// listener's link, or the retention sweep dropped it. Keeping its entry would mean a due time for work that no
-    /// longer exists, and the map would grow for the life of the process.
-    ///
-    /// # Returns
-    ///
-    /// The intents that had no entry, so the caller knows which rows it has to write.
-    fn observe(&mut self, pending: impl IntoIterator<Item = IntentId>, now_ms: i64) -> Vec<IntentId> {
-        let pending: HashSet<IntentId> = pending.into_iter().collect();
-        self.attempts.retain(|id, _| pending.contains(id));
-        self.due.retain(|id, _| pending.contains(id));
-        self.gave_up.retain(|id| pending.contains(id));
-        let mut added = Vec::new();
-        for id in pending {
-            if let std::collections::hash_map::Entry::Vacant(entry) = self.attempts.entry(id) {
-                entry.insert(1);
-                self.due.insert(id, now_ms + self.policy.delay_ms(id, 1));
-                added.push(id);
-            }
-        }
-        added
-    }
-
-    /// The ids whose wait is over, removed from the schedule.
-    ///
-    /// Removed rather than left: the caller is about to attempt them, and a due time that is still in the past would make
-    /// the next `take_due` hand the same id out again.
-    fn take_due(&mut self, now_ms: i64) -> Vec<IntentId> {
-        let due: Vec<IntentId> = self
-            .due
-            .iter()
-            .filter_map(|(id, at)| (*at <= now_ms).then_some(*id))
-            .collect();
-        for id in &due {
-            self.due.remove(id);
-        }
-        due
-    }
-
-    /// Schedules the next attempt, or gives up when the bound is reached.
-    ///
-    /// Returns whether another attempt was scheduled. Giving up keeps the entry and its count: the card says "no answer
-    /// after N tries", and dropping the entry at the same moment would leave the page with nothing to say.
-    fn record_failure(&mut self, id: IntentId, now_ms: i64) -> bool {
-        let attempt = self.attempts.entry(id).or_insert(0);
-        *attempt = attempt.saturating_add(1);
-        if *attempt > self.policy.max_attempts {
-            self.gave_up.insert(id);
-            return false;
-        }
-        self.due.insert(id, now_ms + self.policy.delay_ms(id, *attempt));
-        true
-    }
-
-    /// Removes an intent: it was answered, or it ended.
-    fn forget(&mut self, id: IntentId) {
-        self.attempts.remove(&id);
-        self.due.remove(&id);
-        self.gave_up.remove(&id);
-    }
-
-    /// What the interface is told about one intent's retries, when there is anything to tell.
-    ///
-    /// Nothing before the first retry has failed: an intent whose first attempt is still waiting is simply `Dispatching`,
-    /// and "retrying (0/8)" would describe work that has not happened yet.
-    fn status(&self, id: IntentId) -> Option<synra_ipc::IntentRetry> {
-        let next = *self.attempts.get(&id)?;
-        let attempts = next.saturating_sub(1);
-        let gave_up = self.gave_up.contains(&id);
-        if attempts == 0 && !gave_up {
-            return None;
-        }
-        Some(synra_ipc::IntentRetry {
-            attempts,
-            max_attempts: self.policy.max_attempts,
-            gave_up,
-        })
-    }
-
-    /// The row that preserves this intent's schedule, when it has one.
-    ///
-    /// `attempts` is the count of retries **already made**, which is one less than the internal next-attempt number.
-    fn row(&self, id: IntentId) -> Option<synra_store::IntentRetryRow> {
-        let next = *self.attempts.get(&id)?;
-        Some(synra_store::IntentRetryRow {
-            intent_id: id.to_string(),
-            attempts: next.saturating_sub(1),
-            next_at_ms: self.due.get(&id).copied(),
-            gave_up: self.gave_up.contains(&id),
-        })
-    }
-
-    /// How long until the next attempt, or [`Duration::MAX`] when nothing is waiting.
-    fn next_wait(&self, now_ms: i64) -> Duration {
-        self.due
-            .values()
-            .map(|at| at.saturating_sub(now_ms).max(0))
-            .filter_map(|ms| u64::try_from(ms).ok())
-            .min()
-            .map(Duration::from_millis)
-            .unwrap_or(Duration::MAX)
-    }
-}
 
 /// Publishes one intent's retry status and tells the interface when it changed.
 ///
@@ -391,6 +171,18 @@ fn publish(state: &AppState, id: IntentId, status: Option<synra_ipc::IntentRetry
     if changed {
         crate::commands::intent::announce(state, id);
     }
+}
+
+/// The kernel's status in the interface's shape.
+///
+/// The two types say the same thing with the same field names; the conversion is here rather than in the DTO because the
+/// kernel does not depend on the interface crate, and it should not start to for three numbers.
+fn retry_status(queue: &RetryQueue, id: IntentId) -> Option<synra_ipc::IntentRetry> {
+    queue.status(id).map(|status| synra_ipc::IntentRetry {
+        attempts: status.attempts,
+        max_attempts: status.max_attempts,
+        gave_up: status.gave_up,
+    })
 }
 
 /// Writes this intent's schedule down, or removes it when the intent is no longer being retried.
@@ -459,7 +251,7 @@ pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
     }
     for id in &pending {
         persist(state, &queue, *id);
-        publish(state, *id, queue.status(*id));
+        publish(state, *id, retry_status(&queue, *id));
     }
 
     loop {
@@ -484,7 +276,7 @@ pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
                 Outcome::Unanswered | Outcome::Failed => {
                     let more = queue.record_failure(id, now_ms());
                     persist(state, &queue, id);
-                    publish(state, id, queue.status(id));
+                    publish(state, id, retry_status(&queue, id));
                     if !more {
                         eprintln!(
                             "synra: intent {id} was re-sent {} times without an answer; it stays dispatching until it expires",
@@ -499,7 +291,7 @@ pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
         // has to be written down before the process can end.
         for id in queue.observe(outstanding_ids(state), now_ms()) {
             persist(state, &queue, id);
-            publish(state, id, queue.status(id));
+            publish(state, id, retry_status(&queue, id));
         }
         let wait = queue
             .next_wait(now_ms())
@@ -656,90 +448,6 @@ mod tests {
         assert!(outstanding(&state).iter().all(|(outstanding, _)| *outstanding != id));
     }
 
-    // ── the schedule ──────────────────────────────────────────────────────────────────────────────
-
-    #[test]
-    fn a_pending_dispatch_is_not_due_until_its_first_wait_has_passed() {
-        // ★ The immediate pass has just run; retrying at zero would be a busy loop against a device that is asleep.
-        let mut queue = RetryQueue::new(RetryPolicy::default());
-        let id = IntentId::new();
-        let now = 1_000;
-        let _ = queue.observe([id], now);
-
-        assert!(queue.take_due(now).is_empty(), "the first wait has not passed");
-        assert_eq!(
-            queue.take_due(now + 60_000),
-            vec![id],
-            "a minute is past any first wait of thirty seconds"
-        );
-    }
-
-    #[test]
-    fn each_failed_retry_waits_at_least_as_long_as_the_one_before() {
-        // The growth the policy promises. The jitter is added rather than symmetric, so "at least as long" is the real
-        // property and a test can assert it without knowing the name-derived offset.
-        let policy = RetryPolicy::default();
-        let id = IntentId::new();
-        let mut previous = Duration::ZERO;
-        for attempt in 1..=5 {
-            let wait = policy.delay(id, attempt);
-            assert!(wait >= previous, "attempt {attempt} waited less: {previous:?} -> {wait:?}");
-            assert!(wait <= policy.max, "attempt {attempt} passed the ceiling: {wait:?}");
-            previous = wait;
-        }
-    }
-
-    #[test]
-    fn a_retry_that_keeps_failing_is_given_up_on_after_the_bound() {
-        // ★ Giving up is about this process's effort, not the action's outcome: the intent stays dispatching, so a late
-        // answer can still end it and the 24-hour expiry still collects it.
-        let policy = RetryPolicy {
-            initial: Duration::from_millis(1),
-            max: Duration::from_millis(2),
-            max_attempts: 3,
-        };
-        let mut queue = RetryQueue::new(policy);
-        let id = IntentId::new();
-        let now = 1_000;
-        let _ = queue.observe([id], now);
-        let later = now + 10_000;
-
-        for retry in 1..=3 {
-            let at = later + i64::from(retry) * 10_000;
-            assert_eq!(queue.take_due(at), vec![id], "retry {retry} should be due");
-            let more = queue.record_failure(id, at);
-            assert_eq!(more, retry < 3, "after retry {retry} another was scheduled: {more}");
-        }
-        assert!(queue.take_due(later + 60_000).is_empty());
-        assert!(queue.gave_up.contains(&id), "the entry is kept so the page can say why");
-        assert_eq!(
-            queue.status(id),
-            Some(synra_ipc::IntentRetry { attempts: 3, max_attempts: 3, gave_up: true })
-        );
-    }
-
-    #[test]
-    fn the_status_is_silent_until_a_retry_has_actually_failed() {
-        // ★ An intent whose first attempt is still waiting is `Dispatching`; "retrying (0/8)" would describe work that
-        // has not happened.
-        let mut queue = RetryQueue::new(RetryPolicy::default());
-        let id = IntentId::new();
-        let now = 1_000;
-        let _ = queue.observe([id], now);
-        assert_eq!(queue.status(id), None);
-
-        let at = now + 60_000;
-        let _ = queue.take_due(at);
-        queue.record_failure(id, at);
-        assert_eq!(
-            queue.status(id),
-            Some(synra_ipc::IntentRetry { attempts: 1, max_attempts: 8, gave_up: false })
-        );
-
-        queue.forget(id);
-        assert_eq!(queue.status(id), None);
-    }
-
     #[test]
     fn the_published_status_reaches_the_snapshot_and_clears_when_the_intent_ends() {
         // ★ The page reads the same `intent_snapshot` it always did; the retry count travels in that answer rather than
@@ -755,80 +463,6 @@ mod tests {
         publish(&state, id, None);
         assert_eq!(crate::commands::intent::intent_snapshot(&state, id).expect("a card").retry, None);
     }
-
-    #[test]
-    fn an_intent_that_ended_leaves_the_schedule() {
-        // The board is the authority: a cancel, a late answer, or the retention sweep can end an intent while the loop is
-        // sleeping, and a due time for work that no longer exists would keep the loop awake and the map growing.
-        let mut queue = RetryQueue::new(RetryPolicy::default());
-        let id = IntentId::new();
-        let _ = queue.observe([id], 1_000);
-        let _ = queue.observe(std::iter::empty(), 2_000);
-
-        assert!(queue.attempts.is_empty());
-        assert!(queue.take_due(600_000).is_empty());
-    }
-
-    #[test]
-    fn an_answer_removes_the_schedule_without_a_retry() {
-        let mut queue = RetryQueue::new(RetryPolicy::default());
-        let id = IntentId::new();
-        let _ = queue.observe([id], 1_000);
-        queue.forget(id);
-
-        assert!(queue.take_due(600_000).is_empty());
-        assert_eq!(queue.next_wait(1_000), Duration::MAX);
-    }
-
-    #[test]
-    fn a_restart_continues_the_schedule_and_forgets_what_cannot_be_used() {
-        // ★ The point of writing the schedule down: a dispatch already retried three times does not begin again at the
-        // first wait. A given-up row is deliberately *not* restored as given up — the interface said "until the next
-        // start", and this is it — so it is returned as stale and gets a fresh first retry.
-        let id = IntentId::new();
-        let given_up = IntentId::new();
-        let finished = IntentId::new();
-        let rows = vec![
-            synra_store::IntentRetryRow {
-                intent_id: id.to_string(),
-                attempts: 3,
-                next_at_ms: Some(50_000),
-                gave_up: false,
-            },
-            synra_store::IntentRetryRow {
-                intent_id: given_up.to_string(),
-                attempts: 8,
-                next_at_ms: None,
-                gave_up: true,
-            },
-            synra_store::IntentRetryRow {
-                intent_id: finished.to_string(),
-                attempts: 2,
-                next_at_ms: Some(50_000),
-                gave_up: false,
-            },
-        ];
-        let pending: HashSet<IntentId> = [id, given_up].into_iter().collect();
-
-        let (mut queue, stale) = RetryQueue::restore(RetryPolicy::default(), &rows, &pending, 10_000);
-
-        assert_eq!(
-            queue.status(id),
-            Some(synra_ipc::IntentRetry { attempts: 3, max_attempts: 8, gave_up: false }),
-            "the count came back"
-        );
-        assert!(
-            !queue.take_due(49_999).contains(&id),
-            "the stored wait is respected: the intent is not due before its stored time"
-        );
-        assert_eq!(queue.take_due(50_000), vec![id], "and then it is due");
-
-        assert_eq!(queue.status(given_up), None, "a new process gets a fresh chance");
-        assert!(stale.contains(&given_up.to_string()), "the given-up row was replaced");
-        assert!(stale.contains(&finished.to_string()), "a schedule for work that ended is stale");
-        assert_eq!(queue.attempts.get(&given_up), Some(&1), "the fresh first retry was scheduled");
-    }
-
     #[test]
     fn the_loop_stops_when_it_is_cancelled() {
         // ★ The shutdown path: the loop sleeps between attempts and up to thirty seconds when nothing is pending, so it has
