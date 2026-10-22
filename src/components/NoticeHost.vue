@@ -105,6 +105,12 @@ const detail = computed(() => {
     const path = value.params.path
     return typeof path === 'string' ? messages.notices.savedTo(path) : undefined
   }
+  // ★ The names, not only the count: "3 updates" makes the user open a page to find out which, and the pass already
+  // carries the list. A comma-separated line is the smallest thing that answers the question the headline raises.
+  if (value.message === 'notice.updates') {
+    const plugins = value.params.plugins
+    return Array.isArray(plugins) && plugins.length > 0 ? plugins.map(String).join(', ') : undefined
+  }
   // ★ The install report's warnings are sentences from the verifier — "the package is not signed" is the one a user
   // most needs when a file was opened from the desktop. They are shown under the headline rather than dropped.
   if (value.message === 'notice.installed' || value.message === 'notice.updated') {
