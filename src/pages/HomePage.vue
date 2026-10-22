@@ -570,9 +570,23 @@ function intentStateColor(state: string): string {
 function retryLabel(retry: IntentRetry): string {
   if (retry.gaveUp)
     return messages.home.received.noAnswer
-  return messages.home.received.retrying
+  const template = retry.nextAtMs === undefined
+    ? messages.home.received.retrying
+    : messages.home.received.retryingAt
+  return template
     .replace('{attempts}', String(retry.attempts))
     .replace('{max}', String(retry.maxAttempts))
+    .replace('{time}', retry.nextAtMs === undefined ? '' : formatClock(retry.nextAtMs))
+}
+
+/**
+ * The clock time of the next attempt.
+ *
+ * ★ An absolute time rather than "in 30s": the card only re-renders when the kernel says something changed, and a
+ * countdown baked into a render would be wrong a second later while this stays true until the next retry.
+ */
+function formatClock(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 /**
