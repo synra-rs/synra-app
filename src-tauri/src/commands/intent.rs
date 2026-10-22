@@ -326,7 +326,10 @@ fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, 
         // through its *state*, and the interface's `IntentPrompt` wants a message key and a list of options. Mapping one
         // to the other would be the shell writing the question, which is the kernel's to write.
         prompt: None,
-        error: None,
+        // ★ The kernel's sentence is not what a user reads: `from_synra_error` keeps the code, turns it into a message key,
+        // and carries the sentence as a detail for a bug report. Until this line existed the field was always `None`, so the
+        // page's "why did it fail?" line had nothing to show for a real failure.
+        error: view.error.as_ref().map(IpcError::from_synra_error),
         // The board records when an intent was created; the view does not carry it, so this is the moment it was read
         // rather than the moment it began — see the note in doc 08's checklist.
         started_at_ms: synra_store::sqlite::now_ms(),
@@ -771,6 +774,59 @@ mod tests {
             .expect("the intent came back");
         assert_eq!(card.state, "timedOut", "no answer can arrive any more: {card:?}");
         drop(root);
+    }
+
+    #[test]
+    fn a_failed_intent_tells_the_page_why() {
+        // ★ The field existed and was always `None`: the page's `intentError` line read a value no host ever filled. The
+        // kernel's sentence travels as a detail; the code becomes the key the page translates.
+        let state = crate::testing::state();
+        let (id, _, created) = state.board.lock().raise(
+            synra_core::intent::IntentSource::Direct {
+                plugin_id: synra_protocol::PluginId::parse("@acme/opener").expect("a plugin id"),
+                action: "open".to_owned(),
+                params: serde_json::json!({}),
+                target: synra_protocol::ids::DeviceId::new(),
+            },
+            synra_core::intent::Choice::Automatic,
+            None,
+            None,
+            synra_store::sqlite::now_ms(),
+        );
+        assert!(created);
+        state
+            .board
+            .lock()
+            .conclude(
+                id,
+                false,
+                "",
+                Some(synra_protocol::SynraError::new(
+                    synra_protocol::ErrorCode::Internal,
+                    "the plugin trapped",
+                )),
+                3,
+            )
+            .expect("ended");
+
+        let card = intent_snapshot(&state, id).expect("a card");
+        let error = card.error.expect("the failure is carried");
+        assert_eq!(error.code, synra_protocol::ErrorCode::Internal);
+        assert_eq!(error.message.as_str(), "error.internal", "a key, not the kernel's sentence");
+        assert_eq!(
+            error.details.as_ref().and_then(|details| details.get("kernelMessage")),
+            Some(&serde_json::json!("the plugin trapped")),
+            "the sentence is kept for a bug report"
+        );
+    }
+
+    #[test]
+    fn a_successful_intent_has_no_error_to_show() {
+        let state = crate::testing::state();
+        let (id, _) = raise_an_intent(&state);
+        state.board.lock().conclude(id, true, "opened", None, 1).expect("ended");
+
+        assert!(intent_snapshot(&state, id).expect("a card").error.is_none());
     }
 
     #[test]
