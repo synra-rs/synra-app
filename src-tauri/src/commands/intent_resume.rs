@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use synra_core::dispatch::orchestrate;
 use synra_core::intent::remote::Outbound;
-use synra_core::intent::retry::RetryQueue;
+use synra_core::intent::retry::{Attempt, RetryHost, RetryQueue, RetryStatus, run_loop};
 use synra_core::supervisor::Cancellation;
 use synra_ipc::IpcError;
 use synra_protocol::envelope::Envelope;
@@ -178,18 +178,23 @@ fn publish(state: &AppState, id: IntentId, status: Option<synra_ipc::IntentRetry
 /// The two types say the same thing with the same field names; the conversion is here rather than in the DTO because the
 /// kernel does not depend on the interface crate, and it should not start to for three numbers.
 fn retry_status(queue: &RetryQueue, id: IntentId) -> Option<synra_ipc::IntentRetry> {
-    queue.status(id).map(|status| synra_ipc::IntentRetry {
+    queue.status(id).map(status_ipc)
+}
+
+/// The same status in the interface's shape.
+fn status_ipc(status: RetryStatus) -> synra_ipc::IntentRetry {
+    synra_ipc::IntentRetry {
         attempts: status.attempts,
         max_attempts: status.max_attempts,
         gave_up: status.gave_up,
         next_at_ms: status.next_at_ms,
-    })
+    }
 }
 
-/// Writes this intent's schedule down, or removes it when the intent is no longer being retried.
-fn persist(state: &AppState, queue: &RetryQueue, id: IntentId) {
+/// Writes a schedule down, or removes it when the intent is no longer being retried.
+fn persist_row(state: &AppState, row: Option<synra_store::IntentRetryRow>, id: IntentId) {
     let db = state.db();
-    let outcome = match queue.row(id) {
+    let outcome = match row {
         Some(row) => db.save_intent_retry(&row),
         None => db.forget_intent_retry(&id.to_string()),
     };
@@ -251,54 +256,56 @@ pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
         forget_row(state, &intent);
     }
     for id in &pending {
-        persist(state, &queue, *id);
+        persist_row(state, queue.row(*id), *id);
         publish(state, *id, retry_status(&queue, *id));
     }
 
-    loop {
-        if cancel.is_cancelled() {
-            return;
-        }
+    let mut host = ShellRetry { state };
+    let mut now = now_ms;
+    let mut sleep = |wait| sleep_unless_cancelled(cancel, wait);
+    run_loop(&mut queue, cancel, &mut host, &mut now, &mut sleep);
+}
 
-        for id in queue.take_due(now_ms()) {
-            // The intent may have ended between the snapshot and this moment.
-            let Some((_, outbound)) = outstanding(state).into_iter().find(|(candidate, _)| *candidate == id) else {
-                queue.forget(id);
-                persist(state, &queue, id);
-                publish(state, id, None);
-                continue;
-            };
-            match attempt_with(state, id, &outbound, &mut deliver) {
-                Outcome::Answered => {
-                    queue.forget(id);
-                    persist(state, &queue, id);
-                    publish(state, id, None);
-                }
-                Outcome::Unanswered | Outcome::Failed => {
-                    let more = queue.record_failure(id, now_ms());
-                    persist(state, &queue, id);
-                    publish(state, id, retry_status(&queue, id));
-                    if !more {
-                        eprintln!(
-                            "synra: intent {id} was re-sent {} times without an answer; it stays dispatching until it expires",
-                            policy.max_attempts
-                        );
-                    }
-                }
-            }
-        }
+/// The shell's half of the retry loop.
+struct ShellRetry<'a> {
+    state: &'a AppState,
+}
 
-        // New dispatches can appear while a send is in flight; the next wake has to see them, and their first schedule
-        // has to be written down before the process can end.
-        for id in queue.observe(outstanding_ids(state), now_ms()) {
-            persist(state, &queue, id);
-            publish(state, id, retry_status(&queue, id));
+impl RetryHost for ShellRetry<'_> {
+    fn pending(&mut self) -> Vec<IntentId> {
+        outstanding_ids(self.state)
+    }
+
+    fn attempt(&mut self, id: IntentId) -> Attempt {
+        // The intent may have ended between the snapshot and this moment.
+        let Some((_, outbound)) = outstanding(self.state).into_iter().find(|(candidate, _)| *candidate == id) else {
+            return Attempt::Ended;
+        };
+        let mut deliver =
+            |outbound: &Outbound| crate::commands::intent_remote::deliver_decided(self.state, outbound);
+        match attempt_with(self.state, id, &outbound, &mut deliver) {
+            Outcome::Answered => Attempt::Answered,
+            Outcome::Unanswered => Attempt::Unanswered,
+            Outcome::Failed => Attempt::Failed,
         }
-        let wait = queue
-            .next_wait(now_ms())
-            .min(Duration::from_secs(30))
-            .max(Duration::from_millis(10));
-        sleep_unless_cancelled(cancel, wait);
+    }
+
+    fn changed(
+        &mut self,
+        id: IntentId,
+        row: Option<synra_store::IntentRetryRow>,
+        status: Option<RetryStatus>,
+    ) {
+        persist_row(self.state, row, id);
+        publish(self.state, id, status.map(status_ipc));
+        if let Some(status) = status
+            && status.gave_up
+        {
+            eprintln!(
+                "synra: intent {id} was re-sent {} times without an answer; it stays dispatching until it expires",
+                status.max_attempts
+            );
+        }
     }
 }
 
