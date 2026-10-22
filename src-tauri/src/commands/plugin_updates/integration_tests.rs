@@ -192,6 +192,36 @@ fn installed_state() -> (crate::testing::Root, AppState) {
 }
 
 #[test]
+fn revoking_a_publisher_stops_and_untrusts_its_installed_plugin() {
+    // ★ The decision used to change only the row the installer consults, so the code already running stayed untouched
+    // until the next start. Revoke is about what is here now.
+    let (_root, state) = installed_state();
+    let fingerprint = state.db().publishers().expect("publishers")[0].fingerprint.clone();
+    let id = synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id");
+    assert!(
+        state.plugin_set().expect("a set").lock().contains(&id),
+        "the fixture starts with the plugin loaded"
+    );
+
+    super::super::plugins::plugins_publisher_decide(&state, "@acme", &fingerprint, "revoked")
+        .expect("revoke the key");
+
+    let row = state
+        .db()
+        .plugins()
+        .expect("plugins")
+        .into_iter()
+        .find(|row| row.plugin_id == "@acme/hello")
+        .expect("the plugin row");
+    assert!(!row.enabled, "a revoked publisher's plugin is switched off");
+    assert!(!row.trusted, "and its trust goes with the key");
+    assert!(
+        !state.plugin_set().expect("a set").lock().contains(&id),
+        "the running instance is unloaded, not merely marked for the next start"
+    );
+}
+
+#[test]
 fn cancellation_policy_changes_and_mismatching_targets_leave_the_running_version_alone() {
     let (root, state) = installed_state();
     let next = root.path().join("next");
