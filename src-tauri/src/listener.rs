@@ -90,6 +90,33 @@ fn notifications_enabled(state: &AppState) -> bool {
         .unwrap_or(true)
 }
 
+/// The intent a peer's invocation raised, looked up by the pair that identifies it.
+///
+/// # Why the lookup rather than a returned identifier
+///
+/// Because `accept_remote` answers with the **reply** it built, not with the intent it raised: the caller's job is to put
+/// the answer on the link. The board is the authority on which intent that was, and `recall` is the same lookup the
+/// idempotency rule uses — origin plus request, never one of them alone.
+fn asked_intent(
+    state: &AppState,
+    envelope: &synra_protocol::envelope::Envelope,
+) -> Option<synra_protocol::ids::IntentId> {
+    let board = state.board.lock();
+    board.recall(envelope.from, envelope.request_id).map(|intent| intent.id)
+}
+
+/// Tells the interface, and writes the row, that a remote event changed an intent.
+///
+/// # Why both, and in this order
+///
+/// Because they answer different losses. The announcement is what makes the change visible now — a remote action that
+/// ran and never appeared on the home page looks like it did not run. The row is what makes it survive the next start;
+/// the write is last because it is the slow half and because a failed write must not suppress the event.
+fn record_and_announce(state: &AppState, intent: synra_protocol::ids::IntentId) {
+    crate::commands::intent::announce(state, intent);
+    crate::commands::intent::checkpoint(state, intent);
+}
+
 /// Binds the port this device is reachable on, and records it in the state.
 ///
 /// # Why this is separate from [`spawn`]
@@ -411,7 +438,15 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                             match synra_core::dispatch::orchestrate::accept_remote(
                                 &plugins, &board, local, envelope, now,
                             ) {
-                                Ok(Some(reply)) => KernelEventOutcome::Reply(Box::new(reply)),
+                                Ok(Some(reply)) => {
+                                    // ★ The intent a peer asked this window to run has to reach the board's readers and
+                                    // the disk. Without this the action happened and the home page never showed it — and a
+                                    // restart forgot the peer's request entirely, so its retry ran the action again.
+                                    if let Some(id) = asked_intent(&kernel_state, envelope) {
+                                        record_and_announce(&kernel_state, id);
+                                    }
+                                    KernelEventOutcome::Reply(Box::new(reply))
+                                }
                                 // The same request twice with the first copy still running: the first copy answers.
                                 Ok(None) => KernelEventOutcome::Handled,
                                 Err(error) => KernelEventOutcome::Refused(error.to_string()),
@@ -419,7 +454,11 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         }
                         events::INTENT_CANCEL => {
                             match synra_core::dispatch::orchestrate::accept_cancel(&board, envelope) {
-                                Ok(_) => KernelEventOutcome::Handled,
+                                Ok(Some(id)) => {
+                                    record_and_announce(&kernel_state, id);
+                                    KernelEventOutcome::Handled
+                                }
+                                Ok(None) => KernelEventOutcome::Handled,
                                 Err(error) => KernelEventOutcome::Refused(error.to_string()),
                             }
                         }
@@ -427,7 +466,11 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         // did and dialled back. `apply_result` ignores one for work no longer in flight.
                         events::INTENT_RESULT => {
                             match synra_core::dispatch::orchestrate::apply_result(&board, envelope) {
-                                Ok(_) => KernelEventOutcome::Handled,
+                                Ok(Some(id)) => {
+                                    record_and_announce(&kernel_state, id);
+                                    KernelEventOutcome::Handled
+                                }
+                                Ok(None) => KernelEventOutcome::Handled,
                                 Err(error) => KernelEventOutcome::Refused(error.to_string()),
                             }
                         }

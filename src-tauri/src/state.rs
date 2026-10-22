@@ -305,6 +305,27 @@ impl AppState {
     // than at each call site — the store's write methods are the one funnel every write goes through.
     observe_db_writes(&mut db, &metrics);
 
+    // ★ The board survives a restart, and it did not before: a window that closed forgot every intent — including a
+    // remote action a peer was still waiting on, so the peer retried and the action ran twice. The mapping is the kernel's
+    // (`synra_core::intent::persist`), the same one the daemon writes; this only decides what a failure means.
+    let mut board = Board::new();
+    match synra_core::intent::persist::restore(&mut board, &db) {
+        Ok(report) => {
+            if report.restored > 0 {
+                eprintln!("synra: restored {} intent(s) from the last run", report.restored);
+            }
+            for (intent, why) in report.unreadable {
+                eprintln!("synra: stored intent {intent} could not be read back and was skipped: {why}");
+            }
+            for intent in report.duplicates {
+                eprintln!("synra: intent {intent} was restored twice");
+            }
+        }
+        // A host that refused to start over unreadable rows would turn one bad document into the loss of every intent
+        // behind it — including the ones a peer is waiting on. The absence is named rather than silent.
+        Err(error) => eprintln!("synra: the stored intents could not be read: {error}"),
+    }
+
     // ★ The process facts are kept between reads rather than rebuilt: `sysinfo` computes CPU usage as a delta between
     // two refreshes, so a fresh `System` would report zero on every panel poll. The first refresh here is the baseline.
     let process_pid = sysinfo::Pid::from_u32(std::process::id());
@@ -318,7 +339,7 @@ impl AppState {
             db: Arc::new(Mutex::new(db)),
             paths,
             identity: Arc::new(Mutex::new(identity)),
-            board: Arc::new(Mutex::new(Board::new())),
+            board: Arc::new(Mutex::new(board)),
             plugins: None,
             plugin_loads: Mutex::new(synra_core::plugin::LoadedSummary::default()),
             engine_refusal: None,
@@ -355,6 +376,18 @@ impl AppState {
     // nothing in this shell swept them. The retention window is configured (`audit.retentionDays`), defaulting to the
     // design's seven days; see `prune_audit`.
     crate::commands::plugins::prune_audit(&state, now_ms);
+    // ★ The intents table gets the same treatment, and for the same reason: a row is written on every change, so a shell
+    // that restores without pruning grows a history it never reads. The window is the design's "24 hours after they
+    // finish" (`17 §6`), and it is one constant in the kernel because the daemon sweeps the same table.
+    match synra_core::intent::persist::collect(
+        &state.db(),
+        synra_core::intent::persist::INTENT_RETENTION_MS,
+        now_ms,
+    ) {
+        Ok(0) => {}
+        Ok(removed) => eprintln!("synra: removed {removed} finished intent(s) past their retention"),
+        Err(error) => eprintln!("synra: finished intents could not be collected: {error}"),
+    }
     // ★ What it cost to get here — the shell's own half of M4's cold-start budget. Recorded on the recorder the
     // performance panel reads, so "cold start < 500 ms" can be checked against a number rather than a stopwatch.
     state.metrics.histogram_observe(
