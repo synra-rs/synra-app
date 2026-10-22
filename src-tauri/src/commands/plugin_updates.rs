@@ -29,19 +29,18 @@ use crate::state::AppState;
 
 mod apply;
 pub(super) use apply::update_directory as apply_automatic_update;
-
-/// The configuration key selecting never, notify-only, auto-minor or auto-all.
-pub const AUTO_UPDATE_KEY: &str = "plugins.auto_update";
-
-/// How often the registry is asked.
-const CHECK_EVERY_MS: i64 = 24 * 60 * 60 * 1000;
+pub use synra_core::plugin_updates::AUTO_UPDATE_KEY;
+#[cfg(test)]
+use synra_core::plugin_updates::CHECK_EVERY_MS;
+pub(super) use synra_core::plugin_updates::configured_policy;
+use synra_core::plugin_updates::due;
 
 /// How long one sleep slice is.
 ///
 /// Not 250 ms: the wait between checks is a day, and waking four times a second for it would be a busy loop that costs
 /// more than the check. Five minutes is short enough that turning the switch off takes effect in this cycle rather than
 /// tomorrow.
-const SLICE: Duration = Duration::from_secs(5 * 60);
+const SLICE: Duration = synra_core::plugin_updates::POLL_INTERVAL;
 
 /// Whether the background check is on.
 ///
@@ -57,24 +56,6 @@ pub fn enabled(state: &AppState) -> bool {
 #[must_use]
 pub fn policy(state: &AppState) -> Option<UpdatePolicy> {
     configured_policy(&state.db())
-}
-
-/// Reads the policy while the caller owns the database lock, including immediately before an automatic commit.
-pub(super) fn configured_policy(db: &synra_store::SynraDb) -> Option<UpdatePolicy> {
-    let Ok(rows) = db.config() else {
-        return Some(UpdatePolicy::NotifyOnly);
-    };
-    match rows
-        .iter()
-        .find(|row| row.key == AUTO_UPDATE_KEY)
-        .and_then(|row| serde_json::from_str::<String>(&row.value).ok())
-        .as_deref()
-    {
-        Some("never") => None,
-        Some("auto-minor") => Some(UpdatePolicy::AutoMinor),
-        Some("auto-all") => Some(UpdatePolicy::AutoAll),
-        _ => Some(UpdatePolicy::NotifyOnly),
-    }
 }
 
 /// Asks the registry about installed versions whose successful check is at least a day old.
@@ -184,17 +165,6 @@ pub fn announce(state: &AppState, updates: &[UpdateInfo]) {
             "plugins": updates.iter().map(|info| info.plugin_id.as_str()).collect::<Vec<_>>(),
         }),
     });
-}
-
-/// Whether a check is due, given when the last one ran.
-///
-/// `None` means never, and a clock that went backwards reads as due: a check is cheaper than silence about an update.
-#[must_use]
-fn due(last_ms: Option<i64>, now_ms: i64) -> bool {
-    match last_ms {
-        None => true,
-        Some(last) => now_ms < last || now_ms.saturating_sub(last) >= CHECK_EVERY_MS,
-    }
 }
 
 /// The loop: check due versions every five minutes, preserving successful checks across restarts.

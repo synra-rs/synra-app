@@ -215,6 +215,7 @@ fn cancellation_policy_changes_and_mismatching_targets_leave_the_running_version
                 id,
                 version,
                 &next,
+                None,
                 UpdatePolicy::AutoAll,
                 &cancel
             )
@@ -225,6 +226,70 @@ fn cancellation_policy_changes_and_mismatching_targets_leave_the_running_version
                 .db()
                 .active_plugin("@acme/hello")
                 .expect("version")
+                .expect("installed")
+                .version,
+            "1.0.0"
+        );
+        assert_eq!(
+            state
+                .plugin_set()
+                .expect("engine")
+                .lock()
+                .version(&PluginId::parse("@acme/hello").expect("id")),
+            Some("1.0.0")
+        );
+    }
+}
+
+#[test]
+fn a_changed_registry_or_revoked_candidate_leaves_the_running_version_untouched() {
+    for revoked in [false, true] {
+        let (root, state) = installed_state();
+        let next = root.path().join("next");
+        signed_source(&next, "1.1.0", 7, 0);
+        state
+            .db()
+            .set_config(AUTO_UPDATE_KEY, &serde_json::json!("auto-all"), 1)
+            .expect("policy");
+        state
+            .db()
+            .set_config(
+                super::super::registry::REGISTRY_KEY,
+                &serde_json::json!("https://original.example"),
+                1,
+            )
+            .expect("source");
+        let expected =
+            synra_core::plugin_updates::registry_setting(&state.db()).expect("source snapshot");
+        if revoked {
+            std::fs::write(state.paths.data_dir().join("revocations.json"), r#"{"revoked":[{"plugin":"@acme/hello","versions":["1.1.0"],"reason":"withdrawn"}]}"#).expect("revocations");
+        } else {
+            state
+                .db()
+                .set_config(
+                    super::super::registry::REGISTRY_KEY,
+                    &serde_json::json!("https://changed.example"),
+                    1,
+                )
+                .expect("changed source");
+        }
+        assert!(
+            super::apply_automatic_update(
+                &state,
+                "@acme/hello",
+                "1.1.0",
+                &next,
+                expected.as_deref(),
+                UpdatePolicy::AutoAll,
+                &Cancellation::new()
+            )
+            .is_err()
+        );
+        assert_eq!(
+            state
+                .db()
+                .active_plugin("@acme/hello")
+                .expect("row")
                 .expect("installed")
                 .version,
             "1.0.0"
