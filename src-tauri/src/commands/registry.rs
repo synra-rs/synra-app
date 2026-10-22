@@ -1060,6 +1060,23 @@ pub fn update(state: &AppState, plugin_id: &str) -> Result<InstallReport, synra_
     outcome
 }
 
+/// Downloads the exact version checked, then lets the kernel admit its verified bytes under the selected policy.
+pub(super) fn update_automatically(
+    state: &AppState,
+    plugin_id: &str,
+    version: &str,
+    policy: synra_plugin_api::update::UpdatePolicy,
+    cancel: &synra_core::supervisor::Cancellation,
+) -> Result<InstallReport, synra_ipc::IpcError> {
+    let bases = bases(state)?;
+    let registry = packument_with_base(state, plugin_id)?;
+    let chosen = choose(&registry.packument, plugin_id, Some(version))?;
+    let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
+    let outcome = super::plugin_updates::apply_automatic_update(state, plugin_id, version, package.path(), policy, cancel);
+    package.cleanup();
+    outcome
+}
+
 /// A `GET` request with no body.
 fn get(url: &str) -> Request {
     Request {

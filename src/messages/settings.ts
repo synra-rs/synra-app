@@ -102,11 +102,15 @@ export const settings = {
     remove: 'Remove',
     save: 'Save'
   },
-  /** The background check that tells a user a plugin has a newer version; it never installs by itself. */
+  /** Daily checks and the user's policy for verified updates from trusted publishers. */
   updates: {
     title: 'Plugin updates',
-    detail: 'Check the registry once a day and tell you when something installed has a newer version. Nothing is installed without asking.',
-    automatic: 'Check automatically'
+    detail: 'The policy applies at the next daily check. Automatic updates require the same trusted signing key and no added permissions. Prerelease versions require a manual update.',
+    policy: 'Update policy',
+    never: 'Check manually',
+    notifyOnly: 'Notify only',
+    autoMinor: 'Automatically update within the same major version',
+    autoAll: 'Automatically update all stable versions'
   },
   /**
    * 本进程记录器的指标。

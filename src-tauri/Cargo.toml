@@ -168,6 +168,7 @@ tauri-build = { version = "2", optional = true, features = [ ] }
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
 [dev-dependencies]
+ed25519-dalek = "2"
 # The registry test builds the tarball the client downloads; parsing it is the production side's job.
 tar = "0.4"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

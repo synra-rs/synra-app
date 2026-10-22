@@ -3968,6 +3968,7 @@ name = "synra-app"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "ed25519-dalek",
  "flate2",
  "parking_lot",
  "serde",
