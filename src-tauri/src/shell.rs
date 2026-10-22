@@ -847,8 +847,14 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // belongs in the same list: it sleeps between attempts, and nothing else would tell it the process is leaving.
             let pairing_cancel = synra_core::supervisor::Cancellation::new();
             let resume_cancel = synra_core::supervisor::Cancellation::new();
+            let updates_cancel = synra_core::supervisor::Cancellation::new();
             app.manage(Background {
-                cancels: vec![bridge_cancel, pairing_cancel.clone(), resume_cancel.clone()],
+                cancels: vec![
+                    bridge_cancel,
+                    pairing_cancel.clone(),
+                    resume_cancel.clone(),
+                    updates_cancel.clone(),
+                ],
             });
             // ★ The listener starts after the state is managed, because it reads that state to build its host and router. The token
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
@@ -872,6 +878,20 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     });
                 if let Err(error) = spawned {
                     eprintln!("synra: the intent resume thread could not start: {error}");
+                }
+            }
+            // ★ Once a day, ask the registry whether anything installed has a newer version, and put one notice on the
+            // page if so. It never installs: the design's automatic case needs trust and capability checks this pass does
+            // not make, and a check that installed silently would be a decision nobody took. The user can turn it off on
+            // the settings page (`plugins.auto_update`).
+            {
+                let state = app.state::<std::sync::Arc<AppState>>().inner().clone();
+                let token = updates_cancel.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("synra-plugin-updates".to_owned())
+                    .spawn(move || crate::commands::plugin_updates::run(&state, &token));
+                if let Err(error) = spawned {
+                    eprintln!("synra: the plugin update check could not start: {error}");
                 }
             }
             // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
