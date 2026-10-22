@@ -330,9 +330,9 @@ fn snapshot_of(state: &AppState, intent_id: IntentId) -> Result<IntentSnapshot, 
         // and carries the sentence as a detail for a bug report. Until this line existed the field was always `None`, so the
         // page's "why did it fail?" line had nothing to show for a real failure.
         error: view.error.as_ref().map(IpcError::from_synra_error),
-        // The board records when an intent was created; the view does not carry it, so this is the moment it was read
-        // rather than the moment it began — see the note in doc 08's checklist.
-        started_at_ms: synra_store::sqlite::now_ms(),
+        // ★ The moment it was raised, which the board has always carried. This used to be the moment the snapshot was
+        // read: a field named "started" that answered "just now" for an intent that had been running for an hour.
+        started_at_ms: view.created_at_ms,
     })
 }
 
@@ -685,14 +685,12 @@ mod tests {
 
         let listed = intent_list(&state).expect("the board can be read");
         assert_eq!(listed.len(), 1, "the one intent that was raised is the one that is listed");
-        // ★ `started_at_ms` is the moment the snapshot was **read**, not the moment the intent began — the board's view
-        // does not carry the creation time (see `snapshot_of`'s note). Two reads therefore differ by however long the
-        // test took, and comparing the raw values made this test fail at a millisecond boundary. Every other field is
-        // the mapping this test exists for, so the read timestamp is the one field normalised here.
+        // ★ `started_at_ms` is the moment the intent was **raised**. It used to be the moment the snapshot was read, so
+        // two reads differed by however long the test took and this comparison had to normalise the field it was testing.
+        let raised_at = state.board.lock().get(id).expect("raised").created_at_ms;
         let single = intent_snapshot(&state, id).expect("the same intent");
-        let mut normalized = single.clone();
-        normalized.started_at_ms = listed[0].started_at_ms;
-        assert_eq!(listed[0], normalized, "the two reads describe the same intent");
+        assert_eq!(listed[0].started_at_ms, raised_at, "the raising time, not the read time");
+        assert_eq!(listed[0], single, "the two reads describe the same intent");
         // ★ The trace the board generated reaches the interface: it is the id a user pastes into `synra logs --trace`, and
         // a snapshot that dropped it left the filter with nothing anyone could know.
         assert_eq!(listed[0].trace_id, trace, "the board's trace is the snapshot's trace");
@@ -817,6 +815,32 @@ mod tests {
             error.details.as_ref().and_then(|details| details.get("kernelMessage")),
             Some(&serde_json::json!("the plugin trapped")),
             "the sentence is kept for a bug report"
+        );
+    }
+
+    #[test]
+    fn a_refused_intent_tells_the_page_which_check_refused_it() {
+        // "Refused" without a reason is the same dead end as "Failed" without one: the refusal type documents its detail as
+        // a sentence the interface can show, and the view was dropping both it and its code.
+        let state = crate::testing::state();
+        let (id, _) = raise_an_intent(&state);
+        state.board.lock().refuse(
+            id,
+            synra_core::admission::AdmissionRefusal {
+                step: synra_core::admission::AdmissionStep::PluginActive,
+                detail: "the plugin is not active".to_owned(),
+                code: synra_protocol::ErrorCode::PluginNotInstalled,
+            },
+        );
+
+        let card = intent_snapshot(&state, id).expect("a card");
+        assert_eq!(card.state, "refused");
+        let error = card.error.expect("the refusal is carried");
+        assert_eq!(error.code, synra_protocol::ErrorCode::PluginNotInstalled);
+        assert_eq!(error.message.as_str(), "error.plugin_not_installed");
+        assert_eq!(
+            error.details.as_ref().and_then(|details| details.get("kernelMessage")),
+            Some(&serde_json::json!("the plugin is not active"))
         );
     }
 
