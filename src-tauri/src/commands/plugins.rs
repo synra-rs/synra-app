@@ -543,7 +543,7 @@ pub fn plugins_updates(state: &AppState) -> Result<Vec<UpdateInfo>, IpcError> {
 /// Because the caller that updated from the plugin page does not currently render the report, and a warning about an
 /// unsigned package must not depend on which button started the update. The notice is the channel every update already
 /// has; the report is there for a caller that wants the detail without listening.
-fn announce_updated(state: &AppState, report: &InstallReport) {
+pub(super) fn announce_updated(state: &AppState, report: &InstallReport) {
     state.publish(synra_ipc::event::KernelEvent::Notice {
         message: "notice.updated".to_owned(),
         params: serde_json::json!({
@@ -616,35 +616,49 @@ pub(crate) fn update_directory(
     path: &std::path::Path,
 ) -> Result<InstallReport, IpcError> {
     let id = parse(plugin_id)?;
+    migrate_and_unload(state, &id, source_version(path).as_deref())?;
+    complete_update(state, &id, run_install(state, path, true))
+}
+
+/// Migrates the old instance before replacing its files, then stops it.
+pub(super) fn migrate_and_unload(state: &AppState, id: &PluginId, new_version: Option<&str>) -> Result<(), IpcError> {
     // ★ The old instance is asked to migrate **before** its bytes are replaced. Only the old code knows what it wrote,
     // and a migration failure has to leave a working version installed — after the replacement there would be nothing
     // to fall back to.
     let old_version =
-        state.plugin_set().ok().and_then(|set| set.lock().version(&id).map(str::to_owned));
+        state.plugin_set().ok().and_then(|set| set.lock().version(id).map(str::to_owned));
     if let Some(old) = old_version {
-        if let Some(new) = source_version(path)
+        if let Some(new) = new_version
             && new != old
         {
             let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0);
             let plugins = state.plugin_set()?;
             let mut set = plugins.lock();
-            synra_core::plugin::migrate(&mut set, &id, &old, &new, now).map_err(|reason| {
+            synra_core::plugin::migrate(&mut set, id, &old, new, now).map_err(|reason| {
                 IpcError::unknown(synra_protocol::ErrorCode::PluginTrapped)
-                    .with_params(serde_json::json!({"pluginId": plugin_id, "reason": reason}))
+                    .with_params(serde_json::json!({"pluginId": id, "reason": reason}))
             })?;
         }
         // The old instance is stopped before its files change: a compiled plugin still holding the previous artifact
         // would answer from bytes the update is about to replace.
-        apply_unload(state, &id);
+        apply_unload(state, id);
     }
+    Ok(())
+}
 
-    let installed = match run_install(state, path, true) {
+/// Starts the replacement or restores the old instance when the commit failed, then publishes its card.
+pub(super) fn complete_update(
+    state: &AppState,
+    id: &PluginId,
+    outcome: Result<synra_core::install::Installed, IpcError>,
+) -> Result<InstallReport, IpcError> {
+    let installed = match outcome {
         Ok(installed) => installed,
         Err(error) => {
             // The update did not happen, so the old version is put back. It was unloaded above; reloading is the same
             // call an enable makes, and a failure here is already carried by the original error.
-            let _ = apply_lifecycle(state, &id);
-            announce(state, &id);
+            let _ = apply_lifecycle(state, id);
+            announce(state, id);
             return Err(error);
         }
     };

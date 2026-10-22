@@ -218,11 +218,14 @@
         {{ messages.settings.updates.detail }}
       </p>
       <div class="row-between gap-4">
-        <span class="text-sm">{{ messages.settings.updates.automatic }}</span>
-        <ASwitch
-          :checked="checkUpdates"
+        <span class="text-sm">{{ messages.settings.updates.policy }}</span>
+        <ASelect
+          :value="updatePolicy"
           :loading="savingCheckUpdates"
-          @change="(checked) => saveCheckUpdates(checked === true)"
+          :options="updatePolicyOptions"
+          :aria-label="messages.settings.updates.policy"
+          class="min-w-52"
+          @change="saveUpdatePolicy"
         />
       </div>
     </section>
@@ -450,7 +453,7 @@
  *
  * # What is written back, and what is not
  *
- * The automatic-update switch and the registry URL both round-trip `config_set` and let the kernel's `ConfigUpdated`
+ * The update policy and registry URL both round-trip `config_set` and let the kernel's `ConfigUpdated`
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
@@ -463,6 +466,7 @@ import {
   Input as AInput,
   InputNumber as AInputNumber,
   List as AList,
+  Select as ASelect,
   Switch as ASwitch,
   Tag as ATag
 } from 'ant-design-vue'
@@ -590,20 +594,23 @@ async function saveCancel(value: boolean): Promise<void> {
 const notifyOnReceive = ref(true)
 const savingNotify = ref(false)
 
-/** Whether the daily registry check runs. Absent means on, which is the design's default. */
-const checkUpdates = ref(true)
+/** Explicit installation policies; an absent setting only permits notices. */
+const updatePolicyOptions = [
+  { value: 'never', label: messages.settings.updates.never },
+  { value: 'notify-only', label: messages.settings.updates.notifyOnly },
+  { value: 'auto-minor', label: messages.settings.updates.autoMinor },
+  { value: 'auto-all', label: messages.settings.updates.autoAll }
+]
+const updatePolicy = computed(() => {
+  const value = settings.value('plugins.auto_update')
+  return typeof value === 'string' && updatePolicyOptions.some(option => option.value === value) ? value : 'notify-only'
+})
 const savingCheckUpdates = ref(false)
 
-watch(
-  () => settings.value('plugins.auto_update'),
-  (value) => {
-    checkUpdates.value = value !== false
-  },
-  { immediate: true }
-)
-
-/** Writes the update-check preference. */
-async function saveCheckUpdates(value: boolean): Promise<void> {
+/** Writes the user's update policy; the configuration event feeds the shared store. */
+async function saveUpdatePolicy(value: unknown): Promise<void> {
+  if (typeof value !== 'string' || !updatePolicyOptions.some(option => option.value === value))
+    return
   savingCheckUpdates.value = true
   error.value = undefined
   const answer = await kernel.call<null>('config_set', {

@@ -1,11 +1,7 @@
 //! Checking the registry for updates without a person pressing a button.
 //!
-//! # What this is, and what it deliberately is not
-//!
-//! A background pass that asks the registry once a day whether anything installed has a newer version, and tells the
-//! interface when something does. It **never installs**: 16 §6 lets an update proceed on its own only when the trust level
-//! is high enough, the capabilities do not grow and the publisher has not changed; none of those checks are made here, so
-//! the honest scope is "notice". Installing silently is a later decision, not a side effect of a check.
+//! A daily registry pass. Notify-only is the default; an explicit automatic policy also admits verified replacements
+//! from the same trusted signer with no added capabilities, through the kernel's prepared update pipeline.
 //!
 //! # Why the answer is one notice rather than one per plugin
 //!
@@ -15,8 +11,8 @@
 //! # Why it can be switched off
 //!
 //! Because a background request to a registry is traffic the user did not ask for at that moment. The setting is
-//! `plugins.auto_update`; absent means **on**, which is the design's default of a check every 24 hours, and `false` is the
-//! switch on the settings page.
+//! `plugins.auto_update`; absent means notify-only and `never` stops background checks. Automatic installation requires
+//! selecting auto-minor or auto-all on the settings page.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,12 +21,16 @@ use synra_core::supervisor::Cancellation;
 use synra_ipc::IpcError;
 use synra_ipc::UpdateInfo;
 use synra_ipc::event::KernelEvent;
+use synra_plugin_api::update::UpdatePolicy;
 use synra_protocol::{ErrorCode, PluginId};
 use synra_store::PluginUpdateCheck;
 
 use crate::state::AppState;
 
-/// The configuration key that turns the background check on or off.
+mod apply;
+pub(super) use apply::update_directory as apply_automatic_update;
+
+/// The configuration key selecting never, notify-only, auto-minor or auto-all.
 pub const AUTO_UPDATE_KEY: &str = "plugins.auto_update";
 
 /// How often the registry is asked.
@@ -50,13 +50,31 @@ const SLICE: Duration = Duration::from_secs(5 * 60);
 /// silence about updates and the failure mode of "on" is one request a day.
 #[must_use]
 pub fn enabled(state: &AppState) -> bool {
-    let Ok(rows) = state.db().config() else {
-        return true;
+    policy(state).is_some()
+}
+
+/// The selected update policy; `None` disables background checks. An absent or corrupt setting only permits notices.
+#[must_use]
+pub fn policy(state: &AppState) -> Option<UpdatePolicy> {
+    configured_policy(&state.db())
+}
+
+/// Reads the policy while the caller owns the database lock, including immediately before an automatic commit.
+pub(super) fn configured_policy(db: &synra_store::SynraDb) -> Option<UpdatePolicy> {
+    let Ok(rows) = db.config() else {
+        return Some(UpdatePolicy::NotifyOnly);
     };
-    rows.iter()
+    match rows
+        .iter()
         .find(|row| row.key == AUTO_UPDATE_KEY)
-        .and_then(|row| serde_json::from_str::<bool>(&row.value).ok())
-        .unwrap_or(true)
+        .and_then(|row| serde_json::from_str::<String>(&row.value).ok())
+        .as_deref()
+    {
+        Some("never") => None,
+        Some("auto-minor") => Some(UpdatePolicy::AutoMinor),
+        Some("auto-all") => Some(UpdatePolicy::AutoAll),
+        _ => Some(UpdatePolicy::NotifyOnly),
+    }
 }
 
 /// Asks the registry about installed versions whose successful check is at least a day old.
@@ -88,6 +106,21 @@ pub fn check_all(state: &AppState, now_ms: i64, cancel: &Cancellation) -> Vec<Up
             continue;
         }
         if let Ok(Some(info)) = crate::commands::registry::check_update(state, &row.plugin_id) {
+            if !info.needs_new_consent
+                && let Some(selected) = policy(state)
+                && selected != UpdatePolicy::NotifyOnly
+                && !cancel.is_cancelled()
+                && super::registry::update_automatically(
+                    state,
+                    &row.plugin_id,
+                    &info.version,
+                    selected,
+                    cancel,
+                )
+                .is_ok()
+            {
+                continue;
+            }
             updates.push(info);
         }
     }
@@ -225,7 +258,7 @@ mod tests {
             .db()
             .set_config(
                 AUTO_UPDATE_KEY,
-                &serde_json::Value::Bool(false),
+                &serde_json::json!("never"),
                 synra_store::sqlite::now_ms(),
             )
             .expect("the setting is written");

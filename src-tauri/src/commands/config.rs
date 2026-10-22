@@ -77,6 +77,15 @@ pub fn config_set(state: &AppState, patch: &ConfigPatch) -> Result<(), IpcError>
         );
     }
 
+    if let Some(value) = patch.set.get(super::plugin_updates::AUTO_UPDATE_KEY)
+        && !matches!(value.as_str(), Some("never" | "notify-only" | "auto-minor" | "auto-all"))
+    {
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+            "key": super::plugin_updates::AUTO_UPDATE_KEY,
+            "reason": "select never, notify-only, auto-minor or auto-all",
+        })));
+    }
+
     let changes: Vec<ConfigChange> = patch
         .set
         .iter()
@@ -158,6 +167,19 @@ mod tests {
 
     use super::{config_get, config_set};
     use crate::testing;
+
+    #[test]
+    fn update_policies_are_explicit_and_invalid_values_do_not_write() {
+        let state = testing::state();
+        for value in [serde_json::json!(true), serde_json::json!("auto"), serde_json::Value::Null] {
+            assert!(config_set(&state, &set(&[("plugins.auto_update", value)])).is_err());
+        }
+        assert!(state.db().config().expect("config").is_empty());
+        for policy in ["never", "notify-only", "auto-minor", "auto-all"] {
+            config_set(&state, &set(&[("plugins.auto_update", serde_json::json!(policy))])).expect("valid policy");
+            assert_eq!(config_get(&state).expect("config").values["plugins.auto_update"], policy);
+        }
+    }
 
     fn set(kv: &[(&str, serde_json::Value)]) -> ConfigPatch {
         ConfigPatch {

@@ -175,7 +175,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(4)
+    expect(switches).toHaveLength(3)
     const cancelSwitch = switches[0]
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
@@ -187,25 +187,37 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
-  it('writes the update-check switch under its own key', async () => {
-    // ★ Absent means on: the design's default is a check every 24 hours, and a setting the user has never seen must not
-    // be the reason nothing is ever checked. Turning it off is the one value that changes the behaviour.
+  it.each(['never', 'notify-only', 'auto-minor', 'auto-all'])('writes the selected %s update policy', async (policy) => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    const updateSwitch = wrapper.findAllComponents({ name: 'ASwitch' })[3]
-    expect(updateSwitch).toBeDefined()
-    await updateSwitch?.vm.$emit('change', false)
+    const select = wrapper.findComponent({ name: 'ASelect' })
+    expect(select.props('value')).toBe('notify-only')
+    await select.vm.$emit('change', policy)
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
-      patch: { set: { 'plugins.auto_update': false } }
+      patch: { set: { 'plugins.auto_update': policy } }
     })
     wrapper.unmount()
   })
 
+  it('shows the stored update policy and reacts to another window changing it', async () => {
+    answer({ config_get: { values: { 'plugins.auto_update': 'auto-minor' }, overridden: ['plugins.auto_update'] }, identity_get: IDENTITY })
+    const wrapper = mount(SettingsPage)
+    await flushPromises()
+    const select = wrapper.findComponent({ name: 'ASelect' })
+    expect(select.props('value')).toBe('auto-minor')
+    const { useSettingsStore } = await import('../stores/settings')
+    useSettingsStore().apply({ type: 'configUpdated', payload: { values: { 'plugins.auto_update': 'auto-all' }, overridden: ['plugins.auto_update'] } })
+    await flushPromises()
+    expect(select.props('value')).toBe('auto-all')
+    wrapper.unmount()
+  })
+
   it('writes the receive-notification switch under its own key', async () => {
+    // The update policy is a select, so the transfer switches retain their own positions.
     // ★ Absent means on: the design wants a file that arrives while the window is elsewhere to be noticed, so a page that
     // treated absent as off would silence it without anybody asking.
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
