@@ -18,6 +18,8 @@ pub mod devices;
 pub mod diag;
 pub mod identity;
 pub mod intent;
+/// Sending an intent's envelope to the device that has to run it, and reading the answer on the same link.
+pub mod intent_remote;
 pub mod plugin_ui;
 pub mod pairing;
 pub mod plugins;

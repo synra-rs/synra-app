@@ -548,7 +548,14 @@ mod wrappers {
         commands::intent::intent_snapshot(&state, intent_id)
     }
 
-    #[tauri::command]
+    /// Answers the prompt, running the chosen action here or sending it to the device that was chosen.
+    ///
+    /// ★ `(async)`: a remote action is awaited on this call for up to `REMOTE_RESULT_WAIT`, and a plain
+    /// `#[tauri::command]` would spend that time on the thread that received the invoke — the window's. Tauri's
+    /// `(async)` on a **synchronous** function puts the body on the sync threadpool instead, which is the same move
+    /// `devices_scan_start` makes for the scan window and for the same reason: the window has to keep painting while
+    /// the network is asked.
+    #[tauri::command(async)]
     pub fn intent_decide(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         intent_id: IntentId,
@@ -557,7 +564,10 @@ mod wrappers {
         commands::intent::intent_decide(&state, intent_id, &decision)
     }
 
-    #[tauri::command]
+    /// Withdraws an intent, telling a device that is running it if there is one.
+    ///
+    /// `(async)` for the dial the withdrawal may have to make, not for an answer: a cancellation is not replied to.
+    #[tauri::command(async)]
     pub fn intent_cancel(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         intent_id: IntentId,
