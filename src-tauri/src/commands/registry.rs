@@ -1019,10 +1019,17 @@ fn publisher_mismatch(
 
 /// Replaces an installed plugin with the newest version the registry publishes.
 ///
+/// # Returns
+///
+/// The install report the update produced. It used to be discarded here and the command returned nothing, so a caller
+/// could not tell an update that carried warnings (an unsigned package, a changed publisher) from a clean one — the data
+/// existed one line above the `()`. The file-association path already publishes a notice from the same report; this is the
+/// registry path's half.
+///
 /// # Errors
 ///
 /// As [`install`], plus `update` when the plugin is not installed.
-pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcError> {
+pub fn update(state: &AppState, plugin_id: &str) -> Result<InstallReport, synra_ipc::IpcError> {
     let bases = bases(state)?;
     let registry = packument_with_base(state, plugin_id)?;
     let chosen = registry.packument.latest().ok_or_else(|| {
@@ -1034,7 +1041,7 @@ pub fn update(state: &AppState, plugin_id: &str) -> Result<(), synra_ipc::IpcErr
     let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
     let outcome = crate::commands::plugins::update_directory(state, plugin_id, package.path());
     package.cleanup();
-    outcome.map(|_report| ())
+    outcome
 }
 
 /// A `GET` request with no body.

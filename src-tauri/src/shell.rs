@@ -397,7 +397,7 @@ mod wrappers {
     pub fn plugins_update(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
-    ) -> Result<(), IpcError> {
+    ) -> Result<InstallReport, IpcError> {
         commands::plugins::plugins_update(&state, &plugin_id)
     }
 
