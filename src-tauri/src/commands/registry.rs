@@ -44,7 +44,7 @@ use synra_registry::{Packument, Version};
 use crate::state::AppState;
 
 /// The configuration key holding the registry's base URL.
-pub const REGISTRY_KEY: &str = "plugins.registry";
+pub use synra_core::plugin_updates::REGISTRY_KEY;
 
 /// How large a response may be when a package is being downloaded.
 ///
@@ -1068,11 +1068,14 @@ pub(super) fn update_automatically(
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
+    let expected_registry = synra_core::plugin_updates::registry_setting(&state.db()).map_err(|error| {
+        synra_ipc::IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+    })?;
     let bases = bases(state)?;
     let registry = packument_with_base(state, plugin_id)?;
     let chosen = choose(&registry.packument, plugin_id, Some(version))?;
     let package = download(state, &bases, &registry.base, chosen, registry.index_url.as_deref())?;
-    let outcome = super::plugin_updates::apply_automatic_update(state, plugin_id, version, package.path(), policy, cancel);
+    let outcome = super::plugin_updates::apply_automatic_update(state, plugin_id, version, package.path(), expected_registry.as_deref(), policy, cancel);
     package.cleanup();
     outcome
 }

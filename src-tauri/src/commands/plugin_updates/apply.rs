@@ -11,6 +11,7 @@ pub(crate) fn update_directory(
     plugin_id: &str,
     version: &str,
     path: &std::path::Path,
+    registry: Option<&str>,
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<InstallReport, IpcError> {
@@ -41,13 +42,22 @@ pub(crate) fn update_directory(
             ),
         );
     }
-    ensure_automatic_policy(state, policy, cancel)?;
+    if let Some(reason) = super::super::plugins::revocations(state).revokes(plugin_id, version) {
+        return Err(
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"stage":"update-policy", "reason":reason})),
+        );
+    }
+    ensure_automatic_policy(state, registry, policy, cancel)?;
     super::super::plugins::migrate_and_unload(state, &id, Some(prepared.version()))?;
-    let outcome = ensure_automatic_policy(state, policy, cancel).and_then(|()| {
+    let outcome = ensure_automatic_policy(state, registry, policy, cancel).and_then(|()| {
         let plugins = state.plugin_set()?;
         let set = plugins.lock();
         let mut db = state.db();
-        let result = if cancel.is_cancelled() || super::configured_policy(&db) != Some(policy) {
+        let result = if cancel.is_cancelled()
+            || super::configured_policy(&db) != Some(policy)
+            || !same_registry(&db, registry)
+        {
             Err(automatic_cancelled())
         } else {
             prepared
@@ -65,18 +75,27 @@ pub(crate) fn update_directory(
 
 fn ensure_automatic_policy(
     state: &AppState,
+    registry: Option<&str>,
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<(), IpcError> {
-    if cancel.is_cancelled() || super::policy(state) != Some(policy) {
+    if cancel.is_cancelled()
+        || super::policy(state) != Some(policy)
+        || !same_registry(&state.db(), registry)
+    {
         return Err(automatic_cancelled());
     }
     Ok(())
 }
 
+fn same_registry(db: &synra_store::SynraDb, expected: Option<&str>) -> bool {
+    synra_core::plugin_updates::registry_setting(db)
+        .is_ok_and(|current| current.as_deref() == expected)
+}
+
 fn automatic_cancelled() -> IpcError {
     IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
-        serde_json::json!({"reason":"the automatic update was cancelled or its policy changed"}),
+        serde_json::json!({"reason":"the automatic update was cancelled or its configuration changed"}),
     )
 }
 
