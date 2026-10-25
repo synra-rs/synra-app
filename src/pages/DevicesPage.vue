@@ -52,31 +52,7 @@
       @close="sent = undefined"
     />
 
-    <!--
-      A pairing request is time-sensitive — the peer's connection is waiting on this answer — so it sits above the list rather
-      than inside a device's row: the row may be scrolled away, and the prompt belongs to *this* device, not to that one.
-
-      The code is the whole prompt. A device on the same network could otherwise ask in place of the one the user meant, and a
-      comparison a person makes on two screens is what stops it.
-    -->
-    <div v-for="prompt in pairing.pending" :key="prompt.requestId" class="ring-warning stack gap-2 rounded p-3 ring-1">
-      <div class="row-between flex-wrap gap-2">
-        <span class="text-sm font-medium">{{ messages.devices.pairingTitle }}</span>
-        <span class="text-xs text-ink-dim">{{ prompt.displayName }} · {{ prompt.platform }} · {{ prompt.address }}</span>
-      </div>
-      <div class="row flex-wrap items-baseline gap-2">
-        <span class="text-xs text-ink-dim">{{ messages.devices.pairingCode }}</span>
-        <span class="text-xl font-mono">{{ prompt.verificationCode }}</span>
-      </div>
-      <div class="row gap-2">
-        <AButton :loading="pairingBusy === prompt.requestId" @click="answer(prompt.requestId, true)">
-          {{ messages.devices.pairingAccept }}
-        </AButton>
-        <AButton :loading="pairingBusy === prompt.requestId" @click="answer(prompt.requestId, false)">
-          {{ messages.devices.pairingDecline }}
-        </AButton>
-      </div>
-    </div>
+    <PairingPanel :selected="selectedPeer" />
 
     <!--
       The scan's own report, as three labelled facts rather than one line joined by separators (R21): "found 2 ·
@@ -167,7 +143,7 @@
               <AButton
                 v-if="!card.paired && !!card.deviceId"
                 size="small"
-                :loading="pairingBusy !== undefined && pairingBusy === card.deviceId"
+                :disabled="pairing.active || pairing.busy"
                 @click="pair(card.deviceId)"
               >
                 {{ messages.devices.pair }}
@@ -286,6 +262,7 @@ import { Alert as AAlert, Button as AButton, Empty as AEmpty, List as AList, Mod
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
+import PairingPanel from '../components/PairingPanel.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
@@ -392,13 +369,9 @@ onMounted(loadSnapshot)
  * Startup and the notice's retry are the same read, which is why they are one function: the ordering the comment above
  * is about is the caller's to get right, and two copies of it would be two places to get it wrong in.
  */
-/**
- * The device or the request this page is asking about, so the right control shows the busy state.
- *
- * One ref rather than a map: a person answers one prompt at a time, and two spinners on one screen would be two places the
- * same "in flight" answer lives.
- */
-const pairingBusy = ref<string | undefined>(undefined)
+/** The user's selection; names and device metadata are read from the current device store. */
+const selectedDeviceId = ref<string>()
+const selectedPeer = computed(() => selectedDeviceId.value === undefined ? undefined : devices.get(selectedDeviceId.value))
 
 /** The running scan's identifier, which is what `devices_scan_cancel` takes. */
 const scanId = ref<string | undefined>(undefined)
@@ -410,18 +383,8 @@ const cancellingScan = ref(false)
  * ★ Why the button is only on unpaired rows: pairing is the decision that a device is recognised, and offering it again on a
  * row that already carries the answer would ask the user to repeat something they already settled.
  */
-async function pair(deviceId: string): Promise<void> {
-  repeat.value = () => pair(deviceId)
-  error.value = undefined
-  pairingBusy.value = deviceId
-
-  const answer = await kernel.call<null>('pairing_request', { deviceId })
-  pairingBusy.value = undefined
-  if (answer.ok)
-    // The card's "paired" tag is the kernel's, so the list is re-read rather than patched here.
-    await loadSnapshot()
-  else
-    refuse(answer.error)
+function pair(deviceId: string): void {
+  selectedDeviceId.value = deviceId
 }
 
 /** The device whose forget command is in flight. */
@@ -538,22 +501,6 @@ async function pickAndSendFile(card: { deviceId: string }): Promise<void> {
   finally {
     pickingFile.value = undefined
   }
-}
-
-/** Answers a request that is waiting, then forgets it: whichever side settled it, the prompt is over. */
-async function answer(requestId: string, accept: boolean): Promise<void> {
-  repeat.value = () => answer(requestId, accept)
-  error.value = undefined
-  pairingBusy.value = requestId
-
-  const settled = await kernel.call<null>('pairing_respond', { requestId, accept })
-  pairingBusy.value = undefined
-  if (!settled.ok) {
-    refuse(settled.error)
-    return
-  }
-  pairing.settle(requestId)
-  await loadSnapshot()
 }
 
 async function loadSnapshot(): Promise<void> {

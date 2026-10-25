@@ -60,7 +60,9 @@ import {
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
-  pairing_request: ['deviceId'],
+  pairing_listen: ['deviceId', 'invitation'],
+  pairing_connect: ['deviceId', 'reply'],
+  pairing_cancel: ['requestId'],
   intent_dispatch: ['source'],
   intent_decide: ['intentId', 'decision'],
   intent_snapshot: ['intentId'],
@@ -152,10 +154,14 @@ export class FakeKernel implements Bridge {
       case 'devices_scan_cancel':
         this.#stopScan()
         return null
-      case 'pairing_request':
-        // `One`, and 08's signature is `Result<RequestId>`; the fake answers an id rather than a null the shell never
-        // returns. The page ignores it, but the arity is now honest.
-        return '77777777-7777-4777-8777-777777777777'
+      case 'pairing_invite':
+      case 'pairing_listen':
+      case 'pairing_connect':
+        // The preview has no enrolled identity or TLS; it cannot manufacture a usable certificate or grant.
+        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', params: {}, actions: [] })
+      case 'pairing_status':
+      case 'pairing_cancel':
+        return null
       case 'plugins_publishers':
         // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
         return []

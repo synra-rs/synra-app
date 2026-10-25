@@ -13,9 +13,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { startEvents } from './events'
 import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { KernelClient } from './ipc/client'
-import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
+import { DEVICES, IDENTITY, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
+import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
 
@@ -50,6 +51,48 @@ beforeEach(() => {
 })
 
 describe('the event stream', () => {
+  it('refreshes pairing and device metadata through the same client when progress arrives', async () => {
+    const listeners = new Map<string, (payload: unknown) => void>()
+    const latest = {
+      requestId: 'current-task',
+      peerId: PEER_ID,
+      phase: 'paired',
+      expiresAtMs: 1000,
+      reply: null,
+      errorCode: null,
+      detail: null
+    }
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'pairing_status')
+        return latest
+      if (command === 'devices_snapshot')
+        return { identity: IDENTITY, devices: DEVICES, scanning: null }
+      throw new Error(command)
+    })
+    const client = new KernelClient({
+      invoke,
+      listen: async (event, handler) => {
+        listeners.set(event, handler)
+        return () => {
+          listeners.delete(event)
+        }
+      }
+    })
+    await startEvents(client)
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 1,
+      at: 1,
+      type: 'pairingUpdated',
+      payload: { ...latest, requestId: 'old-task', phase: 'connecting' }
+    })
+    await vi.waitFor(() => {
+      expect(usePairingStore().snapshot?.requestId).toBe('current-task')
+      expect(usePairingStore().snapshot?.phase).toBe('paired')
+      expect(useDevicesStore().get(PEER_ID)?.paired).toBe(true)
+    })
+    expect(invoke).toHaveBeenCalledWith('pairing_status', undefined)
+  })
+
   it('subscribes to the one channel the shell emits on', async () => {
     const { client, listeners } = harness()
 

@@ -69,6 +69,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   }
 
   const dispatcher = new EventDispatcher(() => {
+    void usePairingStore().refresh(client)
     void reread(client, devices, dispatcher)
   })
 
@@ -125,16 +126,10 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     notices.apply(event)
   })
 
-  // ★ A pairing request arrives while the user may be on any screen, so it goes to a store rather than to the page: the peer's
-  // connection is waiting for an answer, and a prompt that vanished on navigation would leave it waiting out its window.
   const pairing = usePairingStore()
-  dispatcher.on('pairingRequested', (event) => {
-    pairing.announce(event.payload)
-  })
-  // Resolved carries no card, so the list is re-read: a device that has just become paired is a row this store cannot derive
-  // from the event alone, and inventing one would be a second answer to what the kernel owns.
-  dispatcher.on('pairingResolved', (event) => {
-    pairing.settle(event.payload.requestId)
+  dispatcher.on('pairingUpdated', () => {
+    // Re-read instead of applying a buffered event over a newer command result.
+    void pairing.refresh(client)
     void reread(client, devices, dispatcher)
   })
 

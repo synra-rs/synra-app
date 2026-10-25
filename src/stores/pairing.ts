@@ -1,47 +1,92 @@
-import type { PairingPrompt } from '@synra/protocol'
+import type { IpcError, PairingSnapshot } from '@synra/protocol'
+import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
+
 import { computed, ref } from 'vue'
+import { kernel } from '../kernel'
 
-/**
- * The pairing requests waiting for this device's answer.
- *
- * # Why this is a store rather than page state
- *
- * Because a request arrives on its own schedule — a peer asks while the user is on another screen — and an answer has to
- * survive navigation. Page state would lose the prompt the moment the user looked at the plugins page, and the peer's
- * connection would go on waiting for a decision nobody can make any more.
- *
- * # What it deliberately does not hold
- *
- * Whether the user should accept. The code comparison is the security decision, and it is made by a person looking at two
- * screens — nothing here ranks devices, remembers past requests, or answers on the user's behalf.
- */
+/** Runtime progress is read from the shared service, independent of page lifetime and event delivery. */
 export const usePairingStore = defineStore('pairing', () => {
-  const pending = ref<readonly PairingPrompt[]>([])
+  const snapshot = ref<PairingSnapshot | null>(null)
+  const invitation = ref('')
+  const busy = ref(false)
+  const commandError = ref<IpcError>()
+  const statusError = ref<IpcError>()
+  const error = computed(() => commandError.value ?? statusError.value)
+  let revision = 0
+  let reading: Promise<boolean> | undefined
 
-  /**
-   * Records a request. A second event for the same request is ignored: the desk publishes once, and a duplicate row would ask
-   * the user to compare the same code twice.
-   */
-  function announce(prompt: PairingPrompt): void {
-    if (pending.value.some(entry => entry.requestId === prompt.requestId))
-      return
-    pending.value = [...pending.value, prompt]
+  const active = computed(() => snapshot.value !== null
+    && ['listening', 'connecting', 'confirming', 'cancelling'].includes(snapshot.value.phase))
+
+  /** Serialize reads and discard a result invalidated by an event or a completed command. */
+  function refresh(client: KernelClient = kernel): Promise<boolean> {
+    revision += 1
+    if (reading !== undefined)
+      return reading
+    reading = readLatest(client).finally(() => {
+      reading = undefined
+    })
+    return reading
   }
 
-  /** Forgets a request, whichever side answered it. */
-  function settle(requestId: string): void {
-    pending.value = pending.value.filter(entry => entry.requestId !== requestId)
+  async function readLatest(client: KernelClient): Promise<boolean> {
+    while (true) {
+      const started = revision
+      const answer = await client.call<PairingSnapshot | null>('pairing_status')
+      if (started !== revision)
+        continue
+      if (!answer.ok) {
+        statusError.value = answer.error
+        return false
+      }
+      statusError.value = undefined
+      snapshot.value = answer.value
+      return true
+    }
   }
 
-  refresh()
-
-  function refresh(): void {
-    // Nothing to fetch: the desk pushes `pairingRequested` and this list is the record of what it pushed. Kept as a
-    // named function so a caller that wants to re-read has one place to call, the way the other stores do.
+  async function run(operation: () => Promise<CallResult<unknown>>): Promise<boolean> {
+    if (busy.value)
+      return false
+    busy.value = true
+    commandError.value = undefined
+    try {
+      const answer = await operation()
+      if (!answer.ok) {
+        commandError.value = answer.error
+        return false
+      }
+      return await refresh()
+    }
+    finally {
+      busy.value = false
+    }
   }
 
-  const count = computed(() => pending.value.length)
+  async function exportInvitation(): Promise<void> {
+    await run(async () => {
+      const answer = await kernel.call<string>('pairing_invite')
+      if (answer.ok)
+        invitation.value = answer.value
+      return answer
+    })
+  }
 
-  return { pending, count, announce, settle, refresh }
+  async function listen(deviceId: string, imported: string): Promise<boolean> {
+    return run(() => kernel.call<PairingSnapshot>('pairing_listen', { deviceId, invitation: imported.trim() }))
+  }
+
+  async function connect(deviceId: string, reply: string): Promise<boolean> {
+    return run(() => kernel.call<PairingSnapshot>('pairing_connect', { deviceId, reply: reply.trim() }))
+  }
+
+  async function cancel(): Promise<boolean> {
+    const current = snapshot.value
+    if (current === null || !active.value)
+      return false
+    return run(() => kernel.call<null>('pairing_cancel', { requestId: current.requestId }))
+  }
+
+  return { snapshot, invitation, busy, error, active, refresh, exportInvitation, listen, connect, cancel }
 })

@@ -92,7 +92,8 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // it would be asserting the shape of an answer to a call the shell refuses. `cachedOnly` keeps the suite free of a
   // running interval — the shape of the answer is the same either way.
   devices_scan_start: { opts: { includePaired: false, cachedOnly: true } },
-  pairing_request: { deviceId: '11111111-1111-4111-8111-111111111111' },
+  pairing_status: undefined,
+  pairing_cancel: { requestId: '11111111-1111-4111-8111-111111111111' },
   devices_scan_cancel: { scanId: '01HQ00000000000000000SCAN01' },
   plugins_list: undefined,
   // The command is `One` **and takes an `intent_id`**: it answers about one intent rather than listing them.
@@ -138,7 +139,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
 const MAYBE_COMMAND = 'plugins_check_update'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 55
+const DECLARED_COMMANDS = 57
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()
@@ -161,12 +162,13 @@ describe('every answer the fake gives, against the arity the kernel declares', (
         return
       }
 
-      // `One` and `Maybe` alike: one value, not an array and not `null`. A DTO is an object and a scan/transfer id is a
+      // Both exclude arrays; Maybe additionally permits null. A DTO is an object and a scan/transfer id is a
       // string; both are exactly one value, and the assertion that matters is that the fake did not wrap a single value
       // in an envelope. `{ plugins: […] }` and `{ value: … }` both fail here.
       expect(Array.isArray(answer), `${command} is declared ${String(declared)}, so the payload must not be an array`).toBe(false)
       expect(typeof answer, `${command} is declared ${String(declared)}, so the payload must be a value`).toMatch(/^(object|string|number|boolean)$/)
-      expect(answer, `${command} is declared ${String(declared)}, so the payload must not be null`).not.toBeNull()
+      if (declared !== 'Maybe')
+        expect(answer, `${command} is declared ${String(declared)}, so the payload must not be null`).not.toBeNull()
     })
   }
 

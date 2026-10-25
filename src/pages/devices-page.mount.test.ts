@@ -88,7 +88,7 @@ describe('the devices page', () => {
 
     expect(wrapper.text()).toContain(DEVICES[0]!.displayName)
     // One read: mount. The card came from the store, not from a second call.
-    expect(mocks.call).toHaveBeenCalledTimes(1)
+    expect(mocks.call.mock.calls.filter(([command]) => command === 'devices_snapshot')).toHaveLength(1)
     wrapper.unmount()
   })
 

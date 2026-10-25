@@ -20,10 +20,11 @@ export const REGISTERED = [
   'devices_scan_start',
   'devices_scan_cancel',
   'devices_forget',
-  // Pairing: the request dials the address the scan recorded, the answer travels back over the same link, and the desk
-  // carries a request from the socket thread that received it to the command that answers it.
-  'pairing_request',
-  'pairing_respond',
+  // Pairing uses the shared restricted service with explicit certificate imports and a readable task snapshot.
+  'pairing_invite',
+  'pairing_listen',
+  'pairing_connect',
+  'pairing_status',
   'pairing_cancel',
   'plugins_list',
   'plugins_preview',
@@ -116,8 +117,7 @@ export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
   // ★ The network half this comment used to name is here now — the shell listens (`listener.rs`), dials for pairing and for  // transfers, and asks peers what they hold for a sync plan. What is still missing is not a transport but the code that
   // acts on a plan: no runner sends a plugin bundle, and the contract's name for that is `plugins_sync_run`.
   //
-  // Pairing said "needs the pairing desk wired to a Tauri command" — and the desk is in `AppState` now, answered from a
-  // command while the request waits on a socket thread. Transfers said the same sort of thing; all four are registered.
+  // Pairing and transfers delegate to shared production workflows; host wrappers own no authorization rules.
   //
   // What remains is per command below, and each reason says which layer is missing rather than pointing at a whole half.
   // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the

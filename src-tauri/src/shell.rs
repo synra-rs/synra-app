@@ -60,15 +60,18 @@ use crate::state::AppState;
 #[allow(clippy::needless_pass_by_value)]
 mod wrappers {
     use synra_ipc::{
-        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, IntentDecisionDto,
-        IntentSnapshot, IntentSourceDto, InstallReport, InstallSourceDto, IpcError, PluginSnapshot, ScanOptions,
+        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot,
+        InstallReport, InstallSourceDto, IntentDecisionDto, IntentSnapshot, IntentSourceDto,
+        IpcError, PluginSnapshot, ScanOptions,
     };
     use synra_protocol::IntentId;
 
     use super::{AppState, DiagExportResult, commands};
 
     #[tauri::command]
-    pub fn identity_get(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<IdentitySnapshot, IpcError> {
+    pub fn identity_get(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<IdentitySnapshot, IpcError> {
         commands::identity::identity_get(&state)
     }
 
@@ -81,7 +84,9 @@ mod wrappers {
     }
 
     #[tauri::command]
-    pub fn devices_snapshot(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<DevicesSnapshot, IpcError> {
+    pub fn devices_snapshot(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<DevicesSnapshot, IpcError> {
         commands::devices::devices_snapshot(&state)
     }
 
@@ -93,63 +98,99 @@ mod wrappers {
     /// (`sync_threadpool` in the macro's own vocabulary), so the window keeps painting while the network is asked. The
     /// daemon makes the same move for the same reason, by running discovery on a thread of its own.
     #[tauri::command(async)]
-    pub fn devices_scan_start(state: tauri::State<'_, std::sync::Arc<AppState>>, opts: ScanOptions) -> Result<String, IpcError> {
+    pub fn devices_scan_start(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        opts: ScanOptions,
+    ) -> Result<String, IpcError> {
         commands::devices::devices_scan_start(&state, &opts)
     }
 
     #[tauri::command]
-    pub fn devices_scan_cancel(state: tauri::State<'_, std::sync::Arc<AppState>>, scan_id: String) -> Result<(), IpcError> {
+    pub fn devices_scan_cancel(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        scan_id: String,
+    ) -> Result<(), IpcError> {
         commands::devices::devices_scan_cancel(&state, &scan_id)
     }
 
     #[tauri::command]
-    pub fn devices_forget(state: tauri::State<'_, std::sync::Arc<AppState>>, device_id: String) -> Result<(), IpcError> {
+    pub fn devices_forget(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        device_id: String,
+    ) -> Result<(), IpcError> {
         commands::devices::devices_forget(&state, &device_id)
     }
 
-    /// Asks a discovered device to pair, and records it when the other person accepts.
+    /// Exports this device's public certificate invitation.
     #[tauri::command]
-    pub async fn pairing_request(
+    pub fn pairing_invite(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<String, IpcError> {
+        commands::pairing::pairing_invite(&state)
+    }
+
+    /// Explicitly imports the intended peer's invitation and returns a restricted listener task.
+    #[tauri::command]
+    pub async fn pairing_listen(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         device_id: String,
-    ) -> Result<String, IpcError> {
+        invitation: String,
+    ) -> Result<synra_protocol::pairing::PairingSnapshot, IpcError> {
         let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_request(&state, &device_id))
+        super::blocking(move || commands::pairing::pairing_listen(&state, &device_id, &invitation))
             .await
-            .map(|request_id| request_id.to_string())
     }
 
-    /// Answers a pairing request that is waiting.
+    /// Explicitly imports a responder's certificate and starts the bounded connection task.
     #[tauri::command]
-    pub fn pairing_respond(
+    pub async fn pairing_connect(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        device_id: String,
+        reply: String,
+    ) -> Result<synra_protocol::pairing::PairingSnapshot, IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::pairing::pairing_connect(&state, &device_id, &reply))
+            .await
+    }
+
+    /// Reads the shared runtime task, including its last terminal result.
+    #[tauri::command]
+    pub fn pairing_status(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Option<synra_protocol::pairing::PairingSnapshot>, IpcError> {
+        commands::pairing::pairing_status(&state)
+    }
+
+    /// Cancels the matching generation before its durable authorization commits.
+    #[tauri::command]
+    pub async fn pairing_cancel(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         request_id: String,
-        accept: bool,
     ) -> Result<(), IpcError> {
-        commands::pairing::pairing_respond(&state, &request_id, accept)
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::pairing::pairing_cancel(&state, &request_id)).await
     }
 
-    /// Refuses a waiting pairing request. The link stays up, so the dialer may ask again.
     #[tauri::command]
-    pub fn pairing_cancel(
+    pub fn plugins_list(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
-        request_id: String,
-    ) -> Result<(), IpcError> {
-        commands::pairing::pairing_cancel(&state, &request_id)
-    }
-
-    #[tauri::command]
-    pub fn plugins_list(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<PluginSnapshot>, IpcError> {
+    ) -> Result<Vec<PluginSnapshot>, IpcError> {
         commands::plugins::plugins_list(&state)
     }
 
     #[tauri::command]
-    pub fn plugins_enable(state: tauri::State<'_, std::sync::Arc<AppState>>, plugin_id: String) -> Result<(), IpcError> {
+    pub fn plugins_enable(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<(), IpcError> {
         commands::plugins::plugins_enable(&state, &plugin_id)
     }
 
     #[tauri::command]
-    pub fn plugins_disable(state: tauri::State<'_, std::sync::Arc<AppState>>, plugin_id: String) -> Result<(), IpcError> {
+    pub fn plugins_disable(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        plugin_id: String,
+    ) -> Result<(), IpcError> {
         commands::plugins::plugins_disable(&state, &plugin_id)
     }
 
@@ -178,7 +219,10 @@ mod wrappers {
 
     /// Abandons a transfer, and refuses one that is not in flight.
     #[tauri::command]
-    pub fn transfer_cancel(state: tauri::State<'_, std::sync::Arc<AppState>>, transfer_id: String) -> Result<(), IpcError> {
+    pub fn transfer_cancel(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        transfer_id: String,
+    ) -> Result<(), IpcError> {
         commands::transfers::transfer_cancel(&state, &transfer_id)
     }
 
@@ -289,7 +333,10 @@ mod wrappers {
     /// The label is the page's, not the plugin's: two pages of one plugin are two WebViews and two sessions, and a command
     /// that took a plugin id could not tell them apart.
     #[tauri::command]
-    pub fn plugin_ui_ready(state: tauri::State<'_, std::sync::Arc<AppState>>, label: String) -> Result<(), IpcError> {
+    pub fn plugin_ui_ready(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        label: String,
+    ) -> Result<(), IpcError> {
         commands::plugin_ui::plugin_ui_ready(&state, &label)
     }
 
@@ -328,8 +375,9 @@ mod wrappers {
         // session for the same plugin and replace the first entry in `hosted_ui`, leaving the first page holding a token
         // no table names.
         let id = synra_protocol::ids::PluginId::parse(&plugin_id).map_err(|error| {
-            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
+            )
         })?;
         let label = commands::plugin_ui::window_label(&id);
         if let Some(window) = app.get_window(&label) {
@@ -360,25 +408,29 @@ mod wrappers {
         // parsed `Url` too, and comparing the two normalised forms is what makes the first load and a hash route pass
         // while every other destination is refused.
         let opened = url.as_str().to_owned();
-        let window = tauri::WebviewWindowBuilder::new(&app, &request.label, tauri::WebviewUrl::CustomProtocol(url))
-            .initialization_script(&request.script)
-            // ★ The page may not navigate away. It holds this plugin's token and grants, and the script is attached to
-            // the WebView rather than to an address — so another page, another origin or an external scheme would keep
-            // this page's authority while showing something the opener never chose.
-            .on_navigation(move |candidate| {
-                commands::plugin_ui::stays_on_page(candidate.as_str(), &opened)
-            })
-            // And `window.open` is denied outright: a second window has no initialization script, so it would be a page
-            // with no token — and on some platforms it would be a browser window the plugin opened, which is a decision
-            // the platform capability exists to make.
-            .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-            .build()
-            .map_err(|error| {
-                // The reservation `open_request` made must not outlive a window that was never built: otherwise every
-                // failed open would leave the plugin permanently "already open" with no window to focus.
-                commands::plugin_ui::forget_window(&state, &request.label);
-                failed(error)
-            })?;
+        let window = tauri::WebviewWindowBuilder::new(
+            &app,
+            &request.label,
+            tauri::WebviewUrl::CustomProtocol(url),
+        )
+        .initialization_script(&request.script)
+        // ★ The page may not navigate away. It holds this plugin's token and grants, and the script is attached to
+        // the WebView rather than to an address — so another page, another origin or an external scheme would keep
+        // this page's authority while showing something the opener never chose.
+        .on_navigation(move |candidate| {
+            commands::plugin_ui::stays_on_page(candidate.as_str(), &opened)
+        })
+        // And `window.open` is denied outright: a second window has no initialization script, so it would be a page
+        // with no token — and on some platforms it would be a browser window the plugin opened, which is a decision
+        // the platform capability exists to make.
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .build()
+        .map_err(|error| {
+            // The reservation `open_request` made must not outlive a window that was never built: otherwise every
+            // failed open would leave the plugin permanently "already open" with no window to focus.
+            commands::plugin_ui::forget_window(&state, &request.label);
+            failed(error)
+        })?;
 
         // ★ Closing the window ends the session: the token table is the page's authority, and an entry that outlives the
         // page would let a closed window keep answering. `Destroyed` rather than `CloseRequested` because a close can be
@@ -404,7 +456,9 @@ mod wrappers {
 
     /// The updates the last background pass found, so a page opened later can show them without asking the registry.
     #[tauri::command]
-    pub fn plugins_updates(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<synra_ipc::UpdateInfo>, IpcError> {
+    pub fn plugins_updates(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Vec<synra_ipc::UpdateInfo>, IpcError> {
         commands::plugins::plugins_updates(&state)
     }
 
@@ -543,7 +597,9 @@ mod wrappers {
     /// which is the distinction `intent_snapshot` **below** it draws, and the one the interface missed while it called
     /// that command and read a list out of it.
     #[tauri::command]
-    pub fn intent_list(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<Vec<IntentSnapshot>, IpcError> {
+    pub fn intent_list(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Vec<IntentSnapshot>, IpcError> {
         commands::intent::intent_list(&state)
     }
 
@@ -583,12 +639,17 @@ mod wrappers {
     }
 
     #[tauri::command]
-    pub fn config_get(state: tauri::State<'_, std::sync::Arc<AppState>>) -> Result<ConfigSnapshot, IpcError> {
+    pub fn config_get(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<ConfigSnapshot, IpcError> {
         commands::config::config_get(&state)
     }
 
     #[tauri::command]
-    pub fn config_set(state: tauri::State<'_, std::sync::Arc<AppState>>, patch: ConfigPatch) -> Result<(), IpcError> {
+    pub fn config_set(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        patch: ConfigPatch,
+    ) -> Result<(), IpcError> {
         commands::config::config_set(&state, &patch)
     }
 
@@ -664,8 +725,10 @@ mod wrappers {
             devices_scan_start,
             devices_scan_cancel,
             devices_forget,
-            pairing_request,
-            pairing_respond,
+            pairing_invite,
+            pairing_listen,
+            pairing_connect,
+            pairing_status,
             pairing_cancel,
             plugins_list,
             plugins_enable,
@@ -822,10 +885,16 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             if let Some(window) = app.get_webview_window("main") {
                 let handle = app.handle().clone();
                 window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop {
+                        paths, ..
+                    }) = event
+                    {
                         let mut opened = false;
                         for path in paths {
-                            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra")) {
+                            if path
+                                .extension()
+                                .is_some_and(|ext| ext.eq_ignore_ascii_case("synra"))
+                            {
                                 open_package(&handle, path);
                                 opened = true;
                             }
@@ -945,7 +1014,9 @@ fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
             );
             match action {
                 crate::launch::PackageAction::Install => {
-                    let source = synra_ipc::InstallSourceDto::Path { path: package.display().to_string() };
+                    let source = synra_ipc::InstallSourceDto::Path {
+                        path: package.display().to_string(),
+                    };
                     match commands::plugins::plugins_install(&state, &source) {
                         Ok(report) => {
                             state.publish(synra_ipc::event::KernelEvent::Notice {
@@ -958,7 +1029,10 @@ fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                             });
                         }
                         Err(error) => {
-                            eprintln!("synra: {} could not be installed: {error:?}", package.display());
+                            eprintln!(
+                                "synra: {} could not be installed: {error:?}",
+                                package.display()
+                            );
                         }
                     }
                 }
@@ -975,7 +1049,10 @@ fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                             });
                         }
                         Err(error) => {
-                            eprintln!("synra: {} could not be updated: {error:?}", package.display());
+                            eprintln!(
+                                "synra: {} could not be updated: {error:?}",
+                                package.display()
+                            );
                         }
                     }
                 }
@@ -1003,7 +1080,10 @@ fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
             }
         }
         Err(error) => {
-            eprintln!("synra: {} is not a readable package: {error:?}", package.display());
+            eprintln!(
+                "synra: {} is not a readable package: {error:?}",
+                package.display()
+            );
         }
     }
     crate::window::show_main(app);
@@ -1037,12 +1117,13 @@ pub fn run_window() -> Result<(), String> {
             for url in urls {
                 if url.scheme() == "file" {
                     if let Ok(path) = url.to_file_path()
-                        && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra"))
+                        && path
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("synra"))
                     {
                         open_package(app, &path);
                     }
-                }
-                else {
+                } else {
                     crate::deeplink::receive(app, vec![url.clone()]);
                 }
             }
@@ -1139,8 +1220,11 @@ where
 {
     match tauri::async_runtime::spawn_blocking(body).await {
         Ok(answer) => answer,
-        Err(_) => Err(synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal)
-            .with_params(serde_json::json!({"reason": "the runtime stopped before the task ran"}))),
+        Err(_) => Err(
+            synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal).with_params(
+                serde_json::json!({"reason": "the runtime stopped before the task ran"}),
+            ),
+        ),
     }
 }
 
@@ -1176,7 +1260,8 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
         .map_err(|error| format!("the database could not be opened: {error}"))?;
     // Migrated on the way in, so a shell that starts on an older database does not fail every command with a message
     // about a missing table.
-    db.migrate().map_err(|error| format!("the database could not be migrated: {error}"))?;
+    db.migrate()
+        .map_err(|error| format!("the database could not be migrated: {error}"))?;
 
     // ★ The platform string the kernel stores, taken from the build target rather than from `std::env::consts`.
     //
@@ -1262,11 +1347,14 @@ fn with_discovery_or_report(state: AppState) -> AppState {
         let events = Arc::clone(&state.events);
         Arc::new(move |device_id: &str| {
             if let Ok(Some(card)) = crate::commands::devices::card_for(&db, &host, device_id) {
-                events.emit(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(card)));
+                events.emit(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(
+                    card,
+                )));
             }
         })
     };
-    let started = crate::discovery::Discovery::start(        announcement,
+    let started = crate::discovery::Discovery::start(
+        announcement,
         synra_protocol::limits::DISCOVERY_PORT,
         Arc::clone(&state.db),
         state.host.clone(),
@@ -1360,7 +1448,9 @@ fn with_plugins_or_refuse(
                         // interface's event vocabulary.
                         .with_health_sink(Arc::new({
                             let events = Arc::clone(&state.events);
-                            move |id: &synra_protocol::ids::PluginId, health: &str, explanation: &str| {
+                            move |id: &synra_protocol::ids::PluginId,
+                                  health: &str,
+                                  explanation: &str| {
                                 events.emit(synra_ipc::event::KernelEvent::PluginHealthChanged {
                                     plugin_id: id.clone(),
                                     health: health.to_owned(),
@@ -1373,7 +1463,8 @@ fn with_plugins_or_refuse(
                     // `intent_dispatch` matched nothing and `life_state` called it `unavailable` forever.
                     let state = state.with_plugins(Arc::new(Mutex::new(set)));
                     let revocations = commands::plugins::revocations(&state);
-                    let summary = commands::plugins::load_installed_plugins(&state, verdict, &revocations);
+                    let summary =
+                        commands::plugins::load_installed_plugins(&state, verdict, &revocations);
                     state.with_plugin_loads(summary)
                 }
                 Err(error) => {
@@ -1405,7 +1496,9 @@ fn with_plugins_or_refuse(
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+        .map_or(0, |since| {
+            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+        })
 }
 
 #[cfg(test)]
