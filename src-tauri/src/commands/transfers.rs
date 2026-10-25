@@ -42,6 +42,8 @@ struct Entry {
     /// and must **not** be deleted, while a sent message was written by this shell and must be. The two look identical from the
     /// snapshot alone.
     temp: Option<std::path::PathBuf>,
+    /// Upload directory owned by this task; never inferred from a user's source file.
+    cleanup_dir: Option<std::path::PathBuf>,
 }
 
 impl Transfers {
@@ -60,10 +62,18 @@ impl Transfers {
     /// on the second report — which is the one moment a cancel is likely to arrive.
     pub fn record(&self, snapshot: TransferSnapshot) {
         let mut registry = self.by_id.lock();
-        let temp = registry
-            .get(&snapshot.transfer_id)
-            .and_then(|entry| entry.temp.clone());
-        registry.insert(snapshot.transfer_id, Entry { snapshot, temp });
+        if let Some(entry) = registry.get_mut(&snapshot.transfer_id) {
+            entry.snapshot = snapshot;
+        } else {
+            registry.insert(
+                snapshot.transfer_id,
+                Entry {
+                    snapshot,
+                    temp: None,
+                    cleanup_dir: None,
+                },
+            );
+        }
     }
 
     /// Records a snapshot and the file this shell created for it.
@@ -73,8 +83,39 @@ impl Transfers {
             Entry {
                 snapshot,
                 temp: Some(temp),
+                cleanup_dir: None,
             },
         );
+    }
+
+    /// Registers all task-owned artifacts before the worker can finish or fail to start.
+    fn record_owned(
+        &self,
+        snapshot: TransferSnapshot,
+        temp: Option<std::path::PathBuf>,
+        cleanup_dir: Option<std::path::PathBuf>,
+    ) {
+        self.by_id.lock().insert(
+            snapshot.transfer_id,
+            Entry {
+                snapshot,
+                temp,
+                cleanup_dir,
+            },
+        );
+    }
+
+    /// Copies cleanup ownership without withdrawing the row before filesystem work has finished.
+    fn owned_files(
+        &self,
+        transfer_id: &TransferId,
+    ) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+        self.by_id
+            .lock()
+            .get(transfer_id)
+            .map_or((None, None), |entry| {
+                (entry.temp.clone(), entry.cleanup_dir.clone())
+            })
     }
 
     /// Drops a transfer, answering the file the caller should delete.
@@ -417,15 +458,7 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
     // ★ Two directions, two mechanisms. An outgoing transfer has a worker holding a cancellation token; an incoming one
     // has a connection thread that owns the link, so the command can only leave the identifier where that loop will look.
     if state.transfers.stop(&id) {
-        // ★ The file this shell created for the transfer goes with it. A cancel that only removed the row would leave a
-        // message on disk that nobody will ever send and nothing will ever delete.
-        if let Some(path) = state.transfers.forget(&id) {
-            let _ = std::fs::remove_file(path);
-        }
-        // ★ The panel learns without asking. `TransferFinished` removes the row in the intents store, and without this a
-        // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every
-        // other command here was fixed for.
-        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id: id });
+        finish_transfer(state, id);
     } else {
         // The row stays: the listener has not seen the request yet, and removing it here would make the interface forget a
         // transfer that is still running. It goes when the listener's abort reaches the progress callback.
@@ -829,9 +862,7 @@ pub fn start_send(
     let transfer_id = row.transfer_id;
     let cancel = synra_core::supervisor::Cancellation::new();
     state.transfers.track_cancel(transfer_id, cancel.clone());
-    if let Some(path) = &temp {
-        state.transfers.record_with_temp(row.clone(), path.clone());
-    }
+    state.transfers.record_owned(row.clone(), temp, cleanup_dir);
     announce_transfer(state, row.clone());
 
     let thread_state = std::sync::Arc::clone(state);
@@ -842,14 +873,6 @@ pub fn start_send(
                 send_over_with(&thread_state, to, address, sender, row, Some(&cancel))
             {
                 eprintln!("synra: transfer {transfer_id} did not finish: {error:?}");
-            }
-            if let Some(path) = temp {
-                let _ = std::fs::remove_file(path);
-            }
-            if let Some(directory) = cleanup_dir {
-                // ★ A directory, not a recursive delete: the worker knows the one file it was given and the directory
-                // the uploader made for it. `remove_dir` refuses if anything else is inside, which is the right answer.
-                let _ = std::fs::remove_dir(directory);
             }
         });
     if spawned.is_err() {
@@ -1238,6 +1261,14 @@ pub(crate) fn finish_transfer(
     state: &crate::state::AppState,
     transfer_id: synra_protocol::ids::TransferId,
 ) {
+    let (temp, directory) = state.transfers.owned_files(&transfer_id);
+    if let Some(path) = temp {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(directory) = directory {
+        // Nonrecursive: ownership of one upload directory never permits deleting unrelated contents.
+        let _ = std::fs::remove_dir(directory);
+    }
     state.transfers.forget(&transfer_id);
     state.transfers.untrack(&transfer_id);
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
