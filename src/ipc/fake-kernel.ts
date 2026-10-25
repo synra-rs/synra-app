@@ -131,7 +131,7 @@ export class FakeKernel implements Bridge {
 
     switch (command) {
       case 'identity_credentials':
-        return { deviceId: IDENTITY.deviceId, enrollment: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }
+        return { deviceId: IDENTITY.deviceId, enrollment: null, recovery: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }
       case 'identity_cleanup':
         return { remaining: 0, errorCode: null, detail: null }
       case 'identity_repair':

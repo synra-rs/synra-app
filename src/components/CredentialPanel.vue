@@ -13,10 +13,10 @@
     <template v-if="credentials.snapshot">
       <ADescriptions :column="1" bordered>
         <ADescriptions.Item :label="messages.settings.credentials.fingerprint">
-          <span class="break-all font-mono">{{ credentials.snapshot.enrollment?.fingerprint ?? messages.settings.credentials.absent }}</span>
+          <span class="break-all font-mono">{{ target?.fingerprint ?? messages.settings.credentials.absent }}</span>
         </ADescriptions.Item>
         <ADescriptions.Item :label="messages.settings.credentials.backend">
-          {{ credentials.snapshot.enrollment?.backend ?? messages.settings.credentials.absent }}
+          {{ target?.backend ?? messages.settings.credentials.absent }}
         </ADescriptions.Item>
         <ADescriptions.Item :label="messages.settings.credentials.enrollment">
           {{ credentials.snapshot.enrollment?.ready ? messages.settings.credentials.recorded : messages.settings.credentials.incomplete }}
@@ -28,12 +28,13 @@
           {{ credentials.snapshot.retiredKeys }}
         </ADescriptions.Item>
       </ADescriptions>
+      <AAlert v-if="credentials.snapshot.recovery" type="warning" show-icon :message="messages.settings.credentials.registrationLost" />
       <AAlert v-if="credentials.restartRequired" type="warning" show-icon :message="messages.settings.credentials.restart" />
       <AAlert v-if="credentials.repaired" type="success" show-icon :message="messages.settings.credentials.repaired" />
       <AAlert v-if="credentials.cleanup?.remaining" type="warning" show-icon :message="messages.settings.credentials.remaining(credentials.cleanup.remaining)" />
       <ErrorNotice v-if="credentials.cleanup?.errorCode" :code="credentials.cleanup.errorCode" :message="`error.${credentials.cleanup.errorCode}`" />
       <div class="row flex-wrap gap-2">
-        <AButton danger :disabled="credentials.busy || !credentials.snapshot.enrollment || credentials.repaired !== null" @click="confirmRepair">
+        <AButton danger :disabled="credentials.busy || !target || credentials.repaired !== null" @click="confirmRepair">
           {{ messages.settings.credentials.repair }}
         </AButton>
         <AButton :loading="credentials.busy" :disabled="credentials.busy || credentials.snapshot.retiredKeys === 0" @click="credentials.retryCleanup()">
@@ -52,7 +53,7 @@
 
 <script setup lang="ts">
 import { Alert as AAlert, Button as AButton, Descriptions as ADescriptions, Modal as AModal } from 'ant-design-vue'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { messages } from '../messages'
 import { useCredentialsStore } from '../stores/credentials'
@@ -60,9 +61,10 @@ import ErrorNotice from './ErrorNotice.vue'
 
 const credentials = useCredentialsStore()
 const confirming = ref<string | null>(null)
+const target = computed(() => credentials.snapshot?.enrollment ?? credentials.snapshot?.recovery)
 
 function confirmRepair(): void {
-  confirming.value = credentials.snapshot?.enrollment?.fingerprint ?? null
+  confirming.value = target.value?.fingerprint ?? null
 }
 
 function close(): void {

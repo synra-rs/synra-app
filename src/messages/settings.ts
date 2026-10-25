@@ -15,6 +15,7 @@ export const settings = {
     enrollment: 'Saved identity',
     recorded: 'Saved',
     incomplete: 'Missing or incomplete',
+    registrationLost: 'The saved registration is missing. The last registered fingerprint is shown for recovery. Confirm repair to replace the key and revoke all previous pairings.',
     runtime: 'Current identity',
     loaded: 'Using saved identity',
     unavailable: 'Unavailable',

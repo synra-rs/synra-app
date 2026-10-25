@@ -11,7 +11,7 @@ fn missing_enrollment_is_explicit_and_does_not_generate_a_key() {
 
 #[cfg(windows)]
 #[test]
-fn native_app_repair_revokes_metadata_and_reports_restart_separately_from_enrollment() {
+fn native_app_recovery_revokes_metadata_and_reports_restart_separately_from_enrollment() {
     use std::sync::Arc;
     use synra_core::peer::authenticated::AuthenticatedPeer;
     use synra_store::secrets::{SecretBackend, SecretKey, WindowsCredentialBackend};
@@ -64,6 +64,15 @@ fn native_app_repair_revokes_metadata_and_reports_restart_separately_from_enroll
     let before = identity_credentials(&state).unwrap();
     assert!(before.runtime_ready);
     let old = before.enrollment.unwrap().fingerprint;
+    let connection =
+        rusqlite::Connection::open(fixture.root().join(synra_store::DB_FILE_NAME)).unwrap();
+    connection
+        .execute("DELETE FROM device_credentials", [])
+        .unwrap();
+    let lost = identity_credentials(&state).unwrap();
+    assert!(lost.enrollment.is_none());
+    assert_eq!(lost.recovery.unwrap().fingerprint, old);
+    assert!(!lost.runtime_ready);
     assert_eq!(
         identity_repair(&state, "stale").unwrap_err().code,
         synra_protocol::ErrorCode::InvalidArgument
@@ -79,4 +88,28 @@ fn native_app_repair_revokes_metadata_and_reports_restart_separately_from_enroll
     assert_eq!(after.enrollment.unwrap().fingerprint, report.fingerprint);
     assert_eq!(identity_cleanup(&state).unwrap().remaining, Some(1));
     assert!(identity_repair(&state, &old).is_err());
+}
+
+#[test]
+fn lost_registration_and_history_report_that_a_trusted_backup_is_required() {
+    let fixture = synra_testkit::authentication::NetworkFixture::unpaired(
+        synra_protocol::DeviceId::new(),
+        "Lost history",
+    )
+    .unwrap();
+    let state = AppState::new(
+        fixture.open_connection().unwrap(),
+        synra_store::Paths::under(fixture.root()),
+        "test",
+        fixture.now_ms as i64,
+    )
+    .unwrap();
+    let connection =
+        rusqlite::Connection::open(fixture.root().join(synra_store::DB_FILE_NAME)).unwrap();
+    connection
+        .execute_batch("DELETE FROM device_credentials; DELETE FROM device_identity_history;")
+        .unwrap();
+    let error = identity_credentials(&state).unwrap_err();
+    assert_eq!(error.code, synra_protocol::ErrorCode::NotPaired);
+    assert_eq!(error.message.as_str(), "error.identityHistoryMissing");
 }

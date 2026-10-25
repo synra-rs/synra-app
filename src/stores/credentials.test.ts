@@ -12,6 +12,7 @@ vi.mock('../kernel', () => ({ kernel: { call } }))
 const initial: CredentialSnapshot = {
   deviceId: IDENTITY.deviceId,
   enrollment: { fingerprint: 'old', backend: 'windows', ready: true },
+  recovery: null,
   retiredKeys: 0,
   runtimeReady: true,
   restartRequired: false

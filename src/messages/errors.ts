@@ -22,6 +22,7 @@ export type ErrorCode
     | string
 
 export const kernelErrors = {
+  'error.identityHistoryMissing': 'The saved registration and its recovery record are missing. Restore a trusted database backup before repairing this identity.',
   'error.badArgument': 'Something in the request was not valid.',
   'error.bridgeFailed': 'The interface could not reach the kernel.',
   'error.capabilityDenied': 'This needs a permission that has not been granted.',

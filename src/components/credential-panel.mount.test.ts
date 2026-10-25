@@ -29,15 +29,15 @@ beforeEach(() => {
     disconnect() {}
   }
   setActivePinia(createPinia())
-  backend = { deviceId: IDENTITY.deviceId, enrollment: { fingerprint: 'displayed', backend: 'windows', ready: true }, retiredKeys: 0, runtimeReady: true, restartRequired: false }
+  backend = { deviceId: IDENTITY.deviceId, enrollment: { fingerprint: 'displayed', backend: 'windows', ready: true }, recovery: null, retiredKeys: 0, runtimeReady: true, restartRequired: false }
   call.mockReset()
   call.mockImplementation(async (command: string, args?: { expectedFingerprint?: string }) => {
     if (command === 'identity_credentials')
       return { ok: true, value: backend }
     if (command === 'identity_repair') {
-      if (args?.expectedFingerprint !== backend.enrollment?.fingerprint)
+      if (args?.expectedFingerprint !== (backend.enrollment ?? backend.recovery)?.fingerprint)
         return { ok: false, error: { code: 'invalid_argument', message: 'error.invalid_argument' } }
-      backend = { ...backend, enrollment: { fingerprint: 'replacement', backend: 'windows', ready: true }, runtimeReady: false, restartRequired: true, retiredKeys: 1 }
+      backend = { ...backend, enrollment: { fingerprint: 'replacement', backend: 'windows', ready: true }, recovery: null, runtimeReady: false, restartRequired: true, retiredKeys: 1 }
       return { ok: true, value: { deviceId: IDENTITY.deviceId, fingerprint: 'replacement', restartRequired: true, cleanup: { remaining: null, errorCode: 'internal', detail: 'cleanup failed' } } }
     }
     if (command === 'identity_cleanup') {
@@ -87,6 +87,31 @@ it('allows repair when startup could not load the key and permits cancelling wit
   wrapper.findComponent(Modal).vm.$emit('cancel')
   await flushPromises()
   expect(wrapper.findComponent(Modal).props('open')).toBe(false)
+  expect(call.mock.calls.some(([command]) => command === 'identity_repair')).toBe(false)
+  wrapper.unmount()
+})
+it('requires explicit confirmation to recover a missing registration using the retained fingerprint', async () => {
+  backend = { ...backend, enrollment: null, recovery: { fingerprint: 'retained', backend: 'windows' }, runtimeReady: false }
+  const wrapper = mount(CredentialPanel)
+  await flushPromises()
+  expect(wrapper.text()).toContain('retained')
+  expect(wrapper.text()).toContain(messages.settings.credentials.registrationLost)
+  expect(call.mock.calls.some(([command]) => command === 'identity_repair')).toBe(false)
+  await wrapper.findAll('button').find(node => node.text() === messages.settings.credentials.repair)!.trigger('click')
+  wrapper.findComponent(Modal).vm.$emit('ok')
+  await flushPromises()
+  expect(call).toHaveBeenCalledWith('identity_repair', { expectedFingerprint: 'retained' })
+  expect(useCredentialsStore().snapshot?.recovery).toBeNull()
+  expect(wrapper.text()).toContain(messages.settings.credentials.repaired)
+  wrapper.unmount()
+})
+
+it('explains the trusted backup requirement when no registration or recovery record survives', async () => {
+  call.mockResolvedValue({ ok: false, error: { code: 'not_paired', message: 'error.identityHistoryMissing' } })
+  const wrapper = mount(CredentialPanel)
+  await flushPromises()
+  expect(wrapper.text()).toContain(messages.kernelErrors['error.identityHistoryMissing'])
+  expect(wrapper.findAll('button').some(node => node.text() === messages.settings.credentials.repair)).toBe(false)
   expect(call.mock.calls.some(([command]) => command === 'identity_repair')).toBe(false)
   wrapper.unmount()
 })

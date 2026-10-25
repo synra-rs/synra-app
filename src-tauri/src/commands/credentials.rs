@@ -12,8 +12,16 @@ pub fn identity_credentials(state: &AppState) -> Result<CredentialSnapshot, IpcE
     let runtime = state.host.lock().credential_fingerprint();
     synra_core::device_credentials::credential_snapshot(&state.db, device, runtime).map_err(
         |error| {
-            IpcError::unknown(error.code())
-                .with_params(serde_json::json!({"detail": error.to_string()}))
+            let report = if matches!(
+                error,
+                synra_core::device_credentials::CredentialError::MissingRegistration
+            ) {
+                IpcError::new(error.code(), "error.identityHistoryMissing")
+                    .unwrap_or_else(|_| IpcError::unknown(error.code()))
+            } else {
+                IpcError::unknown(error.code())
+            };
+            report.with_params(serde_json::json!({"detail": error.to_string()}))
         },
     )
 }
