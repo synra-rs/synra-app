@@ -50,7 +50,6 @@ pub fn deliver(
     wait: Option<Duration>,
 ) -> Result<Option<Envelope>, IpcError> {
     let address = crate::commands::transfers::address_of(state, outbound.to)?;
-    let identity = state.identity.lock().clone();
     let now_ms = crate::commands::transfers::unix_millis();
     let failed = |reason: String| {
         IpcError::unknown(ErrorCode::DeviceOffline)
@@ -60,25 +59,22 @@ pub fn deliver(
     // ★ Retried for the reason `synra_core::retry` documents: the ordinary way a dial fails is a listener that is still
     // closing the previous connection. One attempt would report a device the user can see as offline because it was busy
     // for a hundred milliseconds. The bound and the pauses are the kernel's, not a second copy of them.
+    let parts = state.host.lock().dialling_parts();
     let dialled = synra_core::retry::with_retries(
         synra_core::retry::ATTEMPTS,
         |_| {
-            synra_core::host::dial_peer(
-                &crate::commands::transfers::local_peer(&identity),
-                synra_core::peer::Flags::production(),
-                address,
-                None,
-                now_ms,
-            )
-            .map_err(|error| failed(format!("the dial failed: {error}")))
+            synra_core::host::dial_peer(&parts.0, parts.1, address, outbound.to, now_ms)
+                .map_err(|error| failed(format!("the dial failed: {error}")))
         },
         |attempt| {
-            std::thread::sleep(Duration::from_millis(100 * (u64::try_from(attempt).unwrap_or(0) + 1)));
+            std::thread::sleep(Duration::from_millis(
+                100 * (u64::try_from(attempt).unwrap_or(0) + 1),
+            ));
         },
     )?;
 
     let mut link = dialled
-        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .into_link()
         // The byte counters live on the link; without this the shell would own a recorder no intent envelope ever
         // reached, and `bytes_sent_total` would count files but not actions.
         .with_metrics(std::sync::Arc::clone(&state.metrics));
@@ -118,12 +114,16 @@ fn wait_for(outbound: &Outbound) -> Option<Duration> {
 /// # Errors
 ///
 /// As [`deliver`].
-pub fn deliver_decided(state: &AppState, outbound: &Outbound) -> Result<Option<Envelope>, IpcError> {
+pub fn deliver_decided(
+    state: &AppState,
+    outbound: &Outbound,
+) -> Result<Option<Envelope>, IpcError> {
     deliver(state, outbound, wait_for(outbound))
 }
 
 #[cfg(test)]
 mod tests {
+    mod authenticated;
     use std::sync::Arc;
 
     use synra_core::intent::remote::{self, Invoke, InvokeResult};
@@ -145,8 +145,20 @@ mod tests {
         // ★ A production-shaped link rather than a permissive test one: `Flags::production()` is what the caller uses, and
         // a fixture with no timeouts would not exercise the deadline this module's whole wait depends on.
         (
-            PeerLink::new(here, device(LOCAL), device(PEER), Agreed::default(), synra_core::peer::Flags::production()),
-            PeerLink::new(there, device(PEER), device(LOCAL), Agreed::default(), synra_core::peer::Flags::production()),
+            PeerLink::new(
+                here,
+                device(LOCAL),
+                device(PEER),
+                Agreed::default(),
+                synra_core::peer::Flags::production(),
+            ),
+            PeerLink::new(
+                there,
+                device(PEER),
+                device(LOCAL),
+                Agreed::default(),
+                synra_core::peer::Flags::production(),
+            ),
         )
     }
 
@@ -155,7 +167,8 @@ mod tests {
             device(LOCAL),
             device(PEER),
             &Invoke {
-                plugin_id: synra_protocol::ids::PluginId::try_from("@acme/opener".to_owned()).expect("a plugin id"),
+                plugin_id: synra_protocol::ids::PluginId::try_from("@acme/opener".to_owned())
+                    .expect("a plugin id"),
                 plugin_version: "1.0.0".to_owned(),
                 action: "open".to_owned(),
                 args: serde_json::json!({"url": "https://example.com"}),
@@ -165,7 +178,11 @@ mod tests {
         )
         .expect("an invocation");
         envelope.request_id = request_id;
-        Outbound { to: device(PEER), request_id, envelope }
+        Outbound {
+            to: device(PEER),
+            request_id,
+            envelope,
+        }
     }
 
     #[test]
@@ -176,7 +193,10 @@ mod tests {
 
         let far = std::thread::spawn(move || {
             let request = there.receive().expect("the invocation arrives");
-            assert_eq!(request.request_id, request_id, "the id a resend and a reply are keyed on");
+            assert_eq!(
+                request.request_id, request_id,
+                "the id a resend and a reply are keyed on"
+            );
             let mut reply = remote::result(
                 device(PEER),
                 device(LOCAL),
@@ -200,8 +220,15 @@ mod tests {
             .expect("and there is an answer");
         far.join().expect("the far side finished");
 
-        assert_eq!(answer.event.as_str(), synra_protocol::event::events::INTENT_RESULT);
-        assert_eq!(answer.reply_to, Some(request_id), "the answer names the question");
+        assert_eq!(
+            answer.event.as_str(),
+            synra_protocol::event::events::INTENT_RESULT
+        );
+        assert_eq!(
+            answer.reply_to,
+            Some(request_id),
+            "the answer names the question"
+        );
     }
 
     #[test]
@@ -211,7 +238,8 @@ mod tests {
         let (mut here, _there) = linked();
         let outbound = invitation(RequestId::new());
 
-        let answer = exchange_on(&mut here, &outbound, Some(Duration::from_millis(20))).expect("a timeout is not an error");
+        let answer = exchange_on(&mut here, &outbound, Some(Duration::from_millis(20)))
+            .expect("a timeout is not an error");
         assert!(answer.is_none(), "no answer was invented");
     }
 
@@ -222,25 +250,42 @@ mod tests {
         let mut envelope = remote::cancel(
             device(LOCAL),
             device(PEER),
-            &remote::Cancel { reason: "the user changed their mind".to_owned() },
+            &remote::Cancel {
+                reason: "the user changed their mind".to_owned(),
+            },
             request_id,
             TraceId::new(),
             0,
         )
         .expect("a withdrawal");
         envelope.request_id = request_id;
-        let outbound = Outbound { to: device(PEER), request_id, envelope };
+        let outbound = Outbound {
+            to: device(PEER),
+            request_id,
+            envelope,
+        };
 
-        let far = std::thread::spawn(move || there.receive().expect("the withdrawal arrives").event.as_str().to_owned());
+        let far = std::thread::spawn(move || {
+            there
+                .receive()
+                .expect("the withdrawal arrives")
+                .event
+                .as_str()
+                .to_owned()
+        });
         let started = std::time::Instant::now();
-        let answer = exchange_on(&mut here, &outbound, wait_for(&outbound)).expect("the withdrawal is sent");
+        let answer =
+            exchange_on(&mut here, &outbound, wait_for(&outbound)).expect("the withdrawal is sent");
         let event = far.join().expect("the far side finished");
 
         assert_eq!(event, synra_protocol::event::events::INTENT_CANCEL);
         assert!(answer.is_none(), "a withdrawal has no answer to wait for");
         // ★ The wait really was skipped. A withdrawal that waited would take the whole eight-second timeout, and the
         // test would hang rather than fail — so the bound is asserted explicitly, with room for a slow machine.
-        assert!(started.elapsed() < Duration::from_secs(2), "a withdrawal does not wait for an answer");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a withdrawal does not wait for an answer"
+        );
     }
 
     #[test]
@@ -253,7 +298,13 @@ mod tests {
             let mut other = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult { ok: true, result: "opened".to_owned(), error: None, error_code: None, elapsed_ms: 1 },
+                &InvokeResult {
+                    ok: true,
+                    result: "opened".to_owned(),
+                    error: None,
+                    error_code: None,
+                    elapsed_ms: 1,
+                },
                 request.trace_id,
                 1,
             )
@@ -286,17 +337,26 @@ mod tests {
         // The derivation the caller does not do by hand: the event decides. A cancellation answered by a wait would be
         // eight seconds spent learning that the protocol has no reply to it.
         let invitation = invitation(RequestId::new());
-        assert_eq!(wait_for(&invitation), Some(synra_core::dispatch::REMOTE_RESULT_WAIT));
+        assert_eq!(
+            wait_for(&invitation),
+            Some(synra_core::dispatch::REMOTE_RESULT_WAIT)
+        );
         let withdrawal = remote::cancel(
             device(LOCAL),
             device(PEER),
-            &remote::Cancel { reason: "stop".to_owned() },
+            &remote::Cancel {
+                reason: "stop".to_owned(),
+            },
             RequestId::new(),
             TraceId::new(),
             0,
         )
         .expect("a withdrawal");
-        let outbound = Outbound { to: device(PEER), request_id: RequestId::new(), envelope: withdrawal };
+        let outbound = Outbound {
+            to: device(PEER),
+            request_id: RequestId::new(),
+            envelope: withdrawal,
+        };
         assert!(wait_for(&outbound).is_none());
     }
 
@@ -316,7 +376,13 @@ mod tests {
             let mut reply = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult { ok: true, result: "opened".to_owned(), error: None, error_code: None, elapsed_ms: 1 },
+                &InvokeResult {
+                    ok: true,
+                    result: "opened".to_owned(),
+                    error: None,
+                    error_code: None,
+                    elapsed_ms: 1,
+                },
                 request.trace_id,
                 1,
             )
@@ -325,10 +391,14 @@ mod tests {
             there.send(&reply).expect("the answer goes back");
         });
 
-        let _ = exchange_on(&mut link, &outbound, Some(Duration::from_secs(1))).expect("the exchange works");
+        let _ = exchange_on(&mut link, &outbound, Some(Duration::from_secs(1)))
+            .expect("the exchange works");
         far.join().expect("the far side finished");
 
-        match metrics.snapshot().get("frames_sent_total{event=_synra.intent.invoke}") {
+        match metrics
+            .snapshot()
+            .get("frames_sent_total{event=_synra.intent.invoke}")
+        {
             Some(Value::Counter(count)) => assert_eq!(*count, 1, "the invocation was counted"),
             other => panic!("expected a frame counter for the invocation, got {other:?}"),
         }

@@ -58,8 +58,9 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<RequestId, I
             .find(|row| row.device_id == device_id)
             .map(|row| row.source.clone())
             .ok_or_else(|| {
-                IpcError::unknown(ErrorCode::NotPaired)
-                    .with_params(serde_json::json!({"deviceId": device_id, "reason": "it has not been seen"}))
+                IpcError::unknown(ErrorCode::NotPaired).with_params(
+                    serde_json::json!({"deviceId": device_id, "reason": "it has not been seen"}),
+                )
             })?
     };
     let address = address.parse::<std::net::SocketAddr>().map_err(|error| {
@@ -72,19 +73,15 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<RequestId, I
     let now_ms = unix_millis();
     let window = synra_protocol::session::SessionTimeouts::default().pairing;
 
-    let dialled = synra_core::host::dial_peer(
-        &crate::commands::transfers::local_peer(&identity),
-        synra_core::peer::Flags::production(),
-        address,
-        None,
-        now_ms,
-    )
-    .map_err(|error| {
-        IpcError::unknown(ErrorCode::TransferFailed)
-            .with_params(serde_json::json!({"deviceId": device_id, "detail": error.to_string()}))
-    })?;
+    let parts = state.host.lock().dialling_parts();
+    let dialled =
+        synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms).map_err(|error| {
+            IpcError::unknown(ErrorCode::TransferFailed).with_params(
+                serde_json::json!({"deviceId": device_id, "detail": error.to_string()}),
+            )
+        })?;
     let mut link = dialled
-        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .into_link()
         .with_metrics(std::sync::Arc::clone(&state.metrics));
 
     let request_id = RequestId::new();
@@ -97,7 +94,8 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<RequestId, I
     )
     .map_err(internal)?;
     link.send(&envelope).map_err(|error| {
-        IpcError::unknown(ErrorCode::TransferFailed).with_params(serde_json::json!({"detail": error.to_string()}))
+        IpcError::unknown(ErrorCode::TransferFailed)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
     })?;
 
     // ★ A deadline on the read, so a peer that never answers produces "they did not answer" instead of a command that hangs for
@@ -112,8 +110,9 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<RequestId, I
         ));
     }
     let token = answer.issued_token().ok_or_else(|| {
-        IpcError::unknown(ErrorCode::TransferFailed)
-            .with_params(serde_json::json!({"deviceId": device_id, "reason": "it accepted but issued no token"}))
+        IpcError::unknown(ErrorCode::TransferFailed).with_params(
+            serde_json::json!({"deviceId": device_id, "reason": "it accepted but issued no token"}),
+        )
     })?;
 
     let display_name = {
@@ -156,16 +155,18 @@ fn wait_for_answer(link: &mut synra_core::link::PeerLink) -> Result<PairResponse
                 if envelope.event.as_str() == synra_protocol::event::events::PAIR_RESPONSE =>
             {
                 let Some(json) = envelope.payload_str() else {
-                    return Err(IpcError::unknown(ErrorCode::TransferFailed)
-                        .with_params(serde_json::json!({"reason": "the answer carried no payload"})));
+                    return Err(IpcError::unknown(ErrorCode::TransferFailed).with_params(
+                        serde_json::json!({"reason": "the answer carried no payload"}),
+                    ));
                 };
                 return serde_json::from_str::<PairResponse>(json).map_err(internal);
             }
             // The answer is the only thing this side is waiting for; other traffic on a fresh link is not an error.
             Ok(_) => continue,
             Err(error) => {
-                return Err(IpcError::unknown(ErrorCode::TransferFailed)
-                    .with_params(serde_json::json!({"reason": format!("the peer did not answer: {error}")})));
+                return Err(IpcError::unknown(ErrorCode::TransferFailed).with_params(
+                    serde_json::json!({"reason": format!("the peer did not answer: {error}")}),
+                ));
             }
         }
     }
@@ -202,8 +203,9 @@ pub fn pairing_respond(state: &AppState, request_id: &str, accept: bool) -> Resu
     if written.is_none() {
         // ★ `NotPaired`, not `Unsupported`: the caller's screen was right a moment ago and the prompt expired or was answered
         // elsewhere. "Nothing is waiting" is a state of the world the user can retry, not a capability this build lacks.
-        return Err(IpcError::unknown(ErrorCode::NotPaired)
-            .with_params(serde_json::json!({"requestId": request_id, "reason": "nothing is waiting"})));
+        return Err(IpcError::unknown(ErrorCode::NotPaired).with_params(
+            serde_json::json!({"requestId": request_id, "reason": "nothing is waiting"}),
+        ));
     }
     state.publish(synra_ipc::event::KernelEvent::PairingResolved { request_id: id });
     Ok(())
@@ -233,7 +235,8 @@ pub fn watch(app: tauri::AppHandle, cancel: &synra_core::supervisor::Cancellatio
     std::thread::Builder::new()
         .name("synra-pairing-watch".to_owned())
         .spawn(move || {
-            let mut announced: std::collections::HashSet<RequestId> = std::collections::HashSet::new();
+            let mut announced: std::collections::HashSet<RequestId> =
+                std::collections::HashSet::new();
             while !cancel.is_cancelled() {
                 let state = app.state::<std::sync::Arc<AppState>>();
                 let prompts: Vec<synra_ipc::dto::PairingPrompt> = state
@@ -251,13 +254,19 @@ pub fn watch(app: tauri::AppHandle, cancel: &synra_core::supervisor::Cancellatio
                     })
                     .collect();
                 // Forget ids that are no longer waiting, so a second request from the same device is announced again.
-                announced.retain(|id| prompts.iter().any(|prompt| prompt.request_id == id.to_string()));
+                announced.retain(|id| {
+                    prompts
+                        .iter()
+                        .any(|prompt| prompt.request_id == id.to_string())
+                });
                 for prompt in prompts {
                     let Ok(id) = prompt.request_id.parse::<RequestId>() else {
                         continue;
                     };
                     if announced.insert(id) {
-                        state.publish(synra_ipc::event::KernelEvent::PairingRequested(Box::new(prompt)));
+                        state.publish(synra_ipc::event::KernelEvent::PairingRequested(Box::new(
+                            prompt,
+                        )));
                     }
                 }
                 // The guard is dropped at the end of this block; the sleep is outside the borrow.

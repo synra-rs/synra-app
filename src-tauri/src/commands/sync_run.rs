@@ -49,35 +49,52 @@ use synra_protocol::ids::{DeviceId, PluginId, SessionId, TraceId};
 /// [`ErrorCode::PluginNotInstalled`] when there is no active version or its artifact is missing on disk, and
 /// [`ErrorCode::Unsupported`] for a plugin with no headless half. A per-device failure is **not** an error: it is one
 /// entry in the report, because one unreachable device must not stop the others.
-pub fn plugins_sync_run(state: &crate::state::AppState, plan: &SyncPlanDto) -> Result<SyncReport, IpcError> {
+pub fn plugins_sync_run(
+    state: &crate::state::AppState,
+    plan: &SyncPlanDto,
+) -> Result<SyncReport, IpcError> {
     let read = |error: synra_store::DbError| {
-        IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
     };
 
-    let Some(active) = state.db().active_plugin(plan.plugin_id.as_str()).map_err(read)? else {
-        return Err(IpcError::unknown(ErrorCode::PluginNotInstalled).with_params(serde_json::json!({
-            "pluginId": plan.plugin_id.as_str(),
-            "reason": "it has no active version here",
-        })));
+    let Some(active) = state
+        .db()
+        .active_plugin(plan.plugin_id.as_str())
+        .map_err(read)?
+    else {
+        return Err(
+            IpcError::unknown(ErrorCode::PluginNotInstalled).with_params(serde_json::json!({
+                "pluginId": plan.plugin_id.as_str(),
+                "reason": "it has no active version here",
+            })),
+        );
     };
 
     // ★ An empty artifact name is a UI-only plugin. That is not an error the store should have hidden: there is no
     // headless artifact to send, and a command that opened the plugin's directory with an empty name would try to send
     // the directory itself.
     if active.artifact.is_empty() {
-        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "pluginId": plan.plugin_id.as_str(),
-            "reason": "it has no headless artifact; only the UI half exists on this device",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "pluginId": plan.plugin_id.as_str(),
+                "reason": "it has no headless artifact; only the UI half exists on this device",
+            })),
+        );
     }
 
-    let path = state.paths.plugin_dir(plan.plugin_id.as_str()).join(&active.artifact);
+    let path = state
+        .paths
+        .plugin_dir(plan.plugin_id.as_str())
+        .join(&active.artifact);
     if !path.is_file() {
-        return Err(IpcError::unknown(ErrorCode::PluginNotInstalled).with_params(serde_json::json!({
-            "pluginId": plan.plugin_id.as_str(),
-            "path": path.display().to_string(),
-            "reason": "the artifact its active version names is not on disk",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::PluginNotInstalled).with_params(serde_json::json!({
+                "pluginId": plan.plugin_id.as_str(),
+                "path": path.display().to_string(),
+                "reason": "the artifact its active version names is not on disk",
+            })),
+        );
     }
 
     // ★ The package, not the bare artifact: the receiver unpacks a `.synra` and runs the installer over it, so what it
@@ -85,23 +102,31 @@ pub fn plugins_sync_run(state: &crate::state::AppState, plan: &SyncPlanDto) -> R
     // once per device: the bytes are the same, and packaging is a read of the whole plugin directory.
     let archive_dir = state.paths.cache_dir().join("plugin-sync");
     std::fs::create_dir_all(&archive_dir).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": format!("{}: {error}", archive_dir.display())}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"detail": format!("{}: {error}", archive_dir.display())}),
+        )
     })?;
     let archive = archive_dir.join(format!(
         "{}-{}.synra",
         plan.plugin_id.as_str().replace(['/', '\\'], "_"),
         active.version
     ));
-    synra_core::install::package_directory(&state.paths.plugin_dir(plan.plugin_id.as_str()), &archive)
-        .map_err(|refusal| {
-            IpcError::unknown(refusal.code()).with_params(serde_json::json!({
-                "stage": refusal.stage,
-                "reason": refusal.reason,
-            }))
-        })?;
+    synra_core::install::package_directory(
+        &state.paths.plugin_dir(plan.plugin_id.as_str()),
+        &archive,
+    )
+    .map_err(|refusal| {
+        IpcError::unknown(refusal.code()).with_params(serde_json::json!({
+            "stage": refusal.stage,
+            "reason": refusal.reason,
+        }))
+    })?;
 
-    let mut report = SyncReport { updated: 0, unchanged: 0, failures: Vec::new() };
+    let mut report = SyncReport {
+        updated: 0,
+        unchanged: 0,
+        failures: Vec::new(),
+    };
     for target in &plan.targets {
         if !target.needs_artifact {
             report.unchanged += 1;
@@ -109,7 +134,10 @@ pub fn plugins_sync_run(state: &crate::state::AppState, plan: &SyncPlanDto) -> R
         }
         match send_to(state, target.device_id, &plan.plugin_id, &active, &archive) {
             Ok(()) => report.updated += 1,
-            Err(error) => report.failures.push(SyncFailure { device_id: target.device_id, error }),
+            Err(error) => report.failures.push(SyncFailure {
+                device_id: target.device_id,
+                error,
+            }),
         }
     }
     // The package was this call's to make and to remove; a leftover would be a copy of a plugin in the cache directory
@@ -127,23 +155,17 @@ fn send_to(
     path: &std::path::Path,
 ) -> Result<(), IpcError> {
     let address = crate::commands::transfers::address_of(state, to)?;
-    let identity = state.identity.lock().clone();
     let now_ms = crate::commands::transfers::unix_millis();
     let failed = |reason: String| {
         IpcError::unknown(ErrorCode::TransferFailed)
             .with_params(serde_json::json!({"deviceId": to.to_string(), "reason": reason}))
     };
 
-    let dialled = synra_core::host::dial_peer(
-        &crate::commands::transfers::local_peer(&identity),
-        synra_core::peer::Flags::production(),
-        address,
-        None,
-        now_ms,
-    )
-    .map_err(|error| failed(format!("the dial failed: {error}")))?;
+    let parts = state.host.lock().dialling_parts();
+    let dialled = synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms)
+        .map_err(|error| failed(format!("the dial failed: {error}")))?;
     let mut link = dialled
-        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .into_link()
         .with_metrics(std::sync::Arc::clone(&state.metrics));
 
     // ★ The session is named here, by the side that starts the round: two devices pushing at the same moment would each
@@ -153,7 +175,8 @@ fn send_to(
         version: active.version.clone(),
         session: SessionId::new(),
     };
-    let deadline = Instant::now() + synra_protocol::session::SessionTimeouts::default().transfer_total;
+    let deadline =
+        Instant::now() + synra_protocol::session::SessionTimeouts::default().transfer_total;
 
     let events = synra_core::send_bundle(
         &mut link,
@@ -183,7 +206,9 @@ fn send_to(
             Ok(())
         }
         Verdict::Refused(why) => Err(failed(why)),
-        Verdict::Unconfirmed => Err(failed("the receiver did not confirm the transfer".to_owned())),
+        Verdict::Unconfirmed => Err(failed(
+            "the receiver did not confirm the transfer".to_owned(),
+        )),
     }
 }
 
@@ -210,7 +235,10 @@ pub enum Verdict {
 /// older build may not send one and the transfer *was* verified.
 #[must_use]
 pub fn verdict(events: &[SessionEvent], pushed: &str) -> Verdict {
-    if !events.iter().any(|event| matches!(event, SessionEvent::Verified { .. })) {
+    if !events
+        .iter()
+        .any(|event| matches!(event, SessionEvent::Verified { .. }))
+    {
         return Verdict::Unconfirmed;
     }
 
@@ -221,7 +249,10 @@ pub fn verdict(events: &[SessionEvent], pushed: &str) -> Verdict {
 
     match answered {
         Some(result) if !result.ok => Verdict::Refused(
-            result.error.clone().unwrap_or_else(|| "it did not install the bundle".to_owned()),
+            result
+                .error
+                .clone()
+                .unwrap_or_else(|| "it did not install the bundle".to_owned()),
         ),
         Some(result) => match result.installed_version.clone() {
             Some(version) => Verdict::Installed(version),

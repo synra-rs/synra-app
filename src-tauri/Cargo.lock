@@ -4132,6 +4132,7 @@ dependencies = [
  "synra-protocol",
  "synra-registry",
  "synra-store",
+ "synra-testkit",
  "sysinfo",
  "tar",
  "tauri",
@@ -4335,6 +4336,27 @@ dependencies = [
  "thiserror 2.0.21",
  "zip",
 ]
+
+[[package]]
+name = "synra-testkit"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "synra-capability",
+ "synra-net",
+ "synra-protocol",
+ "synra-store",
+ "synra-testkit-alloc",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "synra-testkit-alloc"
+version = "0.1.0"
 
 [[package]]
 name = "synstructure"
@@ -4780,6 +4802,19 @@ dependencies = [
  "dunce",
  "embed-resource",
  "toml 1.1.8+spec-1.1.0",
+]
+
+[[package]]
+name = "tempfile"
+version = "3.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
+dependencies = [
+ "fastrand",
+ "getrandom 0.4.3",
+ "once_cell",
+ "rustix",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

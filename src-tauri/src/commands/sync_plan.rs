@@ -28,8 +28,8 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use synra_core::plugin_sync::{ConflictPolicy, RemoteState, SyncAction, ask_plugin_list, decide};
-use synra_ipc::dto::{SyncPlanDto, SyncTarget};
 use synra_ipc::IpcError;
+use synra_ipc::dto::{SyncPlanDto, SyncTarget};
 use synra_protocol::ids::{DeviceId, PluginId, TraceId};
 use synra_protocol::limits::HELLO_TIMEOUT;
 use synra_protocol::session::PluginList;
@@ -67,7 +67,10 @@ pub fn plan_for(
         .map(|peer| {
             // An unanswered device is treated as one with nothing: that makes `decide` push, and `online` is what tells the
             // interface it has to wait for a link first.
-            let theirs = peer.remote.clone().unwrap_or_else(|| RemoteState::absent(plugin_id.clone()));
+            let theirs = peer
+                .remote
+                .clone()
+                .unwrap_or_else(|| RemoteState::absent(plugin_id.clone()));
             let needs_artifact = matches!(
                 decide(our_version, our_digest, &theirs, policy),
                 SyncAction::Push { .. }
@@ -93,7 +96,10 @@ pub fn plan_for(
 /// for every plugin and a plan about one of them is no reason to throw the rest away. A summary with neither a version nor a digest
 /// claims nothing and is not recorded — an empty row would read as "it holds the empty artifact".
 #[must_use]
-pub fn interpret(plugin_id: &PluginId, answer: &PluginList) -> (RemoteState, Vec<(String, String, String)>) {
+pub fn interpret(
+    plugin_id: &PluginId,
+    answer: &PluginList,
+) -> (RemoteState, Vec<(String, String, String)>) {
     let held = answer
         .plugins
         .iter()
@@ -113,8 +119,14 @@ pub fn interpret(plugin_id: &PluginId, answer: &PluginList) -> (RemoteState, Vec
         // ★ A summary that claims neither a version nor a digest is read as "it does not have it", not as a state with no version:
         // `RemoteState::has_it` already refuses to call that holding it, and a state whose `active` flag says otherwise would be the
         // only place in this exchange where "has it" had two answers.
-        .find(|summary| summary.plugin_id == *plugin_id && (summary.version.is_some() || summary.digest.is_some()))
-        .map_or_else(|| RemoteState::absent(plugin_id.clone()), RemoteState::from_summary);
+        .find(|summary| {
+            summary.plugin_id == *plugin_id
+                && (summary.version.is_some() || summary.digest.is_some())
+        })
+        .map_or_else(
+            || RemoteState::absent(plugin_id.clone()),
+            RemoteState::from_summary,
+        );
 
     (remote, held)
 }
@@ -127,19 +139,16 @@ pub fn interpret(plugin_id: &PluginId, answer: &PluginList) -> (RemoteState, Vec
 /// are three different failures: the first needs a connection, the second is stored data that needs fixing, and the third needs the
 /// device to be switched on.
 fn ask(state: &crate::state::AppState, at: &str, to: DeviceId) -> Result<PluginList, String> {
-    let address = at.parse::<SocketAddr>().map_err(|error| format!("{at}: {error}"))?;
+    let address = at
+        .parse::<SocketAddr>()
+        .map_err(|error| format!("{at}: {error}"))?;
     let identity = state.identity.lock().clone();
     let now_ms = unix_millis();
-    let dialled = synra_core::host::dial_peer(
-        &crate::commands::transfers::local_peer(&identity),
-        synra_core::peer::Flags::production(),
-        address,
-        None,
-        now_ms,
-    )
-    .map_err(|error| error.to_string())?;
+    let parts = state.host.lock().dialling_parts();
+    let dialled = synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms)
+        .map_err(|error| error.to_string())?;
     let mut link = dialled
-        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .into_link()
         // Same recorder as every other dial: the byte counters are per link, so a link that skips it is one the panel
         // cannot describe.
         .with_metrics(std::sync::Arc::clone(&state.metrics));
@@ -168,7 +177,10 @@ fn ask(state: &crate::state::AppState, at: &str, to: DeviceId) -> Result<PluginL
 ///
 /// [`ErrorCode::PluginNotInstalled`] when the plugin has no active version here: there is nothing to plan a send of, and a plan
 /// with no source would be a list of devices to bring up to date with something that does not exist.
-pub fn plugins_sync_plan(state: &crate::state::AppState, plugin_id: &str) -> Result<SyncPlanDto, IpcError> {
+pub fn plugins_sync_plan(
+    state: &crate::state::AppState,
+    plugin_id: &str,
+) -> Result<SyncPlanDto, IpcError> {
     use synra_protocol::ErrorCode;
 
     let id = PluginId::parse(plugin_id).map_err(|error| {
@@ -177,10 +189,15 @@ pub fn plugins_sync_plan(state: &crate::state::AppState, plugin_id: &str) -> Res
     })?;
 
     let read = |error: synra_store::DbError| {
-        IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal)
+            .with_params(serde_json::json!({"detail": error.to_string()}))
     };
 
-    let Some((version, digest)) = state.db().active_plugin_version(id.as_str()).map_err(read)? else {
+    let Some((version, digest)) = state
+        .db()
+        .active_plugin_version(id.as_str())
+        .map_err(read)?
+    else {
         return Err(IpcError::unknown(ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id, "reason": "it has no active version here"})));
     };
@@ -194,15 +211,24 @@ pub fn plugins_sync_plan(state: &crate::state::AppState, plugin_id: &str) -> Res
             let answer = match (&device.address, to) {
                 (Some(address), Some(to)) => ask(state, address, to)
                     .inspect_err(|why| {
-                        eprintln!("synra: {} could not be asked what it holds: {why}", device.display_name);
+                        eprintln!(
+                            "synra: {} could not be asked what it holds: {why}",
+                            device.display_name
+                        );
                     })
                     .ok(),
                 (None, _) => {
-                    eprintln!("synra: {} has no address this device has dialled", device.display_name);
+                    eprintln!(
+                        "synra: {} has no address this device has dialled",
+                        device.display_name
+                    );
                     None
                 }
                 (Some(_), None) => {
-                    eprintln!("synra: {} is stored under an identifier this build cannot read", device.display_name);
+                    eprintln!(
+                        "synra: {} is stored under an identifier this build cannot read",
+                        device.display_name
+                    );
                     None
                 }
             };
@@ -212,7 +238,11 @@ pub fn plugins_sync_plan(state: &crate::state::AppState, plugin_id: &str) -> Res
                     // ★ The answer is recorded before the plan is built, so a `sync_records` read after this command — including one
                     // that fails halfway through this loop — describes peers that really answered rather than only peers that moved a
                     // bundle once. A failure to record is reported and does not change the plan: the answer is still in hand.
-                    if let Err(error) = state.db().replace_sync_for_peer(&device.device_id, &held, asked_at_ms) {
+                    if let Err(error) =
+                        state
+                            .db()
+                            .replace_sync_for_peer(&device.device_id, &held, asked_at_ms)
+                    {
                         eprintln!(
                             "synra: {}'s answer could not be recorded: {error}",
                             device.display_name
@@ -235,7 +265,13 @@ pub fn plugins_sync_plan(state: &crate::state::AppState, plugin_id: &str) -> Res
         })
         .collect();
 
-    Ok(plan_for(id, &version, &digest, &peers, ConflictPolicy::NeverDowngrade))
+    Ok(plan_for(
+        id,
+        &version,
+        &digest,
+        &peers,
+        ConflictPolicy::NeverDowngrade,
+    ))
 }
 
 /// Milliseconds since the epoch, as the wire's `u64`.

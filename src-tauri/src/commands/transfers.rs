@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 
 use parking_lot::Mutex;
-use synra_ipc::dto::TransferSnapshot;
 use synra_ipc::IpcError;
+use synra_ipc::dto::TransferSnapshot;
 use synra_protocol::ids::TransferId;
 
 /// The transfers in flight, by identifier.
@@ -60,13 +60,21 @@ impl Transfers {
     /// on the second report — which is the one moment a cancel is likely to arrive.
     pub fn record(&self, snapshot: TransferSnapshot) {
         let mut registry = self.by_id.lock();
-        let temp = registry.get(&snapshot.transfer_id).and_then(|entry| entry.temp.clone());
+        let temp = registry
+            .get(&snapshot.transfer_id)
+            .and_then(|entry| entry.temp.clone());
         registry.insert(snapshot.transfer_id, Entry { snapshot, temp });
     }
 
     /// Records a snapshot and the file this shell created for it.
     pub fn record_with_temp(&self, snapshot: TransferSnapshot, temp: std::path::PathBuf) {
-        self.by_id.lock().insert(snapshot.transfer_id, Entry { snapshot, temp: Some(temp) });
+        self.by_id.lock().insert(
+            snapshot.transfer_id,
+            Entry {
+                snapshot,
+                temp: Some(temp),
+            },
+        );
     }
 
     /// Drops a transfer, answering the file the caller should delete.
@@ -74,7 +82,10 @@ impl Transfers {
     /// Returning the path rather than deleting it here keeps this type free of the filesystem: the registry's job is to know
     /// what is in flight, and a caller that cancels is the one that knows whether the transfer was a message of its own.
     pub fn forget(&self, transfer_id: &TransferId) -> Option<std::path::PathBuf> {
-        self.by_id.lock().remove(transfer_id).and_then(|entry| entry.temp)
+        self.by_id
+            .lock()
+            .remove(transfer_id)
+            .and_then(|entry| entry.temp)
     }
 
     /// Remembers the token that stops the worker for this transfer.
@@ -112,7 +123,12 @@ impl Transfers {
     /// transfers swap places between two reads, which the interface would draw as two rows moving for no reason.
     #[must_use]
     pub fn list(&self) -> Vec<TransferSnapshot> {
-        let mut transfers: Vec<TransferSnapshot> = self.by_id.lock().values().map(|entry| entry.snapshot.clone()).collect();
+        let mut transfers: Vec<TransferSnapshot> = self
+            .by_id
+            .lock()
+            .values()
+            .map(|entry| entry.snapshot.clone())
+            .collect();
         transfers.sort_by_key(|transfer| transfer.transfer_id);
         transfers
     }
@@ -146,11 +162,18 @@ impl Transfers {
 pub fn announce_transfer(state: &crate::state::AppState, snapshot: TransferSnapshot) {
     let transfer_id = snapshot.transfer_id;
     state.transfers.record(snapshot.clone());
-    state.publish(synra_ipc::event::KernelEvent::TransferUpdated(Box::new(snapshot)));
+    state.publish(synra_ipc::event::KernelEvent::TransferUpdated(Box::new(
+        snapshot,
+    )));
     // The identifier is kept above so the event and the record cannot name different transfers, which is the failure a
     // second read of `snapshot.transfer_id` after the move would allow.
     debug_assert_eq!(
-        state.transfers.list().iter().filter(|t| t.transfer_id == transfer_id).count(),
+        state
+            .transfers
+            .list()
+            .iter()
+            .filter(|t| t.transfer_id == transfer_id)
+            .count(),
         1,
         "one record per transfer"
     );
@@ -186,7 +209,8 @@ pub fn snapshot_from(
         // TransferMeta is #[non_exhaustive]: a kind this build does not know is still a row, just a nameless one.
         _ => ("unknown".to_owned(), String::new()),
     };
-    let blocks_total = u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size))).unwrap_or(u32::MAX);
+    let blocks_total = u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size)))
+        .unwrap_or(u32::MAX);
 
     TransferSnapshot {
         transfer_id: request.transfer_id,
@@ -226,10 +250,7 @@ pub fn transfer_list(state: &crate::state::AppState) -> Vec<TransferSnapshot> {
 ///
 /// Never in practice: an inbox that cannot be read is an empty history, which is what a fresh installation has.
 pub fn transfer_received(state: &crate::state::AppState) -> Vec<synra_ipc::dto::ReceivedFile> {
-    let inbox = state
-        .paths
-        .data_dir()
-        .join(synra_core::inbound::INBOX_DIR);
+    let inbox = state.paths.data_dir().join(synra_core::inbound::INBOX_DIR);
     let Ok(entries) = std::fs::read_dir(&inbox) else {
         return Vec::new();
     };
@@ -242,18 +263,24 @@ pub fn transfer_received(state: &crate::state::AppState) -> Vec<synra_ipc::dto::
                 return None;
             }
             let path = entry.path();
-            if path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("synra")) {
+            if path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("synra"))
+            {
                 return None;
             }
             let received_at_ms = metadata
                 .modified()
                 .ok()
                 .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX));
+                .map_or(0, |since| {
+                    i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+                });
             Some(synra_ipc::dto::ReceivedFile {
-                file_name: path
-                    .file_name()
-                    .map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned()),
+                file_name: path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |name| name.to_string_lossy().into_owned(),
+                ),
                 path: path.display().to_string(),
                 bytes: metadata.len(),
                 received_at_ms,
@@ -274,11 +301,11 @@ pub fn transfer_received(state: &crate::state::AppState) -> Vec<synra_ipc::dto::
 /// The path comes from the bridge, and `open_path` launches whatever the operating system associates with it. A webview
 /// that could name `~/.ssh` would turn "open the file I received" into "open anything on this disk" — the check has to
 /// be on the side that knows where received files live.
-fn inbox_file(state: &crate::state::AppState, path: &str) -> Result<std::path::PathBuf, synra_ipc::IpcError> {
-    let inbox = state
-        .paths
-        .data_dir()
-        .join(synra_core::inbound::INBOX_DIR);
+fn inbox_file(
+    state: &crate::state::AppState,
+    path: &str,
+) -> Result<std::path::PathBuf, synra_ipc::IpcError> {
+    let inbox = state.paths.data_dir().join(synra_core::inbound::INBOX_DIR);
     let root = inbox.canonicalize().map_err(|error| {
         synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"path": path, "reason": format!("the inbox is not readable: {error}")}))
@@ -288,8 +315,11 @@ fn inbox_file(state: &crate::state::AppState, path: &str) -> Result<std::path::P
             .with_params(serde_json::json!({"path": path, "reason": error.to_string()}))
     })?;
     if !file.starts_with(&root) || !file.is_file() {
-        return Err(synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"path": path, "reason": "it is not a file in the inbox"})));
+        return Err(
+            synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"path": path, "reason": "it is not a file in the inbox"}),
+            ),
+        );
     }
     Ok(file)
 }
@@ -301,7 +331,10 @@ fn inbox_file(state: &crate::state::AppState, path: &str) -> Result<std::path::P
 /// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and `Unsupported` when the platform refuses
 /// to launch it. The refusal carries the reason; opening a file is the one action where "nothing happened" is hardest to
 /// diagnose from the screen alone.
-pub fn transfer_open(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+pub fn transfer_open(
+    state: &crate::state::AppState,
+    path: &str,
+) -> Result<(), synra_ipc::IpcError> {
     use synra_platform::Platform as _;
 
     let file = inbox_file(state, path)?;
@@ -318,7 +351,10 @@ pub fn transfer_open(state: &crate::state::AppState, path: &str) -> Result<(), s
 /// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and `Unsupported` when the platform refuses
 /// to reveal it. The containment check is the same one [`transfer_open`] uses, because revealing a path tells the user
 /// what exists on their disk just as much as opening it does.
-pub fn transfer_reveal(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+pub fn transfer_reveal(
+    state: &crate::state::AppState,
+    path: &str,
+) -> Result<(), synra_ipc::IpcError> {
     use synra_platform::Platform as _;
 
     let file = inbox_file(state, path)?;
@@ -335,7 +371,10 @@ pub fn transfer_reveal(state: &crate::state::AppState, path: &str) -> Result<(),
 /// [`ErrorCode::InvalidArgument`] for a path that is not a file in the inbox, and [`ErrorCode::Internal`] when the file
 /// exists but cannot be removed. The containment check is the same one Open and Reveal use: a command that deletes by path
 /// must not be able to delete anything the user did not receive.
-pub fn transfer_discard(state: &crate::state::AppState, path: &str) -> Result<(), synra_ipc::IpcError> {
+pub fn transfer_discard(
+    state: &crate::state::AppState,
+    path: &str,
+) -> Result<(), synra_ipc::IpcError> {
     let file = inbox_file(state, path)?;
     std::fs::remove_file(&file).map_err(|error| {
         synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal)
@@ -358,13 +397,22 @@ pub fn transfer_discard(state: &crate::state::AppState, path: &str) -> Result<()
 /// partial file and reports an `aborted` progress event, which is what withdraws the row.
 pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Result<(), IpcError> {
     let id = transfer_id.parse::<TransferId>().map_err(|error| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}))
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}),
+        )
     })?;
 
-    if state.transfers.list().iter().all(|transfer| transfer.transfer_id != id) {
-        return Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed)
-            .with_params(serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"})));
+    if state
+        .transfers
+        .list()
+        .iter()
+        .all(|transfer| transfer.transfer_id != id)
+    {
+        return Err(
+            IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(
+                serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"}),
+            ),
+        );
     }
     // ★ Two directions, two mechanisms. An outgoing transfer has a worker holding a cancellation token; an incoming one
     // has a connection thread that owns the link, so the command can only leave the identifier where that loop will look.
@@ -378,8 +426,7 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
         // cancelled transfer would sit in the progress list until the page was reopened — the same silent staleness every
         // other command here was fixed for.
         state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id: id });
-    }
-    else {
+    } else {
         // The row stays: the listener has not seen the request yet, and removing it here would make the interface forget a
         // transfer that is still running. It goes when the listener's abort reaches the progress callback.
         state.inbound_cancels.lock().insert(id.to_string());
@@ -453,11 +500,17 @@ pub fn transfer_send_file(
     let planned = sender.request();
 
     let now_ms = synra_core::host::millis_reading(unix_millis());
-    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    let mut row = snapshot_from(
+        &planned,
+        (request.to, &request.to.to_string()),
+        "queued",
+        now_ms,
+    );
     // The row names the file a person chose, not the path the interface happened to pass.
-    row.file_name = std::path::Path::new(&request.path)
-        .file_name()
-        .map_or_else(|| request.path.clone(), |name| name.to_string_lossy().into_owned());
+    row.file_name = std::path::Path::new(&request.path).file_name().map_or_else(
+        || request.path.clone(),
+        |name| name.to_string_lossy().into_owned(),
+    );
 
     send_over(state, request.to, address, sender, row)
 }
@@ -499,28 +552,29 @@ pub fn send_over_with(
     let kind = row.kind.clone();
     let total_bytes = row.total_bytes;
     let transfer_id = row.transfer_id;
-    let identity = state.identity.lock().clone();
     let now_ms = unix_millis();
 
-    let dialled = match synra_core::host::dial_peer(
-        &local_peer(&identity),
-        synra_core::peer::Flags::production(),
-        address,
-        None,
-        now_ms,
-    ) {
+    let parts = state.host.lock().dialling_parts();
+    let dialled = match synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms) {
         Ok(dialled) => dialled,
         Err(error) => {
             // ★ A dial that never connected is still an attempt, and the one a user most wants counted: it is the failure
             // that happens before any block moves. `send_ready_since` records the other exits.
-            record_send(state, &kind, total_bytes, started.elapsed(), SendOutcome::Failed);
+            record_send(
+                state,
+                &kind,
+                total_bytes,
+                started.elapsed(),
+                SendOutcome::Failed,
+            );
             finish_transfer(state, transfer_id);
-            return Err(IpcError::unknown(ErrorCode::TransferFailed)
-                .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()})));
+            return Err(IpcError::unknown(ErrorCode::TransferFailed).with_params(
+                serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}),
+            ));
         }
     };
     let mut link = dialled
-        .into_link(identity.device_id, synra_core::peer::Flags::production())
+        .into_link()
         // ★ The byte counters live on the link; without this the shell would own a recorder nothing on its dials wrote to.
         .with_metrics(std::sync::Arc::clone(&state.metrics));
     send_ready_since(state, to, &mut link, sender, row, cancel, started)
@@ -558,7 +612,15 @@ pub fn send_ready_with(
     row: TransferSnapshot,
     cancel: Option<&synra_core::supervisor::Cancellation>,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
-    send_ready_since(state, to, link, sender, row, cancel, std::time::Instant::now())
+    send_ready_since(
+        state,
+        to,
+        link,
+        sender,
+        row,
+        cancel,
+        std::time::Instant::now(),
+    )
 }
 
 /// The body both entries share.
@@ -600,7 +662,9 @@ fn send_ready_since(
     );
     let ended = match &outcome {
         Ok(()) => SendOutcome::Delivered,
-        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled)) => SendOutcome::Cancelled,
+        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled)) => {
+            SendOutcome::Cancelled
+        }
         Err(_) => SendOutcome::Failed,
     };
     record_send(state, &row.kind, row.total_bytes, started.elapsed(), ended);
@@ -619,8 +683,9 @@ fn send_ready_since(
     finish_transfer(state, transfer_id);
 
     outcome.map(|()| transfer_id).map_err(|error| {
-        IpcError::unknown(ErrorCode::TransferFailed)
-            .with_params(serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}))
+        IpcError::unknown(ErrorCode::TransferFailed).with_params(
+            serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}),
+        )
     })
 }
 
@@ -719,13 +784,15 @@ fn record_attempt(
     outcome: &str,
     record_bytes: bool,
 ) {
-    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
-        "transfers_total",
-        [
-            ("kind".to_owned(), kind.to_owned()),
-            ("outcome".to_owned(), outcome.to_owned()),
-        ],
-    ));
+    state
+        .metrics
+        .counter_inc(&synra_observe::metrics::SeriesKey::new(
+            "transfers_total",
+            [
+                ("kind".to_owned(), kind.to_owned()),
+                ("outcome".to_owned(), outcome.to_owned()),
+            ],
+        ));
     if let Some(elapsed) = elapsed {
         state.metrics.histogram_observe(
             &synra_observe::metrics::SeriesKey::new(
@@ -737,7 +804,10 @@ fn record_attempt(
     }
     if record_bytes {
         state.metrics.histogram_observe(
-            &synra_observe::metrics::SeriesKey::new("transfer_bytes", [("kind".to_owned(), kind.to_owned())]),
+            &synra_observe::metrics::SeriesKey::new(
+                "transfer_bytes",
+                [("kind".to_owned(), kind.to_owned())],
+            ),
             byte_length as f64,
         );
         // ★ Throughput only for a transfer that moved its bytes, and only when there is a duration to divide by. The
@@ -811,7 +881,9 @@ pub fn start_send(
     let spawned = std::thread::Builder::new()
         .name(format!("synra-send-{transfer_id}"))
         .spawn(move || {
-            if let Err(error) = send_over_with(&thread_state, to, address, sender, row, Some(&cancel)) {
+            if let Err(error) =
+                send_over_with(&thread_state, to, address, sender, row, Some(&cancel))
+            {
                 eprintln!("synra: transfer {transfer_id} did not finish: {error:?}");
             }
             if let Some(path) = temp {
@@ -845,7 +917,11 @@ pub fn prepare_file_send(
     to: synra_protocol::ids::DeviceId,
     path: &str,
 ) -> Result<
-    (std::net::SocketAddr, synra_core::transfer::TransferSender, TransferSnapshot),
+    (
+        std::net::SocketAddr,
+        synra_core::transfer::TransferSender,
+        TransferSnapshot,
+    ),
     IpcError,
 > {
     use synra_protocol::ErrorCode;
@@ -863,9 +939,10 @@ pub fn prepare_file_send(
 
     let now_ms = synra_core::host::millis_reading(unix_millis());
     let mut row = snapshot_from(&planned, (to, &to.to_string()), "queued", now_ms);
-    row.file_name = std::path::Path::new(path)
-        .file_name()
-        .map_or_else(|| path.to_owned(), |name| name.to_string_lossy().into_owned());
+    row.file_name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
     Ok((address, sender, row))
 }
 
@@ -879,7 +956,9 @@ pub fn transfer_send_file_start(
     request: &synra_ipc::dto::SendFileRequest,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     let (address, sender, row) = prepare_file_send(state, request.to, &request.path)?;
-    Ok(start_send(state, request.to, address, sender, row, None, None))
+    Ok(start_send(
+        state, request.to, address, sender, row, None, None,
+    ))
 }
 
 /// Where a text send's temporary file goes.
@@ -914,30 +993,49 @@ pub fn transfer_send_text_start(
     let address = address_of(state, request.to)?;
     let outbox = state.paths.cache_dir().join("outbox");
     std::fs::create_dir_all(&outbox).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}),
+        )
     })?;
     let path = outbox_path(&outbox, &request.file_name, unix_millis());
     std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}),
+        )
     })?;
 
-    let sender = synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
-        .inspect_err(|_| {
-            let _ = std::fs::remove_file(&path);
-        })
-        .map_err(|error| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
-        })?;
+    let sender = synra_core::transfer::TransferSender::open(
+        &path,
+        synra_core::transfer::DEFAULT_CHUNK_SIZE,
+    )
+    .inspect_err(|_| {
+        let _ = std::fs::remove_file(&path);
+    })
+    .map_err(|error| {
+        let params =
+            serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()});
+        IpcError::unknown(ErrorCode::InvalidArgument).with_params(params)
+    })?;
 
     let planned = sender.request();
     let now_ms = synra_core::host::millis_reading(unix_millis());
-    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    let mut row = snapshot_from(
+        &planned,
+        (request.to, &request.to.to_string()),
+        "queued",
+        now_ms,
+    );
     row.kind = "attachment".to_owned();
 
-    Ok(start_send(state, request.to, address, sender, row, Some(path), None))
+    Ok(start_send(
+        state,
+        request.to,
+        address,
+        sender,
+        row,
+        Some(path),
+        None,
+    ))
 }
 
 /// The row a receiver reports while a transfer arrives.
@@ -961,8 +1059,7 @@ pub fn received_snapshot(
         direction: "receive".to_owned(),
         kind: if progress.bundle.is_some() {
             "plugin-bundle".to_owned()
-        }
-        else {
+        } else {
             "attachment".to_owned()
         },
         state: "active".to_owned(),
@@ -997,9 +1094,9 @@ pub fn offered_snapshot(
     let request = offer.request;
     let blocks_total = if request.chunk_size == 0 {
         0
-    }
-    else {
-        u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size))).unwrap_or(u32::MAX)
+    } else {
+        u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size)))
+            .unwrap_or(u32::MAX)
     };
     TransferSnapshot {
         transfer_id: request.transfer_id,
@@ -1049,8 +1146,9 @@ pub fn transfer_respond(
     remember: Option<bool>,
 ) -> Result<(), IpcError> {
     let id = transfer_id.parse::<TransferId>().map_err(|error| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}))
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({"transferId": transfer_id, "detail": error.to_string()}),
+        )
     })?;
     if accept
         && remember.unwrap_or(false)
@@ -1061,10 +1159,14 @@ pub fn transfer_respond(
     if state.transfer_desk.respond(&id.to_string(), accept) {
         return Ok(());
     }
-    Err(IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(serde_json::json!({
-        "transferId": transfer_id,
-        "reason": "it is not waiting for an answer",
-    })))
+    Err(
+        IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(
+            serde_json::json!({
+                "transferId": transfer_id,
+                "reason": "it is not waiting for an answer",
+            }),
+        ),
+    )
 }
 
 /// The configuration key holding the devices this one accepts without asking.
@@ -1086,7 +1188,9 @@ fn accepted_senders(state: &crate::state::AppState) -> Vec<String> {
 /// A sender that is not listed is asked about, which is the default and the only state a fresh install has.
 #[must_use]
 pub fn auto_accept_peer(state: &crate::state::AppState, peer: &str) -> bool {
-    accepted_senders(state).iter().any(|accepted| accepted == peer)
+    accepted_senders(state)
+        .iter()
+        .any(|accepted| accepted == peer)
 }
 
 /// Forgets a device the user chose to accept without asking.
@@ -1105,11 +1209,13 @@ pub(crate) fn forget_sender(state: &crate::state::AppState, peer: &str) {
         // Unset rather than store an empty array: an empty preference is no preference, and a row saying "none" is a
         // setting a screen would have to interpret.
         let _ = state.db().apply_config(
-            &[synra_store::ConfigChange { key: ACCEPT_FROM_KEY.to_owned(), value: None }],
+            &[synra_store::ConfigChange {
+                key: ACCEPT_FROM_KEY.to_owned(),
+                value: None,
+            }],
             now,
         );
-    }
-    else {
+    } else {
         let value = serde_json::to_value(&accepted).unwrap_or_else(|_| serde_json::json!([]));
         let _ = state.db().set_config(ACCEPT_FROM_KEY, &value, now);
     }
@@ -1127,7 +1233,9 @@ fn remember_peer(state: &crate::state::AppState, peer: &str) {
     }
     accepted.push(peer.to_owned());
     let value = serde_json::to_value(&accepted).unwrap_or_else(|_| serde_json::json!([]));
-    let _ = state.db().set_config(ACCEPT_FROM_KEY, &value, synra_store::sqlite::now_ms());
+    let _ = state
+        .db()
+        .set_config(ACCEPT_FROM_KEY, &value, synra_store::sqlite::now_ms());
 }
 
 /// Closes a receive row whose transfer ended without a file.
@@ -1169,7 +1277,10 @@ pub fn complete_received(
 ///
 /// One function because the two halves must not be separated: a row removed without the announcement leaves the panel
 /// showing a transfer that no longer exists, and an announcement without the removal leaves one it can never clear.
-pub(crate) fn finish_transfer(state: &crate::state::AppState, transfer_id: synra_protocol::ids::TransferId) {
+pub(crate) fn finish_transfer(
+    state: &crate::state::AppState,
+    transfer_id: synra_protocol::ids::TransferId,
+) {
     state.transfers.forget(&transfer_id);
     state.transfers.untrack(&transfer_id);
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
@@ -1206,15 +1317,17 @@ pub fn address_of(
         .db()
         .paired_devices()
         .map_err(|error| {
-            IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"detail": error.to_string()}))
         })?
         .into_iter()
         .find(|device| device.device_id == to.to_string())
         .and_then(|device| device.address);
 
     let Some(address) = address else {
-        return Err(IpcError::unknown(ErrorCode::Unsupported)
-            .with_params(serde_json::json!({"deviceId": to.to_string(), "reason": "it has no address"})));
+        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(
+            serde_json::json!({"deviceId": to.to_string(), "reason": "it has no address"}),
+        ));
     };
     address.parse::<std::net::SocketAddr>().map_err(|error| {
         IpcError::unknown(ErrorCode::Unsupported)
@@ -1253,29 +1366,40 @@ pub fn transfer_send_text(
     // file that is deleted and a file that was readable by anyone while it existed.
     let outbox = state.paths.cache_dir().join("outbox");
     std::fs::create_dir_all(&outbox).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"path": outbox.display().to_string(), "reason": error.to_string()}),
+        )
     })?;
     let path = outbox_path(&outbox, &request.file_name, unix_millis());
     std::fs::write(&path, request.text.as_bytes()).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}),
+        )
     })?;
 
-    let sender = synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
-        .inspect_err(|_| {
-            // ★ Removed here as well as after the send: a sender that refused the file must not leave it on disk for the next
-            // run to find, and the delete below is only reached when this call succeeded.
-            let _ = std::fs::remove_file(&path);
-        })
-        .map_err(|error| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()}))
-        })?;
+    let sender = synra_core::transfer::TransferSender::open(
+        &path,
+        synra_core::transfer::DEFAULT_CHUNK_SIZE,
+    )
+    .inspect_err(|_| {
+        // ★ Removed here as well as after the send: a sender that refused the file must not leave it on disk for the next
+        // run to find, and the delete below is only reached when this call succeeded.
+        let _ = std::fs::remove_file(&path);
+    })
+    .map_err(|error| {
+        let params =
+            serde_json::json!({"path": path.display().to_string(), "reason": error.to_string()});
+        IpcError::unknown(ErrorCode::InvalidArgument).with_params(params)
+    })?;
 
     let planned = sender.request();
     let now_ms = synra_core::host::millis_reading(unix_millis());
-    let mut row = snapshot_from(&planned, (request.to, &request.to.to_string()), "queued", now_ms);
+    let mut row = snapshot_from(
+        &planned,
+        (request.to, &request.to.to_string()),
+        "queued",
+        now_ms,
+    );
     row.kind = "attachment".to_owned();
 
     // Registered with its file before the send starts, so a cancel that arrives mid-send has something to delete.

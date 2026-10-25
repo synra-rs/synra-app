@@ -38,12 +38,10 @@ fn received_name(transfer: &synra_core::listener::FinishedTransfer) -> Option<St
     if transfer.bundle.is_some() {
         return None;
     }
-    Some(
-        transfer
-            .path
-            .file_name()
-            .map_or_else(|| transfer.path.display().to_string(), |name| name.to_string_lossy().into_owned()),
-    )
+    Some(transfer.path.file_name().map_or_else(
+        || transfer.path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    ))
 }
 
 /// The notice a received file leaves, or `None` for a bundle.
@@ -53,7 +51,9 @@ fn received_name(transfer: &synra_core::listener::FinishedTransfer) -> Option<St
 /// Because a bundle is not a file the user has to find: it was installed, and the plugins page — and its own event — is
 /// where that news belongs. Saying "received @acme/chat" beside "installed @acme/chat" would be two sentences about one
 /// arrival.
-fn received_notice(transfer: &synra_core::listener::FinishedTransfer) -> Option<synra_ipc::event::KernelEvent> {
+fn received_notice(
+    transfer: &synra_core::listener::FinishedTransfer,
+) -> Option<synra_ipc::event::KernelEvent> {
     let name = received_name(transfer)?;
     Some(synra_ipc::event::KernelEvent::Notice {
         message: "notice.received".to_owned(),
@@ -70,7 +70,9 @@ fn received_notice(transfer: &synra_core::listener::FinishedTransfer) -> Option<
 ///
 /// Because the window may not be in front. The notice banner is for the person looking at the screen; the system
 /// notification is for the person who is not — and a file that arrives silently is one they discover by accident.
-fn received_notification(transfer: &synra_core::listener::FinishedTransfer) -> Option<(String, String)> {
+fn received_notification(
+    transfer: &synra_core::listener::FinishedTransfer,
+) -> Option<(String, String)> {
     let name = received_name(transfer)?;
     Some(("Synra".to_owned(), format!("Received {name}")))
 }
@@ -85,7 +87,10 @@ fn notifications_enabled(state: &AppState) -> bool {
         .db()
         .config()
         .ok()
-        .and_then(|rows| rows.into_iter().find(|row| row.key == "transfers.notifyOnReceive"))
+        .and_then(|rows| {
+            rows.into_iter()
+                .find(|row| row.key == "transfers.notifyOnReceive")
+        })
         .and_then(|row| serde_json::from_str::<bool>(&row.value).ok())
         .unwrap_or(true)
 }
@@ -102,7 +107,9 @@ fn asked_intent(
     envelope: &synra_protocol::envelope::Envelope,
 ) -> Option<synra_protocol::ids::IntentId> {
     let board = state.board.lock();
-    board.recall(envelope.from, envelope.request_id).map(|intent| intent.id)
+    board
+        .recall(envelope.from, envelope.request_id)
+        .map(|intent| intent.id)
 }
 
 /// Tells the interface, and writes the row, that a remote event changed an intent.
@@ -138,12 +145,22 @@ pub fn bind(mut state: AppState) -> AppState {
     // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
     // loaded, and the only sign was a white screen with discovery's log above it.
     let identity = state.identity.lock().clone();
+    let network = synra_core::device_credentials::initialize_native_network(
+        Arc::clone(&state.db),
+        local_of(&identity),
+        synra_core::reading_millis(synra_store::sqlite::now_ms()) / 1000,
+    )
+    .map_err(|error| error.to_string());
+    if let Err(why) = &network {
+        eprintln!("synra: authenticated networking is unavailable: {why}");
+    }
+    state.host.lock().configure_network(network.clone());
     // ★ The second host this process builds, and it needs the recorder for the same reason the state's host does: an
     // accepted connection is a link, and its frames are the only evidence the listener ever handled anything.
-    let host = Arc::new(Mutex::new(
-        synra_core::Host::new(identity.clone(), local_of(&identity))
-            .with_metrics(Arc::clone(&state.metrics)),
-    ));
+    let mut listener_host = synra_core::Host::new(identity.clone(), local_of(&identity))
+        .with_metrics(Arc::clone(&state.metrics));
+    listener_host.configure_network(network);
+    let host = Arc::new(Mutex::new(listener_host));
 
     let bound = {
         let mut guard = host.lock();
@@ -223,13 +240,15 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // that gap. A transfer that aborts before any progress has no start, and records no duration rather than one
             // measured from a guess.
             let inbound_started: Arc<
-                Mutex<std::collections::HashMap<synra_protocol::ids::TransferId, std::time::Instant>>,
+                Mutex<
+                    std::collections::HashMap<synra_protocol::ids::TransferId, std::time::Instant>,
+                >,
             > = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
             let finished_state = Arc::clone(&db_state);
             let finished_started = Arc::clone(&inbound_started);
-            let finished: synra_core::listener::FinishedCallback = Arc::new(
-                move |transfer: &synra_core::listener::FinishedTransfer| {
+            let finished: synra_core::listener::FinishedCallback =
+                Arc::new(move |transfer: &synra_core::listener::FinishedTransfer| {
                     // ★ The bytes are a `.synra` package now, so receiving one is **installing** it: the same pipeline the
                     // install command runs, over the archive the peer sent. `record_received` then writes the history and
                     // the sync state — and its plugin-row insert fails harmlessly, because the installer already made one
@@ -248,7 +267,9 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                                     synra_core::plugin_sync::SyncSessionId::new(
                                         transfer
                                             .sync_session_id
-                                            .map_or_else(String::new, |session| session.to_string()),
+                                            .map_or_else(String::new, |session| {
+                                                session.to_string()
+                                            }),
                                     ),
                                     error,
                                 )),
@@ -268,7 +289,11 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         .and_then(|transfer_id| finished_started.lock().remove(&transfer_id));
                     crate::commands::transfers::record_received(
                         &finished_state,
-                        if transfer.bundle.is_some() { "plugin-bundle" } else { "attachment" },
+                        if transfer.bundle.is_some() {
+                            "plugin-bundle"
+                        } else {
+                            "attachment"
+                        },
                         transfer.byte_length,
                         started.map(|started| started.elapsed()),
                         false,
@@ -288,8 +313,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         let _ = finished_state.platform.notify(&title, &body);
                     }
                     outcome
-                },
-            );
+                });
 
             // The peer's name is looked up once per connection and kept: a per-block query would be a database read for
             // every 64 KiB, and a row that showed an identifier for the first block and a name for the second would look
@@ -308,7 +332,11 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     let started = progress_started.lock().remove(&event.progress.transfer_id);
                     crate::commands::transfers::record_received(
                         &progress_state,
-                        if event.progress.bundle.is_some() { "plugin-bundle" } else { "attachment" },
+                        if event.progress.bundle.is_some() {
+                            "plugin-bundle"
+                        } else {
+                            "attachment"
+                        },
                         event.progress.received_bytes,
                         started.map(|started| started.elapsed()),
                         true,
@@ -329,13 +357,14 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     let mut names = names.lock();
                     if let Some(name) = names.get(&key) {
                         name.clone()
-                    }
-                    else {
+                    } else {
                         let looked_up = progress_state
                             .db()
                             .paired_devices()
                             .ok()
-                            .and_then(|devices| devices.into_iter().find(|device| device.device_id == key))
+                            .and_then(|devices| {
+                                devices.into_iter().find(|device| device.device_id == key)
+                            })
                             .map_or_else(|| key.clone(), |device| device.display_name);
                         names.insert(key.clone(), looked_up.clone());
                         looked_up
@@ -354,10 +383,13 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // depend on somebody watching the window.
             let offer_state = Arc::clone(&db_state);
             let offer_desk = Arc::clone(&db_state.transfer_desk);
-            let offer: Arc<synra_core::inbound::OfferCallback> = Arc::new(
-                move |incoming: &synra_core::inbound::Offer<'_>| {
+            let offer: Arc<synra_core::inbound::OfferCallback> =
+                Arc::new(move |incoming: &synra_core::inbound::Offer<'_>| {
                     use synra_core::inbound::OfferDecision;
-                    if !matches!(incoming.request.kind, synra_protocol::session::TransferKind::Attachment) {
+                    if !matches!(
+                        incoming.request.kind,
+                        synra_protocol::session::TransferKind::Attachment
+                    ) {
                         return OfferDecision::Accept;
                     }
                     // ★ A sender the user chose to keep accepting is not asked about again. The check is before anything
@@ -391,23 +423,18 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     let show = || {
                         crate::commands::transfers::announce_transfer(&offer_state, announced);
                     };
-                    let accepted = offer_desk.ask(
-                        &pending,
-                        show,
-                        crate::transfer_desk::OFFER_TIMEOUT,
-                    );
+                    let accepted =
+                        offer_desk.ask(&pending, show, crate::transfer_desk::OFFER_TIMEOUT);
                     crate::commands::transfers::withdraw_offer(
                         &offer_state,
                         incoming.request.transfer_id,
                     );
                     if accepted {
                         OfferDecision::Accept
-                    }
-                    else {
+                    } else {
                         OfferDecision::Refuse
                     }
-                },
-            );
+                });
 
             let cancels = Arc::clone(&db_state.inbound_cancels);
             let should_cancel: Arc<synra_core::listener::CancelCallback> =
@@ -417,8 +444,8 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // answer has to go back on this connection. The daemon had this callback first; without it here, a remote
             // action aimed at the window was counted and dropped — the sender stayed "dispatching" for ever.
             let kernel_state = Arc::clone(&db_state);
-            let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> = Arc::new(
-                move |envelope: &synra_protocol::envelope::Envelope| {
+            let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> =
+                Arc::new(move |envelope: &synra_protocol::envelope::Envelope| {
                     use synra_core::listener::KernelEventOutcome;
                     use synra_protocol::event::events;
                     let board = Arc::clone(&kernel_state.board);
@@ -429,7 +456,8 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                             // ★ The engine is looked up **inside** this arm: a late result and a withdrawal only need the
                             // board, and refusing them because this window cannot run plugins would drop an outcome for an
                             // action the peer already performed.
-                            let Some(plugins) = kernel_state.plugins.as_ref().map(Arc::clone) else {
+                            let Some(plugins) = kernel_state.plugins.as_ref().map(Arc::clone)
+                            else {
                                 return KernelEventOutcome::Refused(
                                     "this window has no plugin engine, so it cannot run the action"
                                         .to_owned(),
@@ -453,7 +481,8 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                             }
                         }
                         events::INTENT_CANCEL => {
-                            match synra_core::dispatch::orchestrate::accept_cancel(&board, envelope) {
+                            match synra_core::dispatch::orchestrate::accept_cancel(&board, envelope)
+                            {
                                 Ok(Some(id)) => {
                                     record_and_announce(&kernel_state, id);
                                     KernelEventOutcome::Handled
@@ -465,7 +494,8 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         // The late answer to an action this window dispatched: the receiver waited longer than this side
                         // did and dialled back. `apply_result` ignores one for work no longer in flight.
                         events::INTENT_RESULT => {
-                            match synra_core::dispatch::orchestrate::apply_result(&board, envelope) {
+                            match synra_core::dispatch::orchestrate::apply_result(&board, envelope)
+                            {
                                 Ok(Some(id)) => {
                                     record_and_announce(&kernel_state, id);
                                     KernelEventOutcome::Handled
@@ -476,8 +506,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                         }
                         _ => KernelEventOutcome::Ignored,
                     }
-                },
-            );
+                });
 
             synra_core::listener::serve_with(
                 &host,
@@ -566,12 +595,22 @@ mod tests {
     #[test]
     fn the_notification_switch_is_on_unless_the_user_turned_it_off() {
         let state = crate::testing::state();
-        assert!(super::notifications_enabled(&state), "the default is to tell someone a file arrived");
+        assert!(
+            super::notifications_enabled(&state),
+            "the default is to tell someone a file arrived"
+        );
 
         state
             .db()
-            .set_config("transfers.notifyOnReceive", &serde_json::json!(false), 1_000)
+            .set_config(
+                "transfers.notifyOnReceive",
+                &serde_json::json!(false),
+                1_000,
+            )
             .expect("the switch");
-        assert!(!super::notifications_enabled(&state), "the switch was ignored");
+        assert!(
+            !super::notifications_enabled(&state),
+            "the switch was ignored"
+        );
     }
 }
