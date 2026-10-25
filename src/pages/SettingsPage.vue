@@ -54,6 +54,8 @@
       </ADescriptions>
     </section>
 
+    <CredentialPanel />
+
     <section class="stack gap-3">
       <h2 class="text-base font-medium">
         {{ messages.settings.preferences }}
@@ -472,6 +474,7 @@ import {
 } from 'ant-design-vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import CredentialPanel from '../components/CredentialPanel.vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'

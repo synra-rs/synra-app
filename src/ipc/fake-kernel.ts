@@ -58,6 +58,7 @@ import {
  * Rust side is `scanId` over the wire.
  */
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
+  identity_repair: ['expectedFingerprint'],
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
   pairing_listen: ['deviceId', 'invitation'],
@@ -129,6 +130,12 @@ export class FakeKernel implements Bridge {
     this.#requireArguments(command, args)
 
     switch (command) {
+      case 'identity_credentials':
+        return { deviceId: IDENTITY.deviceId, enrollment: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }
+      case 'identity_cleanup':
+        return { remaining: 0, errorCode: null, detail: null }
+      case 'identity_repair':
+        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', params: {}, actions: [] })
       case 'identity_get':
         return { ...IDENTITY }
       case 'devices_snapshot':

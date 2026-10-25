@@ -14,6 +14,7 @@
 //! with the wrong one to be convenient.
 
 pub mod config;
+pub mod credentials;
 pub mod devices;
 pub mod diag;
 pub mod identity;
@@ -22,8 +23,8 @@ pub mod intent;
 pub mod intent_remote;
 /// Sending again the dispatches a restart left waiting, keyed by the identifier the receiver deduplicates on.
 pub mod intent_resume;
-pub mod plugin_ui;
 pub mod pairing;
+pub mod plugin_ui;
 pub mod plugin_updates;
 pub mod plugins;
 pub mod registry;
@@ -49,7 +50,8 @@ pub use diag::{diag_export, diag_logs_tail, diag_metrics};
 pub use identity::{identity_get, identity_set_display_name};
 pub use intent::{intent_cancel, intent_decide, intent_dispatch, intent_list, intent_snapshot};
 pub use plugins::{
-    plugins_audit, plugins_audit_clear, plugins_consent_respond, plugins_disable, plugins_enable, plugins_list,
+    plugins_audit, plugins_audit_clear, plugins_consent_respond, plugins_disable, plugins_enable,
+    plugins_list,
 };
 pub use sync_plan::plugins_sync_plan;
 pub use sync_run::plugins_sync_run;

@@ -83,6 +83,37 @@ mod wrappers {
         commands::identity::identity_set_display_name(&state, &name)
     }
 
+    /// Public enrollment facts, independently of runtime credential readiness.
+    #[tauri::command]
+    pub async fn identity_credentials(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<synra_protocol::credentials::CredentialSnapshot, IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::credentials::identity_credentials(&state)).await
+    }
+
+    /// Explicit replacement after confirmation of the displayed fingerprint.
+    #[tauri::command]
+    pub async fn identity_repair(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        expected_fingerprint: String,
+    ) -> Result<synra_protocol::credentials::CredentialRepairReport, IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || {
+            commands::credentials::identity_repair(&state, &expected_fingerprint)
+        })
+        .await
+    }
+
+    /// Old-secret cleanup never changes current grants.
+    #[tauri::command]
+    pub async fn identity_cleanup(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<synra_protocol::credentials::CredentialCleanupReport, IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::credentials::identity_cleanup(&state)).await
+    }
+
     #[tauri::command]
     pub fn devices_snapshot(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
@@ -718,9 +749,12 @@ mod wrappers {
     /// The return type is written out rather than left to inference because the caller is
     /// [`tauri::Builder::invoke_handler`], whose bound is what makes the shape a fact rather than a guess.
     pub fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
-        tauri::generate_handler![
+        let dispatch: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
             identity_get,
             identity_set_display_name,
+            identity_credentials,
+            identity_repair,
+            identity_cleanup,
             devices_snapshot,
             devices_scan_start,
             devices_scan_cancel,
@@ -774,7 +808,18 @@ mod wrappers {
             diag_crash_dismiss,
             diag_crashes,
             diag_metrics,
-        ]
+        ];
+        move |invoke| {
+            let allowed = crate::ipc_access::authorize(
+                invoke.message.webview_ref().label(),
+                invoke.message.command(),
+            );
+            if let Err(error) = allowed {
+                invoke.resolver.reject(error);
+                return true;
+            }
+            dispatch(invoke)
+        }
     }
 }
 

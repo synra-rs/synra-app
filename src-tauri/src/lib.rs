@@ -38,7 +38,6 @@
 // suggested actions — so it is a large error type by design, and boxing it would put an allocation on every refusal path
 // to save a lint that fires because the DTO is honest about what the interface needs. The kernel sets the same precedent.
 #![allow(clippy::result_large_err)]
-
 // Test code is exempt from the no-panic rules; see `synra-protocol` in the kernel for the reasoning.
 #![cfg_attr(
     test,
@@ -55,6 +54,8 @@ pub mod commands;
 pub mod discovery;
 pub mod events;
 pub mod instance;
+#[cfg(any(feature = "tauri-shell", test))]
+mod ipc_access;
 /// The shell's own listener: the half that makes this device reachable.
 #[cfg(feature = "tauri-shell")]
 pub mod listener;

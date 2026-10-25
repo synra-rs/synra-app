@@ -128,7 +128,7 @@ describe('the commands the shell registers', () => {
 
     // Stated as a number as well, so a parser that started missing entries shows up as a count change rather than as a
     // set that happens to still be consistent.
-    expect(declared.length).toBe(57)
+    expect(declared.length).toBe(60)
   })
 
   it('gives every unregistered command a reason', () => {

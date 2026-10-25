@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the shell's own window may do. One capability, no per-window split, because there is exactly one window and it is the app.",
+  "description": "Permissions for the main app window. Custom app command access is enforced by the native invoke handler.",
   "windows": ["main"],
   "permissions": ["core:default", "dialog:default", "autostart:default"]
 }

@@ -16,6 +16,9 @@
 export const REGISTERED = [
   'identity_get',
   'identity_set_display_name',
+  'identity_credentials',
+  'identity_repair',
+  'identity_cleanup',
   'devices_snapshot',
   'devices_scan_start',
   'devices_scan_cancel',

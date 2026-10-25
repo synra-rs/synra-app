@@ -87,6 +87,8 @@ function declaredArities(): Map<string, Arity> {
  */
 const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | undefined>> = {
   identity_get: undefined,
+  identity_credentials: undefined,
+  identity_cleanup: undefined,
   devices_snapshot: undefined,
   // The command takes an `opts`, and `REQUIRED_ARGS` in `fake-kernel.ts` is where the fake says so: a table that omitted
   // it would be asserting the shape of an answer to a call the shell refuses. `cachedOnly` keeps the suite free of a
@@ -139,7 +141,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
 const MAYBE_COMMAND = 'plugins_check_update'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 57
+const DECLARED_COMMANDS = 60
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

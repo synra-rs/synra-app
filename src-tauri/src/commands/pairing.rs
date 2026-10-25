@@ -111,13 +111,13 @@ pub fn watch(app: tauri::AppHandle, cancel: &synra_core::supervisor::Cancellatio
             let mut previous = None;
             while !cancel.is_cancelled() {
                 let state = app.state::<Arc<AppState>>();
-                if let Ok(Some(snapshot)) = pairing_status(&state) {
-                    if previous.as_ref() != Some(&snapshot) {
-                        previous = Some(snapshot.clone());
-                        state.publish(synra_ipc::event::KernelEvent::PairingUpdated(Box::new(
-                            snapshot,
-                        )));
-                    }
+                if let Ok(Some(snapshot)) = pairing_status(&state)
+                    && previous.as_ref() != Some(&snapshot)
+                {
+                    previous = Some(snapshot.clone());
+                    state.publish(synra_ipc::event::KernelEvent::PairingUpdated(Box::new(
+                        snapshot,
+                    )));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }

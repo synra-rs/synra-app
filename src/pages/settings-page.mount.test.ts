@@ -77,7 +77,7 @@ const NO_METRICS = { values: [], overflowedTotal: 0, maxSeriesPerMetric: 1_000 }
  * refused it would put an error notice on every test here — including the ones asserting something else.
  */
 function answer(byCommand: Record<string, unknown>) {
-  const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, ...byCommand }
+  const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, identity_credentials: { deviceId: IDENTITY.deviceId, enrollment: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }, ...byCommand }
   mocks.call.mockImplementation(async (command: string) =>
     command in answers
       ? { ok: true, value: answers[command] }
