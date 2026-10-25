@@ -4208,10 +4208,12 @@ dependencies = [
 name = "synra-net"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "parking_lot",
  "rcgen",
  "rustls",
  "serde",
+ "serde_json",
  "sha2",
  "synra-observe",
  "synra-protocol",
