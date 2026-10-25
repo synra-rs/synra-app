@@ -580,13 +580,11 @@ pub fn send_over_with(
     send_ready_since(state, to, &mut link, sender, row, cancel, started)
 }
 
-/// Moves the blocks over a link that is already connected, and reports each one.
+/// Runs the complete transfer over an established link and reports acknowledged blocks.
 ///
 /// # Why the link is a parameter
 ///
-/// Because this is the half that needs testing, and a test that must dial cannot be run without a peer. Everything here is
-/// driven by what arrives on the link, so a memory link exercises it exactly as a socket does — the dial above is the only
-/// part that has to be real.
+/// Protocol tests can provide an established link; production commands dial through the authenticated host.
 pub fn send_ready(
     state: &crate::state::AppState,
     to: synra_protocol::ids::DeviceId,
@@ -597,13 +595,7 @@ pub fn send_ready(
     send_ready_with(state, to, link, sender, row, None)
 }
 
-/// [`send_ready`], with a token a cancel can stop between blocks.
-///
-/// # Why the token is checked here rather than by the transfer loop
-///
-/// Because the loop is in the kernel and has no notion of a user. The check sits in the `send` closure, which is the one
-/// place the loop asks before writing a block; a cancelled token turns into a refusal, the loop stops, and the peer is
-/// told with an abort frame rather than left waiting for blocks that will never come.
+/// [`send_ready`], cancellable during block transfer and the final confirmation wait.
 pub fn send_ready_with(
     state: &crate::state::AppState,
     to: synra_protocol::ids::DeviceId,
@@ -645,44 +637,29 @@ fn send_ready_since(
     announce_transfer(state, row.clone());
 
     let cancelled = || cancel.is_some_and(|token| token.is_cancelled());
-    let outcome = synra_core::transfer::send_blocks(
-        &mut sender,
-        |index, data| {
-            if cancelled() {
-                return Err(SendStop::Cancelled);
-            }
-            link.send_chunk(index, data).map_err(SendStop::Link)
-        },
-        |done, _total| {
+    let deadline = started + synra_protocol::session::SessionTimeouts::default().transfer_total;
+    let options = synra_core::SendOptions::new(
+        synra_protocol::ids::TraceId::new(),
+        unix_millis() as i64,
+        deadline,
+    );
+    let outcome =
+        synra_core::send_prepared(link, &mut sender, options, cancelled, |done, _total| {
             if !cancelled() {
                 row.blocks_done = done;
                 announce_transfer(state, row.clone());
             }
-        },
-    );
+        });
     let ended = match &outcome {
-        Ok(()) => SendOutcome::Delivered,
-        Err(synra_core::transfer::SendBlocksError::Send(SendStop::Cancelled)) => {
-            SendOutcome::Cancelled
-        }
+        Ok(_) => SendOutcome::Delivered,
+        Err(synra_core::SessionError::Cancelled) => SendOutcome::Cancelled,
         Err(_) => SendOutcome::Failed,
     };
     record_send(state, &row.kind, row.total_bytes, started.elapsed(), ended);
 
-    if ended == SendOutcome::Cancelled {
-        // ★ The peer is told, not merely dropped. A sender that closes without an abort sees its blocks stop arriving and
-        // waits out its own transfer window; an abort ends the round on both sides.
-        let _ = synra_core::abort(
-            link,
-            transfer_id,
-            synra_protocol::session::TransferAbortReason::UserCancelled,
-            synra_protocol::ids::TraceId::new(),
-            unix_millis() as i64,
-        );
-    }
     finish_transfer(state, transfer_id);
 
-    outcome.map(|()| transfer_id).map_err(|error| {
+    outcome.map(|_| transfer_id).map_err(|error| {
         IpcError::unknown(ErrorCode::TransferFailed).with_params(
             serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}),
         )
@@ -692,7 +669,7 @@ fn send_ready_since(
 /// Why an outbound transfer ended, as the metric label spells it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SendOutcome {
-    /// Every block reached the link.
+    /// The peer confirmed the proposed object's digest.
     Delivered,
     /// The user stopped it before the loop finished.
     Cancelled,
@@ -827,26 +804,6 @@ fn record_attempt(
         }
     }
 }
-
-/// Why a block could not be sent: the link refused it, or the user stopped the transfer.
-#[derive(Debug)]
-enum SendStop {
-    /// The user cancelled; the loop stops before writing the next block.
-    Cancelled,
-    /// The link refused the block.
-    Link(synra_core::LinkError),
-}
-
-impl std::fmt::Display for SendStop {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Cancelled => formatter.write_str("the transfer was cancelled"),
-            Self::Link(error) => std::fmt::Display::fmt(error, formatter),
-        }
-    }
-}
-
-impl std::error::Error for SendStop {}
 
 /// Starts a send on its own thread, and answers the transfer's identifier now.
 ///
@@ -1343,10 +1300,7 @@ pub fn address_of(
 /// and `PluginBundle` and nothing else. The alternative — a new kind for text — would be a protocol change to save writing one
 /// file and deleting it again.
 ///
-/// # What this leaves behind if it is cancelled
-///
-/// The file. `transfer_cancel` removes the registry row and cannot reach the path, which is a known gap rather than an
-/// oversight: the fix is for the registry to carry the path so a worker can delete it, and that waits on the worker.
+/// The temporary file is tracked by the transfer registry and removed when the attempt ends or is cancelled.
 ///
 /// # Errors
 ///

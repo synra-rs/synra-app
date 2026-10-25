@@ -4,6 +4,8 @@ use super::Transfers;
 use synra_ipc::dto::TransferSnapshot;
 use synra_protocol::ids::{DeviceId, TransferId};
 
+mod authenticated;
+
 /// A snapshot a worker might report, with every field named.
 fn snapshot(transfer_id: TransferId, state: &str) -> TransferSnapshot {
     TransferSnapshot {
@@ -31,10 +33,19 @@ fn a_device_the_user_accepts_forever_is_not_asked_again() {
     let remembered = "11111111-1111-4111-8111-111111111111";
     let other = "22222222-2222-4222-8222-222222222222";
 
-    assert!(!super::auto_accept_peer(&state, remembered), "a fresh install asks");
+    assert!(
+        !super::auto_accept_peer(&state, remembered),
+        "a fresh install asks"
+    );
     super::remember_peer(&state, remembered);
-    assert!(super::auto_accept_peer(&state, remembered), "the answer was remembered");
-    assert!(!super::auto_accept_peer(&state, other), "another device still asks");
+    assert!(
+        super::auto_accept_peer(&state, remembered),
+        "the answer was remembered"
+    );
+    assert!(
+        !super::auto_accept_peer(&state, other),
+        "another device still asks"
+    );
 
     // Read back through the settings snapshot, which is what a screen would draw.
     let config = crate::commands::config::config_get(&state).expect("the configuration reads");
@@ -57,7 +68,10 @@ fn forgetting_a_device_forgets_that_it_was_trusted() {
     assert!(super::auto_accept_peer(&state, peer));
     super::forget_sender(&state, peer);
 
-    assert!(!super::auto_accept_peer(&state, peer), "the device asks again");
+    assert!(
+        !super::auto_accept_peer(&state, peer),
+        "the device asks again"
+    );
     let config = crate::commands::config::config_get(&state).expect("the configuration reads");
     assert!(
         config.values.get("transfers.acceptFrom").is_none(),
@@ -90,11 +104,13 @@ fn answering_a_prompt_that_is_not_waiting_is_refused() {
     // answer to a question that no longer exists — and a kernel that said "done" would leave the panel believing it
     // settled something a peer is still waiting on.
     let state = crate::testing::state();
-    let refused = super::transfer_respond(&state, "00000000-0000-4000-8000-000000000003", true, None)
-        .expect_err("nothing is waiting");
+    let refused =
+        super::transfer_respond(&state, "00000000-0000-4000-8000-000000000003", true, None)
+            .expect_err("nothing is waiting");
     assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
 
-    let invalid = super::transfer_respond(&state, "not-an-id", true, None).expect_err("it does not parse");
+    let invalid =
+        super::transfer_respond(&state, "not-an-id", true, None).expect_err("it does not parse");
     assert_eq!(invalid.code, synra_protocol::ErrorCode::InvalidArgument);
 }
 
@@ -104,8 +120,8 @@ fn cancelling_a_transfer_that_is_not_in_flight_is_refused() {
     // believing it stopped something, so the refusal names the identifier and the panel can re-read.
     let state = crate::testing::state();
 
-    let refused =
-        super::transfer_cancel(&state, "00000000-0000-4000-8000-000000000003").expect_err("nothing is in flight");
+    let refused = super::transfer_cancel(&state, "00000000-0000-4000-8000-000000000003")
+        .expect_err("nothing is in flight");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
 }
@@ -127,7 +143,11 @@ fn cancelling_an_incoming_transfer_leaves_the_abort_to_the_listener() {
         "the listener was not told to cancel"
     );
     assert!(
-        state.transfers.list().iter().any(|transfer| transfer.transfer_id == id),
+        state
+            .transfers
+            .list()
+            .iter()
+            .any(|transfer| transfer.transfer_id == id),
         "the row was withdrawn before the sender was told"
     );
 }
@@ -138,17 +158,27 @@ fn cancelling_a_transfer_that_is_in_flight_drops_it() {
     let id = TransferId::new();
     state.transfers.record(snapshot(id, "active"));
     // ★ A worker is what makes it outgoing; without a token the command has no way to tell it from an incoming transfer.
-    state.transfers.track_cancel(id, synra_core::supervisor::Cancellation::new());
+    state
+        .transfers
+        .track_cancel(id, synra_core::supervisor::Cancellation::new());
     let subscriber = state.events.subscribe();
 
     super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
 
-    assert!(state.transfers.is_empty(), "the registry no longer holds it");
-    assert!(super::transfer_list(&state).is_empty(), "and the list does not show it");
+    assert!(
+        state.transfers.is_empty(),
+        "the registry no longer holds it"
+    );
+    assert!(
+        super::transfer_list(&state).is_empty(),
+        "and the list does not show it"
+    );
     // ★ And the panel is told, or the row stays until the page is reopened.
     let delivery = state.events.take(subscriber).expect("announced");
     match delivery.events() {
-        [synra_ipc::event::KernelEvent::TransferFinished { transfer_id }] => assert_eq!(*transfer_id, id),
+        [synra_ipc::event::KernelEvent::TransferFinished { transfer_id }] => {
+            assert_eq!(*transfer_id, id)
+        }
         other => panic!("expected a finished transfer, got {other:?}"),
     }
 }
@@ -174,37 +204,71 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
 
     let state = app_state();
     let (near, far) = MemoryStream::pair_with_capacity(4 * 1024 * 1024);
-    let agreed = Agreed { common: Vec::new(), missing_required: Vec::new() };
+    let agreed = Agreed {
+        common: Vec::new(),
+        missing_required: Vec::new(),
+    };
     let local = DeviceId::new();
     let peer = DeviceId::new();
-    let mut sending = synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
-    let mut receiving = synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
+    let mut sending =
+        synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
+    let mut receiving =
+        synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
 
     let path = std::env::temp_dir().join(format!("synra-ready-{}.bin", std::process::id()));
-    std::fs::write(&path, vec![3u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize]).expect("a file");
+    std::fs::write(
+        &path,
+        vec![3u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize],
+    )
+    .expect("a file");
     let sender =
-        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE).expect("a sender");
+        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
+            .expect("a sender");
     let planned = sender.request();
-    let total = u32::try_from(planned.byte_length.div_ceil(u64::from(planned.chunk_size))).expect("blocks");
+    let total =
+        u32::try_from(planned.byte_length.div_ceil(u64::from(planned.chunk_size))).expect("blocks");
     let row = super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
     let subscriber = state.events.subscribe();
 
-    super::send_ready(&state, peer, &mut sending, sender, row).expect("it sends");
-
-    for expected in 0..total {
-        match receiving.receive_inbound().expect("a block") {
-            synra_core::link::Inbound::Block { chunk_id, .. } => {
-                assert_eq!(chunk_id, expected, "blocks arrive in order");
+    let destination = path.with_extension("received");
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            let proposal = receiving.receive().expect("a proposal before blocks");
+            let trace = proposal.trace_id;
+            let mut receiver =
+                synra_core::Receiving::accept(&proposal, &destination, trace).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let mut blocks = 0;
+            loop {
+                match receiver.absorb(&mut receiving, 0, deadline).unwrap() {
+                    synra_core::Received::Block { index, .. } => {
+                        assert_eq!(index, blocks);
+                        blocks += 1;
+                        synra_core::report_progress(&mut receiving, receiver.receiver(), trace, 0)
+                            .unwrap();
+                    }
+                    synra_core::Received::Verified { .. } => {
+                        assert_eq!(blocks, total);
+                        break;
+                    }
+                    other => panic!("unexpected transfer result {other:?}"),
+                }
             }
-            other => panic!("expected a block, got {other:?}"),
-        }
-    }
+        });
+        super::send_ready(&state, peer, &mut sending, sender, row).expect("the peer confirms");
+        worker.join().unwrap();
+    });
+    assert_eq!(
+        std::fs::read(&destination).unwrap(),
+        std::fs::read(&path).unwrap()
+    );
+    std::fs::remove_file(destination).unwrap();
     let delivery = state.events.take(subscriber).expect("announced");
     assert!(
-        delivery
-            .events()
-            .iter()
-            .any(|event| matches!(event, synra_ipc::event::KernelEvent::TransferFinished { .. })),
+        delivery.events().iter().any(|event| matches!(
+            event,
+            synra_ipc::event::KernelEvent::TransferFinished { .. }
+        )),
         "the end was announced"
     );
     assert!(state.transfers.is_empty(), "and the row is gone");
@@ -220,19 +284,27 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
     match snapshot.get("transfer_bytes{kind=attachment}") {
         Some(synra_observe::metrics::Value::Histogram(histogram)) => {
             assert_eq!(histogram.count, 1);
-            assert_eq!(histogram.sum, 2.0 * f64::from(synra_core::transfer::DEFAULT_CHUNK_SIZE));
+            assert_eq!(
+                histogram.sum,
+                2.0 * f64::from(synra_core::transfer::DEFAULT_CHUNK_SIZE)
+            );
         }
         other => panic!("expected a size histogram, got {other:?}"),
     }
     assert!(
-        snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
+        snapshot
+            .get("transfer_duration_ms{kind=attachment}")
+            .is_some(),
         "the attempt's time is recorded"
     );
     match snapshot.get("transfer_throughput_bps{kind=attachment}") {
         // The exact rate depends on how long the memory link took, so the claim is that a rate was measured at all.
         Some(synra_observe::metrics::Value::Histogram(histogram)) => {
             assert_eq!(histogram.count, 1);
-            assert!(histogram.sum > 0.0, "a delivered transfer has a positive rate");
+            assert!(
+                histogram.sum > 0.0,
+                "a delivered transfer has a positive rate"
+            );
         }
         other => panic!("expected a throughput histogram, got {other:?}"),
     }
@@ -251,16 +323,27 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
 
     let state = app_state();
     let (near, far) = MemoryStream::pair_with_capacity(4 * 1024 * 1024);
-    let agreed = Agreed { common: Vec::new(), missing_required: Vec::new() };
+    let agreed = Agreed {
+        common: Vec::new(),
+        missing_required: Vec::new(),
+    };
     let local = DeviceId::new();
     let peer = DeviceId::new();
-    let mut sending = synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
-    let mut receiving = synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
+    let mut sending =
+        synra_core::link::PeerLink::new(near, local, peer, agreed.clone(), Flags::no_timeout());
+    let mut receiving =
+        synra_core::link::PeerLink::new(far, peer, local, agreed, Flags::no_timeout());
 
-    let path = std::env::temp_dir().join(format!("synra-cancelled-send-{}.bin", std::process::id()));
-    std::fs::write(&path, vec![7u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize]).expect("a file");
+    let path =
+        std::env::temp_dir().join(format!("synra-cancelled-send-{}.bin", std::process::id()));
+    std::fs::write(
+        &path,
+        vec![7u8; 2 * synra_core::transfer::DEFAULT_CHUNK_SIZE as usize],
+    )
+    .expect("a file");
     let sender =
-        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE).expect("a sender");
+        synra_core::transfer::TransferSender::open(&path, synra_core::transfer::DEFAULT_CHUNK_SIZE)
+            .expect("a sender");
     let planned = sender.request();
     let row = super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
 
@@ -272,7 +355,11 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
 
     match receiving.receive_inbound().expect("the abort") {
         synra_core::link::Inbound::Envelope(envelope) => {
-            assert_eq!(envelope.event.as_str(), "file.transfer.abort", "the peer was told");
+            assert_eq!(
+                envelope.event.as_str(),
+                "file.transfer.abort",
+                "the peer was told"
+            );
         }
         other => panic!("expected an abort, got {other:?}"),
     }
@@ -304,8 +391,12 @@ fn cancelling_a_transfer_removes_the_file_it_created() {
     let path = std::env::temp_dir().join(format!("synra-cancel-{}.txt", std::process::id()));
     std::fs::write(&path, b"a message").expect("a file");
     let id = TransferId::new();
-    state.transfers.record_with_temp(snapshot(id, "active"), path.clone());
-    state.transfers.track_cancel(id, synra_core::supervisor::Cancellation::new());
+    state
+        .transfers
+        .record_with_temp(snapshot(id, "active"), path.clone());
+    state
+        .transfers
+        .track_cancel(id, synra_core::supervisor::Cancellation::new());
     let subscriber = state.events.subscribe();
 
     super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
@@ -325,12 +416,18 @@ fn a_second_report_keeps_the_file_the_first_one_registered() {
     let state = crate::testing::state();
     let path = std::env::temp_dir().join(format!("synra-keep-{}.txt", std::process::id()));
     let id = TransferId::new();
-    state.transfers.record_with_temp(snapshot(id, "active"), path.clone());
+    state
+        .transfers
+        .record_with_temp(snapshot(id, "active"), path.clone());
 
     super::announce_transfer(&state, snapshot(id, "active"));
     let forgotten = state.transfers.forget(&id);
 
-    assert_eq!(forgotten.as_deref(), Some(path.as_path()), "the path survived the second report");
+    assert_eq!(
+        forgotten.as_deref(),
+        Some(path.as_path()),
+        "the path survived the second report"
+    );
 }
 
 #[test]
@@ -351,7 +448,11 @@ fn sending_text_to_a_device_that_was_never_paired_is_refused_and_writes_nothing(
     // ★ The outbox is under the app's own cache directory, not the system one: a file holding what a person typed must not sit
     // where every other process on the machine can read it.
     let outbox = state.paths.cache_dir().join("outbox");
-    assert!(!outbox.exists(), "no outbox was created: {}", outbox.display());
+    assert!(
+        !outbox.exists(),
+        "no outbox was created: {}",
+        outbox.display()
+    );
     assert!(state.transfers.is_empty(), "and no row");
 }
 
@@ -390,7 +491,10 @@ fn a_send_to_a_paired_device_with_a_dead_address_fails_and_leaves_no_row() {
     let refused = super::transfer_send_file(&state, &request).expect_err("nothing answers");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
-    assert!(state.transfers.is_empty(), "the row was removed on the failure path");
+    assert!(
+        state.transfers.is_empty(),
+        "the row was removed on the failure path"
+    );
 
     let _ = std::fs::remove_file(path);
 }
@@ -410,7 +514,10 @@ fn sending_to_a_device_that_was_never_paired_is_a_refusal_that_says_why() {
     let refused = super::transfer_send_file(&state, &request).expect_err("nothing to dial");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
-    assert!(state.transfers.is_empty(), "a refused send leaves no row behind");
+    assert!(
+        state.transfers.is_empty(),
+        "a refused send leaves no row behind"
+    );
 }
 
 #[test]
@@ -428,8 +535,14 @@ fn what_this_shell_says_when_it_dials_is_the_identity() {
 
     assert_eq!(peer.device_id, identity.device_id);
     assert_eq!(peer.display_name, "Study PC");
-    assert_eq!(peer.platform, synra_protocol::session::PlatformKind::Desktop);
-    assert!(!peer.features.is_empty(), "a build announces what it can do");
+    assert_eq!(
+        peer.platform,
+        synra_protocol::session::PlatformKind::Desktop
+    );
+    assert!(
+        !peer.features.is_empty(),
+        "a build announces what it can do"
+    );
 }
 
 #[test]
@@ -444,8 +557,11 @@ fn a_sender_becomes_the_row_the_panel_shows() {
         kind: TransferKind::PluginBundle,
         byte_length: 5_000,
         chunk_size: 1_000,
-        digest: synra_protocol::session::SriDigest::new(synra_protocol::session::DigestAlgorithm::Sha256, "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU")
-            .expect("a digest"),
+        digest: synra_protocol::session::SriDigest::new(
+            synra_protocol::session::DigestAlgorithm::Sha256,
+            "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU",
+        )
+        .expect("a digest"),
         sync_session_id: None,
         meta: TransferMeta::PluginBundle {
             plugin_id: PluginId::parse("@acme/hello").expect("a plugin id"),
@@ -456,9 +572,15 @@ fn a_sender_becomes_the_row_the_panel_shows() {
 
     let snapshot = super::snapshot_from(&request, peer, "active", 1_000);
 
-    assert_eq!(snapshot.peer_name, "Study PC", "the name is the link's, not the request's");
+    assert_eq!(
+        snapshot.peer_name, "Study PC",
+        "the name is the link's, not the request's"
+    );
     assert_eq!(snapshot.kind, "plugin-bundle");
-    assert_eq!(snapshot.file_name, "@acme/hello 1.2.3", "what the row names");
+    assert_eq!(
+        snapshot.file_name, "@acme/hello 1.2.3",
+        "what the row names"
+    );
     assert_eq!(snapshot.total_bytes, 5_000);
     assert_eq!(snapshot.blocks_total, 5, "five chunks of a thousand bytes");
     assert_eq!(snapshot.blocks_done, 0, "nothing sent yet");
@@ -473,8 +595,11 @@ fn an_attachment_is_named_by_its_file() {
         kind: TransferKind::Attachment,
         byte_length: 10,
         chunk_size: 1_000,
-        digest: synra_protocol::session::SriDigest::new(synra_protocol::session::DigestAlgorithm::Sha256, "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU")
-            .expect("a digest"),
+        digest: synra_protocol::session::SriDigest::new(
+            synra_protocol::session::DigestAlgorithm::Sha256,
+            "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU",
+        )
+        .expect("a digest"),
         sync_session_id: None,
         meta: TransferMeta::Attachment {
             file_name: "notes.txt".to_owned(),
@@ -503,7 +628,9 @@ fn announcing_a_transfer_records_it_and_tells_the_interface() {
     assert_eq!(super::transfer_list(&state).len(), 1, "the registry has it");
     let delivery = state.events.take(subscriber).expect("announced");
     match delivery.events() {
-        [synra_ipc::event::KernelEvent::TransferUpdated(transfer)] => assert_eq!(transfer.transfer_id, id),
+        [synra_ipc::event::KernelEvent::TransferUpdated(transfer)] => {
+            assert_eq!(transfer.transfer_id, id)
+        }
         other => panic!("expected a transfer update, got {other:?}"),
     }
 }
@@ -547,7 +674,11 @@ fn the_list_is_ordered_by_identifier_not_by_arrival() {
     transfers.record(snapshot(one, "active"));
     transfers.record(snapshot(two, "active"));
 
-    let ordered: Vec<TransferId> = transfers.list().into_iter().map(|t| t.transfer_id).collect();
+    let ordered: Vec<TransferId> = transfers
+        .list()
+        .into_iter()
+        .map(|t| t.transfer_id)
+        .collect();
 
     let (first, second) = if one < two { (one, two) } else { (two, one) };
     assert_eq!(ordered, vec![first, second], "sorted by identifier");
@@ -599,7 +730,11 @@ fn an_incoming_step_becomes_a_receive_row() {
 
 #[test]
 fn a_bundle_in_the_making_is_named_as_one() {
-    let row = super::received_snapshot(&progress_step(TransferId::new(), Some("@acme/chat"), 0, 0), "Laptop", 1_000);
+    let row = super::received_snapshot(
+        &progress_step(TransferId::new(), Some("@acme/chat"), 0, 0),
+        "Laptop",
+        1_000,
+    );
 
     assert_eq!(row.kind, "plugin-bundle");
 }
@@ -636,8 +771,20 @@ fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
     use synra_observe::metrics::Value;
 
     let state = crate::testing::state();
-    super::record_received(&state, "attachment", 512, Some(std::time::Duration::from_millis(4)), true);
-    super::record_received(&state, "plugin-bundle", 1_024, Some(std::time::Duration::from_millis(8)), false);
+    super::record_received(
+        &state,
+        "attachment",
+        512,
+        Some(std::time::Duration::from_millis(4)),
+        true,
+    );
+    super::record_received(
+        &state,
+        "plugin-bundle",
+        1_024,
+        Some(std::time::Duration::from_millis(8)),
+        false,
+    );
 
     let snapshot = state.metrics.snapshot();
     assert_eq!(
@@ -663,11 +810,15 @@ fn an_inbound_attempt_is_counted_and_only_a_received_one_has_a_size() {
         other => panic!("expected a size histogram, got {other:?}"),
     }
     assert!(
-        snapshot.get("transfer_duration_ms{kind=attachment}").is_some(),
+        snapshot
+            .get("transfer_duration_ms{kind=attachment}")
+            .is_some(),
         "an abort still took time from its first progress event"
     );
     assert!(
-        snapshot.get("transfer_throughput_bps{kind=attachment}").is_none(),
+        snapshot
+            .get("transfer_throughput_bps{kind=attachment}")
+            .is_none(),
         "an aborted transfer has no rate: it did not move its bytes"
     );
 }
@@ -687,8 +838,14 @@ fn the_received_list_reads_the_inbox_and_skips_installed_bundles() {
     let names: Vec<&str> = files.iter().map(|file| file.file_name.as_str()).collect();
     assert!(names.contains(&"notes.txt"), "{names:?}");
     assert!(names.contains(&"photo.png"), "{names:?}");
-    assert!(!names.iter().any(|name| name.ends_with(".synra")), "an installed bundle is not a received file");
-    let notes = files.iter().find(|file| file.file_name == "notes.txt").expect("notes");
+    assert!(
+        !names.iter().any(|name| name.ends_with(".synra")),
+        "an installed bundle is not a received file"
+    );
+    let notes = files
+        .iter()
+        .find(|file| file.file_name == "notes.txt")
+        .expect("notes");
     assert_eq!(notes.bytes, 5);
     assert!(notes.path.ends_with("notes.txt"), "{}", notes.path);
 }
@@ -707,11 +864,15 @@ fn opening_a_received_file_is_contained_to_the_inbox() {
 
     assert!(super::inbox_file(&state, &inside.to_string_lossy()).is_ok());
     assert_eq!(
-        super::inbox_file(&state, &outside.to_string_lossy()).expect_err("outside is refused").code,
+        super::inbox_file(&state, &outside.to_string_lossy())
+            .expect_err("outside is refused")
+            .code,
         synra_protocol::ErrorCode::InvalidArgument
     );
     assert_eq!(
-        super::inbox_file(&state, &inbox.join("missing.txt").to_string_lossy()).expect_err("missing is refused").code,
+        super::inbox_file(&state, &inbox.join("missing.txt").to_string_lossy())
+            .expect_err("missing is refused")
+            .code,
         synra_protocol::ErrorCode::InvalidArgument
     );
 }
@@ -729,7 +890,9 @@ fn discarding_a_received_file_removes_only_an_inbox_file() {
     std::fs::write(&outside, b"keep me").expect("a file outside the inbox");
 
     assert_eq!(
-        super::transfer_discard(&state, &outside.to_string_lossy()).expect_err("outside is refused").code,
+        super::transfer_discard(&state, &outside.to_string_lossy())
+            .expect_err("outside is refused")
+            .code,
         synra_protocol::ErrorCode::InvalidArgument
     );
     assert!(outside.exists(), "the refusal deleted the wrong file");
@@ -745,12 +908,25 @@ fn a_text_send_is_named_after_the_request_rather_than_the_clock() {
     let outbox = std::path::Path::new("/outbox");
 
     let named = super::outbox_path(outbox, "notes.txt", 42);
-    assert_eq!(named.file_name().and_then(std::ffi::OsStr::to_str), Some("notes-42.txt"));
+    assert_eq!(
+        named.file_name().and_then(std::ffi::OsStr::to_str),
+        Some("notes-42.txt")
+    );
 
     let escaped = super::outbox_path(outbox, "../../evil.txt", 42);
-    assert_eq!(escaped.file_name().and_then(std::ffi::OsStr::to_str), Some("evil-42.txt"));
-    assert_eq!(escaped.parent(), Some(outbox), "the name escaped the outbox");
+    assert_eq!(
+        escaped.file_name().and_then(std::ffi::OsStr::to_str),
+        Some("evil-42.txt")
+    );
+    assert_eq!(
+        escaped.parent(),
+        Some(outbox),
+        "the name escaped the outbox"
+    );
 
     let anonymous = super::outbox_path(outbox, "..", 42);
-    assert_eq!(anonymous.file_name().and_then(std::ffi::OsStr::to_str), Some("message-42.txt"));
+    assert_eq!(
+        anonymous.file_name().and_then(std::ffi::OsStr::to_str),
+        Some("message-42.txt")
+    );
 }
