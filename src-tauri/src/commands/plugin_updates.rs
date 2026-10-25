@@ -1,6 +1,6 @@
 //! Checking the registry for updates without a person pressing a button.
 //!
-//! A daily registry pass. Notify-only is the default; an explicit automatic policy also admits verified replacements
+//! A daily registry pass with bounded retries after failed installs. Notify-only is the default; an explicit automatic policy admits verified replacements
 //! from the same trusted signer with no added capabilities, through the kernel's prepared update pipeline.
 //!
 //! # Why the answer is one notice rather than one per plugin
@@ -30,10 +30,10 @@ use crate::state::AppState;
 mod apply;
 pub(super) use apply::update_directory as apply_automatic_update;
 pub use synra_core::plugin_updates::AUTO_UPDATE_KEY;
-#[cfg(test)]
-use synra_core::plugin_updates::CHECK_EVERY_MS;
 pub(super) use synra_core::plugin_updates::configured_policy;
-use synra_core::plugin_updates::due;
+#[cfg(test)]
+use synra_core::plugin_updates::{CHECK_EVERY_MS, due};
+use synra_core::plugin_updates::{due_plugins, record_failure};
 
 /// How long one sleep slice is.
 ///
@@ -58,7 +58,7 @@ pub fn policy(state: &AppState) -> Option<UpdatePolicy> {
     configured_policy(&state.db())
 }
 
-/// Asks the registry about installed versions whose successful check is at least a day old.
+/// Asks the registry about installed versions due for their daily check or a bounded install retry.
 ///
 /// # Why per-plugin errors are swallowed
 ///
@@ -68,44 +68,66 @@ pub fn policy(state: &AppState) -> Option<UpdatePolicy> {
 /// is where a refusal is named.
 #[must_use]
 pub fn check_all(state: &AppState, now_ms: i64, cancel: &Cancellation) -> Vec<UpdateInfo> {
-    let Ok(rows) = state.db().plugins() else {
-        return Vec::new();
-    };
-    let Ok(checks) = state.db().plugin_update_checks() else {
-        return Vec::new();
+    let plugins = match due_plugins(&state.db(), now_ms) {
+        Ok(plugins) => plugins,
+        Err(error) => {
+            eprintln!("synra: plugin update schedule could not be read: {error}");
+            return Vec::new();
+        }
     };
     let mut updates = Vec::new();
-    for row in rows {
+    for plugin in plugins {
         if cancel.is_cancelled() || !enabled(state) {
             break;
         }
-        let last_ms = checks
-            .iter()
-            .find(|check| check.plugin_id == row.plugin_id)
-            .map(|check| check.checked_at_ms);
-        if !due(last_ms, now_ms) {
-            continue;
-        }
-        if let Ok(Some(info)) = crate::commands::registry::check_update(state, &row.plugin_id) {
-            if !info.needs_new_consent
-                && let Some(selected) = policy(state)
-                && selected != UpdatePolicy::NotifyOnly
-                && !cancel.is_cancelled()
-                && super::registry::update_automatically(
-                    state,
-                    &row.plugin_id,
-                    &info.version,
-                    selected,
-                    cancel,
-                )
-                .is_ok()
-            {
+        if let Ok(Some(info)) = super::registry::check_update_at(state, &plugin, now_ms) {
+            if try_automatic(state, &info, now_ms, cancel) {
                 continue;
             }
             updates.push(info);
         }
     }
     updates
+}
+
+fn try_automatic(state: &AppState, info: &UpdateInfo, now_ms: i64, cancel: &Cancellation) -> bool {
+    let Some(selected) = policy(state).filter(|policy| *policy != UpdatePolicy::NotifyOnly) else {
+        return false;
+    };
+    if info.needs_new_consent || cancel.is_cancelled() {
+        return false;
+    }
+    let check = state.db().plugin_update_check(info.plugin_id.as_str());
+    let check = match check {
+        Ok(Some(check))
+            if check.checked_at_ms == now_ms
+                && check.available_version.as_deref() == Some(info.version.as_str()) =>
+        {
+            check
+        }
+        Ok(_) => return false,
+        Err(error) => {
+            eprintln!("synra: automatic update check could not be read: {error}");
+            return false;
+        }
+    };
+    match super::registry::update_automatically(
+        state,
+        info.plugin_id.as_str(),
+        &info.version,
+        selected,
+        cancel,
+    ) {
+        Ok(_) => true,
+        Err(error) => {
+            let recorded = record_failure(&state.db(), &check, selected, cancel, now_ms);
+            eprintln!(
+                "synra: automatic update of {} failed: {error:?}; retry state: {recorded:?}",
+                info.plugin_id
+            );
+            false
+        }
+    }
 }
 
 /// Converts a saved positive result to the IPC shape; negative checks have no update to offer.
@@ -172,7 +194,7 @@ pub fn announce(state: &AppState, updates: &[UpdateInfo]) {
 /// # Why the wait is walked in five-minute steps
 ///
 /// Because the setting can change while the loop is asleep, and a single sleep for a day would make "off" mean "off from
-/// tomorrow". The steps do not make the check more frequent: [`due`] still allows one every 24 hours.
+/// tomorrow". The shared schedule permits daily checks and bounded retries after failed automatic installs.
 pub fn run(state: &Arc<AppState>, cancel: &Cancellation) {
     loop {
         if cancel.is_cancelled() {
@@ -260,14 +282,17 @@ mod tests {
     fn a_check_is_due_once_a_day_and_after_never() {
         // ★ The bound is on the check, not on the sleep: the loop wakes every five minutes so a setting change takes
         // effect, and this is what keeps those wakes from becoming registry requests.
-        assert!(due(None, 0), "a device that has never checked is due");
-        assert!(!due(Some(1_000), 1_000 + CHECK_EVERY_MS - 1), "not yet");
+        assert!(due(None, None, 0), "a device that has never checked is due");
         assert!(
-            due(Some(1_000), 1_000 + CHECK_EVERY_MS),
+            !due(Some(1_000), None, 1_000 + CHECK_EVERY_MS - 1),
+            "not yet"
+        );
+        assert!(
+            due(Some(1_000), None, 1_000 + CHECK_EVERY_MS),
             "the day has passed"
         );
         assert!(
-            due(Some(10_000), 1_000),
+            due(Some(10_000), None, 1_000),
             "a clock that went backwards is due, not silent"
         );
     }
@@ -282,7 +307,15 @@ mod tests {
             .expect("plugin");
         state
             .db()
-            .record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() })
+            .record_plugin_version(&synra_store::PluginVersionRecord {
+                plugin_id: plugin,
+                version: "1.0.0",
+                artifact: "wasm",
+                digest: "digest",
+                manifest: "{}",
+                installed_ms: 1,
+                ..Default::default()
+            })
             .expect("version");
         let subscriber = state.events.subscribe();
         let mut check = PluginUpdateCheck {
@@ -292,6 +325,8 @@ mod tests {
             registry: None,
             available_version: Some("2.0.0".to_owned()),
             added_capabilities: vec!["log:*".to_owned()],
+            attempts: 0,
+            retry_at_ms: None,
         };
         assert!(record(&state, &check).expect("positive result").is_some());
         let delivery = state.events.take(subscriber).expect("card event");

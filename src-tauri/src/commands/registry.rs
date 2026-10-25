@@ -401,6 +401,14 @@ pub fn check_update(
     state: &AppState,
     plugin_id: &str,
 ) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
+    check_update_at(state, plugin_id, synra_store::sqlite::now_ms())
+}
+
+pub(super) fn check_update_at(
+    state: &AppState,
+    plugin_id: &str,
+    now_ms: i64,
+) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
     // Capture the source before fetching. The store checks it again in the write, so changing registries while a
     // request is in flight cannot publish an answer from the previous source.
     let registry = state.db().config().map_err(|error| {
@@ -425,10 +433,12 @@ pub fn check_update(
         return super::plugin_updates::record(state, &synra_store::PluginUpdateCheck {
             plugin_id: plugin.to_string(),
             current_version: active.version,
-            checked_at_ms: synra_store::sqlite::now_ms(),
+            checked_at_ms: now_ms,
             registry,
             available_version: None,
             added_capabilities: Vec::new(),
+            attempts: 0,
+            retry_at_ms: None,
         });
     };
     let installed = installed_capabilities(state, plugin_id);
@@ -444,10 +454,12 @@ pub fn check_update(
     super::plugin_updates::record(state, &synra_store::PluginUpdateCheck {
         plugin_id: plugin.to_string(),
         current_version: active.version,
-        checked_at_ms: synra_store::sqlite::now_ms(),
+        checked_at_ms: now_ms,
         registry,
         available_version: Some(latest.version.clone()),
         added_capabilities: added,
+        attempts: 0,
+        retry_at_ms: None,
     })
 }
 

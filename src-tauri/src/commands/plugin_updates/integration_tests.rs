@@ -182,7 +182,9 @@ fn installed_state() -> (crate::testing::Root, AppState) {
     let first = root.path().join("first");
     signed_source(&first, "1.0.0", 7, 0);
     super::super::plugins::install_directory(&state, &first).expect("first install");
-    let fingerprint = state.db().publishers().expect("publishers")[0].fingerprint.clone();
+    let fingerprint = state.db().publishers().expect("publishers")[0]
+        .fingerprint
+        .clone();
     super::super::plugins::plugins_publisher_decide(&state, "@acme", &fingerprint, "trusted")
         .expect("trust publisher");
     super::super::plugins::plugins_consent_respond(&state, "@acme/hello", &["log:*".to_owned()])
@@ -196,9 +198,19 @@ fn revoking_a_publisher_stops_and_untrusts_its_installed_plugin() {
     // ★ The decision used to change only the row the installer consults, so the code already running stayed untouched
     // until the next start. Revoke is about what is here now.
     let (_root, state) = installed_state();
-    let fingerprint = state.db().publishers().expect("publishers")[0].fingerprint.clone();
-    let active = state.db().active_plugin("@acme/hello").expect("row").expect("installed");
-    assert_eq!(active.publisher_id.as_deref(), Some("@acme"), "the version records its signer");
+    let fingerprint = state.db().publishers().expect("publishers")[0]
+        .fingerprint
+        .clone();
+    let active = state
+        .db()
+        .active_plugin("@acme/hello")
+        .expect("row")
+        .expect("installed");
+    assert_eq!(
+        active.publisher_id.as_deref(),
+        Some("@acme"),
+        "the version records its signer"
+    );
     assert_eq!(active.fingerprint.as_deref(), Some(fingerprint.as_str()));
     let id = synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id");
     assert!(
@@ -422,6 +434,78 @@ fn the_daily_pass_applies_only_the_updates_the_user_and_verified_package_allow()
 }
 
 #[test]
+fn failed_downloads_back_off_across_restart_and_stop_fast_retries_after_three_attempts() {
+    let registry = Registry::start();
+    let (root, state) = installed_state();
+    let next = root.path().join("retry-candidate");
+    signed_source(&next, "1.1.0", 7, 0);
+    publish(&registry, &next, "1.1.0");
+    *registry.tarball.lock() = b"corrupt download".to_vec();
+    state
+        .db()
+        .set_config(
+            super::super::registry::REGISTRY_KEY,
+            &serde_json::json!(registry.base),
+            1,
+        )
+        .expect("source");
+    state
+        .db()
+        .set_config(AUTO_UPDATE_KEY, &serde_json::json!("auto-all"), 1)
+        .expect("policy");
+    let cancel = Cancellation::new();
+    assert_eq!(check_all(&state, 100, &cancel).len(), 1);
+    let saved = state
+        .db()
+        .plugin_update_check("@acme/hello")
+        .expect("read")
+        .expect("check");
+    assert_eq!(saved.attempts, 1);
+    let restarted = crate::testing::reopen(&state);
+    let mut next_attempt = saved.retry_at_ms.expect("retry deadline");
+    for attempt in 2..=3 {
+        let requests = registry.requests.load(Ordering::SeqCst);
+        assert!(check_all(&restarted, next_attempt - 1, &cancel).is_empty());
+        assert_eq!(
+            registry.requests.load(Ordering::SeqCst),
+            requests,
+            "no network traffic before the deadline"
+        );
+        assert_eq!(check_all(&restarted, next_attempt, &cancel).len(), 1);
+        assert!(
+            registry.requests.load(Ordering::SeqCst) > requests,
+            "a due retry contacts the real registry"
+        );
+        let saved = restarted
+            .db()
+            .plugin_update_check("@acme/hello")
+            .expect("read")
+            .expect("check");
+        assert_eq!(saved.attempts, attempt);
+        next_attempt = saved
+            .retry_at_ms
+            .unwrap_or(saved.checked_at_ms + CHECK_EVERY_MS);
+        assert_eq!(saved.retry_at_ms.is_none(), attempt == 3);
+    }
+    let requests = registry.requests.load(Ordering::SeqCst);
+    assert!(check_all(&restarted, next_attempt - 1, &cancel).is_empty());
+    assert_eq!(
+        registry.requests.load(Ordering::SeqCst),
+        requests,
+        "the exhausted fast path waits for the day"
+    );
+    assert_eq!(
+        restarted
+            .db()
+            .active_plugin("@acme/hello")
+            .expect("read")
+            .expect("installed")
+            .version,
+        "1.0.0"
+    );
+}
+
+#[test]
 fn a_restart_keeps_daily_checks_and_an_offline_attempt_keeps_the_last_answer() {
     let registry = Registry::start();
     let (_root, state) = crate::testing::file_state();
@@ -432,7 +516,15 @@ fn a_restart_keeps_daily_checks_and_an_offline_attempt_keeps_the_last_answer() {
         .expect("plugin");
     state
         .db()
-        .record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() })
+        .record_plugin_version(&synra_store::PluginVersionRecord {
+            plugin_id: plugin,
+            version: "1.0.0",
+            artifact: "wasm",
+            digest: "digest",
+            manifest: "{}",
+            installed_ms: 1,
+            ..Default::default()
+        })
         .expect("version");
     state
         .db()

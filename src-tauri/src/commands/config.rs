@@ -220,6 +220,8 @@ mod tests {
             registry: None,
             available_version: Some("2.0.0".to_owned()),
             added_capabilities: Vec::new(),
+            attempts: 0,
+            retry_at_ms: None,
         }).expect("check");
         let subscriber = state.events.subscribe();
         config_set(&state, &set(&[("plugins.registry", serde_json::json!("https://registry.example"))])).expect("switch");

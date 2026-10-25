@@ -3138,6 +3138,8 @@ mod tests {
                 registry: None,
                 available_version: Some(version.to_owned()),
                 added_capabilities: Vec::new(),
+                attempts: 0,
+                retry_at_ms: None,
             }).expect("check");
         }
         let restarted = crate::testing::reopen(&state);
