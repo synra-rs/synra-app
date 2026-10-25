@@ -94,7 +94,10 @@ pub struct Discovery {
 
 impl std::fmt::Debug for Discovery {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("Discovery").field("service", &self.service).finish_non_exhaustive()
+        formatter
+            .debug_struct("Discovery")
+            .field("service", &self.service)
+            .finish_non_exhaustive()
     }
 }
 
@@ -171,7 +174,12 @@ impl Discovery {
         })
         .map_err(|error| format!("the discovery worker did not start: {error}"))?;
 
-        Ok(Self { service, on_demand, stop, sightings })
+        Ok(Self {
+            service,
+            on_demand,
+            stop,
+            sightings,
+        })
     }
 
     /// Asks the worker to stop, for a deliberate exit.
@@ -194,7 +202,10 @@ impl Discovery {
     ///
     /// A message when the socket cannot report it.
     pub fn responder_address(&self) -> Result<std::net::SocketAddr, String> {
-        self.service.lock().responder_address().map_err(|error| error.to_string())
+        self.service
+            .lock()
+            .responder_address()
+            .map_err(|error| error.to_string())
     }
 
     /// The deadline the worker reads, for a caller that wants to watch a scan happen.
@@ -226,17 +237,28 @@ impl Discovery {
     /// network, and the window is longer than the protocol's probe timeout, so the answers to the broadcast this triggers
     /// have arrived, been absorbed and been written down before this returns.
     pub fn scan(&self, budget: Duration) {
+        self.scan_with_wait(budget, synra_store::sqlite::now_ms(), |window| {
+            let started = Instant::now();
+            while started.elapsed() < window {
+                std::thread::sleep(WAIT_SLICE);
+            }
+        });
+    }
+
+    /// Publishes and clears the same deadline around a caller-supplied wait, so tests need no scheduler race.
+    pub(crate) fn scan_with_wait(
+        &self,
+        budget: Duration,
+        now_ms: i64,
+        wait: impl FnOnce(Duration),
+    ) {
         // ★ The shell's clock is already the signed reading this deadline and the discovery table use, so nothing is
         // converted here. The daemon does convert (`millis_reading`), because its clock counts **unsigned** milliseconds —
         // two hosts, two clocks, one field, and the difference is worth a line rather than a copy of the daemon's code.
-        let deadline = synra_store::sqlite::now_ms().saturating_add(as_millis(budget));
+        let deadline = now_ms.saturating_add(as_millis(budget));
         self.on_demand.store(deadline, Ordering::Relaxed);
 
-        let window = SCAN_PASSIVE.min(budget);
-        let started = Instant::now();
-        while started.elapsed() < window {
-            std::thread::sleep(WAIT_SLICE);
-        }
+        wait(SCAN_PASSIVE.min(budget));
 
         // ★ Released rather than left to expire. The worker would notice within one tick of its own, and a scan that keeps
         // broadcasting after its caller was answered is a scan the user did not ask for — the daemon's own scan says the

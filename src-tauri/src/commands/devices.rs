@@ -31,7 +31,9 @@ use crate::state::{AppState, internal};
 /// is unauthenticated input. (The shell used to carry its own thirty-second ceiling, from when it answered scans it had
 /// not run; the protocol's is lower, which makes the shell's a second opinion nothing consults.)
 fn scan_budget(opts: &ScanOptions) -> Duration {
-    let asked = opts.timeout_ms.map_or(synra_protocol::limits::SCAN_PASSIVE, Duration::from_millis);
+    let asked = opts
+        .timeout_ms
+        .map_or(synra_protocol::limits::SCAN_PASSIVE, Duration::from_millis);
     asked.min(synra_protocol::limits::SCAN_TOTAL)
 }
 
@@ -50,11 +52,16 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
     // database lock across file I/O would serialise every other command behind the filesystem.
     let (paired, seen) = {
         let db = state.db();
-        (db.paired_devices().map_err(internal)?, db.seen_devices().map_err(internal)?)
+        (
+            db.paired_devices().map_err(internal)?,
+            db.seen_devices().map_err(internal)?,
+        )
     };
 
-    let mut cards: Vec<DeviceCard> =
-        paired.iter().map(|row| card_from_paired(&state.host, row)).collect::<Result<_, _>>()?;
+    let mut cards: Vec<DeviceCard> = paired
+        .iter()
+        .map(|row| card_from_paired(&state.host, row))
+        .collect::<Result<_, _>>()?;
     // ★ Seen-but-unpaired devices are added here rather than by the interface.
     //
     // The interface cannot know which seen devices are already paired — that is the kernel's record — so a list built
@@ -62,7 +69,10 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
     // worse than one call that already knows.
     for row in &seen {
         let card = card_from_seen(row)?;
-        if cards.iter().any(|existing| existing.device_id == card.device_id) {
+        if cards
+            .iter()
+            .any(|existing| existing.device_id == card.device_id)
+        {
             continue;
         }
         cards.push(card);
@@ -110,6 +120,14 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
 /// scan records `scanning` **while it runs**, with the budget it is waiting out, and clears it before answering — so a
 /// snapshot taken during the wait says a scan is under way, and the one taken after it does not.
 pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String, IpcError> {
+    scan_with(state, opts, crate::discovery::Discovery::scan)
+}
+
+fn scan_with(
+    state: &AppState,
+    opts: &ScanOptions,
+    scan: impl FnOnce(&crate::discovery::Discovery, Duration),
+) -> Result<String, IpcError> {
     let scan_id = state.next_scan_id();
 
     // A cached scan reads what is already known: no sockets, nothing to wait for, and no state to leave behind.
@@ -148,12 +166,14 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     // events, and while that was true the Scan button had to poll to draw anything. The finishing side is still a
     // snapshot: the discovered count is the database's answer, not this function's, and inventing one here would be a
     // second source for it.
-    state.publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(running)));
+    state.publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(
+        running,
+    )));
     // ★ Reset before the scan and read after it: the counter is "what this scan heard", not "what this process has ever
     // heard", and a value left over from the previous scan would make the second one look more successful than it was.
     let started = std::time::Instant::now();
     discovery.reset_sightings();
-    discovery.scan(budget);
+    scan(discovery, budget);
     let found = discovery.sightings();
     count_scan(state, "ran");
     observe_candidates(state, found);
@@ -172,10 +192,12 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
 
 /// Counts one scan by how it ended, with the daemon's own label spelling (`ran` / `unavailable`).
 fn count_scan(state: &AppState, result: &str) {
-    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
-        "scans_total",
-        [("result".to_owned(), result.to_owned())],
-    ));
+    state
+        .metrics
+        .counter_inc(&synra_observe::metrics::SeriesKey::new(
+            "scans_total",
+            [("result".to_owned(), result.to_owned())],
+        ));
 }
 
 /// Records how many devices one scan found.
@@ -184,9 +206,10 @@ fn count_scan(state: &AppState, result: &str) {
 /// which a total cannot answer.
 #[allow(clippy::cast_precision_loss)]
 fn observe_candidates(state: &AppState, found: u64) {
-    state
-        .metrics
-        .histogram_observe(&synra_observe::metrics::SeriesKey::new("candidates_found", []), found as f64);
+    state.metrics.histogram_observe(
+        &synra_observe::metrics::SeriesKey::new("candidates_found", []),
+        found as f64,
+    );
 }
 
 /// Announces every device the kernel currently knows, one card at a time.
@@ -205,7 +228,9 @@ fn observe_candidates(state: &AppState, found: u64) {
 fn announce_cards(state: &AppState) {
     if let Ok(snapshot) = devices_snapshot(state) {
         for card in snapshot.devices {
-            state.publish(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(card)));
+            state.publish(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(
+                card,
+            )));
         }
     }
 }
@@ -233,14 +258,17 @@ pub fn devices_scan_cancel(state: &AppState, scan_id: &str) -> Result<(), IpcErr
         scanning.as_ref().map(|running| running.scan_id.clone())
     };
     let running = running.ok_or_else(|| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(serde_json::json!({"scanId": scan_id}))
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"scanId": scan_id}))
     })?;
     if running != scan_id {
         return Err(
-            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "scanId": scan_id,
-                "running": running,
-            })),
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({
+                    "scanId": scan_id,
+                    "running": running,
+                }),
+            ),
         );
     }
     *state.scanning.lock() = None;
@@ -318,7 +346,10 @@ pub(crate) fn card_for(
     // across that is one more lock order for nobody's benefit.
     let (paired, seen) = {
         let db = db.lock();
-        (db.paired_devices().map_err(internal)?, db.seen_devices().map_err(internal)?)
+        (
+            db.paired_devices().map_err(internal)?,
+            db.seen_devices().map_err(internal)?,
+        )
     };
 
     if let Some(row) = paired.iter().find(|row| row.device_id == device_id) {
@@ -336,7 +367,10 @@ pub(crate) fn card_for(
 ///
 /// [`IpcError::Internal`] when the stored identifier does not parse. See [`devices_snapshot`]: a corrupted row must not
 /// become a missing card.
-fn card_from_paired(host: &synra_core::SharedHost, row: &synra_store::DeviceRow) -> Result<DeviceCard, IpcError> {
+fn card_from_paired(
+    host: &synra_core::SharedHost,
+    row: &synra_store::DeviceRow,
+) -> Result<DeviceCard, IpcError> {
     let device_id = parse_from_store(row.device_id.as_str())?;
     Ok(DeviceCard {
         device_id,

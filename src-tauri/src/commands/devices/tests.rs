@@ -8,14 +8,16 @@
 //! writer looks like from the outside.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 
 use synra_ipc::{ScanOptions, ScanState};
 use synra_protocol::ErrorCode;
 use synra_store::{Paired, Seen};
 
-use super::{devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, scan_budget};
+use super::{
+    devices_forget, devices_scan_cancel, devices_scan_start, devices_snapshot, scan_budget,
+};
 use crate::state::AppState;
 use crate::testing;
 
@@ -26,9 +28,8 @@ fn with_paired_device() -> AppState {
     let state = testing::state();
     let identity = state.identity_snapshot(crate::KERNEL_VERSION);
     state
-
-    .db()
-    .pair_device(&Paired {
+        .db()
+        .pair_device(&Paired {
             device_id: identity.device_id.to_string(),
             display_name: "Study PC".to_owned(),
             platform: "linux".to_owned(),
@@ -66,7 +67,11 @@ fn forgetting_a_device_tells_the_interface() {
     assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
     match delivery.events().first() {
         Some(synra_ipc::event::KernelEvent::DeviceRemoved { device_id }) => {
-            assert_eq!(device_id.to_string(), OTHER, "and names the device that went");
+            assert_eq!(
+                device_id.to_string(),
+                OTHER,
+                "and names the device that went"
+            );
         }
         other => panic!("expected a removal, got {other:?}"),
     }
@@ -86,7 +91,10 @@ fn a_finished_scan_announces_the_cards_it_left_behind() {
     assert_eq!(delivery.first_seq(), 1, "the bus numbers it");
     match delivery.events() {
         [synra_ipc::event::KernelEvent::DeviceCardUpdated(card)] => {
-            assert_eq!(card.device_id.to_string(), state.identity.lock().device_id.to_string());
+            assert_eq!(
+                card.device_id.to_string(),
+                state.identity.lock().device_id.to_string()
+            );
         }
         other => panic!("expected one card, got {other:?}"),
     }
@@ -101,21 +109,33 @@ fn a_scan_with_nothing_known_announces_nothing() {
 
     super::announce_cards(&state);
 
-    assert!(state.events.take(subscriber).is_none(), "no devices, no announcements");
+    assert!(
+        state.events.take(subscriber).is_none(),
+        "no devices, no announcements"
+    );
 }
 
 #[test]
 fn a_device_with_nothing_paired_shows_an_empty_list_and_not_an_error() {
     let snapshot = devices_snapshot(&testing::state()).expect("a snapshot");
-    assert!(snapshot.devices.is_empty(), "nothing is paired, so nothing is listed");
-    assert_eq!(snapshot.identity.display_name, snapshot.identity.display_name, "the identity is still there");
+    assert!(
+        snapshot.devices.is_empty(),
+        "nothing is paired, so nothing is listed"
+    );
+    assert_eq!(
+        snapshot.identity.display_name, snapshot.identity.display_name,
+        "the identity is still there"
+    );
 }
 
 #[test]
 fn the_snapshot_carries_this_device_so_the_screen_needs_one_call() {
     let snapshot = devices_snapshot(&testing::state()).expect("a snapshot");
     assert_eq!(snapshot.identity.kernel_version, crate::KERNEL_VERSION);
-    assert!(snapshot.identity.name_is_default, "a fresh device's name was generated");
+    assert!(
+        snapshot.identity.name_is_default,
+        "a fresh device's name was generated"
+    );
     assert_eq!(snapshot.scanning, None, "and nothing is scanning yet");
 }
 
@@ -126,7 +146,11 @@ fn a_paired_device_becomes_a_card_the_interface_can_render() {
     let card = &snapshot.devices[0];
     assert_eq!(card.display_name, "Study PC");
     assert!(card.paired, "it is on the list because it was paired");
-    assert_eq!(card.address.as_deref(), Some("192.168.1.4:5000"), "a paired device keeps its address");
+    assert_eq!(
+        card.address.as_deref(),
+        Some("192.168.1.4:5000"),
+        "a paired device keeps its address"
+    );
 }
 
 #[test]
@@ -159,9 +183,8 @@ fn a_paired_device_with_no_session_is_offline() {
 fn devices_are_listed_by_name_when_the_names_differ() {
     let state = with_paired_device();
     state
-
-    .db()
-    .pair_device(&Paired {
+        .db()
+        .pair_device(&Paired {
             device_id: OTHER.to_owned(),
             display_name: "Aardvark phone".to_owned(),
             platform: "android".to_owned(),
@@ -173,7 +196,10 @@ fn devices_are_listed_by_name_when_the_names_differ() {
         .expect("pairs a second device");
 
     let snapshot = devices_snapshot(&state).expect("a snapshot");
-    assert_eq!(snapshot.devices[0].display_name, "Aardvark phone", "sorted by name");
+    assert_eq!(
+        snapshot.devices[0].display_name, "Aardvark phone",
+        "sorted by name"
+    );
     assert_eq!(snapshot.devices[1].display_name, "Study PC");
 }
 
@@ -186,9 +212,8 @@ fn devices_with_the_same_name_still_come_out_in_one_order() {
     // and SQLite is not obliged to agree with itself across runs.
     let state = with_paired_device();
     state
-
-    .db()
-    .pair_device(&Paired {
+        .db()
+        .pair_device(&Paired {
             device_id: OTHER.to_owned(),
             display_name: "Study PC".to_owned(),
             platform: "android".to_owned(),
@@ -201,8 +226,14 @@ fn devices_with_the_same_name_still_come_out_in_one_order() {
 
     let snapshot = devices_snapshot(&state).expect("a snapshot");
     assert_eq!(snapshot.devices.len(), 2);
-    assert_eq!(snapshot.devices[0].display_name, snapshot.devices[1].display_name, "with the same name");
-    assert_ne!(snapshot.devices[0].device_id, snapshot.devices[1].device_id, "so the order came from the identifiers");
+    assert_eq!(
+        snapshot.devices[0].display_name, snapshot.devices[1].display_name,
+        "with the same name"
+    );
+    assert_ne!(
+        snapshot.devices[0].device_id, snapshot.devices[1].device_id,
+        "so the order came from the identifiers"
+    );
 }
 
 /// A sighting of a device that has never been paired, as discovery would record it.
@@ -223,7 +254,10 @@ fn a_device_that_was_only_heard_from_still_reaches_the_list() {
     // Before the kernel wrote `devices_seen` this card could not exist, so the devices screen could only ever show
     // devices that were already paired — and "what can I pair with?" had no answer anywhere in the product.
     let state = testing::state();
-    state.db().record_seen_device(&sighting(OTHER, "Hallway tablet")).expect("records a sighting");
+    state
+        .db()
+        .record_seen_device(&sighting(OTHER, "Hallway tablet"))
+        .expect("records a sighting");
 
     let snapshot = devices_snapshot(&state).expect("a snapshot");
     assert_eq!(snapshot.devices.len(), 1);
@@ -240,12 +274,23 @@ fn a_device_that_is_both_paired_and_heard_from_is_listed_once() {
     // be in both. Without the de-duplication it would appear twice — once as paired, once as not — and the user would
     // see the same machine twice with different affordances.
     let state = with_paired_device();
-    let paired_id = devices_snapshot(&state).expect("a snapshot").devices.remove(0).device_id.to_string();
-    state.db().record_seen_device(&sighting(&paired_id, "Study PC")).expect("records a sighting");
+    let paired_id = devices_snapshot(&state)
+        .expect("a snapshot")
+        .devices
+        .remove(0)
+        .device_id
+        .to_string();
+    state
+        .db()
+        .record_seen_device(&sighting(&paired_id, "Study PC"))
+        .expect("records a sighting");
 
     let snapshot = devices_snapshot(&state).expect("a snapshot");
     assert_eq!(snapshot.devices.len(), 1, "listed once");
-    assert!(snapshot.devices[0].paired, "and as paired, which is the more capable answer");
+    assert!(
+        snapshot.devices[0].paired,
+        "and as paired, which is the more capable answer"
+    );
 }
 
 #[test]
@@ -255,11 +300,17 @@ fn paired_devices_are_listed_before_the_ones_that_still_need_pairing() {
     // The devices a user can already send to are what the screen is for; the ones they have to pair with next are what
     // they are shopping for. The names are chosen so that sorting by name alone would put them the other way round.
     let state = with_paired_device();
-    state.db().record_seen_device(&sighting(OTHER, "Aardvark tablet")).expect("records a sighting");
+    state
+        .db()
+        .record_seen_device(&sighting(OTHER, "Aardvark tablet"))
+        .expect("records a sighting");
 
     let snapshot = devices_snapshot(&state).expect("a snapshot");
     assert_eq!(snapshot.devices.len(), 2);
-    assert_eq!(snapshot.devices[0].display_name, "Study PC", "the paired one, despite sorting later by name");
+    assert_eq!(
+        snapshot.devices[0].display_name, "Study PC",
+        "the paired one, despite sorting later by name"
+    );
     assert!(snapshot.devices[0].paired);
     assert_eq!(snapshot.devices[1].display_name, "Aardvark tablet");
     assert!(!snapshot.devices[1].paired);
@@ -273,8 +324,14 @@ fn an_unpaired_device_is_shown_without_an_address() {
     // discovery, the address in that announcement is where it *was*, which is not a promise about now — and showing it
     // on a card that looks exactly as usable as a paired one offers the user a device they cannot reach.
     let state = testing::state();
-    state.db().record_seen_device(&sighting(OTHER, "Hallway tablet")).expect("records a sighting");
-    assert_eq!(devices_snapshot(&state).expect("a snapshot").devices[0].address, None);
+    state
+        .db()
+        .record_seen_device(&sighting(OTHER, "Hallway tablet"))
+        .expect("records a sighting");
+    assert_eq!(
+        devices_snapshot(&state).expect("a snapshot").devices[0].address,
+        None
+    );
 }
 
 #[test]
@@ -320,19 +377,33 @@ fn an_active_scan_without_a_discovery_worker_is_refused_rather_than_reported_as_
     // a firewall and a sandbox all produce the same bind failure. That is the one case left in which a network scan is
     // refused — the refusal names the reason, and the interface falls back to the cached read.
     let state = testing::state();
-    assert!(state.discovery.is_none(), "the fixture is a shell that could not bind the sockets");
+    assert!(
+        state.discovery.is_none(),
+        "the fixture is a shell that could not bind the sockets"
+    );
 
-    let refused = devices_scan_start(&state, &ScanOptions::default()).expect_err("this state cannot scan");
+    let refused =
+        devices_scan_start(&state, &ScanOptions::default()).expect_err("this state cannot scan");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported);
-    let reason = refused.params.get("reason").and_then(serde_json::Value::as_str).unwrap_or_default();
-    assert!(reason.contains("discovery sockets"), "the refusal names what is missing: {reason}");
+    let reason = refused
+        .params
+        .get("reason")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        reason.contains("discovery sockets"),
+        "the refusal names what is missing: {reason}"
+    );
     // And nothing was left in the snapshot claiming a scan is under way.
     assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
     // ★ "Why can this device not find anything" is a question the metrics answer: the refusal is a scan that could not run,
     // and the daemon writes the same label for its own refusal.
     assert_eq!(
-        state.metrics.snapshot().get("scans_total{result=unavailable}"),
+        state
+            .metrics
+            .snapshot()
+            .get("scans_total{result=unavailable}"),
         Some(&synra_observe::metrics::Value::Counter(1)),
         "the refusal is counted rather than only returned"
     );
@@ -343,12 +414,28 @@ fn a_scan_budget_is_the_protocols_and_not_the_callers() {
     // A scan is a broadcast to every machine on the network, so its length is the protocol's to set. The two interesting
     // answers are the ceiling — a caller does not get to ask for a longer broadcast — and the default, which is the
     // window "look now" means when nobody said how long.
-    let asked = |ms: Option<u64>| scan_budget(&ScanOptions { timeout_ms: ms, ..ScanOptions::default() });
+    let asked = |ms: Option<u64>| {
+        scan_budget(&ScanOptions {
+            timeout_ms: ms,
+            ..ScanOptions::default()
+        })
+    };
 
     assert_eq!(asked(None), synra_protocol::limits::SCAN_PASSIVE);
-    assert_eq!(asked(Some(10)), Duration::from_millis(10), "a shorter scan is honoured");
-    assert_eq!(asked(Some(60_000)), synra_protocol::limits::SCAN_TOTAL, "a longer one is clamped");
-    assert!(asked(Some(0)).is_zero(), "and zero is the protocol's way of saying `answer from what you know`");
+    assert_eq!(
+        asked(Some(10)),
+        Duration::from_millis(10),
+        "a shorter scan is honoured"
+    );
+    assert_eq!(
+        asked(Some(60_000)),
+        synra_protocol::limits::SCAN_TOTAL,
+        "a longer one is clamped"
+    );
+    assert!(
+        asked(Some(0)).is_zero(),
+        "and zero is the protocol's way of saying `answer from what you know`"
+    );
 }
 
 #[test]
@@ -357,48 +444,54 @@ fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers
     // interface reads to disable the button and draw the bar, so a scan that records nothing looks like a dead button, and
     // one that never clears looks like a button that has died.
     let (state, deadline) = with_discovery();
-    let running = AtomicBool::new(false);
-    let published = AtomicBool::new(false);
-
-    std::thread::scope(|scope| {
-        // A watcher borrowing the state, because the command blocks: a scan this short is only observable while it waits.
-        scope.spawn(|| {
-            let until = Instant::now() + Duration::from_secs(2);
-            while Instant::now() < until {
-                if state.scanning.lock().as_ref().is_some_and(|scan| scan.total_ms == 60) {
-                    running.store(true, Ordering::Relaxed);
-                }
-                if deadline.load(Ordering::Relaxed) != 0 {
-                    published.store(true, Ordering::Relaxed);
-                }
-                if running.load(Ordering::Relaxed) && published.load(Ordering::Relaxed) {
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(1));
-            }
-        });
-
-        let scan_id = devices_scan_start(&state, &ScanOptions { timeout_ms: Some(60), ..ScanOptions::default() })
-            .expect("a scan with a worker behind it");
-
-        assert!(!scan_id.is_empty(), "the contract answers with an identifier");
-    });
-
-    assert!(running.load(Ordering::Relaxed), "a snapshot taken during the scan says one is in progress");
-    assert!(published.load(Ordering::Relaxed), "and the worker was asked to look now");
-    assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None, "and it is over when it answers");
-    assert_eq!(deadline.load(Ordering::Relaxed), 0, "with the deadline released, so nothing keeps broadcasting");
+    let scan_id = super::scan_with(
+        &state,
+        &ScanOptions {
+            timeout_ms: Some(60),
+            ..ScanOptions::default()
+        },
+        |discovery, budget| {
+            // The production path publishes its deadline before this wait; inspecting here cannot miss a short scan.
+            discovery.scan_with_wait(budget, 1_000, |window| {
+                assert_eq!(window, Duration::from_millis(60));
+                let snapshot = devices_snapshot(&state).expect("running snapshot");
+                assert_eq!(snapshot.scanning.expect("scan in progress").total_ms, 60);
+                assert_eq!(deadline.load(Ordering::Relaxed), 1_060);
+            });
+        },
+    )
+    .expect("a scan with a worker behind it");
+    assert!(
+        !scan_id.is_empty(),
+        "the contract answers with an identifier"
+    );
+    assert_eq!(
+        devices_snapshot(&state).expect("a snapshot").scanning,
+        None,
+        "and it is over when it answers"
+    );
+    assert_eq!(
+        deadline.load(Ordering::Relaxed),
+        0,
+        "with the deadline released, so nothing keeps broadcasting"
+    );
 
     // ★ The scan is measured where it runs. An empty test network found nothing, and "found nothing" is still an
     // observation — a histogram with no observations would be a shape rather than a measurement.
     use synra_observe::metrics::Value;
     let snapshot = state.metrics.snapshot();
-    assert_eq!(snapshot.get("scans_total{result=ran}"), Some(&Value::Counter(1)));
+    assert_eq!(
+        snapshot.get("scans_total{result=ran}"),
+        Some(&Value::Counter(1))
+    );
     match snapshot.get("candidates_found") {
         Some(Value::Histogram(histogram)) => assert_eq!(histogram.count, 1),
         other => panic!("expected a candidates histogram, got {other:?}"),
     }
-    assert!(snapshot.get("scan_duration_ms").is_some(), "the scan's time is recorded");
+    assert!(
+        snapshot.get("scan_duration_ms").is_some(),
+        "the scan's time is recorded"
+    );
 }
 
 #[test]
@@ -406,7 +499,10 @@ fn a_cached_only_scan_finishes_immediately_rather_than_showing_a_bar_that_cannot
     let state = testing::state();
 
     let scan_id = devices_scan_start(&state, &cached()).expect("a scan");
-    assert!(!scan_id.is_empty(), "the contract answers with an identifier");
+    assert!(
+        !scan_id.is_empty(),
+        "the contract answers with an identifier"
+    );
 
     // ★ `None` is what "nothing to wait for" looks like on the wire, and `Some` is what the interface reads as *a scan is
     // running* — it disables the Scan button and draws the bar. This used to assert `total_ms == 0` on a state that
@@ -432,8 +528,12 @@ fn the_options_the_interface_sends_deserialize_into_this_commands_argument() {
         "cachedOnly": true,
     });
 
-    let parsed: ScanOptions = serde_json::from_value(sent).expect("the interface's payload is this struct");
-    assert!(parsed.cached_only, "the interface asks for the scan this shell can answer");
+    let parsed: ScanOptions =
+        serde_json::from_value(sent).expect("the interface's payload is this struct");
+    assert!(
+        parsed.cached_only,
+        "the interface asks for the scan this shell can answer"
+    );
     assert!(!parsed.include_paired);
     assert_eq!(parsed.timeout_ms, None);
 }
@@ -443,7 +543,10 @@ fn the_options_the_interface_sends_deserialize_into_this_commands_argument() {
 /// ★ It finishes before it answers and records nothing, which is why the tests about *cancelling* no longer set up with
 /// it: there is no scan in progress to cancel. They install the state directly instead, in [`scanning`].
 fn cached() -> ScanOptions {
-    ScanOptions { cached_only: true, ..ScanOptions::default() }
+    ScanOptions {
+        cached_only: true,
+        ..ScanOptions::default()
+    }
 }
 
 /// A scan that is genuinely running, put in place directly.
@@ -503,20 +606,28 @@ fn two_scans_in_a_row_get_different_identifiers() {
 #[test]
 fn a_forgotten_device_is_gone_from_the_next_snapshot() {
     let state = with_paired_device();
-    let card = devices_snapshot(&state).expect("a snapshot").devices.remove(0);
+    let card = devices_snapshot(&state)
+        .expect("a snapshot")
+        .devices
+        .remove(0);
     let id = card.device_id.to_string();
 
     devices_forget(&state, &id).expect("forgets");
-    assert!(devices_snapshot(&state).expect("a snapshot").devices.is_empty(), "the pairing is gone");
+    assert!(
+        devices_snapshot(&state)
+            .expect("a snapshot")
+            .devices
+            .is_empty(),
+        "the pairing is gone"
+    );
 }
 
 #[test]
 fn forgetting_survives_a_restart() {
     let (root, state) = testing::file_state();
     state
-
-    .db()
-    .pair_device(&Paired {
+        .db()
+        .pair_device(&Paired {
             device_id: OTHER.to_owned(),
             display_name: "Study PC".to_owned(),
             platform: "linux".to_owned(),
@@ -530,7 +641,10 @@ fn forgetting_survives_a_restart() {
     devices_forget(&state, OTHER).expect("forgets");
     let reopened = testing::reopen(&state);
     assert!(
-        devices_snapshot(&reopened).expect("a snapshot").devices.is_empty(),
+        devices_snapshot(&reopened)
+            .expect("a snapshot")
+            .devices
+            .is_empty(),
         "and it did not come back when the shell started again"
     );
     drop(root);
