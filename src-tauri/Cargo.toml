@@ -42,7 +42,7 @@ edition = "2024"
 # 另一条路是**把 npm 侧降到 2.11.x**（`@tauri-apps/api@2.11.1` + `@tauri-apps/cli@2.11.5`）：它不需要
 # 重编译任何 Rust，也不用抬 MSRV。没走那条路，是因为 JS 侧被升到 2.12 是一个已经做出的选择，
 # 而"把新的降回去"会让下一个人再升一次 —— 同一个决定做两遍。
-rust-version = "1.90"
+rust-version = "1.90.0"
 license = "MIT"
 repository = "https://github.com/synra-rs/synra-app"
 authors = [ "Synra contributors" ]

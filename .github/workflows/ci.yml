@@ -2,7 +2,7 @@ name: checks
 
 # ★ What this workflow is.
 #
-# Two jobs, each running a command that already exists in this repository: the interface (`pnpm test`, `pnpm build`,
+# Interface, shell and declared MSRV jobs, each running a command that already exists in this repository: the interface (`pnpm test`, `pnpm build`,
 # `pnpm shapes`) and the shell (`cargo test`, `cargo clippy`). Nothing here is a check that only CI knows how to do.
 #
 # ★ **This file has no trigger of its own.** It is a reusable workflow (`workflow_call`), invoked by `release.yaml` when
@@ -112,8 +112,9 @@ jobs:
           repository: synra-rs/synra-core
           path: synra-rust-core
 
-      - name: Add clippy
-        run: rustup component add clippy
+      # The root toolchain file also applies from src-tauri.
+      - name: Install the development toolchain
+        run: rustup toolchain install --no-self-update
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
@@ -124,7 +125,44 @@ jobs:
       # command body is tested here. The default feature needs a webview toolchain, and a CI box that installs
       # WebKitGTK tests the runner rather than the code. `src-tauri/Cargo.toml` documents the gate.
       - name: Clippy
-        run: cargo clippy --no-default-features --all-targets -- -D warnings
+        run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --no-default-features
+        run: cargo test --locked --no-default-features
+
+  msrv:
+    name: declared MSRV
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: synra-rust-app/src-tauri
+    steps:
+      - name: Check out the app
+        uses: actions/checkout@v4
+        with:
+          path: synra-rust-app
+
+      - name: Check out the kernel
+        uses: actions/checkout@v4
+        with:
+          repository: synra-rs/synra-core
+          path: synra-rust-core
+
+      - name: Install the declared MSRV
+        id: msrv
+        run: |
+          msrv="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["rust-version"])')"
+          echo "toolchain=$msrv" >> "$GITHUB_OUTPUT"
+          rustup toolchain install "$msrv" --profile minimal --no-self-update
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+          workspaces: synra-rust-app/src-tauri -> target
+
+      # This checks the host without GUI system packages, just like the shell test job.
+      - name: Check on the MSRV
+        env:
+          MSRV: ${{ steps.msrv.outputs.toolchain }}
+        run: cargo "+$MSRV" check --locked --no-default-features --all-targets

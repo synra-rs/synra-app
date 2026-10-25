@@ -6,6 +6,9 @@ Its sibling is [`synra-core`](https://github.com/synra-rs/synra-core); the bound
 without a UI, it belongs to core"). This file is what a person needs *before* their first edit, and it exists because those
 facts were learned the expensive way.
 
+The root `rust-toolchain.toml` also selects Rust when commands run inside `src-tauri/`. CI installs this development toolchain;
+the separate MSRV job reads `src-tauri/Cargo.toml` and uses `cargo +<msrv>`, without changing the default compiler.
+
 ## 1. Two languages, two gates, and neither is optional
 
 ```powershell

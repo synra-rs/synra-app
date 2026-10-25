@@ -111,6 +111,13 @@ synra-app/
 1. `src-tauri/src/inject/` 的注入对象必须 `satisfies SynraClient` —— **漏字段/多字段在编译期报错**；
 2. 本仓库**不得**出现第二处 `SynraResponse` / `SynraError` 声明（类型只在 `@synra/client` 里定义一次）。
 
+## 开发工具链
+
+根目录的 [rust-toolchain.toml](./rust-toolchain.toml) 同样适用于 `src-tauri/` 中的 Cargo 命令。
+先在仓库内执行 `rustup toolchain install --no-self-update` 安装固定版本和组件；
+CI 的 shell job 使用该开发版本，独立 MSRV job 从 `src-tauri/Cargo.toml` 读取最低版本并显式选择。
+MSRV 检查使用无默认特性构建，默认 Tauri 构建仍需相应平台工具。
+
 ## 运行
 
 ```powershell
