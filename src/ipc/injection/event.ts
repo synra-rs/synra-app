@@ -3,7 +3,7 @@
  *
  * # Why nothing here is emittable
  *
- * Emitting needs a kernel command that enforces the `_plugin.<slug>.` namespace — the one that stops a plugin
+ * Emitting needs a kernel command that enforces the `_plugin.<full @scope/name>.` namespace — the one that stops a plugin
  * impersonating another's events. Writing it here without that check would be an emitter anyone may use.
  */
 
@@ -19,7 +19,7 @@ export function createEventNamespace(context: InjectionContext): EventNamespace 
     emit: async () => {
       // ★ Refused, and the reason is not "this host is old".
       //
-      // Emitting needs a kernel command that enforces the `_plugin.<slug>.` namespace — the one that stops a plugin
+      // Emitting needs a kernel command that enforces the `_plugin.<full @scope/name>.` namespace — the one that stops a plugin
       // impersonating another's events. Writing it here without that check would be an emitter anyone may use.
       throw unsupported('event.emit')
     },
