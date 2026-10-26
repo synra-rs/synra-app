@@ -4200,7 +4200,9 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
+ "synra-capability",
  "synra-core",
+ "synra-plugin-host",
  "synra-protocol",
  "ureq",
 ]
@@ -4280,6 +4282,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "http",
  "parking_lot",
  "serde",
  "serde_json",
