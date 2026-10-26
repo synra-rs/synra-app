@@ -82,7 +82,7 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 
 ## 7. Commits
 
-Conventional Commits, subject ≤ 50 characters, no body, no GPG. One commit per unit of work; push after each. If a step is
+Conventional Commits, subject ≤ 50 characters, no body, with GPG signing. One commit per unit of work; push after each. If a step is
 part of a larger change, say so in the subject (`chore: depend on the UI session registry`) rather than pretending it is
 finished.
 
