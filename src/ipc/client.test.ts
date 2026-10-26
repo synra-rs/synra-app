@@ -75,7 +75,7 @@ describe('calling a command', () => {
     expect(result.error.code).toBe('internal')
     expect(result.error.retryable).toBe(true)
     // And the detail is carried, so a diagnostic report can say what the bridge said.
-    expect(result.error.params?.detail).toContain('the bridge fell over')
+    expect(result.error.params).toEqual({ detail: expect.stringContaining('the bridge fell over') })
   })
 
   it('passes through a rejection that is already an error', async () => {

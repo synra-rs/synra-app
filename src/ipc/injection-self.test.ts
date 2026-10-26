@@ -9,6 +9,7 @@
  * copy of a rule it does not own.
  */
 
+import type { IpcError } from '@synra/protocol'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createInjection } from './injection'
@@ -32,6 +33,30 @@ function answering(answers: Readonly<Record<string, unknown>>) {
 }
 
 describe('self', () => {
+  it('preserves structured Wasm refusal details through the page facade', async () => {
+    const refusal: IpcError = {
+      code: 'internal',
+      message: 'error.internal',
+      params: { reason: 'request refused' },
+      retryable: true,
+      details: {
+        pluginCode: 'hostFailed',
+        pluginDetails: { kind: 'timeout', cleanupPending: true, label: '中文🖱️' }
+      }
+    }
+    const invoke = vi.fn(async () => {
+      throw refusal
+    })
+    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+
+    await expect(synra.self.invoke('send')).rejects.toBe(refusal)
+    expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
+      token: '123456789012345678901234567890',
+      method: 'self.invoke',
+      args: { action: 'send' }
+    })
+  })
+
   it('lists the actions the kernel says this plugin declared', async () => {
     const invoke = answering({
       'self.actions': [

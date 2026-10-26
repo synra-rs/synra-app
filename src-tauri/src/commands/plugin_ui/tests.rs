@@ -13,6 +13,8 @@ use synra_plugin_host::host_calls::CallError;
 use synra_plugin_host::{Backend, ScriptedBackend};
 use synra_protocol::ErrorCode;
 
+mod wasm_errors;
+
 /// A plausible plugin id, so nothing here accidentally tests id parsing.
 fn plugin_id() -> synra_protocol::ids::PluginId {
     synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id")
@@ -999,6 +1001,23 @@ fn a_page_may_only_stay_on_itself() {
 /// asked for without arguments arrives as `null`, not as `{}`.
 fn action_page(answer: synra_plugin_host::Scripted, args_json: &str)
     -> (crate::testing::Root, crate::AppState, String, Arc<ScriptedBackend>) {
+    let backend = Arc::new(ScriptedBackend::new());
+    backend.script(
+        &synra_plugin_host::Work::InvokeAction {
+            name: "send".to_owned(),
+            args_json: args_json.to_owned(),
+        },
+        answer,
+    );
+    let (root, state, token) =
+        action_page_on(Backend::new(backend.clone()), b"\0asm\x01\0\0\0".to_vec());
+    (root, state, token, backend)
+}
+
+fn action_page_on(
+    backend: Backend,
+    wasm: Vec<u8>,
+) -> (crate::testing::Root, crate::AppState, String) {
     let (root, state) = crate::testing::file_state();
     let plugin = plugin_id();
     state
@@ -1010,20 +1029,15 @@ fn action_page(answer: synra_plugin_host::Scripted, args_json: &str)
         .record_plugin_action(plugin.as_str(), "send", Some(r#"{"type":"object"}"#), Some("Send a message"))
         .expect("a declaration");
 
-    let backend = Arc::new(ScriptedBackend::new());
-    backend.script(
-        &synra_plugin_host::Work::InvokeAction { name: "send".to_owned(), args_json: args_json.to_owned() },
-        answer,
-    );
     let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
         Arc::clone(&state.db),
         Arc::clone(&state.platform),
     ));
-    let mut set = synra_core::dispatch::PluginSet::new(Backend::new(backend.clone()), host);
+    let mut set = synra_core::dispatch::PluginSet::new(backend, host);
     set.load(synra_core::dispatch::PluginSpec {
         id: plugin,
         version: "1.0.0".to_owned(),
-        wasm: b"\0asm\x01\0\0\0".to_vec(),
+        wasm,
         grants: CapabilitySet::new(),
         policy: synra_plugin_host::InstancePolicy::Stateless,
         limit: 4,
@@ -1033,7 +1047,7 @@ fn action_page(answer: synra_plugin_host::Scripted, args_json: &str)
 
     let state = state.with_plugins(Arc::new(Mutex::new(set)));
     let token = hosted_page(&state);
-    (root, state, token, backend)
+    (root, state, token)
 }
 
 #[test]
@@ -1094,10 +1108,14 @@ fn an_action_this_plugin_never_declared_is_refused_before_the_call() {
 
 #[test]
 fn a_structured_failure_keeps_the_code_the_plugin_chose() {
-    let (_root, state, token, _backend) = action_page(synra_plugin_host::Scripted::Failed {
-        code: "device_offline".to_owned(),
-        message: "the other end is away".to_owned(),
-    }, "null");
+    let (_root, state, token, _backend) = action_page(
+        synra_plugin_host::Scripted::Failed {
+            code: "device_offline".to_owned(),
+            message: "the other end is away".to_owned(),
+            details: None,
+        },
+        "null",
+    );
 
     let refused = super::plugin_ui_rpc(
         &state,

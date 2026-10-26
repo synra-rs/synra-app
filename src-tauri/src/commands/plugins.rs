@@ -2991,6 +2991,7 @@ mod tests {
             synra_plugin_host::Scripted::Failed {
                 code: "invalidArgument".to_owned(),
                 message: "this data cannot move".to_owned(),
+                details: None,
             },
         );
 

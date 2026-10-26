@@ -1,54 +1,14 @@
 /**
- * The typed client the host interface uses to call the kernel.
+ * The host interface receives the generated IPC error contract: a message key, parameters,
+ * retryability and optional diagnostic JSON. The protocol package owns that shape.
  *
- * # Two errors, and why they are not the same type
- *
- * The host interface has its own `IpcError`, and the plugin UI has `SynraError` — which the client library defines and
- * this repository must not redefine. They are different types for a reason rather than by accident:
- *
- * | Field | `IpcError` | `SynraError` |
- * | --- | --- | --- |
- * | `params` | the message-key substitutions, for the interface to localise | absent — a plugin gets a rendered sentence |
- * | `details` | the kernel's structured detail | absent |
- * | `message` | a **key**, not a sentence | a sentence |
- *
- * So the interface receives the key and the parameters and renders the sentence itself, in the user's language, and a
- * plugin receives the sentence it cannot usefully re-render. A single type would have to be both, and the field one
- * side does not need is exactly the field the other cannot do without.
- *
- * # Why the bridge is an interface
- *
- * `invoke` is Tauri's, and Tauri needs a WebView. A client that called it directly would be a client whose every test
- * needed a shell — so the call goes through a named seam, and a test supplies a fake. What is *not* faked is anything
- * below: the error mapping, the retry classification, the ordering of the listen and the snapshot are all real.
+ * The bridge exposes Tauri through an injectable interface so tests can drive the real client
+ * without a WebView. Plugin injection preserves structured bridge rejections for diagnostics.
  */
 
-import type { ErrorCode, SuggestedAction } from '@synra/protocol'
+import type { IpcError } from '@synra/protocol'
 
-/**
- * What an `invoke` call can fail with, as the host sends it.
- *
- * Mirrors `synra-ipc`'s `IpcError`. `code` is one of the kernel's stable codes, so a caller branches on it and never on
- * the sentence.
- */
-export interface IpcError {
-  /** The kernel's stable error code. */
-  readonly code: ErrorCode
-  /** A **message key**, not a sentence — the interface renders it. */
-  readonly message: string
-  /** The key's substitutions. */
-  readonly params?: Readonly<Record<string, string | number>>
-  /** The kernel's structured detail, when there is any. */
-  readonly details?: string
-  /** Whether the same call may be made again as it was. */
-  readonly retryable: boolean
-  /** What the user can do about it, in the order the kernel suggests. */
-  // ★ 这一行原来是 `readonly string[]` —— 而 `synra-ipc` 的 `actions` 是 `Vec<SuggestedAction>`，
-  //   `@synra/protocol` 生成的类型里也是那个判别联合（`wire.ts` 的 `IpcError`）。
-  //   两者不一致一直没被发现，因为**界面从来没渲染过 actions**（R33 说的"既有契约的一半没接上"）。
-  //   接上它的当天就变成编译错误 —— 这也是"没被使用的半个契约会漂移"的一个实例。
-  readonly actions?: readonly SuggestedAction[]
-}
+export type { IpcError } from '@synra/protocol'
 
 /**
  * The seam to Tauri.

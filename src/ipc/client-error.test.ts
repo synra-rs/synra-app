@@ -60,7 +60,13 @@ describe('the error type the interface uses', () => {
     // A compile-time assertion with a runtime witness: `message` here is a **key** and in `SynraError` a sentence, and
     // the field the interface needs to localise is the field a plugin cannot use. Two types rather than one is what lets
     // the interface render in the user's language.
-    const error: IpcError = { code: 'timeout', message: 'error.timeout', retryable: true }
+    const error: IpcError = {
+      code: 'timeout',
+      message: 'error.timeout',
+      retryable: true,
+      details: { pluginCode: 'hostFailed', pluginDetails: { cleanupPending: true } }
+    }
     expect(error.message).toMatch(/^error\./)
+    expect(error.details).toEqual({ pluginCode: 'hostFailed', pluginDetails: { cleanupPending: true } })
   })
 })
