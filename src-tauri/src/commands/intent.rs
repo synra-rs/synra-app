@@ -800,9 +800,7 @@ mod tests {
             .lock()
             .conclude(
                 id,
-                false,
-                "",
-                Some(synra_protocol::SynraError::new(
+                Err(synra_protocol::SynraError::new(
                     synra_protocol::ErrorCode::Internal,
                     "the plugin trapped",
                 )),
@@ -870,7 +868,11 @@ mod tests {
     fn a_successful_intent_has_no_error_to_show() {
         let state = crate::testing::state();
         let (id, _) = raise_an_intent(&state);
-        state.board.lock().conclude(id, true, "opened", None, 1).expect("ended");
+        state
+            .board
+            .lock()
+            .conclude(id, Ok(serde_json::json!("opened")), 1)
+            .expect("ended");
 
         assert!(intent_snapshot(&state, id).expect("a card").error.is_none());
     }

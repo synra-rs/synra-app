@@ -1,6 +1,6 @@
 //! Page RPC, real SQLite declarations, PluginSet and a real Wasm component share the failure.
 
-use super::{action_page_on, plugin_id};
+use super::{action_page, action_page_on, plugin_id};
 use std::sync::Arc;
 use synra_plugin_host::engine::WasmtimeBackend;
 use synra_plugin_host::{Backend, BackendKind};
@@ -150,4 +150,41 @@ fn direct_host_refusals_use_the_same_details_adapter() {
             "pluginCode":"rateLimited", "pluginDetails":{"retryAfterMs":250,"code":"device_offline"}
         }))
     );
+}
+
+#[test]
+fn execution_limits_use_the_shared_plugin_error_diagnostics() {
+    use synra_plugin_host::Scripted;
+    for (outcome, code, kind) in [
+        (Scripted::Timeout, ErrorCode::PluginTimeout, "timeout"),
+        (
+            Scripted::FuelExhausted,
+            ErrorCode::PluginTrapped,
+            "fuelExhausted",
+        ),
+        (
+            Scripted::MemoryExceeded,
+            ErrorCode::PluginTrapped,
+            "memoryExceeded",
+        ),
+        (
+            Scripted::Trap {
+                detail: "out of bounds".to_owned(),
+            },
+            ErrorCode::PluginTrapped,
+            "trap",
+        ),
+    ] {
+        let (_root, state, token, backend) = action_page(outcome, "null");
+        let error = super::super::plugin_ui_rpc(
+            &state,
+            &token,
+            "self.invoke",
+            &serde_json::json!({"action":"send"}),
+        )
+        .expect_err("execution failure");
+        assert_eq!(error.code, code);
+        assert_eq!(error.details.as_ref().expect("diagnostics")["kind"], kind);
+        assert_eq!(backend.calls(), 1);
+    }
 }

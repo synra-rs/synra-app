@@ -1,5 +1,5 @@
 /**
- * The host interface receives the generated IPC error contract: a message key, parameters,
+ * The host interface receives the protocol IPC error contract: a message key, parameters,
  * retryability and optional diagnostic JSON. The protocol package owns that shape.
  *
  * The bridge exposes Tauri through an injectable interface so tests can drive the real client

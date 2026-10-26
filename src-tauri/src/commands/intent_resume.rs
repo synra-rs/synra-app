@@ -364,13 +364,7 @@ mod tests {
         let mut reply = remote::result(
             from,
             to,
-            &InvokeResult {
-                ok: true,
-                result: "opened".to_owned(),
-                error: None,
-                error_code: None,
-                elapsed_ms: 2,
-            },
+            &InvokeResult::from_execution(Ok("opened".to_owned()), 2),
             trace,
             2_000,
         )

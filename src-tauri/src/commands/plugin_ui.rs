@@ -478,50 +478,23 @@ fn call_error(error: &synra_plugin_host::host_calls::CallError) -> IpcError {
     plugin_error(error.code, &error.message, error.details.as_deref())
 }
 
-/// Keep the source code and optional details separate from the IPC classification.
+/// Adapt the shared plugin failure while retaining the page's IPC error shape.
 fn plugin_error(code: &str, message: &str, details: Option<&str>) -> IpcError {
-    let mut diagnostic = serde_json::Map::new();
-    diagnostic.insert(
-        "pluginCode".to_owned(),
-        serde_json::Value::String(code.to_owned()),
-    );
-    if let Some(details) = details {
-        diagnostic.insert(
-            "pluginDetails".to_owned(),
-            serde_json::from_str(details)
-                .unwrap_or_else(|_| serde_json::Value::String(details.to_owned())),
-        );
-    }
-    IpcError::unknown(ipc_code(code))
-        .with_params(serde_json::json!({"reason": message}))
-        .with_details(serde_json::Value::Object(diagnostic))
+    plugin_refusal(synra_plugin_host::engine::reported_failure(
+        code, message, details,
+    ))
 }
 
-/// The protocol code for a host-call refusal's wire string.
-///
-/// # Why both spellings
-///
-/// `CallError::CAPABILITY_DENIED` is `capabilityDenied` (the host-call vocabulary), while a fetch guard's refusal uses
-/// the protocol's `capability_denied` (snake case). Both reach this function, and an unmapped code would become
-/// `Internal` — the one answer that tells a plugin nothing it can act on.
-fn ipc_code(wire: &str) -> ErrorCode {
-    match wire {
-        "capabilityDenied" | "capability_denied" => return ErrorCode::CapabilityDenied,
-        "badArgument" | "invalid_argument" => return ErrorCode::InvalidArgument,
-        "hostNotAllowed" | "host_not_allowed" => return ErrorCode::HostNotAllowed,
-        "ipNotAllowed" | "ip_not_allowed" => return ErrorCode::IpNotAllowed,
-        "schemeNotAllowed" | "scheme_not_allowed" => return ErrorCode::SchemeNotAllowed,
-        "redirectBlocked" | "redirect_blocked" => return ErrorCode::RedirectBlocked,
-        "responseTooLarge" | "response_too_large" => return ErrorCode::ResponseTooLarge,
-        "timeout" => return ErrorCode::Timeout,
-        "rateLimited" | "rate_limited" => return ErrorCode::RateLimited,
-        "unknownFunction" | "notImplemented" | "unsupported" => return ErrorCode::Unsupported,
-        _ => {}
-    }
-
-    // Protocol codes are parsed through their owning type. Custom plugin codes use Internal for
-    // IPC classification while plugin_error preserves their original spelling in diagnostic details.
-    serde_json::from_value::<ErrorCode>(serde_json::Value::String(wire.to_owned())).unwrap_or(ErrorCode::Internal)
+/// A shared execution or host failure at the plugin page boundary.
+fn plugin_refusal(error: synra_protocol::SynraError) -> IpcError {
+    IpcError::unknown(error.code)
+        .with_params(serde_json::json!({"reason": error.message}))
+        .with_details(
+            error
+                .details
+                .map(|details| *details)
+                .unwrap_or(serde_json::Value::Null),
+        )
 }
 
 /// One request through the host's fetcher.
@@ -643,22 +616,8 @@ fn self_invoke(
             .map_err(plugin_set_error)?
     };
 
-    match outcome {
-        // The contract says `unknown`, and the payload is a JSON string; a plugin that returned invalid JSON is handing
-        // back text, and the honest reading of that is a string rather than an error the page cannot act on.
-        synra_plugin_host::CallOutcome::Ok(payload) => Ok(
-            serde_json::from_str(&payload).unwrap_or(serde_json::Value::String(payload)),
-        ),
-        synra_plugin_host::CallOutcome::Failed {
-            code,
-            message,
-            details,
-        } => Err(plugin_error(&code, &message, details.as_deref())),
-        synra_plugin_host::CallOutcome::Timeout { after } => Err(IpcError::unknown(ErrorCode::PluginTimeout)
-            .with_params(serde_json::json!({"afterMs": after.as_millis()}))),
-        other => Err(IpcError::unknown(ErrorCode::PluginTrapped)
-            .with_params(serde_json::json!({"reason": format!("{other:?}")}))),
-    }
+    let payload = outcome.into_result().map_err(plugin_refusal)?;
+    Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::String(payload)))
 }
 
 /// The IPC answer for a set that would not make the call.

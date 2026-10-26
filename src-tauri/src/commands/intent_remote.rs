@@ -200,13 +200,7 @@ mod tests {
             let mut reply = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult {
-                    ok: true,
-                    result: "opened".to_owned(),
-                    error: None,
-                    error_code: None,
-                    elapsed_ms: 3,
-                },
+                &InvokeResult::from_execution(Ok("opened".to_owned()), 3),
                 request.trace_id,
                 1,
             )
@@ -298,13 +292,7 @@ mod tests {
             let mut other = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult {
-                    ok: true,
-                    result: "opened".to_owned(),
-                    error: None,
-                    error_code: None,
-                    elapsed_ms: 1,
-                },
+                &InvokeResult::from_execution(Ok("opened".to_owned()), 1),
                 request.trace_id,
                 1,
             )
@@ -376,13 +364,7 @@ mod tests {
             let mut reply = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult {
-                    ok: true,
-                    result: "opened".to_owned(),
-                    error: None,
-                    error_code: None,
-                    elapsed_ms: 1,
-                },
+                &InvokeResult::from_execution(Ok("opened".to_owned()), 1),
                 request.trace_id,
                 1,
             )

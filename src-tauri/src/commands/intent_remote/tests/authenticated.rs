@@ -67,13 +67,7 @@ fn the_production_app_delivery_entry_uses_authenticated_hello_and_business_frame
             let mut reply = remote::result(
                 device(PEER),
                 device(LOCAL),
-                &InvokeResult {
-                    ok: true,
-                    result: "authenticated".to_owned(),
-                    error: None,
-                    error_code: None,
-                    elapsed_ms: 1,
-                },
+                &InvokeResult::from_execution(Ok("authenticated".to_owned()), 1),
                 request.trace_id,
                 peer.now_ms as i64,
             )
