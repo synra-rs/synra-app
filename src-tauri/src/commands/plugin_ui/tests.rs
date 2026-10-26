@@ -653,7 +653,7 @@ fn a_write_replaces_rather_than_double_counting_the_old_value() {
 // ── The desktop: clipboard, browser, notifications ──────────────────────────────────────────────
 
 /// Every program the fake runner was asked to launch, with its arguments.
-type Calls = Arc<Mutex<Vec<(String, Vec<String>)>>>;
+type Calls = Arc<Mutex<Vec<(String, Vec<String>, Option<String>)>>>;
 
 /// A platform whose programs are recorded instead of launched.
 ///
@@ -667,10 +667,19 @@ struct RecordingRunner {
 }
 
 impl CommandRunner for RecordingRunner {
-    fn run(&self, program: &str, arguments: &[&str]) -> Result<String, PlatformError> {
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn run(
+        &self,
+        program: &str,
+        arguments: &[&str],
+        input: Option<&str>,
+    ) -> Result<String, PlatformError> {
         self.calls.lock().push((
             program.to_owned(),
             arguments.iter().map(|argument| (*argument).to_owned()).collect(),
+            input.map(str::to_owned),
         ));
         Ok(self.answer.clone())
     }
@@ -679,7 +688,15 @@ impl CommandRunner for RecordingRunner {
 /// A state whose platform records instead of acting, and a page holding these grants.
 fn platform_page(grants: &[&str]) -> (crate::testing::Root, crate::AppState, String, RecordingRunner) {
     let (root, mut state) = crate::testing::file_state();
-    let runner = RecordingRunner { calls: Arc::new(Mutex::new(Vec::new())), answer: "from the clipboard".to_owned() };
+    let answer = if cfg!(windows) {
+        serde_json::to_string("from the clipboard").expect("nullable text JSON")
+    } else {
+        "from the clipboard".to_owned()
+    };
+    let runner = RecordingRunner {
+        calls: Arc::new(Mutex::new(Vec::new())),
+        answer,
+    };
     state.platform = Arc::new(CommandPlatform::with(
         Desktop::current(),
         Box::new(runner.clone()),
@@ -720,6 +737,39 @@ fn writing_the_clipboard_without_the_write_grant_never_reaches_the_platform() {
         Some("platform:write-clipboard")
     );
     assert!(runner.calls.lock().is_empty(), "a refused write launched a program");
+}
+
+#[test]
+fn clipboard_write_delivers_text_to_the_process_stdin() {
+    let (_root, state, token, runner) = platform_page(&["platform:write-clipboard"]);
+    let text = "\"literal\"; $(1+2)\r\n中文🖱️";
+    let answer = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "clipboard.write",
+        &serde_json::json!({"text": text}),
+    )
+    .expect("clipboard write");
+    assert_eq!(answer, serde_json::Value::Null);
+    assert_eq!(runner.calls.lock().len(), 1);
+    let call = runner.calls.lock().first().cloned().expect("one command");
+    assert_eq!(call.2.as_deref(), Some(text));
+    assert!(!call.1.join(" ").contains(text));
+}
+
+#[test]
+fn oversized_clipboard_utf8_is_refused_before_a_process_starts() {
+    let (_root, state, token, runner) = platform_page(&["platform:write-clipboard"]);
+    let text = "选".repeat(synra_platform::MAX_CLIPBOARD_BYTES / 3 + 1);
+    let error = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "clipboard.write",
+        &serde_json::json!({"text": text}),
+    )
+    .expect_err("byte limit");
+    assert_eq!(error.code, ErrorCode::PayloadTooLarge);
+    assert!(runner.calls.lock().is_empty());
 }
 
 #[test]
@@ -779,7 +829,11 @@ fn a_notification_carries_its_title_and_body() {
     let joined = {
         let calls = runner.calls.lock();
         assert_eq!(calls.len(), 1, "the notifier was launched once");
-        calls[0].1.join(" ")
+        if cfg!(windows) {
+            calls[0].2.clone().expect("notification stdin")
+        } else {
+            calls[0].1.join(" ")
+        }
     };
     assert!(joined.contains("Build"), "the title did not reach the notifier: {joined}");
     assert!(joined.contains("it finished"), "the body did not reach the notifier: {joined}");
@@ -1462,4 +1516,82 @@ fn a_plugin_page_is_served_with_a_policy_that_cannot_reach_the_network() {
     assert!(policy.contains("connect-src 'none'"), "{policy}");
     assert!(policy.contains("script-src 'self'"), "{policy}");
     assert!(policy.contains("form-action 'none'"), "{policy}");
+}
+
+#[test]
+fn command_failures_keep_limits_and_cleanup_state_in_ui_errors() {
+    struct RefusingCommand(PlatformError);
+    impl CommandRunner for RefusingCommand {
+        fn is_available(&self) -> bool {
+            true
+        }
+        fn run(
+            &self,
+            _program: &str,
+            _arguments: &[&str],
+            _input: Option<&str>,
+        ) -> Result<String, PlatformError> {
+            Err(self.0.clone())
+        }
+    }
+    for (error, code, kind) in [
+        (
+            PlatformError::RunnerBusy { limit: 8 },
+            ErrorCode::RateLimited,
+            "busy",
+        ),
+        (
+            PlatformError::RunnerTimedOut {
+                program: "fixture".to_owned(),
+                timeout_ms: 20,
+                cleanup_pending: true,
+            },
+            ErrorCode::Timeout,
+            "timeout",
+        ),
+        (
+            PlatformError::RunnerOutputTooLong {
+                program: "fixture".to_owned(),
+                stream: "stdout",
+                max: 64,
+            },
+            ErrorCode::PayloadTooLarge,
+            "outputLimit",
+        ),
+        (
+            PlatformError::RunnerCleanupFailed {
+                program: "fixture".to_owned(),
+            },
+            ErrorCode::Internal,
+            "cleanupPending",
+        ),
+        (
+            PlatformError::RunnerFailed {
+                program: "fixture".to_owned(),
+                reason: "sensitive-clipboard-content".to_owned(),
+            },
+            ErrorCode::Internal,
+            "commandFailed",
+        ),
+    ] {
+        let (_root, mut state, token, _) = platform_page(&["platform:read-clipboard"]);
+        state.platform = Arc::new(CommandPlatform::with(
+            Desktop::MacOs,
+            Box::new(RefusingCommand(error)),
+        ));
+        let error = super::plugin_ui_rpc(&state, &token, "clipboard.read", &serde_json::json!({}))
+            .expect_err("command refusal");
+        assert_eq!(error.code, code);
+        assert_eq!(error.params["kind"], kind);
+        assert!(
+            !error
+                .params
+                .to_string()
+                .contains("sensitive-clipboard-content")
+        );
+        if kind == "timeout" {
+            assert_eq!(error.params["timeoutMs"], 20);
+            assert_eq!(error.params["cleanupPending"], true);
+        }
+    }
 }

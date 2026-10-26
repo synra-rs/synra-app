@@ -382,6 +382,16 @@ fn storage_quota(
 fn platform_error(error: synra_platform::PlatformError) -> IpcError {
     use synra_platform::PlatformError;
 
+    if let Some(params) = error.command_details() {
+        let code = match error {
+            PlatformError::RunnerBusy { .. } => ErrorCode::RateLimited,
+            PlatformError::RunnerTimedOut { .. } => ErrorCode::Timeout,
+            PlatformError::RunnerOutputTooLong { .. } => ErrorCode::PayloadTooLarge,
+            _ => ErrorCode::Internal,
+        };
+        return IpcError::unknown(code).with_params(params);
+    }
+
     match error {
         PlatformError::RateLimited { remaining_ms, .. } => {
             IpcError::unknown(ErrorCode::RateLimited)

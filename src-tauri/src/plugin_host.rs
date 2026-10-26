@@ -199,6 +199,7 @@ fn platform_refusal(error: &synra_platform::PlatformError) -> CallError {
         | PlatformError::TooLong { .. }
         | PlatformError::SimulateKeysNotGranted => CallError::BAD_ARGUMENT,
         PlatformError::Unsupported(_) | PlatformError::Unavailable(_) => CallError::NOT_IMPLEMENTED,
+        PlatformError::RunnerBusy { .. } => CallError::RATE_LIMITED,
         PlatformError::NoRecentInteraction { .. }
         | PlatformError::RateLimited { .. }
         | PlatformError::QuotaExceeded { .. }
@@ -208,7 +209,9 @@ fn platform_refusal(error: &synra_platform::PlatformError) -> CallError {
         // would be worse than a code it simply retries on.
         _ => CallError::HOST_FAILED,
     };
-    CallError::new(code, error.to_string())
+    let mut refusal = CallError::new(code, error.to_string());
+    refusal.details = error.command_details().map(|details| details.to_string());
+    refusal
 }
 
 impl Host for DesktopHost {
