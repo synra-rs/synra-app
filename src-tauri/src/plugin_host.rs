@@ -24,7 +24,7 @@ use parking_lot::Mutex;
 
 use synra_capability::CapabilitySet;
 use synra_platform::Platform as _;
-use synra_plugin_host::host_calls::{CallError, Host};
+use synra_plugin_host::host_calls::{CallError, Host, PlatformAction};
 use synra_protocol::ids::PluginId;
 use synra_store::SynraDb;
 
@@ -295,26 +295,33 @@ impl Host for DesktopHost {
     fn platform(
         &self,
         _plugin: &PluginId,
-        action: &str,
+        action: PlatformAction,
         argument: &str,
     ) -> Result<Option<String>, CallError> {
         // A notification carries a title and a body separated by the contract's own delimiter, which is the shape
         // `host_calls` builds when it sends one.
         let outcome = match action {
-            "open-url" => self.platform.open_url(argument),
-            "open-path" => self.platform.open_path(std::path::Path::new(argument)),
-            "reveal-path" => self.platform.reveal_path(std::path::Path::new(argument), None),
-            "simulate-keys" => self.platform.simulate_keys(argument),
-            "read-clipboard" => self.platform.read_clipboard().map(|_| ()),
-            "write-clipboard" => self.platform.write_clipboard(argument),
-            "notify" => {
+            PlatformAction::OpenUrl => self.platform.open_url(argument),
+            PlatformAction::OpenPath => self.platform.open_path(std::path::Path::new(argument)),
+            PlatformAction::RevealPath => self
+                .platform
+                .reveal_path(std::path::Path::new(argument), None),
+            PlatformAction::SimulateKeys => self.platform.simulate_keys(argument),
+            PlatformAction::ReadClipboard => {
+                return self
+                    .platform
+                    .read_clipboard()
+                    .map_err(|error| platform_refusal(&error));
+            }
+            PlatformAction::WriteClipboard => self.platform.write_clipboard(argument),
+            PlatformAction::Notify => {
                 let (title, body) = argument.split_once('\u{1}').unwrap_or((argument, ""));
                 self.platform.notify(title, body)
             }
-            other => {
+            _ => {
                 return Err(CallError::new(
-                    CallError::BAD_ARGUMENT,
-                    format!("`{other}` is not a platform action"),
+                    CallError::NOT_IMPLEMENTED,
+                    "this shell does not implement this platform action",
                 ));
             }
         };
@@ -508,6 +515,10 @@ pub fn audit_sink(db: Arc<Mutex<SynraDb>>) -> synra_core::dispatch::plugins::Aud
 }
 
 #[cfg(test)]
+#[path = "plugin_host/clipboard_tests.rs"]
+mod clipboard_tests;
+
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
@@ -669,14 +680,12 @@ mod tests {
         let plugin = id("@acme/notes");
 
         let refused = host
-            .platform(&plugin, "open-url", "javascript:alert(1)")
+            .platform(
+                &plugin,
+                super::PlatformAction::OpenUrl,
+                "javascript:alert(1)",
+            )
             .expect_err("the guard refuses this scheme");
-        assert_eq!(refused.code, "badArgument", "{refused:?}");
-
-        // And a name that is not a platform action is the caller's mistake rather than either of those.
-        let refused = host
-            .platform(&plugin, "not-an-action", "")
-            .expect_err("that is not an action");
         assert_eq!(refused.code, "badArgument", "{refused:?}");
     }
 
