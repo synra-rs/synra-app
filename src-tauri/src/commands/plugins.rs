@@ -1423,7 +1423,11 @@ mod tests {
             synra_plugin_host::host_world()
         );
         std::fs::write(directory.join("manifest.json"), manifest).expect("a manifest");
-        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        std::fs::write(
+            directory.join("plugin.wasm"),
+            synra_testkit::component::inert_component().expect("a valid component"),
+        )
+        .expect("an artifact");
         directory
     }
 
@@ -1461,7 +1465,12 @@ mod tests {
         let base = format!("http://{address}");
         let archive = tgz(&[
             ("package/manifest.json", manifest.as_slice()),
-            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+            (
+                "package/plugin.wasm",
+                synra_testkit::component::inert_component()
+                    .expect("a valid component")
+                    .as_slice(),
+            ),
         ]);
         // ★ The document declares the digest of the bytes it points at, and the install checks them: a fake registry with
         // no integrity is now refused before anything is unpacked, which is the property the test below would hide if
@@ -1840,7 +1849,12 @@ mod tests {
         let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
         let archive = tgz(&[
             ("package/manifest.json", manifest.as_slice()),
-            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+            (
+                "package/plugin.wasm",
+                synra_testkit::component::inert_component()
+                    .expect("a valid component")
+                    .as_slice(),
+            ),
         ]);
         let integrity = synra_core::ObjectDigest::of(&archive).as_sri().to_string();
 
@@ -1949,7 +1963,12 @@ mod tests {
         let manifest_json: serde_json::Value = serde_json::from_slice(&manifest).expect("a manifest document");
         let archive = tgz(&[
             ("package/manifest.json", manifest.as_slice()),
-            ("package/plugin.wasm", b"\0asm\x01\0\0\0"),
+            (
+                "package/plugin.wasm",
+                synra_testkit::component::inert_component()
+                    .expect("a valid component")
+                    .as_slice(),
+            ),
         ]);
         let integrity = synra_core::ObjectDigest::of(&archive).as_sri().to_string();
 
@@ -2797,7 +2816,11 @@ mod tests {
         let directory = state.paths.plugin_dir(ID);
         std::fs::create_dir_all(&directory).expect("the plugin directory");
         std::fs::write(directory.join("manifest.json"), &manifest).expect("a manifest");
-        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        std::fs::write(
+            directory.join("plugin.wasm"),
+            synra_testkit::component::inert_component().expect("a valid component"),
+        )
+        .expect("an artifact");
         manifest
     }
 
@@ -2831,7 +2854,11 @@ mod tests {
             synra_plugin_host::host_world()
         );
         std::fs::write(directory.join("manifest.json"), manifest).expect("a manifest");
-        std::fs::write(directory.join("plugin.wasm"), b"\0asm\x01\0\0\0").expect("an artifact");
+        std::fs::write(
+            directory.join("plugin.wasm"),
+            synra_testkit::component::inert_component().expect("a valid component"),
+        )
+        .expect("an artifact");
         directory
     }
 

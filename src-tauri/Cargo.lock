@@ -4523,6 +4523,8 @@ dependencies = [
  "thiserror 2.0.21",
  "wasmtime",
  "wit-codegen",
+ "wit-component",
+ "wit-parser 0.247.0",
 ]
 
 [[package]]

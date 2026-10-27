@@ -17,17 +17,14 @@ fn component(code: &str, details: Option<&str>) -> Vec<u8> {
     let details = details.unwrap_or_default();
     let details_data = data(details);
     let details_len = details.len();
-    wat::parse_str(format!(r#"
-(component
-  (type $error (record (field "code" string) (field "message" string) (field "details" (option string))))
-  (type $outcome (variant (case "ok" string) (case "err" $error)))
-  (core module $guest
+    let module = wat::parse_str(format!(r#"
+(module
     (memory (export "memory") 1)
     (data (i32.const 1000) "{code_data}")
     (data (i32.const 2000) "request refused")
     (data (i32.const 3000) "{details_data}")
     (global $next (mut i32) (i32.const 8192))
-    (func (export "realloc") (param i32 i32 i32 i32) (result i32)
+    (func (export "cabi_realloc") (param i32 i32 i32 i32) (result i32)
       (local $ptr i32)
       (local.set $ptr (global.get $next))
       (global.set $next (i32.add (local.get $ptr) (local.get 3)))
@@ -42,25 +39,16 @@ fn component(code: &str, details: Option<&str>) -> Vec<u8> {
       (i32.store (i32.const 152) (i32.const 3000))
       (i32.store (i32.const 156) (i32.const {details_len}))
       (i32.const 128))
-    (func (export "one") (param i32 i32) (result i32) (call $answer))
-    (func (export "two") (param i32 i32 i32 i32) (result i32) (call $answer))
-    (func (export "finish") (param i32)))
-  (core instance $g (instantiate $guest))
-  (func $activate (param "config-json" string) (result $outcome)
-    (canon lift (core func $g "one") (memory (core memory $g "memory"))
-      (realloc (core func $g "realloc")) (post-return (core func $g "finish"))))
-  (func $invoke (param "name" string) (param "args-json" string) (result $outcome)
-    (canon lift (core func $g "two") (memory (core memory $g "memory"))
-      (realloc (core func $g "realloc")) (post-return (core func $g "finish"))))
-  (instance $lifecycle
-    (export "error" (type $error)) (export "outcome" (type $outcome))
-    (export "activate" (func $activate)))
-  (instance $actions
-    (export "error" (type $error)) (export "outcome" (type $outcome))
-    (export "invoke" (func $invoke)))
-  (export "synra:plugin/lifecycle@1.0.0" (instance $lifecycle))
-  (export "synra:plugin/actions@1.0.0" (instance $actions)))
-"#)).expect("component fixture")
+    (func (export "synra:plugin/lifecycle@1.0.0#activate") (param i32 i32) (result i32) (i32.const 0))
+    (func (export "synra:plugin/lifecycle@1.0.0#deactivate"))
+    (func (export "synra:plugin/lifecycle@1.0.0#migrate") (param i32 i32 i32 i32) (result i32) (i32.const 0))
+    (func (export "synra:plugin/lifecycle@1.0.0#on-tick") (param i32 i32) (result i32) (i32.const 0))
+    (func (export "synra:plugin/lifecycle@1.0.0#on-event") (param i32 i32) (result i32) (i32.const 0))
+    (func (export "synra:plugin/share@1.0.0#can-handle") (param i32 i32) (result i32) (i32.const 0))
+    (func (export "synra:plugin/share@1.0.0#execute") (param i32 i32 i32 i32) (result i32) (call $answer))
+    (func (export "synra:plugin/actions@1.0.0#invoke") (param i32 i32 i32 i32) (result i32) (call $answer)))
+"#)).expect("core fixture");
+    synra_testkit::component::encode(module).expect("complete production WIT component")
 }
 
 #[test]

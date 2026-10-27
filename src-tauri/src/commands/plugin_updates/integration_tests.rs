@@ -122,7 +122,8 @@ fn signed_source(directory: &std::path::Path, version: &str, seed: u8, permissio
         "runtime":{"headless":{"artifact":"plugin.wasm", "stateful":false}}
     })
     .to_string();
-    let wasm = b"\0asm\x01\0\0\0";
+    let wasm_bytes = synra_testkit::component::inert_component().expect("a valid component");
+    let wasm = wasm_bytes.as_slice();
     let mut artifacts = Digests::new();
     artifacts.insert(
         "plugin.wasm",
