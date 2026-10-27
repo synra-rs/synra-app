@@ -168,11 +168,12 @@ tauri-build = { version = "2", optional = true, features = [ ] }
 # The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
 [dev-dependencies]
+tempfile = "3"
 # Assemble reviewable component fixtures for real page-to-Wasm error tests.
 wat = "=1.262.0"
 # Corrupt registration metadata through an independent real SQLite connection.
 rusqlite = { version = "0.40", features = ["bundled"] }
-synra-testkit = { path = "../../synra-rust-core/crates/synra-testkit" }
+synra-testkit = { path = "../../synra-rust-core/crates/synra-testkit", features = ["wasm-fixtures"] }
 ed25519-dalek = "2"
 # The registry test builds the tarball the client downloads; parsing it is the production side's job.
 tar = "0.4"

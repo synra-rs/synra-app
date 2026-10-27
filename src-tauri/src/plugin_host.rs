@@ -30,6 +30,7 @@ use synra_store::SynraDb;
 
 /// The desktop shell's answer to a plugin's host calls.
 pub struct DesktopHost {
+    events: Arc<synra_core::plugin_events::EventService>,
     /// The database, for the questions answered from what is recorded: which capabilities the user granted, and the
     /// devices this machine knows.
     db: Arc<Mutex<SynraDb>>,
@@ -56,6 +57,11 @@ pub struct DesktopHost {
 type FetchClients = std::collections::HashMap<PluginId, (Vec<String>, Arc<synra_fetch::Client>)>;
 
 impl DesktopHost {
+    /// The event service this adapter and its plugin runtime share.
+    #[must_use]
+    pub fn events(&self) -> Arc<synra_core::plugin_events::EventService> {
+        Arc::clone(&self.events)
+    }
     /// A host over the shell's own state.
     ///
     /// ★ Kept for tests and for a host that has no `AppState`; a shell uses [`DesktopHost::with_platform`] so the host and
@@ -68,7 +74,9 @@ impl DesktopHost {
     /// A host over the state, using the platform the rest of the shell uses.
     #[must_use]
     pub fn with_platform(db: Arc<Mutex<SynraDb>>, platform: Arc<synra_platform::CommandPlatform>) -> Self {
+        let events = synra_core::plugin_events::EventService::new(Arc::clone(&db));
         Self {
+            events,
             db,
             platform,
             fetch_clients: Mutex::new(std::collections::HashMap::new()),
@@ -337,8 +345,8 @@ impl Host for DesktopHost {
     // code where it does not. Refusing is not a placeholder — a plugin branches on the code, and `notImplemented` is a
     // fact it can act on.
 
-    fn event_emit(&self, _p: &PluginId, _e: &str, _payload: &str) -> Result<(), CallError> {
-        Err(not_implemented("event emission"))
+    fn event_emit(&self, plugin: &PluginId, event: &str, payload: &str) -> Result<(), CallError> {
+        self.events.emit_call(plugin, event, payload)
     }
 
     fn device_send(&self, _p: &PluginId, _t: &str, _e: &str, _pl: &str) -> Result<(), CallError> {
@@ -711,11 +719,10 @@ mod tests {
         let host = host_with(&[]);
         let plugin = id("@acme/notes");
 
-        for refusal in [
-            host.event_emit(&plugin, "x", "{}"),
-            host.device_send(&plugin, "d", "x", "{}"),
-        ] {
-            let error = refusal.expect_err("this shell does not implement it");
+        {
+            let error = host
+                .device_send(&plugin, "d", "x", "{}")
+                .expect_err("this shell does not implement it");
             // ★ Read from the contract rather than spelled here. This assertion used to compare against the
             // literal `"notImplemented"`, which is a string this test and the implementation could agree on while both were
             // wrong — the shape of assertion that cannot catch the implementation spelling it wrong.
@@ -801,6 +808,9 @@ mod tests {
         assert!(host.dark_mode(), "the interface setting is dark and the host said light");
     }
 }
+
+#[cfg(test)]
+mod event_tests;
 
 #[cfg(test)]
 mod scoped_fetch_tests {

@@ -19,7 +19,6 @@
 
 use std::sync::Arc;
 
-use parking_lot::Mutex;
 use synra_ipc::DiagExportResult;
 use synra_store::{Paths, SynraDb};
 use tauri::Manager;
@@ -1465,6 +1464,7 @@ fn with_plugins_or_refuse(
                 Arc::clone(&state.db),
                 Arc::clone(&state.platform),
             ));
+            let event_delivery = host.events();
             let backend = synra_plugin_host::Backend::new(Arc::new(engine));
             // ★ The same question the daemon asks, for the same reason: an engine that cannot enforce what this
             // host will ask of it must not run third-party code at all.
@@ -1484,6 +1484,7 @@ fn with_plugins_or_refuse(
                     // migration that created `plugin_audit` says what the table is for: *"the durable part is what makes the
                     // interface's 'recent activity' survive a restart."*
                     let set = synra_core::dispatch::PluginSet::new(backend, host)
+                        .with_event_delivery(event_delivery)
                         .with_audit_sink(crate::plugin_host::audit_sink(Arc::clone(&state.db)))
                         // ★ And the same recorder the `diag_metrics` command reads, so the counts a plugin's
                         // capability requests produce are reachable from the window rather than only from a log line.
@@ -1506,7 +1507,11 @@ fn with_plugins_or_refuse(
                     // ★ The set is built, and then it is **filled**. Until this line the shell created an empty set and
                     // never called the loader, so every plugin was listed, could be enabled, and was never askable —
                     // `intent_dispatch` matched nothing and `life_state` called it `unavailable` forever.
-                    let state = state.with_plugins(Arc::new(Mutex::new(set)));
+                    let shared = match set.into_shared() {
+                        Ok(shared) => shared,
+                        Err(error) => return state.with_engine_refusal(error.to_string()),
+                    };
+                    let state = state.with_plugins(shared);
                     let revocations = commands::plugins::revocations(&state);
                     let summary =
                         commands::plugins::load_installed_plugins(&state, verdict, &revocations);
