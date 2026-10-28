@@ -8,6 +8,49 @@ use tauri::utils::{
 };
 
 #[test]
+fn native_assets_allow_component_styles_without_disabling_script_protection() {
+    let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+    let modification = &context
+        .config()
+        .app
+        .security
+        .dangerous_disable_asset_csp_modification;
+    // This component library inserts styles without a nonce. A style nonce makes
+    // browsers ignore our explicit unsafe-inline policy and reject those styles.
+    assert!(!modification.can_modify("style-src"));
+    assert!(modification.can_modify("script-src"));
+    assert!(context.config().app.security.csp.is_some());
+    let policy = context
+        .config()
+        .app
+        .security
+        .csp
+        .as_ref()
+        .unwrap()
+        .to_string();
+    let connect = policy
+        .split(';')
+        .map(str::trim)
+        .find_map(|directive| directive.strip_prefix("connect-src "))
+        .expect("host connection policy");
+    assert_eq!(
+        connect.split_whitespace().collect::<Vec<_>>(),
+        ["ipc:", "http://ipc.localhost"],
+        "host commands need local IPC but not arbitrary connections"
+    );
+    let document = context
+        .assets()
+        .get(&tauri::utils::assets::AssetKey::from("index.html"))
+        .expect("embedded host document");
+    let html = std::str::from_utf8(&document).expect("host HTML");
+    assert!(
+        html.contains("<style>"),
+        "first-paint style is still embedded"
+    );
+    assert!(!html.contains(tauri::utils::assets::STYLE_NONCE_TOKEN));
+}
+
+#[test]
 fn native_acl_separates_host_and_plugin_commands_for_real_mapped_origins() {
     let manifests: BTreeMap<String, Manifest> = serde_json::from_str(
         &std::fs::read_to_string(concat!(

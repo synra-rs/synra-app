@@ -37,8 +37,35 @@ pub(super) fn package(app: &tauri::AppHandle) -> Result<Option<PathBuf>, String>
 pub(super) fn run(app: &tauri::AppHandle, package: &std::path::Path) -> Result<(), String> {
     let state = app.state::<Arc<crate::AppState>>();
     prepare(&state, package)?;
-    super::wrappers::plugin_ui_open(app.clone(), state, PLUGIN.to_owned())
-        .map_err(|error| format!("smoke window: {error:?}"))
+    // Exercise the frontend IPC path: calling the Rust wrapper directly from setup
+    // misses Windows WebView creation deadlocks in synchronous commands.
+    let main = app
+        .get_webview_window("main")
+        .ok_or("smoke main window unavailable")?;
+    main.eval(
+        r#"(() => {
+            const run = async () => {
+                const report = document.createElement('output');
+                report.id = 'starter-ui-smoke-result';
+                try {
+                    const styles = Array.from(document.querySelectorAll('style[data-css-hash]'))
+                        .filter(style => style.sheet && style.sheet.cssRules.length > 0).length;
+                    if (styles === 0) throw new Error('host component styles were not accepted');
+                    await window.__TAURI_INTERNALS__.invoke('plugin_ui_open', {
+                        pluginId: '@synra-plugin/starter'
+                    });
+                    report.textContent = `Starter UI IPC opened; component styles accepted: ${styles}`;
+                } catch (error) {
+                    report.textContent = `Starter UI smoke failed: ${error.code ?? error.message ?? error}`;
+                    console.error('Starter UI smoke failed', error);
+                }
+                document.body.append(report);
+            };
+            if (document.readyState === 'complete') void run();
+            else window.addEventListener('load', run, { once: true });
+        })();"#,
+    )
+    .map_err(|error| format!("smoke IPC: {error}"))
 }
 
 fn prepare(state: &crate::AppState, package: &std::path::Path) -> Result<(), String> {

@@ -1442,13 +1442,15 @@ pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -
 
 /// The policy every plugin page is served with.
 ///
-/// ★ Tauri 2.12 has no public per-window CSP, so the global policy in `tauri.conf.json` is inherited by every window. This
-/// header is the part the design assigns to the protocol handler (08 §550, 09 §416): the network is what it exists to
-/// close, and a policy that travels with the document does not depend on a setting the page cannot see.
+/// Tauri's configured CSP covers app assets; this custom protocol attaches the
+/// plugin policy to its own responses (08 §550, 09 §416), independently of the host document.
 /// `'unsafe-inline'` for scripts and styles is the design's own allowance — a plugin page is a bundle, not a host page.
+/// Tauri IPC uses `ipc:` on native WebKit and the HTTPS localhost mapping selected
+/// for these windows on Windows/Android. Neither source permits ordinary network IO.
 #[cfg(feature = "tauri-shell")]
 pub(crate) const PLUGIN_CSP: &str = "default-src 'none'; script-src 'self' 'unsafe-inline'; \
-     style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; \
+     style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; \
+     connect-src ipc: https://ipc.localhost; \
      base-uri 'none'; form-action 'none'";
 
 /// A successful page response, with the policy attached.

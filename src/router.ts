@@ -41,8 +41,8 @@ export interface PageRoute {
    *
    * Carbon rather than a generic set because it is drawn by the same people as the interface's typeface (R18) — the
    * two are meant to sit together. It has to be an **icon font class, not an image or an inline SVG**, because R41
-   * requires icons to be inlined at build time: the window's CSP has `connect-src 'none'`, so an icon fetched at
-   * runtime fails as an empty box that looks like a broken icon library.
+   * requires icons to be inlined at build time: the window's CSP only allows local IPC, so an icon fetched from
+   * the network at runtime fails as an empty box that looks like a broken icon library.
    *
    * ★ It comes from `messages.nav`, not from here (see that object's note): a class name that only ever appears as
    *   data* is invisible to UnoCSS's extractor, which is how two of these four icons went missing. The same object is

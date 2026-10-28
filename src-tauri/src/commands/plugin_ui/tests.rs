@@ -1646,7 +1646,7 @@ fn closing_a_page_ends_its_session() {
 #[test]
 fn a_plugin_page_is_served_with_a_policy_that_cannot_reach_the_network() {
     // ★ The design assigns the CSP to the protocol handler (08 §550). Without this header a page's network access depends
-    // on a global setting the plugin cannot see; with it `connect-src 'none'` travels with the document.
+    // on a global setting the plugin cannot see. Only Tauri's local IPC transport may connect directly.
     let response = super::document_response(b"<html></html>".to_vec(), "text/html; charset=utf-8");
 
     assert_eq!(response.status(), 200);
@@ -1658,7 +1658,16 @@ fn a_plugin_page_is_served_with_a_policy_that_cannot_reach_the_network() {
         .expect("a header string");
 
     assert!(policy.contains("default-src 'none'"), "{policy}");
-    assert!(policy.contains("connect-src 'none'"), "{policy}");
+    let connect = policy
+        .split(';')
+        .map(str::trim)
+        .find_map(|directive| directive.strip_prefix("connect-src "))
+        .expect("an explicit connection policy");
+    assert_eq!(
+        connect.split_whitespace().collect::<Vec<_>>(),
+        ["ipc:", "https://ipc.localhost"],
+        "no general network or plugin-origin connection allowance"
+    );
     assert!(policy.contains("script-src 'self'"), "{policy}");
     assert!(policy.contains("form-action 'none'"), "{policy}");
 }

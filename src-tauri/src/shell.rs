@@ -396,8 +396,11 @@ mod wrappers {
     /// Every decision is in [`commands::plugin_ui::open_request`] — the address, the label, the token, the record in
     /// `hosted_ui` — because those are values a test can assert. What is left is the one call no test in this repository
     /// can make: `WebviewWindowBuilder`.
+    ///
+    /// Async IPC dispatch keeps Windows WebView2 construction off the synchronous
+    /// command thread, where it otherwise deadlocks after creating an empty window.
     #[tauri::command]
-    pub fn plugin_ui_open(
+    pub async fn plugin_ui_open(
         app: tauri::AppHandle,
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         plugin_id: String,
