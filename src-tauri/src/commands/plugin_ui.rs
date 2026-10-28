@@ -1309,13 +1309,19 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
     // loads: a round trip to learn something the shell already holds is a round trip that can fail, and a render that has
     // to await `env.platform()` is a render that cannot branch synchronously.
     let config = super::config::config_get(state)?;
-    let locale = config
+    let locale = crate::locale::from_preference(
+        config
+            .values
+            .get("ui.locale")
+            .and_then(serde_json::Value::as_str),
+    )
+    .code()
+    .to_owned();
+    let dark_mode = config
         .values
-        .get("ui.locale")
+        .get("ui.theme")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("en")
-        .to_owned();
-    let dark_mode = config.values.get("ui.theme").and_then(serde_json::Value::as_str) == Some("dark");
+        == Some("dark");
     let sdk_version = synra_plugin_host::SDK_VERSION;
     let platform = platform_name()?;
     let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {

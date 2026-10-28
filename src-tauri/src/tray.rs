@@ -19,11 +19,28 @@
 //! module is the wiring, and its failures are reported rather than raised: a machine whose tray is unavailable (some Linux
 //! desktops without an indicator host) must still get its window.
 
+use tauri::Manager as _;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 use crate::tray_menu::{QUIT, SHOW, TrayAction, action_for};
 use crate::window::show_main;
+
+struct LocalizedMenu {
+    show: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+pub(crate) fn refresh_language(
+    app: &tauri::AppHandle,
+    language: crate::locale::Language,
+) -> tauri::Result<()> {
+    if let Some(menu) = app.try_state::<LocalizedMenu>() {
+        menu.show.set_text(language.show())?;
+        menu.quit.set_text(language.quit())?;
+    }
+    Ok(())
+}
 
 /// Installs the tray icon and its two items.
 ///
@@ -32,8 +49,14 @@ use crate::window::show_main;
 /// [`tauri::Error`] when the platform refuses the icon or the menu. The caller reports it and carries on: the window is
 /// the application, and a tray that could not be created is a convenience missing rather than a reason not to start.
 pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, SHOW, "Show Synra", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?;
+    let language = app
+        .try_state::<std::sync::Arc<crate::AppState>>()
+        .map_or_else(
+            || crate::locale::from_preference(None),
+            |state| crate::locale::current(&state),
+        );
+    let show = MenuItem::with_id(app, SHOW, language.show(), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, QUIT, language.quit(), true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("synra")
@@ -67,5 +90,6 @@ pub fn install(app: &tauri::AppHandle) -> tauri::Result<()> {
     }
 
     let _tray = builder.build(app)?;
+    app.manage(LocalizedMenu { show, quit });
     Ok(())
 }

@@ -59,6 +59,7 @@ mod ipc_access;
 /// The shell's own listener: the half that makes this device reachable.
 #[cfg(feature = "tauri-shell")]
 pub mod listener;
+mod locale;
 pub mod plugin_host;
 pub mod state;
 /// The incoming transfers waiting for an answer.

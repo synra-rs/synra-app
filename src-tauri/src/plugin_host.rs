@@ -240,9 +240,12 @@ impl Host for DesktopHost {
         // ★ The interface's own setting, the same key `config_set` writes and `plugin_ui`'s injection reads. Returning
         // an empty string made `activate(config.locale)` and `env.locale()` disagree with the language the window is
         // actually drawn in.
-        self.setting("ui.locale")
-            .and_then(|value| serde_json::from_str::<String>(&value).ok())
-            .unwrap_or_else(|| "en".to_owned())
+        let preference = self
+            .setting("ui.locale")
+            .and_then(|value| serde_json::from_str::<String>(&value).ok());
+        crate::locale::from_preference(preference.as_deref())
+            .code()
+            .to_owned()
     }
 
     fn dark_mode(&self) -> bool {

@@ -72,9 +72,10 @@ fn received_notice(
 /// notification is for the person who is not — and a file that arrives silently is one they discover by accident.
 fn received_notification(
     transfer: &synra_core::listener::FinishedTransfer,
+    language: crate::locale::Language,
 ) -> Option<(String, String)> {
     let name = received_name(transfer)?;
-    Some(("Synra".to_owned(), format!("Received {name}")))
+    Some(("Synra".to_owned(), language.received(&name)))
 }
 
 /// Whether the user wants a system notification for a received file.
@@ -306,7 +307,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     }
                     // ★ The window may not be in front. Best effort: a platform that cannot show a notification is a
                     // missing convenience, not a reason to fail a transfer that already landed.
-                    if let Some((title, body)) = received_notification(transfer)
+                    if let Some((title, body)) = received_notification(transfer, crate::locale::current(&finished_state))
                         && notifications_enabled(&finished_state)
                     {
                         use synra_platform::Platform as _;
@@ -586,7 +587,13 @@ mod tests {
     #[test]
     fn a_plugin_bundle_is_silent_because_installing_it_is_the_news() {
         assert!(received_notice(&received(Some("@acme/chat"))).is_none());
-        assert!(received_notification(&received(Some("@acme/chat"))).is_none());
+        assert!(
+            received_notification(
+                &received(Some("@acme/chat")),
+                crate::locale::Language::English
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -594,8 +601,12 @@ mod tests {
         // ★ The banner is for the person looking at the screen; this is for the person who is not. A file that arrives
         // silently is one they discover by accident.
         assert_eq!(
-            received_notification(&received(None)),
+            received_notification(&received(None), crate::locale::Language::English),
             Some(("Synra".to_owned(), "Received notes.txt".to_owned()))
+        );
+        assert_eq!(
+            received_notification(&received(None), crate::locale::Language::Chinese),
+            Some(("Synra".to_owned(), "已收到 notes.txt".to_owned()))
         );
     }
 

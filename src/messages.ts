@@ -3,8 +3,8 @@
  *
  * The object itself is assembled in [`./messages/index.ts`](./messages/index.ts), which is now a directory so that each
  * screen owns its own words in a file with one job instead of one long file. This module stays where it was, with the
- * same `messages` export — `uno.config.ts` reads `messages.nav` from here to build its `safelist`, and the pages and
- * `router.ts` read the rest.
+ * same reactive `messages` export. English defines the schema and Chinese supplies every text key. UnoCSS reads the
+ * language-independent icon names directly from `messages/nav.ts`.
  */
 
 export type { ErrorCode } from './messages/errors'

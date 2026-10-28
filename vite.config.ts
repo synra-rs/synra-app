@@ -24,6 +24,9 @@ export default defineConfig({
   // The Tauri shell serves the built assets over its own protocol, so the paths are relative to the document rather
   // than to a server root.
   base: './',
+  server: {
+    watch: { ignored: ['**/src-tauri/target/**'] }
+  },
   build: {
     outDir: 'dist',
     // A source map in a release build is the whole interface in readable form, and the interface is not a secret — but

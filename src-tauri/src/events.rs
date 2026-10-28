@@ -84,6 +84,8 @@ pub fn spawn(
     // is no second flag for the two to disagree about.
     let cancel = cancel.clone();
     std::thread::spawn(move || {
+        #[cfg(not(mobile))]
+        let mut tray_language = None;
         let mut last_ui_sweep = std::time::Instant::now();
         while !cancel.is_cancelled() {
             if last_ui_sweep.elapsed() >= Duration::from_secs(1) {
@@ -99,6 +101,23 @@ pub fn spawn(
             match events.take(subscriber) {
                 Some(delivery) => {
                     for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {
+                        #[cfg(not(mobile))]
+                        if let KernelEvent::ConfigUpdated(snapshot) = &envelope.event {
+                            let language = crate::locale::from_preference(
+                                snapshot
+                                    .values
+                                    .get("ui.locale")
+                                    .and_then(serde_json::Value::as_str),
+                            );
+                            if tray_language != Some(language) {
+                                match crate::tray::refresh_language(&app, language) {
+                                    Ok(()) => tray_language = Some(language),
+                                    Err(error) => eprintln!(
+                                        "synra: the tray language could not be refreshed: {error}"
+                                    ),
+                                }
+                            }
+                        }
                         if app.emit(CHANNEL, &envelope).is_err() {
                             // The window is gone. Nothing else can be delivered and the bus would only queue for a
                             // subscriber nobody reads.
