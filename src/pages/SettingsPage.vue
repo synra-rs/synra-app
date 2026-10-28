@@ -15,7 +15,7 @@
         The device's own facts, as a labelled table rather than a two-column `<dl>` that only looks like one. The id
         and the version are machine-issued strings, which is what monospace is for (R21).
       -->
-      <ADescriptions v-if="identity" :column="1" bordered>
+      <ADescriptions v-if="identity" :column="{ xs: 1, sm: 2 }" size="small">
         <ADescriptions.Item :label="messages.settings.field.name">
           <div v-if="renaming" class="row flex-wrap gap-2">
             <AInput v-model:value="nameDraft" class="max-w-xs" @press-enter="saveName" />
@@ -69,12 +69,6 @@
         <div v-for="key in KEYS" :key="key" class="row-between gap-4">
           <span class="min-w-0 row gap-2">
             <span class="text-sm">{{ messages.settings.preference[key] }}</span>
-            <!--
-                The value as the kernel answered it, printed rather than prettified. `null` is a fact — the kernel has
-                no value for that key — and the controls below take their state from the same read, so nothing here is
-                a default this page invented.
-              -->
-            <span class="truncate text-xs text-ink-dim font-mono">{{ JSON.stringify(settings.value(configKey(key)) ?? null) }}</span>
           </span>
 
           <!--
@@ -141,16 +135,16 @@
       <h2 class="text-base font-medium">
         {{ messages.settings.trusted.title }}
       </h2>
-      <p class="m-0 text-sm text-ink-dim">
+      <HelpText>
         {{ messages.settings.trusted.detail }}
-      </p>
+      </HelpText>
 
       <!--
         The list is the configuration key the transfer prompt writes (`transfers.acceptFrom`), not a second store. Removing
         a row writes the key back (or unsets it when the last row goes), so there is one answer to "may this device send
         without asking".
       -->
-      <AEmpty v-if="trusted.length === 0" :description="messages.settings.trusted.empty" />
+      <AEmpty v-if="trusted.length === 0" :image="AEmpty.PRESENTED_IMAGE_SIMPLE" :description="messages.settings.trusted.empty" />
       <AList v-else size="small">
         <AList.Item v-for="device in trusted" :key="device.id">
           <div class="row-between gap-3">
@@ -170,280 +164,304 @@
       </AList>
     </section>
 
-    <!--
+    <ACollapse data-testid="advanced-settings" ghost @change="(keys) => (showAdvanced = Array.isArray(keys) ? keys.length > 0 : Boolean(keys))">
+      <ACollapse.Panel key="advanced" :header="messages.settings.advanced" force-render>
+        <div class="stack gap-6">
+          <!--
       The registry is a URL, not a preference among named values, so it gets its own input. Empty means "no registry":
       the install path stays available from a directory, and the registry branch refuses by name instead of dialling a
       default somebody else chose.
     -->
-    <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
-        {{ messages.settings.registry.title }}
-      </h2>
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.registry.detail }}
-      </p>
-      <div v-for="(_, index) in registryUrls" :key="index" class="row gap-2">
-        <AInput
-          :value="registryUrls[index] ?? ''"
-          :placeholder="messages.settings.registry.placeholder"
-          allow-clear
-          @update:value="(value: string) => updateRegistry(index, value)"
-          @press-enter="saveRegistry"
-        />
-        <AButton
-          v-if="registryUrls.length > 1"
-          @click="removeRegistry(index)"
-        >
-          {{ messages.settings.registry.remove }}
-        </AButton>
-      </div>
-      <div class="row gap-2">
-        <AButton @click="addRegistry">
-          {{ messages.settings.registry.add }}
-        </AButton>
-        <AButton :loading="savingRegistry" @click="saveRegistry">
-          {{ messages.settings.registry.save }}
-        </AButton>
-      </div>
-    </section>
+          <section class="stack gap-3">
+            <h2 class="m-0 text-base font-medium">
+              {{ messages.settings.registry.title }}
+            </h2>
+            <HelpText>
+              {{ messages.settings.registry.detail }}
+            </HelpText>
+            <div v-for="(_, index) in registryUrls" :key="index" class="row gap-2">
+              <AInput
+                :value="registryUrls[index] ?? ''"
+                :placeholder="messages.settings.registry.placeholder"
+                allow-clear
+                @update:value="(value: string) => updateRegistry(index, value)"
+                @press-enter="saveRegistry"
+              />
+              <AButton
+                v-if="registryUrls.length > 1"
+                @click="removeRegistry(index)"
+              >
+                {{ messages.settings.registry.remove }}
+              </AButton>
+            </div>
+            <div class="row gap-2">
+              <AButton @click="addRegistry">
+                {{ messages.settings.registry.add }}
+              </AButton>
+              <AButton :loading="savingRegistry" @click="saveRegistry">
+                {{ messages.settings.registry.save }}
+              </AButton>
+            </div>
+          </section>
 
-    <!--
+          <!--
       The background check is a courtesy, not a policy: it asks the registry once a day and tells the user, and never
       installs. The design's automatic case needs trust and capability checks this build does not make yet, so the switch
       is the whole of the setting.
     -->
-    <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
-        {{ messages.settings.updates.title }}
-      </h2>
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.updates.detail }}
-      </p>
-      <div class="row-between gap-4">
-        <span class="text-sm">{{ messages.settings.updates.policy }}</span>
-        <ASelect
-          :value="updatePolicy"
-          :loading="savingCheckUpdates"
-          :options="updatePolicyOptions"
-          :aria-label="messages.settings.updates.policy"
-          class="min-w-52"
-          @change="saveUpdatePolicy"
-        />
-      </div>
-    </section>
+          <section class="stack gap-3">
+            <h2 class="m-0 text-base font-medium">
+              {{ messages.settings.updates.title }}
+            </h2>
+            <HelpText>
+              {{ messages.settings.updates.detail }}
+            </HelpText>
+            <div class="row-between gap-4">
+              <span class="text-sm">{{ messages.settings.updates.policy }}</span>
+              <ASelect
+                :value="updatePolicy"
+                :loading="savingCheckUpdates"
+                :options="updatePolicyOptions"
+                :aria-label="messages.settings.updates.policy"
+                class="min-w-52"
+                @change="saveUpdatePolicy"
+              />
+            </div>
+          </section>
 
-    <!--
+          <!--
       ★ `diag_metrics` had no caller before this panel, and 18 §4.2 names this panel as one of the three reasons the
       recorder exists. Each row is the key **as the kernel renders it**, so it can be matched against a log line or a
       diagnostic export rather than being a second naming scheme.
     -->
-    <section class="stack gap-3">
-      <div class="row-between gap-4">
-        <h2 class="m-0 text-base font-medium">
-          {{ messages.settings.metrics.title }}
-        </h2>
-        <AButton size="small" :loading="refreshing" @click="refreshMetrics">
-          {{ messages.settings.metrics.refresh }}
-        </AButton>
-      </div>
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.metrics.detail }}
-      </p>
-      <!--
+          <section class="stack gap-3">
+            <div class="row-between gap-4">
+              <h2 class="m-0 text-base font-medium">
+                {{ messages.settings.metrics.title }}
+              </h2>
+              <AButton size="small" :loading="refreshing" @click="refreshMetrics">
+                {{ messages.settings.metrics.refresh }}
+              </AButton>
+            </div>
+            <HelpText>
+              {{ messages.settings.metrics.detail }}
+            </HelpText>
+            <!--
         Read by "is there a snapshot" rather than "is it non-empty": the empty sentence is an answer, and drawing it before
         the first read would claim the recorder has counted nothing when nobody has asked yet.
       -->
-      <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-xs text-ink-dim">
-        {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
-      </p>
-      <div v-if="startup" class="row flex-wrap items-baseline gap-2 text-xs">
-        <span class="text-ink-dim">{{ messages.settings.metrics.startup }}</span>
-        <span class="font-mono">{{ startup.ms.toFixed(0) }} ms</span>
-        <span :class="startup.within ? 'text-ink-dim' : 'text-error'">
-          {{ startup.within ? messages.settings.metrics.startupWithin : messages.settings.metrics.startupOver }}
-        </span>
-      </div>
-      <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
-      <AList v-else-if="metrics" size="small">
-        <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)">
-          <div class="row-between gap-3">
-            <span class="min-w-0 truncate text-xs font-mono">{{ seriesKey(series.key) }}</span>
-            <span class="text-sm font-mono">{{ seriesValue(series.value) }}</span>
-          </div>
-        </AList.Item>
-      </AList>
-    </section>
+            <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-xs text-ink-dim">
+              {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
+            </p>
+            <div v-if="startup" class="row flex-wrap items-baseline gap-2 text-xs">
+              <span class="text-ink-dim">{{ messages.settings.metrics.startup }}</span>
+              <span class="font-mono">{{ startup.ms.toFixed(0) }} ms</span>
+              <span :class="startup.within ? 'text-ink-dim' : 'text-error'">
+                {{ startup.within ? messages.settings.metrics.startupWithin : messages.settings.metrics.startupOver }}
+              </span>
+            </div>
+            <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
+            <AList v-else-if="metrics" size="small">
+              <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)">
+                <div class="row-between gap-3">
+                  <span class="min-w-0 truncate text-xs font-mono">{{ seriesKey(series.key) }}</span>
+                  <span class="text-sm font-mono">{{ seriesValue(series.value) }}</span>
+                </div>
+              </AList.Item>
+            </AList>
+          </section>
 
-    <!--
+          <!--
       ★ Last, and that is deliberate: every other section here edits a preference the screen owns; this one edits a number
       the kernel applies when it next starts, so it reads as housekeeping rather than as a control a user watches.
     -->
-    <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
-        {{ messages.settings.audit.title }}
-      </h2>
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.audit.detail }}
-      </p>
-      <div class="row gap-2">
-        <AInputNumber
-          :value="retentionDays"
-          :min="1"
-          :max="3650"
-          :precision="0"
-          @update:value="(value) => (retentionDays = typeof value === 'number' ? value : 1)"
-        />
-        <AButton :loading="savingRetention" @click="saveRetention">
-          {{ messages.settings.audit.save }}
-        </AButton>
-      </div>
-    </section>
+          <section class="stack gap-3">
+            <h2 class="m-0 text-base font-medium">
+              {{ messages.settings.audit.title }}
+            </h2>
+            <HelpText>
+              {{ messages.settings.audit.detail }}
+            </HelpText>
+            <div class="row gap-2">
+              <AInputNumber
+                :value="retentionDays"
+                :min="1"
+                :max="3650"
+                :precision="0"
+                @update:value="(value) => (retentionDays = typeof value === 'number' ? value : 1)"
+              />
+              <AButton :loading="savingRetention" @click="saveRetention">
+                {{ messages.settings.audit.save }}
+              </AButton>
+            </div>
+          </section>
 
-    <!--
+          <!--
       ★ The bundle is the one thing on this page whose result the user has to *read back*: a file path alone says nothing
       about whether the audit trail went in. The two optional sections are checkboxes rather than defaults because both
       name things the user might not have meant to share.
     -->
-    <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
-        {{ messages.settings.diagnostics.title }}
-      </h2>
-      <p class="m-0 text-sm text-ink-dim">
-        {{ messages.settings.diagnostics.detail }}
-      </p>
-      <div class="stack gap-1">
-        <ACheckbox
-          :checked="exportAudit"
-          @update:checked="(checked) => (exportAudit = checked)"
-        >
-          {{ messages.settings.diagnostics.audit }}
-        </ACheckbox>
-        <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.auditDetail }}</span>
-      </div>
-      <div class="stack gap-1">
-        <ACheckbox
-          :checked="exportDebug"
-          @update:checked="(checked) => (exportDebug = checked)"
-        >
-          {{ messages.settings.diagnostics.debug }}
-        </ACheckbox>
-        <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.debugDetail }}</span>
-      </div>
-      <div v-if="exportDebug" class="row gap-2">
-        <span class="text-sm">{{ messages.settings.diagnostics.lines }}</span>
-        <AInputNumber
-          :value="exportLines"
-          :min="1"
-          :max="10000"
-          :precision="0"
-          @update:value="(value) => (exportLines = typeof value === 'number' ? value : 1)"
-        />
-      </div>
-      <div class="row gap-2">
-        <AButton :loading="exporting" @click="exportDiagnostics">
-          {{ messages.settings.diagnostics.export }}
-        </AButton>
-      </div>
-      <div v-if="exported" class="stack gap-1">
-        <span class="text-xs text-ink-dim font-mono">{{ exported.path }}</span>
-        <span class="text-xs">{{ messages.settings.diagnostics.included(exported.included.join(', ')) }}</span>
-        <span v-if="exported.excluded.length > 0" class="text-xs text-ink-dim">
-          {{ messages.settings.diagnostics.excluded(exported.excluded.join('; ')) }}
-        </span>
-      </div>
+          <section class="stack gap-3">
+            <h2 class="m-0 text-base font-medium">
+              {{ messages.settings.diagnostics.title }}
+            </h2>
+            <HelpText>
+              {{ messages.settings.diagnostics.detail }}
+            </HelpText>
+            <div class="stack gap-1">
+              <ACheckbox
+                :checked="exportAudit"
+                @update:checked="(checked) => (exportAudit = checked)"
+              >
+                {{ messages.settings.diagnostics.audit }}
+              </ACheckbox>
+              <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.auditDetail }}</span>
+            </div>
+            <div class="stack gap-1">
+              <ACheckbox
+                :checked="exportDebug"
+                @update:checked="(checked) => (exportDebug = checked)"
+              >
+                {{ messages.settings.diagnostics.debug }}
+              </ACheckbox>
+              <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.debugDetail }}</span>
+            </div>
+            <div v-if="exportDebug" class="row gap-2">
+              <span class="text-sm">{{ messages.settings.diagnostics.lines }}</span>
+              <AInputNumber
+                :value="exportLines"
+                :min="1"
+                :max="10000"
+                :precision="0"
+                @update:value="(value) => (exportLines = typeof value === 'number' ? value : 1)"
+              />
+            </div>
+            <div class="row gap-2">
+              <AButton :loading="exporting" @click="exportDiagnostics">
+                {{ messages.settings.diagnostics.export }}
+              </AButton>
+            </div>
+            <div v-if="exported" class="stack gap-1">
+              <span class="text-xs text-ink-dim font-mono">{{ exported.path }}</span>
+              <span class="text-xs">{{ messages.settings.diagnostics.included(exported.included.join(', ')) }}</span>
+              <span v-if="exported.excluded.length > 0" class="text-xs text-ink-dim">
+                {{ messages.settings.diagnostics.excluded(exported.excluded.join('; ')) }}
+              </span>
+            </div>
 
-      <!--
+            <!--
         ★ The crash prompt's "ignore". Safe mode is decided from the reports on disk, so leaving them behind means the
         next start asks again — this is the action that makes a fixed installation start normally.
       -->
-      <div class="stack gap-2">
-        <p class="m-0 text-xs text-ink-dim">
-          {{ messages.settings.diagnostics.dismissDetail }}
-        </p>
-        <div class="row items-center gap-2">
-          <AButton danger :loading="dismissing" @click="dismissCrashes">
-            {{ messages.settings.diagnostics.dismissCrashes }}
-          </AButton>
-          <AButton :loading="loadingCrashes" @click="showCrashes">
-            {{ messages.settings.diagnostics.showCrashes }}
-          </AButton>
-          <span v-if="crashesDismissed" class="text-xs text-ink-dim">
-            {{ messages.settings.diagnostics.dismissed }}
-          </span>
-        </div>
-        <ul v-if="crashes" class="m-0 stack gap-2 p-0">
-          <li v-if="crashes.length === 0" class="text-xs text-ink-dim">
-            {{ messages.settings.diagnostics.crashesEmpty }}
-          </li>
-          <li
-            v-for="report in crashes"
-            :key="`${report.atMs}-${report.location ?? ''}`"
-            class="stack gap-1 text-xs"
-          >
-            <span class="text-ink-dim font-mono">
-              {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
-            </span>
-            <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
-            <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
-          </li>
-        </ul>
-      </div>
+            <div class="stack gap-2">
+              <p class="m-0 text-xs text-ink-dim">
+                {{ messages.settings.diagnostics.dismissDetail }}
+              </p>
+              <div class="row items-center gap-2">
+                <AButton danger :loading="dismissing" @click="dismissCrashes">
+                  {{ messages.settings.diagnostics.dismissCrashes }}
+                </AButton>
+                <AButton :loading="loadingCrashes" @click="showCrashes">
+                  {{ messages.settings.diagnostics.showCrashes }}
+                </AButton>
+                <span v-if="crashesDismissed" class="text-xs text-ink-dim">
+                  {{ messages.settings.diagnostics.dismissed }}
+                </span>
+              </div>
+              <ul v-if="crashes" class="m-0 stack gap-2 p-0">
+                <li v-if="crashes.length === 0" class="text-xs text-ink-dim">
+                  {{ messages.settings.diagnostics.crashesEmpty }}
+                </li>
+                <li
+                  v-for="report in crashes"
+                  :key="`${report.atMs}-${report.location ?? ''}`"
+                  class="stack gap-1 text-xs"
+                >
+                  <span class="text-ink-dim font-mono">
+                    {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
+                  </span>
+                  <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
+                  <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
+                </li>
+              </ul>
+            </div>
 
-      <!--
+            <!--
         ★ Run on request, not on mount: the probes bind ports, write a file and read the clock, so running them on every
         visit would make navigating to settings do work the user did not ask for. The section explains what it checks
         because a user deciding whether to press it needs to know it is not a network test.
       -->
-      <div class="stack gap-2">
-        <p class="m-0 text-xs text-ink-dim">
-          {{ messages.settings.diagnostics.probesDetail }}
-        </p>
-        <div class="row items-center gap-2">
-          <AButton :loading="probing" @click="runProbes">
-            {{ messages.settings.diagnostics.probes }}
-          </AButton>
-          <span v-if="probeReport" class="text-xs text-ink-dim">{{ probesSummary }}</span>
-        </div>
-        <ACheckbox
-          v-if="probeReport"
-          :checked="onlyProblems"
-          @update:checked="(checked) => (onlyProblems = checked)"
-        >
-          {{ messages.settings.diagnostics.onlyProblems }}
-        </ACheckbox>
-        <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
-          <li v-for="result in visibleProbes" :key="result.name" class="stack gap-1">
-            <div class="row items-center gap-2">
-              <ATag :color="probeColor(result.status)">
-                {{ messages.settings.diagnostics.probeStatus(result.status) }}
-              </ATag>
-              <span class="text-xs font-mono">{{ result.name }}</span>
+            <div class="stack gap-2">
+              <p class="m-0 text-xs text-ink-dim">
+                {{ messages.settings.diagnostics.probesDetail }}
+              </p>
+              <div class="row items-center gap-2">
+                <AButton :loading="probing" @click="runProbes">
+                  {{ messages.settings.diagnostics.probes }}
+                </AButton>
+                <span v-if="probeReport" class="text-xs text-ink-dim">{{ probesSummary }}</span>
+              </div>
+              <ACheckbox
+                v-if="probeReport"
+                :checked="onlyProblems"
+                @update:checked="(checked) => (onlyProblems = checked)"
+              >
+                {{ messages.settings.diagnostics.onlyProblems }}
+              </ACheckbox>
+              <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
+                <li v-for="result in visibleProbes" :key="result.name" class="stack gap-1">
+                  <div class="row items-center gap-2">
+                    <ATag :color="probeColor(result.status)">
+                      {{ messages.settings.diagnostics.probeStatus(result.status) }}
+                    </ATag>
+                    <span class="text-xs font-mono">{{ result.name }}</span>
+                  </div>
+                  <span class="text-xs text-ink-dim">{{ result.detail }}</span>
+                  <span v-if="result.suggestion" class="text-xs">{{ result.suggestion }}</span>
+                </li>
+              </ul>
             </div>
-            <span class="text-xs text-ink-dim">{{ result.detail }}</span>
-            <span v-if="result.suggestion" class="text-xs">{{ result.suggestion }}</span>
-          </li>
-        </ul>
-      </div>
 
-      <!--
+            <!--
         ★ The log is read on demand, like the plugin audit: a page that read it on mount would hold a copy that goes stale
         while the user is looking at it, and a log can be the largest thing this page ever asks for. Opening the section
         is the request; closing it leaves what was read on screen, because the lines are still what the shell wrote.
       -->
-      <details class="stack gap-2" @toggle="(event) => openLog(event)">
-        <summary class="cursor-pointer text-xs text-ink-dim">
-          {{ messages.settings.diagnostics.logs }}
-        </summary>
-        <pre v-if="logLines.length > 0" class="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs font-mono">{{ logLines.join('\n') }}</pre>
-        <p v-else-if="logAsked" class="m-0 text-xs text-ink-dim">
-          {{ messages.settings.diagnostics.logsEmpty }}
-        </p>
-      </details>
-    </section>
+            <details class="stack gap-2" @toggle="(event) => openLog(event)">
+              <summary class="cursor-pointer text-xs text-ink-dim">
+                {{ messages.settings.diagnostics.logs }}
+              </summary>
+              <pre v-if="logLines.length > 0" class="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs font-mono">{{ logLines.join('\n') }}</pre>
+              <p v-else-if="logAsked" class="m-0 text-xs text-ink-dim">
+                {{ messages.settings.diagnostics.logsEmpty }}
+              </p>
+            </details>
+          </section>
+        </div>
+      </ACollapse.Panel>
+    </ACollapse>
   </section>
 </template>
 
 <script setup lang="ts">
+import type { ConfigSnapshot, CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
+import {
+  Button as AButton,
+  Checkbox as ACheckbox,
+  Collapse as ACollapse,
+  Descriptions as ADescriptions,
+  Empty as AEmpty,
+  Input as AInput,
+  InputNumber as AInputNumber,
+  List as AList,
+  Select as ASelect,
+  Switch as ASwitch,
+  Tag as ATag
+} from 'ant-design-vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import CredentialPanel from '../components/CredentialPanel.vue'
+
+import ErrorNotice from '../components/ErrorNotice.vue'
 /**
  * This device's own settings.
  *
@@ -459,23 +477,7 @@
  * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
  * be the fake control this page's doc comment refuses to draw.
  */
-import type { ConfigSnapshot, CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
-import {
-  Button as AButton,
-  Checkbox as ACheckbox,
-  Descriptions as ADescriptions,
-  Empty as AEmpty,
-  Input as AInput,
-  InputNumber as AInputNumber,
-  List as AList,
-  Select as ASelect,
-  Switch as ASwitch,
-  Tag as ATag
-} from 'ant-design-vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-
-import CredentialPanel from '../components/CredentialPanel.vue'
-import ErrorNotice from '../components/ErrorNotice.vue'
+import HelpText from '../components/HelpText.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
@@ -483,13 +485,12 @@ import { useSettingsStore } from '../stores/settings'
 
 /** The keys this page knows about, in the order they are shown. */const KEYS = ['theme'] as const
 
-type PreferenceKey = typeof KEYS[number]
-
 // ★ The store, not a copy of the answer. Two things this fixes: another window's change arrives as `configUpdated` and
 // lands here, and — the defect this line replaced — the command answers a **`ConfigSnapshot`** (`{ values, overridden }`),
 // not a bare map, so a page that stored the answer as the map read `config['theme']` as `undefined` forever.
 const settings = useSettingsStore()
 const identity = ref<IdentitySnapshot | undefined>(undefined)
+const showAdvanced = ref(false)
 
 /**
  * The kernel's key for one of this page's preferences.
@@ -498,9 +499,6 @@ const identity = ref<IdentitySnapshot | undefined>(undefined)
  * `key` directly returned `undefined` for every preference — the second half of the bug that made both controls show
  * "unset", and the half a corrected DTO shape alone would not have fixed.
  */
-function configKey(key: PreferenceKey): string {
-  return `ui.${key}`
-}
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
@@ -1001,11 +999,17 @@ function seriesValue(value: MetricValue): string {
 
 let metricsTimer: ReturnType<typeof setInterval> | undefined
 
-onMounted(async () => {
-  await loadMetrics()
-  metricsTimer = setInterval(() => {
+watch(showAdvanced, (open) => {
+  if (metricsTimer !== undefined) {
+    clearInterval(metricsTimer)
+    metricsTimer = undefined
+  }
+  if (open) {
     void loadMetrics()
-  }, METRICS_POLL_MS)
+    metricsTimer = setInterval(() => {
+      void loadMetrics()
+    }, METRICS_POLL_MS)
+  }
 })
 
 onUnmounted(() => {
@@ -1018,7 +1022,7 @@ onMounted(loadLaunchAtLogin)
 
 /** The notice's Retry: everything this page read, not only the two answers the first mount asked for. */
 async function reload(): Promise<void> {
-  await Promise.all([load(), loadMetrics()])
+  await Promise.all([load(), ...(showAdvanced.value ? [loadMetrics()] : [])])
 }
 
 /** Reads what this device is and what it is set to. Both answers arrive together, because one screen shows both. */

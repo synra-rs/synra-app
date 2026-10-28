@@ -73,7 +73,7 @@ const NO_METRICS = { values: [], overflowedTotal: 0, maxSeriesPerMetric: 1_000 }
 /**
  * Answers by command name; anything unlisted is refused, so an unexpected call shows up as a failure.
  *
- * ★ `diag_metrics` is seeded rather than left to be refused: the page reads it on mount by design, and a fixture that
+ * ★ `diag_metrics` is seeded rather than left to be refused: the page reads it when advanced settings are opened, and a fixture that
  * refused it would put an error notice on every test here — including the ones asserting something else.
  */
 function answer(byCommand: Record<string, unknown>) {
@@ -163,7 +163,7 @@ describe('the settings page', () => {
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('dark')
+    expect(wrapper.text()).toContain(messages.settings.themeFixed)
     wrapper.unmount()
   })
 
@@ -392,6 +392,8 @@ describe('the settings page', () => {
 
     const wrapper = mount(SettingsPage)
     await flushPromises()
+    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
+    await flushPromises()
 
     // ★ The rendered key is the kernel's own spelling (`name{label=value}`), not a page-invented one: a log line, a
     // diagnostic export and this panel have to name the same series.
@@ -399,6 +401,29 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain('7')
     expect(wrapper.text()).toContain(messages.settings.metrics.histogram(6, '5.00'))
     wrapper.unmount()
+  })
+
+  it('polls metrics only while advanced settings are open', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    vi.useFakeTimers()
+    const wrapper = mount(SettingsPage)
+    try {
+      await flushPromises()
+      expect(mocks.call).not.toHaveBeenCalledWith('diag_metrics')
+      const header = wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header')
+      await header.trigger('click')
+      await flushPromises()
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics')).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics')).toHaveLength(2)
+      await header.trigger('click')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics')).toHaveLength(2)
+    }
+    finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('compares the whole start against the cold-start budget', async () => {
@@ -424,6 +449,8 @@ describe('the settings page', () => {
     })
 
     const wrapper = mount(SettingsPage)
+    await flushPromises()
+    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.settings.metrics.startup)
@@ -462,6 +489,8 @@ describe('the settings page', () => {
     })
 
     const wrapper = mount(SettingsPage)
+    await flushPromises()
+    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.settings.metrics.overflow(3, 2))

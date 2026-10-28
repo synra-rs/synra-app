@@ -91,9 +91,9 @@
         <p class="m-0 text-base font-medium">
           {{ preview.title }} · {{ preview.version }}
         </p>
-        <p class="m-0 text-sm text-ink-dim">
+        <HelpText>
           {{ messages.plugins.preview.publisher }}: {{ preview.publisherName ?? preview.publisher }}
-        </p>
+        </HelpText>
         <p v-if="preview.publisherKey" class="m-0 text-sm text-ink-dim">
           {{ messages.plugins.preview.directoryKey }}: <span class="font-mono">{{ preview.publisherKey }}</span>
         </p>
@@ -108,9 +108,9 @@
         <p v-else class="m-0 text-sm text-ink-dim">
           {{ messages.plugins.preview.none }}
         </p>
-        <p class="m-0 text-sm text-ink-dim">
+        <HelpText>
           {{ preview.headless ? messages.plugins.preview.headless : messages.plugins.preview.ui }}
-        </p>
+        </HelpText>
         <p v-if="preview.sizeBytes" class="m-0 text-sm text-ink-dim">
           {{ messages.plugins.preview.size.replace('{size}', (preview.sizeBytes / 1_048_576).toFixed(1)) }}
         </p>
@@ -558,9 +558,9 @@
       <h2 class="text-base font-medium">
         {{ messages.plugins.publishers.title }}
       </h2>
-      <p class="m-0 text-sm text-ink-dim">
+      <HelpText>
         {{ messages.plugins.publishers.detail }}
-      </p>
+      </HelpText>
 
       <!--
         What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
@@ -603,6 +603,13 @@
 </template>
 
 <script setup lang="ts">
+import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
+import type { AuditEntry, Failure } from './plugins/actions'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { storeToRefs } from 'pinia'
+import { computed, onMounted, reactive, ref } from 'vue'
+import ErrorNotice from '../components/ErrorNotice.vue'
+
 /**
  * What is installed, and what each one has been allowed to do.
  *
@@ -617,13 +624,7 @@
  * The second plugin in the fake snapshot is `enabled` **and** `faulted`. A screen that derived its badge from `enabled`
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
-import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
-import type { AuditEntry, Failure } from './plugins/actions'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
-import { storeToRefs } from 'pinia'
-import { computed, onMounted, reactive, ref } from 'vue'
-
-import ErrorNotice from '../components/ErrorNotice.vue'
+import HelpText from '../components/HelpText.vue'
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
 import { messages } from '../messages'

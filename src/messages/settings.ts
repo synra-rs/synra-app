@@ -8,7 +8,7 @@
 export const settings = {
   credentials: {
     title: 'Device identity',
-    detail: 'Repair replaces this device key and revokes every paired device. Other devices must forget this device and pair with it again.',
+    detail: 'Device keys and pairing status. Replacing a key requires pairing again.',
     refresh: 'Refresh identity',
     fingerprint: 'Public certificate fingerprint',
     backend: 'Key storage',
@@ -39,10 +39,11 @@ export const settings = {
     save: 'Save',
     cancel: 'Cancel',
     platform: 'Platform',
-    kernel: 'Kernel',
+    kernel: 'Version',
     deviceId: 'Device id'
   },
   preferences: 'Preferences',
+  advanced: 'Advanced settings',
   /**
    * The one key this page reads, in the user's words.
    *
@@ -54,7 +55,7 @@ export const settings = {
     theme: 'Theme'
   },
   /** Why the theme row has no control, where a control would be. */
-  themeFixed: 'One palette ships with the host; plugins read this value rather than choosing another.',
+  themeFixed: 'Dark appearance',
   /**
    * The devices this one accepts files from without asking. The list is the consequence of a choice made at the prompt,
    * and removing a row here is how that choice is taken back.
@@ -70,26 +71,26 @@ export const settings = {
   startup: {
     title: 'Startup',
     launchAtLogin: 'Launch at login',
-    launchAtLoginDetail: 'Start Synra when you sign in, so paired devices can reach this one.',
+    launchAtLoginDetail: 'Keep Synra available after you sign in.',
     unavailable: 'This build cannot register itself to start at login.'
   },
   transfers: {
     title: 'Transfers',
     cancelAsk: 'Ask before cancelling',
-    cancelAskDetail: 'Confirm before a transfer in flight is abandoned.',
+    cancelAskDetail: 'Confirm before stopping a transfer.',
     notify: 'Notify when a file arrives',
-    notifyDetail: 'A system notification, so a transfer that lands while the window is elsewhere is not missed.'
+    notifyDetail: 'Show a system notification for received files.'
   },
   /** How long the durable audit trail is kept. The kernel sweeps the table when it starts. */
   audit: {
     title: 'Audit history',
-    detail: 'Recorded plugin calls are kept for this many days, then removed the next time the kernel starts.',
+    detail: 'Days to keep plugin activity records.',
     save: 'Save'
   },
   /** What a user sends when something is wrong, and the two optional sections that need a decision. */
   diagnostics: {
     title: 'Diagnostics',
-    detail: 'A bundle of this device\u2019s environment, configuration, devices and plugins, for whoever is helping you. The audit trail and debug logs are opt-in, and the file records what it contains.',
+    detail: 'Export a troubleshooting report. Extra logs are optional.',
     audit: 'Include the audit trail',
     auditDetail: 'It names the plugins you run.',
     debug: 'Include debug log lines',
@@ -100,7 +101,7 @@ export const settings = {
     excluded: (sections: string): string => `Left out: ${sections}`,
     /** The startup probes: what this device would need in order to start. */
     probes: 'Run checks',
-    probesDetail: 'Checks the ports, the data folder, the clock and the runtime this device would need in order to start.',
+    probesDetail: 'Check the local environment.',
     probeStatus: (status: string): string => status === 'ok' ? 'OK' : status === 'warn' ? 'Warning' : 'Failed',
     /** Counts by status, so a report of twelve results is one line before it is twelve. */
     probesSummary: (ok: number, warn: number, fail: number): string =>
@@ -120,7 +121,7 @@ export const settings = {
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',
-    detail: 'The npm-compatible registries this device installs plugins from, tried in order. Prefix one with `static:` when it is a bucket serving one index.json per package. Leave the list empty to disable registry installs.',
+    detail: 'Plugin sources, checked in order. Use static: for static catalogs; leave empty to disable registry installs.',
     placeholder: 'https://registry.example.com',
     add: 'Add mirror',
     remove: 'Remove',
@@ -129,7 +130,7 @@ export const settings = {
   /** Daily checks and the user's policy for verified updates from trusted publishers. */
   updates: {
     title: 'Plugin updates',
-    detail: 'The policy applies at the next daily check. Automatic updates require the same trusted signing key and no added permissions. Prerelease versions require a manual update.',
+    detail: 'Checked daily. Automatic updates require the same publisher and no new permissions.',
     policy: 'Update policy',
     never: 'Check manually',
     notifyOnly: 'Notify only',
@@ -143,7 +144,7 @@ export const settings = {
    */
   metrics: {
     title: 'Performance',
-    detail: 'Counters, gauges and histograms recorded by this process. The panel re-reads them every few seconds and contains no payload content.',
+    detail: 'Local runtime metrics. Refreshes while advanced settings are open.',
     refresh: 'Refresh',
     empty: 'No metric has been recorded yet.',
     /** The M4 cold-start budget, read from the one series that measures the whole shell start. */

@@ -3,9 +3,9 @@
     <h2 id="pairing-title" class="m-0 text-base font-medium">
       {{ messages.devices.pairingTitle }}
     </h2>
-    <p class="m-0 text-sm text-ink-dim">
+    <HelpText>
       {{ messages.devices.pairingInstructions }}
-    </p>
+    </HelpText>
     <ErrorNotice v-if="pairing.error" :code="pairing.error.code" :message="pairing.error.message" :actions="pairing.error.actions" @retry="pairing.refresh()" />
     <AButton :loading="pairing.busy" :disabled="pairing.busy" @click="pairing.exportInvitation()">
       {{ messages.devices.pairingExport }}
@@ -58,10 +58,11 @@
 import type { DeviceCard } from '@synra/protocol'
 import { Button as AButton, Textarea as ATextarea } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
-
 import { messages } from '../messages'
+
 import { usePairingStore } from '../stores/pairing'
 import ErrorNotice from './ErrorNotice.vue'
+import HelpText from './HelpText.vue'
 
 const props = defineProps<{ selected?: DeviceCard | undefined }>()
 const pairing = usePairingStore()
