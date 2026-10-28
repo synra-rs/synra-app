@@ -40,7 +40,7 @@
       </p>
       <p v-if="pairing.active" class="m-0 text-sm">
         {{ messages.devices.pairingExpires }}
-        <time :datetime="new Date(pairing.snapshot.expiresAtMs).toISOString()">{{ new Date(pairing.snapshot.expiresAtMs).toLocaleTimeString() }}</time>
+        <time :datetime="new Date(pairing.snapshot.expiresAtMs).toISOString()">{{ formatTime(pairing.snapshot.expiresAtMs) }}</time>
       </p>
       <label v-if="pairing.snapshot.reply && pairing.active" class="stack gap-1 text-sm">
         {{ messages.devices.pairingReply }}
@@ -58,6 +58,7 @@
 import type { DeviceCard } from '@synra/protocol'
 import { Button as AButton, Textarea as ATextarea } from 'ant-design-vue'
 import { computed, onMounted, ref, watch } from 'vue'
+import { formatTime } from '../locale-format'
 import { messages } from '../messages'
 
 import { usePairingStore } from '../stores/pairing'

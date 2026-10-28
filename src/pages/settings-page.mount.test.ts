@@ -18,7 +18,8 @@
 
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { localePreference, setLocalePreference } from '../locale'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -86,6 +87,7 @@ function answer(byCommand: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  setLocalePreference('system')
   installBrowserApis()
   // The page reads `useSettingsStore`, so a fresh Pinia is part of the fixture: without it the store call throws before
   // any assertion runs.
@@ -102,6 +104,62 @@ beforeEach(() => {
 })
 
 describe('the settings page', () => {
+  afterEach(() => setLocalePreference('system'))
+
+  it('saves language through the kernel and updates existing captions and options', async () => {
+    let saved = 'en'
+    answer({ identity_get: IDENTITY, config_set: null })
+    const fallback = mocks.call.getMockImplementation()!
+    mocks.call.mockImplementation(async (command: string, args?: { patch?: { set?: Record<string, unknown> } }) => {
+      if (command === 'config_get')
+        return { ok: true, value: { values: { 'ui.locale': saved }, overridden: ['ui.locale'] } }
+      if (command === 'config_set') {
+        const next = args?.patch?.set?.['ui.locale']
+        if (typeof next !== 'string')
+          throw new Error('Missing locale preference')
+        saved = next
+        return { ok: true, value: null }
+      }
+      return fallback(command, args)
+    })
+    const wrapper = mount(SettingsPage)
+    try {
+      await flushPromises()
+      const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'language-preference')!
+      await select.vm.$emit('change', 'zh-CN')
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('config_set', { patch: { set: { 'ui.locale': 'zh-CN' } } })
+      expect(wrapper.get('h1').text()).toBe('设置')
+      expect(select.props('value')).toBe('zh-CN')
+      const policy = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'plugin-update-policy')!
+      expect(policy.props('options')).toContainEqual({ value: 'never', label: '手动检查' })
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('keeps the current language when saving is refused', async () => {
+    answer({ config_get: { values: { 'ui.locale': 'en' }, overridden: ['ui.locale'] }, identity_get: IDENTITY })
+    const fallback = mocks.call.getMockImplementation()!
+    mocks.call.mockImplementation((command: string, args?: unknown) => command === 'config_set'
+      ? { ok: false, error: { code: 'unauthorized', message: 'error.unauthorized', retryable: false } }
+      : fallback(command, args))
+    const wrapper = mount(SettingsPage)
+    try {
+      await flushPromises()
+      const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'language-preference')!
+      await select.vm.$emit('change', 'zh-CN')
+      await flushPromises()
+      expect(localePreference.value).toBe('en')
+      expect(wrapper.get('h1').text()).toBe('Settings')
+      expect(wrapper.text()).toContain(messages.errors.unauthorized)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('reads the configuration and this device when it is mounted', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 
@@ -192,7 +250,7 @@ describe('the settings page', () => {
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    const select = wrapper.findComponent({ name: 'ASelect' })
+    const select = wrapper.findAllComponents({ name: 'ASelect' }).find(select => select.attributes('data-testid') === 'plugin-update-policy')!
     expect(select.props('value')).toBe('notify-only')
     await select.vm.$emit('change', policy)
     await flushPromises()
@@ -207,7 +265,7 @@ describe('the settings page', () => {
     answer({ config_get: { values: { 'plugins.auto_update': 'auto-minor' }, overridden: ['plugins.auto_update'] }, identity_get: IDENTITY })
     const wrapper = mount(SettingsPage)
     await flushPromises()
-    const select = wrapper.findComponent({ name: 'ASelect' })
+    const select = wrapper.findAllComponents({ name: 'ASelect' }).find(select => select.attributes('data-testid') === 'plugin-update-policy')!
     expect(select.props('value')).toBe('auto-minor')
     const { useSettingsStore } = await import('../stores/settings')
     useSettingsStore().apply({ type: 'configUpdated', payload: { values: { 'plugins.auto_update': 'auto-all' }, overridden: ['plugins.auto_update'] } })

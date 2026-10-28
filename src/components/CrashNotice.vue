@@ -22,7 +22,7 @@
             class="stack gap-1 text-xs"
           >
             <span class="text-ink-dim font-mono">
-              {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
+              {{ formatDateTime(report.atMs) }} · {{ report.version }}
             </span>
             <span>{{ report.message ?? messages.crash.noMessage }}</span>
             <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
@@ -67,8 +67,9 @@
 import type { CrashReport, DiagExportResult } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
-
 import { kernel } from '../kernel'
+
+import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
 
 /** The same window `StartupVerdict` uses: a crash older than this is history, not the last run. */

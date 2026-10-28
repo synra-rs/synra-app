@@ -66,6 +66,19 @@
         writes, and the theme row says why there is no second choice.
       -->
       <div class="stack gap-3">
+        <div class="row-between gap-4">
+          <label for="interface-language" class="text-sm">{{ messages.settings.language.title }}</label>
+          <ASelect
+            id="interface-language"
+            data-testid="language-preference"
+            class="min-w-44"
+            :value="localePreference"
+            :options="languageOptions"
+            :loading="savingLanguage"
+            :disabled="savingLanguage"
+            @change="saveLanguage"
+          />
+        </div>
         <div v-for="key in KEYS" :key="key" class="row-between gap-4">
           <span class="min-w-0 row gap-2">
             <span class="text-sm">{{ messages.settings.preference[key] }}</span>
@@ -222,6 +235,7 @@
                 :value="updatePolicy"
                 :loading="savingCheckUpdates"
                 :options="updatePolicyOptions"
+                data-testid="plugin-update-policy"
                 :aria-label="messages.settings.updates.policy"
                 class="min-w-52"
                 @change="saveUpdatePolicy"
@@ -378,7 +392,7 @@
                   class="stack gap-1 text-xs"
                 >
                   <span class="text-ink-dim font-mono">
-                    {{ new Date(report.atMs).toLocaleString() }} · {{ report.version }}
+                    {{ formatDateTime(report.atMs) }} · {{ report.version }}
                   </span>
                   <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
                   <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
@@ -444,7 +458,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ConfigSnapshot, CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
+import type { CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
 import {
   Button as AButton,
   Checkbox as ACheckbox,
@@ -460,8 +474,8 @@ import {
 } from 'ant-design-vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import CredentialPanel from '../components/CredentialPanel.vue'
-
 import ErrorNotice from '../components/ErrorNotice.vue'
+
 /**
  * This device's own settings.
  *
@@ -479,6 +493,8 @@ import ErrorNotice from '../components/ErrorNotice.vue'
  */
 import HelpText from '../components/HelpText.vue'
 import { kernel } from '../kernel'
+import { localePreference } from '../locale'
+import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
@@ -491,6 +507,12 @@ import { useSettingsStore } from '../stores/settings'
 const settings = useSettingsStore()
 const identity = ref<IdentitySnapshot | undefined>(undefined)
 const showAdvanced = ref(false)
+const savingLanguage = ref(false)
+const languageOptions = computed(() => [
+  { value: 'system', label: messages.settings.language.system },
+  { value: 'zh-CN', label: messages.settings.language.chinese },
+  { value: 'en', label: messages.settings.language.english }
+])
 
 /**
  * The kernel's key for one of this page's preferences.
@@ -596,21 +618,21 @@ const notifyOnReceive = ref(true)
 const savingNotify = ref(false)
 
 /** Explicit installation policies; an absent setting only permits notices. */
-const updatePolicyOptions = [
+const updatePolicyOptions = computed(() => [
   { value: 'never', label: messages.settings.updates.never },
   { value: 'notify-only', label: messages.settings.updates.notifyOnly },
   { value: 'auto-minor', label: messages.settings.updates.autoMinor },
   { value: 'auto-all', label: messages.settings.updates.autoAll }
-]
+])
 const updatePolicy = computed(() => {
   const value = settings.value('plugins.auto_update')
-  return typeof value === 'string' && updatePolicyOptions.some(option => option.value === value) ? value : 'notify-only'
+  return typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value) ? value : 'notify-only'
 })
 const savingCheckUpdates = ref(false)
 
 /** Writes the user's update policy; the configuration event feeds the shared store. */
 async function saveUpdatePolicy(value: unknown): Promise<void> {
-  if (typeof value !== 'string' || !updatePolicyOptions.some(option => option.value === value))
+  if (typeof value !== 'string' || !updatePolicyOptions.value.some(option => option.value === value))
     return
   savingCheckUpdates.value = true
   error.value = undefined
@@ -1017,6 +1039,22 @@ onUnmounted(() => {
     clearInterval(metricsTimer)
 })
 
+async function saveLanguage(value: unknown): Promise<void> {
+  if (value !== 'system' && value !== 'en' && value !== 'zh-CN')
+    return
+  savingLanguage.value = true
+  error.value = undefined
+  try {
+    const saved = await kernel.call<null>('config_set', { patch: { set: { 'ui.locale': value } } })
+    const answer = saved.ok ? await settings.read(kernel) : saved
+    if (!answer.ok)
+      error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  }
+  finally {
+    savingLanguage.value = false
+  }
+}
+
 onMounted(load)
 onMounted(loadLaunchAtLogin)
 
@@ -1030,12 +1068,10 @@ async function load(): Promise<void> {
   error.value = undefined
 
   const [configAnswer, identityAnswer] = await Promise.all([
-    kernel.call<ConfigSnapshot>('config_get'),
+    settings.read(kernel),
     kernel.call<IdentitySnapshot>('identity_get')
   ])
 
-  if (configAnswer.ok)
-    settings.applySnapshot(configAnswer.value)
   if (identityAnswer.ok)
     identity.value = identityAnswer.value
 

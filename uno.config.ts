@@ -3,7 +3,7 @@ import { synraConfig } from '@synra/theme/unocss'
 
 import { defineConfig } from 'unocss'
 
-import { messages } from './src/messages'
+import { nav } from './src/messages/nav'
 
 /**
  * The host interface's styles, in one place.
@@ -37,7 +37,7 @@ export default defineConfig({
    * the other two icons rendered. Deriving the list from the same object the sidebar renders from means the two can
    * never disagree, and adding a page stays one edit.
    */
-  safelist: Object.values(messages.nav).map(page => page.icon),
+  safelist: Object.values(nav).map(page => page.icon),
 
   preflights: [
     {

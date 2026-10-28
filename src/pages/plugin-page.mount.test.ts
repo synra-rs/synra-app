@@ -21,6 +21,7 @@ import type { PluginSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { formatDateTime } from '../locale-format'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -722,7 +723,7 @@ describe('the plugins page', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Version 2.0.0 is published')
     expect(wrapper.text()).toContain('device:send:*')
-    expect(wrapper.text()).toContain(messages.plugins.lastChecked.replace('{time}', new Date(checkedAt).toLocaleString()))
+    expect(wrapper.text()).toContain(messages.plugins.lastChecked.replace('{time}', formatDateTime(checkedAt)))
     expect(wrapper.findAll('button').some(button => button.text() === messages.plugins.updateAction)).toBe(true)
 
     store.apply({ type: 'pluginUpdated', payload: card({ updateCheckedAtMs: checkedAt + 1 }) })

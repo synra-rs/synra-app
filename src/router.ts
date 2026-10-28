@@ -57,22 +57,26 @@ export interface PageRoute {
 export const PAGES: readonly PageRoute[] = [
   {
     path: '/',
-    ...messages.nav.home,
+    get label() { return messages.nav.home.label },
+    icon: messages.nav.home.icon,
     component: HomePage
   },
   {
     path: '/devices',
-    ...messages.nav.devices,
+    get label() { return messages.nav.devices.label },
+    icon: messages.nav.devices.icon,
     component: DevicesPage
   },
   {
     path: '/plugins',
-    ...messages.nav.plugins,
+    get label() { return messages.nav.plugins.label },
+    icon: messages.nav.plugins.icon,
     component: PluginsPage
   },
   {
     path: '/settings',
-    ...messages.nav.settings,
+    get label() { return messages.nav.settings.label },
+    icon: messages.nav.settings.icon,
     component: SettingsPage
   }
 ]

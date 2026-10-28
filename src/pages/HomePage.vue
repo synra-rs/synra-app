@@ -296,10 +296,11 @@ import { Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Pop
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-
 import ErrorNotice from '../components/ErrorNotice.vue'
+
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
+import { formatTime } from '../locale-format'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useIntentsStore } from '../stores/intents'
@@ -586,7 +587,7 @@ function retryLabel(retry: IntentRetry): string {
  * countdown baked into a render would be wrong a second later while this stays true until the next retry.
  */
 function formatClock(at: number): string {
-  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatTime(at, true)
 }
 
 /**

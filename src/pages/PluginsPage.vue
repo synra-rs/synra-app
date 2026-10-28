@@ -266,7 +266,7 @@
                 @change="(checked) => toggle(plugin, checked as boolean)"
               />
               <ATag :color="stateColour(plugin.state)" class="shrink-0">
-                {{ plugin.state }}
+                {{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}
               </ATag>
             </div>
 
@@ -373,7 +373,7 @@
             </AAlert>
 
             <p v-if="plugin.updateCheckedAtMs !== undefined" class="m-0 text-xs text-ink-dim">
-              {{ messages.plugins.lastChecked.replace('{time}', new Date(plugin.updateCheckedAtMs).toLocaleString()) }}
+              {{ messages.plugins.lastChecked.replace('{time}', formatDateTime(plugin.updateCheckedAtMs)) }}
             </p>
 
             <!--
@@ -465,7 +465,7 @@
                   <span v-if="entry.traceId" class="text-xs text-ink-dim font-mono" :title="entry.traceId">
                     {{ messages.plugins.audit.trace }} {{ entry.traceId }}
                   </span>
-                  <span class="text-ink-dim">{{ new Date(entry.atMs).toLocaleTimeString() }}</span>
+                  <span class="text-ink-dim">{{ formatTime(entry.atMs) }}</span>
                 </li>
               </ul>
               <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
@@ -609,7 +609,6 @@ import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGrou
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, reactive, ref } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
-
 /**
  * What is installed, and what each one has been allowed to do.
  *
@@ -625,8 +624,10 @@ import ErrorNotice from '../components/ErrorNotice.vue'
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import HelpText from '../components/HelpText.vue'
+
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
+import { formatDateTime, formatTime } from '../locale-format'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
 import { AUDIT_PAGE, clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'

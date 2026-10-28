@@ -43,6 +43,12 @@ export const settings = {
     deviceId: 'Device id'
   },
   preferences: 'Preferences',
+  language: {
+    title: 'Language',
+    system: 'Follow system',
+    english: 'English',
+    chinese: '简体中文'
+  },
   advanced: 'Advanced settings',
   /**
    * The one key this page reads, in the user's words.

@@ -14,11 +14,12 @@
  */
 
 import type { TransferSnapshot } from '@synra/protocol'
-
 import { flushPromises, mount } from '@vue/test-utils'
+
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { formatTime } from '../locale-format'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
@@ -216,7 +217,7 @@ describe('the home page', () => {
     const wrapper = mount(HomePage, { global: { plugins: [router()] } })
     await flushPromises()
 
-    const clock = new Date(nextAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const clock = formatTime(nextAtMs, true)
     expect(wrapper.text()).toContain(`Retrying (3/8), next try at ${clock}`)
     expect(wrapper.text()).toContain(messages.home.received.noAnswer)
     wrapper.unmount()

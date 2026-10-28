@@ -5,6 +5,15 @@
  */
 export const plugins = {
   title: 'Plugins',
+  states: {
+    installed: 'Installed',
+    validated: 'Validated',
+    granted: 'Permissions granted',
+    active: 'Active',
+    deactivated: 'Disabled',
+    faulted: 'Stopped after an error',
+    parked: 'Stopped'
+  },
   empty: 'No plugin is installed.',
   /** The filter above the installed list; it matches the id, the title and the description. */
   filterPlaceholder: 'Filter installed plugins',

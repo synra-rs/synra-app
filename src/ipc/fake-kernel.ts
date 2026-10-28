@@ -39,6 +39,7 @@ import {
   PLUGINS,
   TRANSFERS
 } from './fake-kernel-fixtures'
+import { PreviewConfig } from './preview-config'
 
 /**
  * The arguments the shell requires, per command — the half of the contract this fake used to ignore.
@@ -58,6 +59,7 @@ import {
  * Rust side is `scanId` over the wire.
  */
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
+  config_set: ['patch'],
   identity_repair: ['expectedFingerprint'],
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
@@ -97,6 +99,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
  * every later call returns. Copying costs three devices and makes the fake safe to hold across tests.
  */
 export class FakeKernel implements Bridge {
+  readonly #config = new PreviewConfig()
   /** Handlers by channel, so `listen` can hand back an unsubscribe that actually unsubscribes. */
   readonly #handlers = new Map<string, Set<(payload: unknown) => void>>()
 
@@ -306,19 +309,14 @@ export class FakeKernel implements Bridge {
       case 'transfer_send_file':
         return '66666666-6666-4666-8666-666666666666'
       case 'config_get':
-        // ★ The kernel's own shape, not a flat bag of settings.
-        //
-        // This used to answer `{ theme: 'system', autoSyncPlugins: true }`. The kernel answers
-        // `{ values: {…}, overridden: […] }`, because the boundary carries a bag and the *screens* own their own
-        // shape — so a fake with the flat form teaches the interface to read a field that never arrives, and the
-        // failure is a settings page that renders empty with nothing in the log.
-        //
-        // The two keys are the kernel's own `ui.*` dotted paths, and `overridden` lists what the user changed rather
-        // than what the defaults happen to be.
-        return {
-          values: { 'ui.theme': 'system', 'ui.autoSyncPlugins': true },
-          overridden: ['ui.theme']
-        }
+        return this.#config.snapshot()
+      case 'config_set': {
+        const result = this.#config.apply(args?.patch)
+        if (typeof result === 'string')
+          return { code: result === 'invalid' ? 'invalid_argument' : 'internal', message: result === 'invalid' ? 'error.badArgument' : 'error.storeUnavailable', retryable: false }
+        this.#emit('configUpdated', result)
+        return null
+      }
       default:
         // A refusal, in the kernel's own shape, rather than a rejection: the client checks for it and a fake that
         // rejected would teach the interface that an unknown command throws. `unsupported` because that is what this

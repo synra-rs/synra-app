@@ -7,8 +7,9 @@
 
 import type { ConfigSnapshot } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { localePreference, setLocalePreference } from '../locale'
 import { useSettingsStore } from './settings'
 
 function snapshot(values: Record<string, unknown>): ConfigSnapshot {
@@ -17,6 +18,46 @@ function snapshot(values: Record<string, unknown>): ConfigSnapshot {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+})
+
+afterEach(() => setLocalePreference('system'))
+
+it('restores the saved language and follows authoritative configuration events', async () => {
+  const store = useSettingsStore()
+  const call = vi.fn().mockResolvedValue({ ok: true, value: snapshot({ 'ui.locale': 'zh-CN' }) })
+  await store.read({ call })
+  expect(localePreference.value).toBe('zh-CN')
+  store.apply({ type: 'configUpdated', payload: snapshot({ 'ui.locale': 'en' }) })
+  expect(localePreference.value).toBe('en')
+  store.applySnapshot(snapshot({}))
+  expect(localePreference.value).toBe('system')
+})
+
+it('does not let a late startup read overwrite a newer language event', async () => {
+  const store = useSettingsStore()
+  let finish!: (value: unknown) => void
+  const call = vi.fn().mockImplementation(() => new Promise((resolve) => {
+    finish = resolve
+  }))
+  const pending = store.read({ call })
+  store.apply({ type: 'configUpdated', payload: snapshot({ 'ui.locale': 'zh-CN' }) })
+  finish({ ok: true, value: snapshot({ 'ui.locale': 'en' }) })
+  await pending
+  expect(store.value('ui.locale')).toBe('zh-CN')
+  expect(localePreference.value).toBe('zh-CN')
+})
+
+it('keeps the latest read when responses arrive out of order', async () => {
+  const store = useSettingsStore()
+  let finish!: (value: unknown) => void
+  const call = vi.fn().mockImplementationOnce(() => new Promise((resolve) => {
+    finish = resolve
+  })).mockResolvedValueOnce({ ok: true, value: snapshot({ 'ui.locale': 'zh-CN' }) })
+  const older = store.read({ call })
+  await store.read({ call })
+  finish({ ok: true, value: snapshot({ 'ui.locale': 'en' }) })
+  await older
+  expect(localePreference.value).toBe('zh-CN')
 })
 
 describe('the settings store', () => {

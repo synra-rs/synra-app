@@ -6,7 +6,7 @@
     `synraAntdTheme()` — which is a mapping of `@synra/theme`'s tokens, not a second set of values. A second theme object
     anywhere in the interface is the failure this line exists to prevent, so there is exactly one `:theme=` in the app.
   -->
-  <ConfigProvider :theme="synraAntdTheme()">
+  <ConfigProvider :theme="componentTheme" :locale="componentLocale">
     <!-- Constrain the frame, so content scrolls inside its pane instead of growing the document. -->
     <div class="fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] overflow-hidden screen md:grid-rows-[minmax(0,1fr)]" :class="rail ? 'md:grid-cols-[6rem_minmax(0,1fr)]' : 'md:grid-cols-[15rem_minmax(0,1fr)]'">
       <!-- The one prompt that is about a peer waiting on this answer; at the root so it is visible on every page. -->
@@ -153,21 +153,33 @@
 import type { DevicesSnapshot } from '@synra/protocol'
 import { synraAntdTheme } from '@synra/theme/antd'
 import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, ConfigProvider } from 'ant-design-vue'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import enUS from 'ant-design-vue/es/locale/en_US'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import CrashNotice from './components/CrashNotice.vue'
 import NoticeHost from './components/NoticeHost.vue'
 import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'
+import { locale, watchSystemLocale } from './locale'
 import { messages } from './messages'
 import { useNetworkStatus } from './network'
 import { PAGES } from './router'
 import { useDevicesStore } from './stores/devices'
+import { useSettingsStore } from './stores/settings'
 
 const route = useRoute()
 const router = useRouter()
 const devices = useDevicesStore()
+const settings = useSettingsStore()
+const componentTheme = synraAntdTheme()
+const componentLocale = computed(() => locale.value === 'zh-CN' ? zhCN : enUS)
+let stopLocaleSync = (): void => {}
+
+watch(locale, (value) => {
+  document.documentElement.lang = value
+}, { immediate: true })
 const online = useNetworkStatus()
 const contentPane = ref<HTMLElement>()
 
@@ -187,6 +199,7 @@ function navigate(info: { key: string | number }): void {
 }
 
 onMounted(async () => {
+  stopLocaleSync = watchSystemLocale()
   query = window.matchMedia('(min-width: 64rem)')
   apply(query)
   query.addEventListener('change', apply)
@@ -194,12 +207,13 @@ onMounted(async () => {
   // The snapshot is taken before anything subscribes, which is the wrong order in general and the right one *here*:
   // the interface is starting up with nothing on screen, so there is no event it can miss yet. Once a page is live the
   // dispatcher owns the ordering.
-  const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
+  const [answer] = await Promise.all([kernel.call<DevicesSnapshot>('devices_snapshot'), settings.read(kernel)])
   if (answer.ok)
     devices.applySnapshot(answer.value)
 })
 
 onUnmounted(() => {
+  stopLocaleSync()
   query?.removeEventListener('change', apply)
 })
 </script>

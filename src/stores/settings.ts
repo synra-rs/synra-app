@@ -14,10 +14,14 @@
  */
 
 import type { ConfigSnapshot, KernelEvent } from '@synra/protocol'
+import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { setLocalePreference } from '../locale'
 
 export const useSettingsStore = defineStore('settings', () => {
+  let revision = 0
+  let latestRead = 0
   /** The keys somebody wrote, and their values. */
   const values = ref<Readonly<Record<string, unknown>>>({})
 
@@ -26,10 +30,22 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** Replaces the whole picture, for the read at startup. */
   function applySnapshot(snapshot: ConfigSnapshot): void {
+    revision++
     // `values` is `unknown` on the wire — the Rust side is `serde_json::Value` — and the store's job is to hold the map, so
     // the narrowing happens here and once.
     values.value = { ...(snapshot.values as Record<string, unknown>) }
     overridden.value = [...snapshot.overridden]
+    setLocalePreference(values.value['ui.locale'])
+  }
+
+  /** Ignore reads overtaken by a newer read or an authoritative configuration event. */
+  async function read(client: Pick<KernelClient, 'call'>): Promise<CallResult<ConfigSnapshot>> {
+    const ticket = ++latestRead
+    const started = revision
+    const answer = await client.call<ConfigSnapshot>('config_get')
+    if (answer.ok && ticket === latestRead && started === revision)
+      applySnapshot(answer.value)
+    return answer
   }
 
   /** Applies one event. Answers whether this store knew what it was — the contract the other three stores share. */
@@ -45,5 +61,5 @@ export const useSettingsStore = defineStore('settings', () => {
     return values.value[key]
   }
 
-  return { apply, applySnapshot, overridden, value, values }
+  return { apply, applySnapshot, overridden, read, value, values }
 })
