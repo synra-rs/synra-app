@@ -445,7 +445,7 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // action aimed at the window was counted and dropped — the sender stayed "dispatching" for ever.
             let kernel_state = Arc::clone(&db_state);
             let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> =
-                Arc::new(move |envelope: &synra_protocol::envelope::Envelope| {
+                Arc::new(move |envelope: &synra_protocol::envelope::Envelope, _authority: &synra_core::peer::authenticated::RequestAuthority| {
                     use synra_core::listener::KernelEventOutcome;
                     use synra_protocol::event::events;
                     let board = Arc::clone(&kernel_state.board);
