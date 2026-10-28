@@ -7,7 +7,8 @@
     anywhere in the interface is the failure this line exists to prevent, so there is exactly one `:theme=` in the app.
   -->
   <ConfigProvider :theme="synraAntdTheme()">
-    <div class="grid grid-rows-[1fr_auto] screen md:grid-rows-1" :class="rail ? 'md:grid-cols-[4.5rem_1fr]' : 'md:grid-cols-[15rem_1fr]'">
+    <!-- Constrain the frame, so content scrolls inside its pane instead of growing the document. -->
+    <div class="fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] overflow-hidden screen md:grid-rows-[minmax(0,1fr)]" :class="rail ? 'md:grid-cols-[6rem_minmax(0,1fr)]' : 'md:grid-cols-[15rem_minmax(0,1fr)]'">
       <!-- The one prompt that is about a peer waiting on this answer; at the root so it is visible on every page. -->
       <TransferPrompt />
       <!--
@@ -27,14 +28,14 @@
         adapter maps to `line`, so what is beside the shell's own `border-line` edge is a token-coloured hairline, not a
         foreign colour. Two hairlines is a cosmetic debt worth naming, not worth a second theme object (R51).
       -->
-      <aside class="hidden min-h-0 flex-col border-e border-line bg-surface px-2 py-3 md:flex">
-        <div class="row gap-2 px-2 pb-3">
+      <aside class="hidden min-h-0 min-w-0 flex-col overflow-hidden border-e border-line bg-surface px-2 py-3 md:flex">
+        <div class="row shrink-0 gap-2 px-2 pb-3" :class="{ 'justify-center': rail }">
           <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
           <span v-if="!rail" class="text-lg font-semibold">Synra</span>
         </div>
 
         <AMenu
-          class="min-h-0 flex-1 overflow-y-auto"
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
           mode="inline"
           :inline-collapsed="rail"
           :selected-keys="[route.path]"
@@ -54,7 +55,7 @@
           changes while you navigate (R25: this border separates two kinds of information, so it is a border worth
           having).
         -->
-        <div class="mt-auto flex flex-col gap-2 border-t border-line px-2 pt-3">
+        <div class="mt-auto min-w-0 flex shrink-0 flex-col gap-2 border-t border-line pt-3" :class="rail ? 'items-center' : 'px-2'">
           <template v-if="devices.identity">
             <div class="row gap-2">
               <AAvatar :size="28" class="shrink-0 bg-raised text-primary">
@@ -76,8 +77,8 @@
         </div>
       </aside>
 
-      <main class="min-h-0 overflow-y-auto px-4 py-5 text-base lg:px-10 md:px-8 sm:px-6">
-        <div class="mx-auto max-w-3xl w-full">
+      <main ref="contentPane" tabindex="0" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
+        <div class="mx-auto max-w-3xl min-w-0 w-full">
           <!--
             ★ The one global fact that changes what every page can do. A device row can say "not reachable", but that is
             about one peer; this is about the machine, and every sharing path needs it.
@@ -152,7 +153,7 @@
 import type { DevicesSnapshot } from '@synra/protocol'
 import { synraAntdTheme } from '@synra/theme/antd'
 import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, ConfigProvider } from 'ant-design-vue'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import CrashNotice from './components/CrashNotice.vue'
@@ -168,6 +169,10 @@ const route = useRoute()
 const router = useRouter()
 const devices = useDevicesStore()
 const online = useNetworkStatus()
+const contentPane = ref<HTMLElement>()
+
+// Route content shares one scroll pane; each new page starts at its own beginning.
+watch(() => route.path, () => contentPane.value?.scrollTo({ top: 0, left: 0 }), { flush: 'post' })
 
 /** True in the rail form: below `lg` (64rem), which is also R12's `minWidth` floor for the expanded form. */
 const rail = ref(false)
