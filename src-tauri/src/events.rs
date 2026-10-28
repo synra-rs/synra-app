@@ -77,13 +77,25 @@ pub fn spawn(
     cancel: &synra_core::supervisor::Cancellation,
 ) {
     use tauri::Emitter as _;
+    use tauri::Manager as _;
 
     let subscriber = events.subscribe();
     // The token is cloned into the thread: the loop's stop condition and the caller's token are the same value, so there
     // is no second flag for the two to disagree about.
     let cancel = cancel.clone();
     std::thread::spawn(move || {
+        let mut last_ui_sweep = std::time::Instant::now();
         while !cancel.is_cancelled() {
+            if last_ui_sweep.elapsed() >= Duration::from_secs(1) {
+                if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+                    for label in crate::commands::plugin_ui::stale_windows(&state) {
+                        if let Some(window) = app.get_webview_window(&label) {
+                            let _ = window.destroy();
+                        }
+                    }
+                }
+                last_ui_sweep = std::time::Instant::now();
+            }
             match events.take(subscriber) {
                 Some(delivery) => {
                     for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {

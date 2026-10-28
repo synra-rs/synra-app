@@ -224,11 +224,16 @@ fn platform_refusal(error: &synra_platform::PlatformError) -> CallError {
 
 impl Host for DesktopHost {
     fn sdk_version(&self) -> String {
-        env!("CARGO_PKG_VERSION").to_owned()
+        synra_plugin_host::SDK_VERSION.to_owned()
     }
 
     fn host_kind(&self) -> String {
-        "desktop".to_owned()
+        if cfg!(any(target_os = "android", target_os = "ios")) {
+            "mobile"
+        } else {
+            "desktop"
+        }
+        .to_owned()
     }
 
     fn locale(&self) -> String {
@@ -237,13 +242,13 @@ impl Host for DesktopHost {
         // actually drawn in.
         self.setting("ui.locale")
             .and_then(|value| serde_json::from_str::<String>(&value).ok())
-            .unwrap_or_default()
+            .unwrap_or_else(|| "en".to_owned())
     }
 
     fn dark_mode(&self) -> bool {
-        self.setting("ui.darkMode")
-            .and_then(|value| serde_json::from_str::<bool>(&value).ok())
-            .unwrap_or(false)
+        self.setting("ui.theme")
+            .and_then(|value| serde_json::from_str::<String>(&value).ok())
+            .is_some_and(|theme| theme == "dark")
     }
 
     fn can(&self, plugin: &PluginId, capability: &str) -> bool {
@@ -800,8 +805,10 @@ mod tests {
         // false, so a plugin was told the interface was in no language and light while the window was `zh-CN` and dark.
         let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
         db.migrate().expect("the schema");
-        db.set_config("ui.locale", &serde_json::json!("zh-CN"), 1_000).expect("the locale");
-        db.set_config("ui.darkMode", &serde_json::json!(true), 1_000).expect("the theme");
+        db.set_config("ui.locale", &serde_json::json!("zh-CN"), 1_000)
+            .expect("the locale");
+        db.set_config("ui.theme", &serde_json::json!("dark"), 1_000)
+            .expect("the theme");
         let host = DesktopHost::new(Arc::new(Mutex::new(db)));
 
         assert_eq!(host.locale(), "zh-CN");

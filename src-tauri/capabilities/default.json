@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permissions for the main app window. Custom app command access is enforced by the native invoke handler.",
+  "description": "Main window permissions with host commands derived from the shared command registry.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "autostart:default"]
+  "permissions": ["core:default", "dialog:default", "autostart:default", "host-commands"]
 }

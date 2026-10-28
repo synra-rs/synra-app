@@ -6,9 +6,9 @@
 //! nonce, the claiming plugin and the version, and only the host's own table can supply the last two. The token is still
 //! checked — it is the entry's own nonce.
 //!
-//! `plugin_ui_rpc` presents the **token**, because a label is not a secret: labels are deterministic (`plugin-<id>`), so a
-//! page could guess another plugin's. The host finds the entry whose nonce matches the presented token, then validates the
-//! pair; a token no hosted page holds is refused before any method is looked at.
+//! `plugin_ui_rpc` presents the private token. Public window labels use an independent document id and never contain
+//! that token. Each request rechecks the committed authority revision as well as the nonce; neither a stale document
+//! nor a disabled plugin regains access by enabling or reinstalling the same version.
 //!
 //! # What it refuses, and what it deliberately does not say
 //!
@@ -24,39 +24,33 @@ use synra_plugin_ui::ValidatedSession;
 use synra_protocol::ErrorCode;
 use synra_protocol::ids::PluginId;
 
+mod authority;
+mod origin;
+
+const MAX_DEVICE_TARGETS: usize = 256;
+
 /// Records that a plugin page has mounted, after checking it holds a live session.
 ///
 /// # Errors
 ///
 /// [`ErrorCode::CapabilityDenied`] when the label is not one this shell hosted, or when the registry refuses the token —
-/// see the module docs for why the two are not distinguished. [`ErrorCode::Internal`] is not refused here: validation does
-/// not touch storage.
+/// see the module docs for why the two are not distinguished. [`ErrorCode::Internal`] reports an unreadable authority store.
 pub fn plugin_ui_ready(state: &AppState, label: &str) -> Result<(), IpcError> {
-    let refused = || {
-        IpcError::unknown(ErrorCode::CapabilityDenied)
-            .with_params(serde_json::json!({"reason": "this page holds no live session"}))
-    };
-
-    // The three facts are **copied out** and the table's lock released before validation: `validate` takes the registry's
-    // own lock, and holding two locks while a third party could take them in the other order is how a deadlock is built.
-    // The window between the copy and the write is safe because the only thing that removes an entry is the window that
-    // created it, and that same window is the one blocked on this command.
-    let copy = {
-        let hosted = state.hosted_ui.lock();
-        hosted
-            .get(label)
-            .map(|entry| (entry.nonce, entry.plugin_id.clone(), entry.version.clone()))
-    };
-    let Some((nonce, plugin_id, version)) = copy else {
-        return Err(refused());
-    };
-
-    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    state.ui_sessions.validate(nonce, &plugin_id, &version, now).map_err(|_| refused())?;
-
-    if let Some(entry) = state.hosted_ui.lock().get_mut(label) {
-        entry.ready = true;
-    }
+    let copy = state
+        .hosted_ui
+        .lock()
+        .get(label)
+        .cloned()
+        .ok_or_else(authority::refused)?;
+    let session = authority::validate(state, &copy)?;
+    let mut hosted = state.hosted_ui.lock();
+    let entry = hosted
+        .get_mut(label)
+        .filter(|entry| entry.nonce == copy.nonce)
+        .ok_or_else(authority::refused)?;
+    entry.ready = true;
+    session.token().mark_ready();
+    drop(hosted);
     Ok(())
 }
 
@@ -124,20 +118,11 @@ fn dispatch(
     // in one expression is how a deadlock is built.
     let copy = {
         let hosted = state.hosted_ui.lock();
-        hosted
-            .values()
-            .find(|entry| entry.nonce == nonce)
-            .map(|entry| (entry.plugin_id.clone(), entry.version.clone()))
+        hosted.values().find(|entry| entry.nonce == nonce).cloned()
     };
-    let Some((plugin_id, version)) = copy else {
-        return Err(refused());
-    };
-
-    let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    let session = state
-        .ui_sessions
-        .validate(nonce, &plugin_id, &version, now)
-        .map_err(|_| refused())?;
+    let entry = copy.ok_or_else(refused)?;
+    let session = authority::validate(state, &entry)?;
+    let plugin_id = entry.plugin_id;
 
     let Some(op) = PluginUiOp::parse(method) else {
         return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
@@ -147,7 +132,10 @@ fn dispatch(
     };
 
     match op {
-        PluginUiOp::DeviceList => device_targets(state),
+        PluginUiOp::DeviceList => {
+            require_grant(&session, "device:list", method)?;
+            device_targets(state)
+        }
         PluginUiOp::StorageGet => storage_get(state, &session, &plugin_id, args),
         PluginUiOp::StorageSet => storage_set(state, &session, &plugin_id, args),
         PluginUiOp::StorageDelete => storage_delete(state, &session, &plugin_id, args),
@@ -185,6 +173,8 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
     let targets: Vec<serde_json::Value> = snapshot
         .devices
         .iter()
+        .filter(|card| card.paired && !card.blocked)
+        .take(MAX_DEVICE_TARGETS + 1)
         .map(|card| {
             serde_json::json!({
                 "deviceId": card.device_id.to_string(),
@@ -194,6 +184,11 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
             })
         })
         .collect();
+    if targets.len() > MAX_DEVICE_TARGETS {
+        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(
+            serde_json::json!({"method": "device.list", "maxDevices": MAX_DEVICE_TARGETS}),
+        ));
+    }
     Ok(serde_json::Value::Array(targets))
 }
 
@@ -1192,9 +1187,11 @@ fn platform_name() -> Result<&'static str, IpcError> {
 /// struct; what is left in `shell.rs` is five lines of plumbing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenRequest {
+    /// Previous authority generations to destroy; their nonces are already unusable.
+    pub superseded: Vec<String>,
     /// The WebView's label, and the key `plugin_ui_ready` is called with.
     pub label: String,
-    /// The page's address, under the plugin origin: `synra-plugin://<plugin-id>/<page>`.
+    /// The actual entry address under the package's URL-safe origin.
     pub url: String,
     /// The initialization script carrying the token and the label.
     pub script: String,
@@ -1217,20 +1214,13 @@ pub struct OpenRequest {
 /// compiled in every build so its tests run where the WebView does not.
 #[cfg_attr(not(feature = "tauri-shell"), allow(dead_code))]
 pub(crate) fn stays_on_page(candidate: &str, opened: &str) -> bool {
-    fn document(url: &str) -> &str {
-        url.split('#').next().unwrap_or(url)
-    }
-    document(candidate) == document(opened)
+    origin::stays(candidate, opened)
 }
 
-/// The window label one plugin's page lives under.
-///
-/// ★ One page per plugin: the label is derived from the id, so opening the same plugin a second time finds the window that
-/// is already there instead of issuing a second session for a second window. The id's slash cannot appear in a window
-/// label, hence the `__`.
+/// A Tauri-safe package prefix; each document appends an independent, non-secret id.
 #[must_use]
-pub fn window_label(id: &synra_protocol::ids::PluginId) -> String {
-    format!("plugin-{}", id.as_str().replace('/', "__"))
+pub fn window_label_prefix(id: &synra_protocol::ids::PluginId) -> String {
+    origin::label(id)
 }
 
 /// What opening a page decided.
@@ -1243,7 +1233,10 @@ pub enum OpenDecision {
     /// No page is open; the caller builds it with this request.
     Open(OpenRequest),
     /// A page is already open (or is being opened); the caller shows the window instead of building one.
-    AlreadyOpen,
+    AlreadyOpen {
+        /// The live window to focus.
+        label: String,
+    },
 }
 
 /// Prepares the page for one plugin, and records who it belongs to.
@@ -1251,7 +1244,7 @@ pub enum OpenDecision {
 /// # Errors
 ///
 /// [`ErrorCode::PluginNotInstalled`] when there is no manifest to read, [`ErrorCode::Unsupported`] when the plugin has no
-/// UI half. Both are refusals a caller can act on: the first says "install it", the second says "this one has no window".
+/// UI half. [`ErrorCode::CapabilityDenied`] rejects disabled, untrusted or concurrently changed authority.
 pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, IpcError> {
     use synra_protocol::ErrorCode;
 
@@ -1265,30 +1258,35 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
             .with_params(serde_json::json!({"pluginId": plugin_id, "reason": "it has no UI"})));
     };
 
-    // ★ The page key is the manifest's default page when it names one, and the entry's file stem otherwise: the address
-    // shape is `synra-plugin://<plugin-id>/<page>` and `entry` is a path inside the bundle (`dist/index.html`), which is
-    // not a page key.
-    let page = ui.default_page.clone().unwrap_or_else(|| {
-        std::path::Path::new(&ui.entry)
-            .file_stem()
-            .map_or_else(|| "index".to_owned(), |stem| stem.to_string_lossy().into_owned())
-    });
-    let label = window_label(&id);
-    let url = format!("synra-plugin://{}/{page}", id.as_str());
-
-    // Fast refusal before the grants are read: a page that is already open is a focus, and nothing below is needed for it.
-    if state.hosted_ui.lock().contains_key(&label) {
-        return Ok(OpenDecision::AlreadyOpen);
+    let snapshot = state
+        .db()
+        .plugin_ui_snapshot(id.as_str())
+        .map_err(internal)?
+        .filter(|snapshot| snapshot.authority.permits_ui())
+        .ok_or_else(authority::refused)?;
+    let authority = snapshot.authority;
+    let decisions = snapshot.grants;
+    let existing = {
+        let hosted = state.hosted_ui.lock();
+        hosted
+            .iter()
+            .find(|(_, entry)| entry.plugin_id == id && entry.authority == authority)
+            .map(|(label, entry)| (label.clone(), entry.clone()))
+    };
+    if let Some((label, entry)) = existing
+        && self::authority::validate(state, &entry).is_ok()
+    {
+        return Ok(OpenDecision::AlreadyOpen { label });
     }
-
+    let nonce = uuid::Uuid::new_v4().as_u128();
+    // A public window label must not reveal the private RPC nonce.
+    let label = format!(
+        "{}-{}",
+        window_label_prefix(&id),
+        uuid::Uuid::new_v4().simple()
+    );
+    let url = origin::entry(&id, &ui.entry, ui.default_page.as_deref())?;
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    // ★ The grants the page will hold, read from the decisions the user actually made. An empty set here made every
-    // page powerless no matter what it had been granted — `env.can` would answer false for everything, and a gate built
-    // on the session would refuse calls the user had allowed.
-    let decisions = state.db().plugin_grants(id.as_str()).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": error.to_string()}))
-    })?;
     let granted: Vec<String> = decisions
         .iter()
         .filter(|row| row.granted)
@@ -1307,17 +1305,6 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
             "reason": format!("a recorded grant is not a capability this build knows: {error}"),
         }))
     })?;
-    // ★ A random nonce. `issue_placeholder` is a counter — its own documentation says it is not for production — and a
-    // page that can guess another page's token can call as that plugin. The window is the one place a real nonce can be
-    // made, so it is made here.
-    let nonce = state.ui_sessions.issue_with(
-        &id,
-        manifest.version.clone(),
-        grants,
-        uuid::Uuid::new_v4().as_u128(),
-        now,
-    );
-
     // ★ The environment the page's façade answers from. These are the host's facts, decided once, before the page
     // loads: a round trip to learn something the shell already holds is a round trip that can fail, and a render that has
     // to await `env.platform()` is a render that cannot branch synchronously.
@@ -1329,13 +1316,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
         .unwrap_or("en")
         .to_owned();
     let dark_mode = config.values.get("ui.theme").and_then(serde_json::Value::as_str) == Some("dark");
-    // The host the plugin was built against, which is what `env.sdkVersion()` answers; `min` is the compatibility floor,
-    // and reporting it would tell the plugin it was built against an older host than it was.
-    let sdk_version = manifest
-        .sdk
-        .preferred
-        .clone()
-        .unwrap_or_else(|| manifest.sdk.min.clone());
+    let sdk_version = synra_plugin_host::SDK_VERSION;
     let platform = platform_name()?;
     let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
         "mobile"
@@ -1361,7 +1342,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
         denied_capabilities: &denied,
         locale: &locale,
         dark_mode,
-        sdk_version: &sdk_version,
+        sdk_version,
         platform,
         host_kind,
         app_version: env!("CARGO_PKG_VERSION"),
@@ -1369,20 +1350,48 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
     };
     let script = initialization_script(FACADE, &seed)?;
 
-    let mut hosted = state.hosted_ui.lock();
-    if let Some(previous) = hosted.insert(
-        label.clone(),
-        crate::state::HostedUi { plugin_id: id, version: manifest.version, nonce, ready: false },
-    ) {
-        // A racing open won: its entry is the live one, so put it back and discard the token this call issued. Returning
-        // `AlreadyOpen` is the honest answer — the page the user is looking at is the one to keep.
-        hosted.insert(label.clone(), previous);
-        let _ = state.ui_sessions.revoke(nonce);
-        return Ok(OpenDecision::AlreadyOpen);
+    if state.db().plugin_authority(id.as_str()).map_err(internal)? != Some(authority) {
+        return Err(self::authority::refused());
     }
+    let mut hosted = state.hosted_ui.lock();
+    if let Some((label, _)) = hosted.iter().find(|(_, entry)| {
+        entry.plugin_id == id
+            && entry.authority == authority
+            && state
+                .ui_sessions
+                .validate(entry.nonce, &id, &entry.version, now)
+                .is_ok()
+    }) {
+        return Ok(OpenDecision::AlreadyOpen {
+            label: label.clone(),
+        });
+    }
+    let superseded = hosted
+        .iter()
+        .filter(|(_, entry)| entry.plugin_id == id)
+        .map(|(label, _)| label.clone())
+        .collect();
+    state
+        .ui_sessions
+        .issue_with(&id, manifest.version.clone(), grants, nonce, now);
+    hosted.insert(
+        label.clone(),
+        crate::state::HostedUi {
+            plugin_id: id,
+            version: manifest.version,
+            nonce,
+            ready: false,
+            authority,
+        },
+    );
     drop(hosted);
 
-    Ok(OpenDecision::Open(OpenRequest { label, url, script }))
+    Ok(OpenDecision::Open(OpenRequest {
+        label,
+        url,
+        script,
+        superseded,
+    }))
 }
 
 /// One file out of a plugin's extracted UI bundle.
@@ -1425,38 +1434,10 @@ pub fn ui_file(root: &std::path::Path, path: &str) -> Result<(Vec<u8>, &'static 
     Ok((bytes, content_type))
 }
 
-/// Splits a `synra-plugin://` address into the plugin it names and the path inside its bundle.
-///
-/// # Why this is not a `Url` parse
-///
-/// A plugin id contains a slash (`@acme/hello`), and the address is `synra-plugin://<plugin-id>/<path>` — so a URL parser
-/// would read `@acme` as the host and `/hello/index.html` as the path, splitting the id in the wrong place. The split is
-/// therefore made against the ids the host actually opened: the **longest** one that prefixes the address wins, and what
-/// follows is the path.
-///
-/// Longest rather than first-match because two ids can share a prefix (`@acme/hello` and `@acme/hello-world`): first-match
-/// would serve one plugin's files under the other's name.
+/// Resolves a package's URL-safe origin and a validated path inside its UI bundle.
 #[must_use]
 pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -> Option<(&'a synra_protocol::ids::PluginId, String)> {
-    const SCHEME: &str = "synra-plugin://";
-    let rest = url.strip_prefix(SCHEME)?;
-    // A query or fragment is not part of a file path, and a cache-busting `?v=1` is common enough to allow.
-    let rest = rest.split(['?', '#']).next().unwrap_or(rest);
-
-    let mut best: Option<(&'a synra_protocol::ids::PluginId, String)> = None;
-    for id in known {
-        let Some(after) = rest.strip_prefix(id.as_str()) else {
-            continue;
-        };
-        let Some(path) = after.strip_prefix('/') else {
-            continue;
-        };
-        let better = best.as_ref().is_none_or(|(winner, _)| id.as_str().len() > winner.as_str().len());
-        if better {
-            best = Some((id, path.to_owned()));
-        }
-    }
-    best
+    origin::split(url, known)
 }
 
 /// The policy every plugin page is served with.
@@ -1498,6 +1479,43 @@ pub fn forget_window(state: &AppState, label: &str) {
     }
 }
 
+/// Serves resources only for the requesting document's live authority, including after updates.
+pub fn page_resource(
+    state: &AppState,
+    label: &str,
+    uri: &str,
+) -> Result<(Vec<u8>, &'static str), IpcError> {
+    let entry = state
+        .hosted_ui
+        .lock()
+        .get(label)
+        .cloned()
+        .ok_or_else(authority::refused)?;
+    authority::validate(state, &entry)?;
+    let (_, path) =
+        split_ui_url(uri, std::slice::from_ref(&entry.plugin_id)).ok_or_else(authority::refused)?;
+    let root =
+        synra_plugin_ui::artifact::bundle_dir(&state.paths.plugin_dir(entry.plugin_id.as_str()));
+    ui_file(&root, &path)
+}
+
+/// Returns stale document labels; keep reservations until destruction so failed closes can be retried.
+pub fn stale_windows(state: &AppState) -> Vec<String> {
+    let snapshots: Vec<_> = state
+        .hosted_ui
+        .lock()
+        .iter()
+        .map(|(label, entry)| (label.clone(), entry.clone()))
+        .collect();
+    let mut labels = Vec::new();
+    for (label, entry) in snapshots {
+        if authority::validate(state, &entry).is_err() {
+            labels.push(label);
+        }
+    }
+    labels
+}
+
 /// The `synra-plugin://` handler: one bundle file, or a refusal.
 ///
 /// # Why it is here and not in `shell.rs`
@@ -1508,6 +1526,7 @@ pub fn forget_window(state: &AppState, label: &str) {
 #[cfg(feature = "tauri-shell")]
 pub fn serve(
     app: &tauri::AppHandle,
+    label: &str,
     request: &tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
     use std::borrow::Cow;
@@ -1521,25 +1540,22 @@ pub fn serve(
             .unwrap_or_else(|_| tauri::http::Response::new(Cow::Borrowed(b"the response could not be built")))
     }
 
-    let state = app.state::<AppState>();
+    let state = app.state::<std::sync::Arc<AppState>>();
     let uri = request.uri().to_string();
 
-    // ★ The ids come from the host's own table, not from the request: a page may only name a plugin this shell opened a
-    // window for, which is what makes the longest-prefix split safe.
-    let known: Vec<synra_protocol::ids::PluginId> =
-        state.hosted_ui.lock().values().map(|entry| entry.plugin_id.clone()).collect();
-
-    let Some((plugin_id, path)) = split_ui_url(&uri, &known) else {
-        return answer(404, "no page by that name");
-    };
-    let root = synra_plugin_ui::artifact::bundle_dir(&state.paths.plugin_dir(plugin_id.as_str()));
-
-    match ui_file(&root, &path) {
+    match page_resource(&state, label, &uri) {
         Ok((bytes, content_type)) => document_response(bytes, content_type),
         Err(refusal) => {
             // 403 for a path the rules refuse, 404 for a file that is not there: the first is somebody asking for something
             // they may never have, the second is a bundle that is missing a file it should carry.
-            let status = if refusal.code == synra_protocol::ErrorCode::InvalidArgument { 403 } else { 404 };
+            let status = if matches!(
+                refusal.code,
+                ErrorCode::InvalidArgument | ErrorCode::CapabilityDenied
+            ) {
+                403
+            } else {
+                404
+            };
             answer(status, "no page by that name")
         }
     }

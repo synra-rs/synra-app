@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "plugin-pages",
+  "description": "Plugin windows may reach only their session RPC and readiness commands.",
+  "windows": ["plugin-*"],
+  "local": true,
+  "remote": {
+    "urls": ["https://synra-plugin.*.localhost/*"]
+  },
+  "permissions": ["plugin-ui-commands"]
+}

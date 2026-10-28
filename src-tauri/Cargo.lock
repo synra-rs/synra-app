@@ -4352,6 +4352,7 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "parking_lot",
+ "percent-encoding",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4380,6 +4381,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "url",
  "uuid",
  "wat",
 ]

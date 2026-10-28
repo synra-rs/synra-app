@@ -141,6 +141,31 @@ cargo test --no-default-features
 指向同级的 `synra-js/`（理由写在那份文件里）。CI 里同样用 `link:` —— 三个仓库并排 checkout —— 所以那三行
 `overrides` 在两边都是真的；要换成版本依赖是**发布**时的事，不是 CI 的事。
 
+### Starter 真实桌面验收
+
+先按独立 Starter 仓库的 README 构建 `dist/`，并确保本仓库前端与 facade 已构建。
+以下入口只存在于启用 `official-plugin-tests` 的 desktop debug 构建，通过生产命令安装、
+授予本机 debug 声明与设备列表读取能力、启用并打开真实插件窗口。
+
+```powershell
+$taskPreviousTauriConfig = $env:TAURI_CONFIG
+try {
+  $env:TAURI_CONFIG = '{"identifier":"com.synra.ui-smoke","plugins":{"deep-link":{"desktop":{"schemes":[]}}}}'
+  cargo build --locked --manifest-path src-tauri/Cargo.toml --bin synra-app --features official-plugin-tests -j 1
+}
+finally {
+  $env:TAURI_CONFIG = $taskPreviousTauriConfig
+}
+$taskStarterDist = (Resolve-Path ../synra-plugin-starter/dist).Path
+./src-tauri/target/debug/synra-app.exe --starter-ui-smoke $taskStarterDist
+```
+
+入口在数据库初始化之前验证独立 identifier 和空链接 schemes，拒绝在正常应用配置下自动安装。
+空验收 profile 执行安装；只有 Starter fixture 时通过生产 update 入口替换，便于重复验收而不丢弃本机身份。
+包含其他插件时拒绝自动变更；也可不带参数重开实例，再从插件页打开 Starter。
+它保留独立的应用数据与本机密钥以便复查，不能当作手机到电脑操作验收。
+普通开发时重新构建默认配置，避免继续运行这个独立 profile 的二进制。
+
 ## 已知不一致
 
 - **包标识符**：`src-tauri/tauri.conf.json` 是 `com.synra.app`，[设计文档拍板](https://github.com/synra-rs/design-docs/blob/main/README.md)

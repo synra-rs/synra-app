@@ -227,6 +227,8 @@ pub struct AppState {
 /// One plugin page this shell opened, as the window that opened it knows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostedUi {
+    /// Committed authority this particular document was opened against.
+    pub authority: synra_store::PluginAuthority,
     /// The plugin the page belongs to.
     pub plugin_id: synra_protocol::ids::PluginId,
     /// The version it was opened for, which validation compares against the session's.

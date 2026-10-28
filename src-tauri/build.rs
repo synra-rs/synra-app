@@ -23,5 +23,9 @@
 
 fn main() {
     #[cfg(feature = "tauri-shell")]
-    tauri_build::build();
+    permissions::build();
 }
+
+#[cfg(feature = "tauri-shell")]
+#[path = "build/permissions.rs"]
+mod permissions;

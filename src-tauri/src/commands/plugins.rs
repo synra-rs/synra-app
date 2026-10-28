@@ -169,14 +169,12 @@ pub(crate) fn load_installed_plugins(
         return synra_core::plugin::LoadedSummary::default();
     };
     let mut set = plugins.lock();
-    // ★ The environment is read before the store lock. The loader is about to hold the store, and a host's `locale()`
-    // may need it; asking from inside the loader was a same-thread deadlock on the daemon side.
+    // Snapshot once for this pass; the shared loader holds no store guard while it executes guest code.
     let activation = synra_core::plugin::activation_config(set.host().as_ref());
     let summary = {
-        let db = state.db();
         synra_core::plugin::load_installed_with_config(
             &mut set,
-            &db,
+            &state.db,
             &state.paths.plugins_dir(),
             verdict,
             revocations,
@@ -290,10 +288,9 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
         };
     }
     let outcome = {
-        let db = state.db();
         synra_core::plugin::load_plugin_with_config(
             &mut set,
-            &db,
+            &state.db,
             &state.paths.plugins_dir(),
             id.as_str(),
             &revocations,
@@ -460,6 +457,15 @@ pub fn plugins_reload(state: &AppState, plugin_id: &str) -> Result<PluginSnapsho
                 .with_params(serde_json::json!({"pluginId": plugin_id}))
         })?;
 
+    if !state
+        .db()
+        .invalidate_plugin_authority(id.as_str())
+        .map_err(internal)?
+    {
+        return Err(IpcError::unknown(
+            synra_protocol::ErrorCode::PluginNotInstalled,
+        ));
+    }
     let _ = apply_lifecycle(state, &id);
     announce(state, &id);
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());

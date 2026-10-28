@@ -13,18 +13,35 @@ use synra_plugin_host::host_calls::CallError;
 use synra_plugin_host::{Backend, ScriptedBackend};
 use synra_protocol::ErrorCode;
 
+mod ui_authority;
 mod wasm_errors;
+
+#[cfg(feature = "tauri-shell")]
+mod native_acl;
+
+#[cfg(feature = "official-plugin-tests")]
+mod official_starter;
 
 /// A plausible plugin id, so nothing here accidentally tests id parsing.
 fn plugin_id() -> synra_protocol::ids::PluginId {
     synra_protocol::ids::PluginId::parse("@acme/hello").expect("a plugin id")
 }
 
+/// Give manually hosted fixture pages real persistent eligibility.
+fn test_authority(state: &crate::AppState) -> synra_store::PluginAuthority {
+    let db = state.db();
+    if db.plugin_authority(plugin_id().as_str()).unwrap().is_none() {
+        db.insert_plugin(plugin_id().as_str(), true, true, "installed", 1, 1)
+            .unwrap();
+    }
+    db.plugin_authority(plugin_id().as_str()).unwrap().unwrap()
+}
+
 /// Opens a page that must not be open, as a test's setup.
 fn opened(state: &crate::AppState, plugin_id: &str) -> OpenRequest {
     match super::open_request(state, plugin_id).expect("a decision") {
         OpenDecision::Open(request) => request,
-        OpenDecision::AlreadyOpen => panic!("the page was already open"),
+        OpenDecision::AlreadyOpen { .. } => panic!("the page was already open"),
     }
 }
 
@@ -38,7 +55,7 @@ fn a_second_open_is_refused_without_a_second_token() {
 
     let second = super::open_request(&state, ID).expect("a decision");
 
-    assert!(matches!(second, OpenDecision::AlreadyOpen));
+    assert!(matches!(second, OpenDecision::AlreadyOpen { .. }));
     assert_eq!(state.ui_sessions.issued(), issued, "no second token");
     assert_eq!(state.hosted_ui.lock().len(), 1);
 }
@@ -58,7 +75,13 @@ fn a_hosted_page_whose_token_is_unknown_is_refused() {
     let state = crate::testing::state();
     state.hosted_ui.lock().insert(
         "page-1".to_owned(),
-        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce: 7, ready: false },
+        HostedUi {
+            authority: test_authority(&state),
+            plugin_id: plugin_id(),
+            version: "1.0.0".to_owned(),
+            nonce: 7,
+            ready: false,
+        },
     );
 
     let refused = plugin_ui_ready(&state, "page-1").expect_err("no such session");
@@ -77,7 +100,13 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
         .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), now);
     state.hosted_ui.lock().insert(
         "page-2".to_owned(),
-        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce, ready: false },
+        HostedUi {
+            authority: test_authority(&state),
+            plugin_id: plugin_id(),
+            version: "1.0.0".to_owned(),
+            nonce,
+            ready: false,
+        },
     );
 
     plugin_ui_ready(&state, "page-2").expect("a live session");
@@ -122,7 +151,14 @@ fn installed_with_ui() -> (crate::testing::Root, crate::AppState) {
     std::fs::write(directory.join("manifest.json"), UI_MANIFEST).expect("a manifest");
     state
         .db()
-        .insert_plugin(ID, true, false, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .insert_plugin(
+            ID,
+            true,
+            true,
+            "installed",
+            crate::testing::FIXED_NOW_MS,
+            crate::testing::FIXED_NOW_MS,
+        )
         .expect("a plugin row");
     (root, state)
 }
@@ -135,23 +171,41 @@ fn installed_headless_only() -> (crate::testing::Root, crate::AppState) {
     std::fs::write(directory.join("manifest.json"), HEADLESS_MANIFEST).expect("a manifest");
     state
         .db()
-        .insert_plugin(ID, true, false, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .insert_plugin(
+            ID,
+            true,
+            true,
+            "installed",
+            crate::testing::FIXED_NOW_MS,
+            crate::testing::FIXED_NOW_MS,
+        )
         .expect("a plugin row");
     (root, state)
 }
 
 #[test]
 fn opening_a_page_records_who_it_belongs_to_and_where_it_lives() {
-    // ★ The three values `shell.rs` hands to Tauri, and the table entry that makes `plugin_ui_ready` possible. The address
-    // shape is the design's (`synra-plugin://<plugin-id>/<page>`); the page key falls back to the entry's stem because
-    // `dist/index.html` is a path, not a page.
+    // Tauri must receive a parseable origin and the actual entry file, including its nested directory.
     let (_root, state) = installed_with_ui();
 
     let request = opened(&state, ID);
 
-    assert!(request.url.starts_with("synra-plugin://@synra-plugin/chat/"), "got {}", request.url);
-    assert!(request.url.ends_with("/index"), "the entry's stem is the page: {}", request.url);
-    assert!(request.script.contains(&request.label), "the script names the page it is for");
+    let parsed = url::Url::parse(&request.url).expect("a real URL");
+    assert_eq!(parsed.as_str(), request.url);
+    assert_eq!(parsed.path(), "/dist/index.html");
+    assert_eq!(
+        super::split_ui_url(
+            parsed.as_str(),
+            &[synra_protocol::PluginId::parse(ID).unwrap()]
+        )
+        .unwrap()
+        .1,
+        "dist/index.html"
+    );
+    assert!(
+        request.script.contains(&request.label),
+        "the script names the page it is for"
+    );
 
     let entry = state
         .hosted_ui
@@ -225,28 +279,35 @@ fn opening_a_page_for_a_plugin_with_no_ui_is_a_different_refusal() {
 
 #[test]
 fn a_plugin_address_splits_at_the_id_the_host_opened() {
-    // ★ The reason this is not a URL parse: an id contains a slash, so `synra-plugin://@acme/hello/index.html` would split
-    // into host `@acme` and path `/hello/index.html` — the id broken in the wrong place.
+    // Scoped package names retain their complete identity after standard URL parsing.
     let ids: Vec<synra_protocol::ids::PluginId> = ["@acme/hello", "@acme/hello-world"]
         .iter()
         .map(|id| synra_protocol::ids::PluginId::parse(id).expect("an id"))
         .collect();
 
-    let (id, path) = super::split_ui_url("synra-plugin://@acme/hello/index.html", &ids).expect("it is one of ours");
+    let (id, path) = super::split_ui_url(
+        &super::origin::entry(&ids[0], "index.html", None).unwrap(),
+        &ids,
+    )
+    .expect("it is one of ours");
 
     assert_eq!(id.as_str(), "@acme/hello");
     assert_eq!(path, "index.html");
 }
 
 #[test]
-fn the_longest_id_wins_when_two_share_a_prefix() {
-    // ★ First-match would let `@acme/hello` serve `@acme/hello-world`'s files, which is one plugin reading another's bundle.
+fn packages_with_a_shared_name_prefix_have_separate_origins() {
+    // A package name prefix never grants access to another package's files.
     let ids: Vec<synra_protocol::ids::PluginId> = ["@acme/hello", "@acme/hello-world"]
         .iter()
         .map(|id| synra_protocol::ids::PluginId::parse(id).expect("an id"))
         .collect();
 
-    let (id, path) = super::split_ui_url("synra-plugin://@acme/hello-world/app.js", &ids).expect("it is one of ours");
+    let (id, path) = super::split_ui_url(
+        &super::origin::entry(&ids[1], "app.js", None).unwrap(),
+        &ids,
+    )
+    .expect("it is one of ours");
 
     assert_eq!(id.as_str(), "@acme/hello-world");
     assert_eq!(path, "app.js");
@@ -380,8 +441,6 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
         "\"deniedCapabilities\":[\"network:fetch\"]",
         "\"locale\":\"zh-CN\"",
         "\"darkMode\":true",
-        // The fixture declares `sdk.min = 1.0.0` and no `preferred`, so the floor is what the host reports.
-        "\"sdkVersion\":\"1.0.0\"",
         "\"hostKind\":\"desktop\"",
         "\"appVersion\":\"",
         // ★ The platform's own answer, not a constant: `supported_actions` decides it, and on a desktop it always
@@ -391,6 +450,10 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
     ] {
         assert!(request.script.contains(expected), "the seed is missing {expected}: {}", request.script);
     }
+    assert!(request.script.contains(&format!(
+        "\"sdkVersion\":\"{}\"",
+        synra_plugin_host::SDK_VERSION
+    )));
     // ★ And the façade itself is in the script, called with the seed. Without it the page would have a seed and no
     // client — which is the state this whole round exists to end.
     assert!(request.script.contains("SynraInjection.boot(seed);"), "the façade is called with the seed");
@@ -418,7 +481,13 @@ fn a_session_that_expired_is_refused() {
         .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), long_ago);
     state.hosted_ui.lock().insert(
         "page-3".to_owned(),
-        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce, ready: false },
+        HostedUi {
+            authority: test_authority(&state),
+            plugin_id: plugin_id(),
+            version: "1.0.0".to_owned(),
+            nonce,
+            ready: false,
+        },
     );
 
     let refused = plugin_ui_ready(&state, "page-3").expect_err("the session is too old");
@@ -448,7 +517,13 @@ fn hosted_page_with(state: &crate::AppState, grants: &[&str]) -> String {
     );
     state.hosted_ui.lock().insert(
         "page-rpc".to_owned(),
-        HostedUi { plugin_id: plugin_id(), version: "1.0.0".to_owned(), nonce, ready: false },
+        HostedUi {
+            authority: test_authority(state),
+            plugin_id: plugin_id(),
+            version: "1.0.0".to_owned(),
+            nonce,
+            ready: false,
+        },
     );
     nonce.to_string()
 }
@@ -523,7 +598,17 @@ fn device_list_answers_the_four_fields_a_plugin_may_see() {
             paired_at_ms: crate::testing::FIXED_NOW_MS,
         })
         .expect("a paired device");
-    let token = hosted_page(&state);
+    state
+        .db()
+        .record_seen_device(&synra_store::Seen {
+            device_id: "22222222-2222-4222-8222-222222222222".to_owned(),
+            display_name: "Unpaired discovery".to_owned(),
+            platform: "windows".to_owned(),
+            seen_at_ms: crate::testing::FIXED_NOW_MS,
+            source: "udp".to_owned(),
+        })
+        .unwrap();
+    let token = hosted_page_with(&state, &["device:list"]);
 
     let answer = super::plugin_ui_rpc(&state, &token, "device.list", &serde_json::json!({}))
         .expect("a list");
@@ -538,6 +623,38 @@ fn device_list_answers_the_four_fields_a_plugin_may_see() {
     // or a transfer summary.
     assert!(devices[0].get("address").is_none(), "the plugin received the host's card: {answer}");
     assert!(devices[0].get("transfer").is_none(), "the plugin received the host's card: {answer}");
+}
+
+#[test]
+fn device_list_requires_its_current_page_grant() {
+    let (_root, state) = crate::testing::file_state();
+    let token = hosted_page(&state);
+    let error = super::plugin_ui_rpc(&state, &token, "device.list", &serde_json::json!({}))
+        .expect_err("a valid page is not a device-list grant");
+    assert_eq!(error.code, ErrorCode::CapabilityDenied);
+}
+
+#[test]
+fn device_list_refuses_an_oversized_reply_instead_of_silently_dropping_targets() {
+    let (_root, state) = crate::testing::file_state();
+    for index in 1..=257 {
+        state
+            .db()
+            .pair_device(&synra_store::Paired {
+                device_id: format!("00000000-0000-4000-8000-{index:012x}"),
+                display_name: format!("PC {index}"),
+                platform: "windows".to_owned(),
+                features: "[]".to_owned(),
+                link_token: String::new(),
+                address: None,
+                paired_at_ms: crate::testing::FIXED_NOW_MS,
+            })
+            .unwrap();
+    }
+    let token = hosted_page_with(&state, &["device:list"]);
+    let error = super::plugin_ui_rpc(&state, &token, "device.list", &serde_json::json!({}))
+        .expect_err("a truncated list must not appear complete");
+    assert_eq!(error.code, ErrorCode::PayloadTooLarge);
 }
 
 // ── Storage ──────────────────────────────────────────────────────────────────────────────────────
@@ -1497,7 +1614,17 @@ fn an_unknown_transfer_says_it_is_not_in_flight() {
 fn a_scoped_plugin_gets_a_window_label_without_a_slash() {
     // ★ The label is what makes "one page per plugin" findable: the id's slash cannot appear in a window label, and the
     // mapping has to be the same one `open_request` recorded or the second open would build a second window.
-    assert_eq!(super::window_label(&plugin_id()), "plugin-@acme__hello");
+    let label = super::window_label_prefix(&plugin_id());
+    assert_eq!(label, super::origin::label(&plugin_id()));
+    assert!(
+        label
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    );
+    assert_ne!(
+        label,
+        super::window_label_prefix(&synra_protocol::PluginId::parse("@other/hello").unwrap())
+    );
 }
 
 #[test]

@@ -42,7 +42,7 @@ export function createDeviceNamespace(
         .catch((reason: unknown) => {
           throw asSynraError(reason)
         }) as DeviceTarget[]
-      return targets.filter(target => target.online)
+      return targets
     },
     send: async () => {
       throw unsupported('device.send')

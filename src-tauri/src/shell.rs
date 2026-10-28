@@ -26,6 +26,9 @@ use tauri::Manager;
 use crate::commands;
 use crate::state::AppState;
 
+#[cfg(all(feature = "official-plugin-tests", debug_assertions, not(mobile)))]
+mod official_smoke;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The wrappers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -401,23 +404,8 @@ mod wrappers {
     ) -> Result<(), IpcError> {
         use tauri::Manager as _;
 
-        // ★ One page per plugin: a second open is a focus, not a second window. Building another would issue a second
-        // session for the same plugin and replace the first entry in `hosted_ui`, leaving the first page holding a token
-        // no table names.
-        let id = synra_protocol::ids::PluginId::parse(&plugin_id).map_err(|error| {
-            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
-                serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}),
-            )
-        })?;
-        let label = commands::plugin_ui::window_label(&id);
-        if let Some(window) = app.get_window(&label) {
-            let _ = window.show();
-            let _ = window.set_focus();
-            return Ok(());
-        }
-
         let request = match commands::plugin_ui::open_request(&state, &plugin_id)? {
-            commands::plugin_ui::OpenDecision::AlreadyOpen => {
+            commands::plugin_ui::OpenDecision::AlreadyOpen { label } => {
                 if let Some(window) = app.get_window(&label) {
                     let _ = window.show();
                     let _ = window.set_focus();
@@ -426,6 +414,11 @@ mod wrappers {
             }
             commands::plugin_ui::OpenDecision::Open(request) => request,
         };
+        for label in &request.superseded {
+            if let Some(window) = app.get_webview_window(label) {
+                let _ = window.destroy();
+            }
+        }
         let failed = |error: tauri::Error| {
             IpcError::unknown(synra_protocol::ErrorCode::Internal)
                 .with_params(serde_json::json!({ "reason": error.to_string() }))
@@ -444,6 +437,7 @@ mod wrappers {
             tauri::WebviewUrl::CustomProtocol(url),
         )
         .initialization_script(&request.script)
+        .use_https_scheme(true)
         // ★ The page may not navigate away. It holds this plugin's token and grants, and the script is attached to
         // the WebView rather than to an address — so another page, another origin or an external scheme would keep
         // this page's authority while showing something the opener never chose.
@@ -863,9 +857,11 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         // same path rules `ui_file` tests. Everything a request cannot have — another plugin's files, `..`, a missing
         // bundle — is a refusal here rather than a guess.
         .register_uri_scheme_protocol("synra-plugin", |ctx, request| {
-            crate::commands::plugin_ui::serve(ctx.app_handle(), &request)
+            crate::commands::plugin_ui::serve(ctx.app_handle(), ctx.webview_label(), &request)
         })
         .setup(|app| {
+            #[cfg(all(feature = "official-plugin-tests", debug_assertions, not(mobile)))]
+            let smoke_package = official_smoke::package(app.handle())?;
             // ★ The single-instance check, **before** the state opens the database or binds a listener. A second launch
             // has nothing to do here: it has already written the file that asks the running instance to come forward.
             let data_dir = app
@@ -903,6 +899,10 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 &bridge_cancel,
             );
             app.manage(std::sync::Arc::new(state));
+            #[cfg(all(feature = "official-plugin-tests", debug_assertions, not(mobile)))]
+            if let Some(package) = smoke_package {
+                official_smoke::run(app.handle(), &package)?;
+            }
             {
                 use tauri_plugin_deep_link::DeepLinkExt as _;
                 let handle = app.handle().clone();

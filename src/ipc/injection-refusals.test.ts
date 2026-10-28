@@ -87,7 +87,7 @@ describe('subscriptions', () => {
 })
 
 describe('device.list', () => {
-  it('asks the plugin channel with its token and answers with the online devices', async () => {
+  it('asks the plugin channel and preserves paired offline devices for status display', async () => {
     // ★ The channel, not just the answer. `devices_snapshot` is a *host* command; a plugin page reaching it would be the
     // separation the two interfaces exist to prevent. The method, the token and the empty args are the whole call.
     const invoke = vi.fn(async () => [
@@ -98,7 +98,8 @@ describe('device.list', () => {
     const synra = createInjection(ctx)
 
     await expect(synra.device.list()).resolves.toEqual([
-      { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true }
+      { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true },
+      { deviceId: 'b', displayName: 'Laptop', platform: 'windows', online: false }
     ])
     expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
       token: ctx.token,
