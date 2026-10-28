@@ -444,13 +444,20 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             // answer has to go back on this connection. The daemon had this callback first; without it here, a remote
             // action aimed at the window was counted and dropped — the sender stayed "dispatching" for ever.
             let kernel_state = Arc::clone(&db_state);
+            let plugin_events = kernel_state.plugins.as_ref().and_then(|plugins| plugins.lock().event_service());
             let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> =
-                Arc::new(move |envelope: &synra_protocol::envelope::Envelope, _authority: &synra_core::peer::authenticated::RequestAuthority| {
+                Arc::new(move |envelope: &synra_protocol::envelope::Envelope, authority: &synra_core::peer::authenticated::RequestAuthority| {
                     use synra_core::listener::KernelEventOutcome;
                     use synra_protocol::event::events;
                     let board = Arc::clone(&kernel_state.board);
                     let now = synra_store::sqlite::now_ms();
                     let local = kernel_state.identity.lock().device_id;
+                    if envelope.event.is_plugin() {
+                        return match synra_core::plugin_events::answer_remote_event(plugin_events.as_ref(), envelope, authority, now) {
+                            Ok(receipt) => KernelEventOutcome::Receipt(Box::new(receipt)),
+                            Err(error) => KernelEventOutcome::Refused(error.to_string()),
+                        };
+                    }
                     match envelope.event.as_str() {
                         events::INTENT_INVOKE => {
                             // ★ The engine is looked up **inside** this arm: a late result and a withdrawal only need the
