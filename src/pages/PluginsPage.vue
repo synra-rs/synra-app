@@ -11,10 +11,12 @@
       wrong.
     -->
     <ASegmented v-model:value="installMode" :options="installOptions" />
-    <div class="row gap-2">
+    <div class="row flex-wrap gap-2">
       <AInput
         v-model:value="installPath"
-        :placeholder="installMode === 'registry' ? messages.plugins.installName : messages.plugins.installPath"
+        :placeholder="installLabel"
+        :aria-label="installLabel"
+        class="min-w-0 w-full sm:flex-1"
         allow-clear
         @press-enter="install"
       />
@@ -1004,6 +1006,7 @@ const installPath = ref('')
 const installMode = ref<'path' | 'registry'>('path')
 
 /** The mode's labels, as the segmented control shows them. */
+const installLabel = computed(() => installMode.value === 'registry' ? messages.plugins.installName : messages.plugins.installPath)
 const installOptions = computed(() => [
   { label: messages.plugins.installMode.path, value: 'path' },
   { label: messages.plugins.installMode.registry, value: 'registry' }

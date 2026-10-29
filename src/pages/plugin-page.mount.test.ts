@@ -133,6 +133,31 @@ describe('the plugins page', () => {
     }
   })
 
+  it('keeps the install input named as its source and language change', async () => {
+    setLocalePreference('en')
+    const answers: Record<string, unknown> = { plugins_list: [], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(PluginsPage)
+    try {
+      await flushPromises()
+      expect(wrapper.get('input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installPath)
+      await wrapper.findComponent({ name: 'ASegmented' }).vm.$emit('update:value', 'registry')
+      await flushPromises()
+      const input = wrapper.get('input[aria-label]')
+      expect(input.attributes('aria-label')).toBe(messages.plugins.installName)
+      await input.setValue('@acme/hello')
+      setLocalePreference('zh-CN')
+      await flushPromises()
+      expect(wrapper.get('input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installName)
+      expect((wrapper.get('input[aria-label]').element as HTMLInputElement).value).toBe('@acme/hello')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('fills the install path from the platform directory picker', async () => {
     // ★ The path was a hand-typed string. The picker answers the same string the input takes, so the install path itself
     // is unchanged — only the way it is produced is.
