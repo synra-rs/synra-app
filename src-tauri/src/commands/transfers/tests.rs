@@ -5,6 +5,7 @@ use synra_ipc::dto::TransferSnapshot;
 use synra_protocol::ids::{DeviceId, TransferId};
 
 mod authenticated;
+mod consent;
 
 /// A snapshot a worker might report, with every field named.
 fn snapshot(transfer_id: TransferId, state: &str) -> TransferSnapshot {
@@ -32,12 +33,13 @@ fn a_device_the_user_accepts_forever_is_not_asked_again() {
     let state = crate::testing::state();
     let remembered = "11111111-1111-4111-8111-111111111111";
     let other = "22222222-2222-4222-8222-222222222222";
+    consent::pair(&state, remembered);
 
     assert!(
         !super::auto_accept_peer(&state, remembered),
         "a fresh install asks"
     );
-    super::remember_peer(&state, remembered);
+    super::remember_peer(&state.db(), remembered).expect("remembered");
     assert!(
         super::auto_accept_peer(&state, remembered),
         "the answer was remembered"
@@ -63,10 +65,11 @@ fn forgetting_a_device_forgets_that_it_was_trusted() {
     // removed rather than left as an empty array, so a settings screen has nothing to interpret.
     let state = crate::testing::state();
     let peer = "11111111-1111-4111-8111-111111111111";
+    consent::pair(&state, peer);
 
-    super::remember_peer(&state, peer);
+    super::remember_peer(&state.db(), peer).expect("remembered");
     assert!(super::auto_accept_peer(&state, peer));
-    super::forget_sender(&state, peer);
+    super::forget_sender(&state.db(), peer).expect("forgotten");
 
     assert!(
         !super::auto_accept_peer(&state, peer),

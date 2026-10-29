@@ -344,13 +344,19 @@ pub fn devices_scan_cancel(state: &AppState, scan_id: &str) -> Result<(), IpcErr
 /// * [`IpcError::Internal`] when the unpairing cannot be written.
 pub fn devices_forget(state: &AppState, device_id: &str) -> Result<(), IpcError> {
     let parsed = parse_from_interface(device_id)?;
-    // Taken out of the registry first. The other order leaves a storage failure that has already dropped the device from
-    // memory while the database still calls it paired — and the next start brings it back with no explanation.
+    // Serialise with acceptance: a pending response cannot re-add the preference after unpairing. Remove the preference
+    // first and propagate failures. If unpairing then fails, the device stays paired but asks again, and that safer partial
+    // result is announced rather than hidden. No host/plugin work runs while the database is held.
+    let (unpaired, changed) = {
+        let db = state.db();
+        let changed = crate::commands::transfers::forget_sender(&db, device_id)?;
+        (db.unpair_device(device_id).map_err(internal), changed)
+    };
+    if changed {
+        super::config::announce_config(state);
+    }
+    unpaired?;
     state.host.lock().went_offline(parsed, state.started_at_ms);
-    state.db().unpair_device(device_id).map_err(internal)?;
-    // ★ A trusted sender that is no longer paired is a preference about a device this one no longer knows. Keeping it
-    // would silently re-trust the same identifier if a device with it ever came back.
-    crate::commands::transfers::forget_sender(state, device_id);
     // ★ The window learns the device is gone without asking. What a page drew is a snapshot; a device forgotten here
     // would otherwise stay on the list until the page was reopened — with a pairing prompt beside it.
     state.publish(synra_ipc::event::KernelEvent::DeviceRemoved { device_id: parsed });

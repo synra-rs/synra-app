@@ -146,7 +146,7 @@ mod wrappers {
         commands::devices::devices_scan_cancel(&state, &scan_id)
     }
 
-    #[tauri::command]
+    #[tauri::command(async)]
     pub fn devices_forget(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         device_id: String,
@@ -263,7 +263,7 @@ mod wrappers {
     ///
     /// The listener thread is waiting on this answer, and the file is accepted or refused when it arrives — so this is a
     /// decision about a peer's connection, not a preference stored for later.
-    #[tauri::command]
+    #[tauri::command(async)]
     pub fn transfer_respond(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         transfer_id: String,

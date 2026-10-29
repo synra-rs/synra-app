@@ -422,15 +422,11 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     let announced =
                         crate::commands::transfers::offered_snapshot(incoming, &peer_name, now);
                     let show = || {
-                        crate::commands::transfers::announce_transfer(&offer_state, announced);
+                        crate::commands::transfers::announce_offer(&offer_state, announced)
                     };
                     let accepted =
                         offer_desk.ask(&pending, show, crate::transfer_desk::OFFER_TIMEOUT);
-                    crate::commands::transfers::withdraw_offer(
-                        &offer_state,
-                        incoming.request.transfer_id,
-                    );
-                    if accepted {
+                    if accepted.unwrap_or(false) {
                         OfferDecision::Accept
                     } else {
                         OfferDecision::Refuse

@@ -1,162 +1,173 @@
-//! The incoming transfers waiting for this device's answer.
+//! Bounded incoming attachment decisions shared by the listener and host commands.
 //!
-//! # Why a desk and not a field on the connection
-//!
-//! Because the question is asked on one thread and answered on another. A transfer arrives on the listener's connection
-//! thread, the prompt is drawn by the interface, and the answer comes back through a command — three places that share
-//! nothing except a value they can both reach. This is the same shape as the pairing desk, and for the same reason.
-//!
-//! # Why a timeout accepts
-//!
-//! Because that is what every caller did before the prompt existed, and a prompt nobody sees must not turn into a file
-//! that nobody receives. The window is long enough for a person to read it and short enough that a peer is not left
-//! waiting on a screen that went to sleep. A future policy — refuse on timeout, or remember a preference — belongs here,
-//! where the answer is decided, rather than at each call site.
-//!
-//! # What this does not do
-//!
-//! It does not send the peer anything. The kernel does that with [`synra_core::inbound::OfferDecision::Refuse`], and a
-//! desk that also wrote to a socket would be a second place the transfer's fate is decided.
+//! Silence refuses a file. An explicit response must start before the question's deadline and can settle it only once.
+//! Preference persistence runs under that question's lock, never the whole desk's lock. Callers acquire the database
+//! before entering `respond`; neither waiting nor announcing an offer holds the database or registry lock.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Condvar, Mutex};
 
-/// How long a prompt waits before the transfer is accepted anyway.
+/// How long an unanswered prompt waits before refusing the file.
 pub const OFFER_TIMEOUT: Duration = Duration::from_secs(120);
+/// A peer cannot accumulate an unbounded queue of questions on an unattended device.
+pub const MAX_PENDING_OFFERS: usize = 32;
 
 /// What the prompt shows about one incoming transfer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
-    /// The transfer, as the peer named it.
+    /// The sender's transfer identifier.
     pub transfer_id: String,
-    /// The device that dialled.
+    /// The authenticated sender.
     pub peer: String,
-    /// The name the file would take.
+    /// Proposed display name.
     pub file_name: String,
-    /// How many bytes it says it is.
+    /// Proposed byte count.
     pub total_bytes: u64,
-    /// When the proposal arrived.
+    /// Arrival time for display.
     pub started_at_ms: i64,
 }
 
-#[derive(Debug)]
-struct WaitingEntry {
-    /// `Some(answer)` once someone has answered, `None` while still waiting.
+#[derive(Debug, Default)]
+struct Decision {
     answer: Option<bool>,
-    /// The device that asked, kept so an answer can remember it.
+    active: bool,
+}
+
+#[derive(Debug)]
+struct Question {
     peer: String,
-}
-
-#[derive(Debug, Default)]
-struct Waiting {
-    /// One entry per transfer.
-    answers: HashMap<String, WaitingEntry>,
-}
-
-/// The transfers waiting for an answer.
-#[derive(Debug, Default)]
-pub struct TransferDesk {
-    waiting: Mutex<Waiting>,
+    deadline: Instant,
+    decision: Mutex<Decision>,
     changed: Condvar,
 }
 
+impl Question {
+    #[allow(clippy::significant_drop_tightening)]
+    fn wait(&self) -> bool {
+        let mut decision = self.decision.lock();
+        loop {
+            if let Some(answer) = decision.answer {
+                return answer;
+            }
+            let remaining = self.deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            self.changed.wait_for(&mut decision, remaining);
+        }
+    }
+}
+
+/// Incoming questions. Each question has its own decision lock and wakeup.
+#[derive(Debug, Default)]
+pub struct TransferDesk {
+    waiting: Mutex<HashMap<String, Arc<Question>>>,
+}
+
+/// Retires exactly this registration, including if the announcement panics.
+struct Registration<'a> {
+    desk: &'a TransferDesk,
+    id: &'a str,
+    question: Arc<Question>,
+}
+
+impl Drop for Registration<'_> {
+    fn drop(&mut self) {
+        self.question.decision.lock().active = false;
+        let mut waiting = self.desk.waiting.lock();
+        if waiting
+            .get(self.id)
+            .is_some_and(|entry| Arc::ptr_eq(entry, &self.question))
+        {
+            waiting.remove(self.id);
+        }
+    }
+}
+
 impl TransferDesk {
-    /// An empty desk.
+    /// An empty question registry.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Registers a question, announces it, and waits for the answer.
-    ///
-    /// The announcement runs **after** the entry exists, so an answer that arrives before this call is over is still
-    /// found — the opposite order would drop a prompt answered as it appeared. It runs before the wait, because a prompt
-    /// announced after the wait would be shown after the transfer already arrived.
-    // The guard is deliberately held across the wait loop: `wait_for` needs it to unlock while it sleeps, and dropping it
-    // between iterations would leave the entry visible to a `respond` the loop then never observes.
-    #[allow(clippy::significant_drop_tightening)]
-    pub fn ask(
+    /// Announces an admitted question and waits. `None` means duplicate ID or full queue: nothing was announced.
+    /// The registration exists before announcing, but no lock is held while calling the announcement. An announcement
+    /// guard returned by the callback drops before the registry slot, so retirement cannot remove a newer same-ID offer.
+    pub fn ask<T>(
         &self,
         pending: &Pending,
-        announce: impl FnOnce(),
+        announce: impl FnOnce() -> T,
         timeout: Duration,
-    ) -> bool {
-        let mut waiting = self.waiting.lock();
-        waiting.answers.insert(
-            pending.transfer_id.clone(),
-            WaitingEntry { answer: None, peer: pending.peer.clone() },
-        );
-        announce();
-
-        let deadline = Instant::now() + timeout;
-        loop {
-            if let Some(answer) = waiting
-                .answers
-                .get(&pending.transfer_id)
-                .and_then(|entry| entry.answer)
-            {
-                waiting.answers.remove(&pending.transfer_id);
-                return answer;
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                waiting.answers.remove(&pending.transfer_id);
-                // The timeout policy: see the module docs. Nothing has been decided, and the transfer is accepted.
-                return true;
-            }
-            self.changed.wait_for(&mut waiting, remaining);
-        }
-    }
-
-    /// Answers a waiting question, answering whether one was waiting.
-    ///
-    /// `false` is the ordinary answer to a prompt that was already settled (the interface repeated a click) or that
-    /// expired while the user was deciding.
-    pub fn respond(&self, transfer_id: &str, accept: bool) -> bool {
-        let answered = {
+    ) -> Option<bool> {
+        let question = Arc::new(Question {
+            peer: pending.peer.clone(),
+            deadline: Instant::now() + timeout,
+            decision: Mutex::new(Decision {
+                answer: None,
+                active: true,
+            }),
+            changed: Condvar::new(),
+        });
+        {
             let mut waiting = self.waiting.lock();
-            match waiting.answers.get_mut(transfer_id) {
-                Some(entry) => {
-                    entry.answer = Some(accept);
-                    true
-                }
-                None => false,
+            if waiting.len() >= MAX_PENDING_OFFERS || waiting.contains_key(&pending.transfer_id) {
+                return None;
             }
-        };
-        // Notified after the lock is released: the waiter re-checks under the lock anyway, and this is one fewer thread
-        // that can be woken only to block on a guard the notifier still holds.
-        if answered {
-            self.changed.notify_all();
+            waiting.insert(pending.transfer_id.clone(), Arc::clone(&question));
         }
-        answered
+        let _registration = Registration {
+            desk: self,
+            id: &pending.transfer_id,
+            question: Arc::clone(&question),
+        };
+        let _announcement = announce();
+        Some(question.wait())
     }
 
-    /// The device waiting for an answer to this transfer, if one is.
+    /// Settles a valid question exactly once, after `prepare` succeeds. Failure leaves it unanswered for explicit retry.
     ///
-    /// Used to remember a sender when the user chooses "always accept": the peer is part of the question, and a `respond`
-    /// that only carried the answer would have lost it.
-    #[must_use]
-    pub fn peer_of(&self, transfer_id: &str) -> Option<String> {
-        self.waiting
-            .lock()
-            .answers
-            .get(transfer_id)
-            .map(|entry| entry.peer.clone())
+    /// The deadline is checked while taking ownership of the decision; a response that starts in time can finish its
+    /// small database operation after it. Acquire the database before calling, and never do network/plugin work here.
+    ///
+    /// # Errors
+    /// Returns `prepare`'s error without changing the answer. Missing, expired and already answered questions return false
+    /// without invoking `prepare`, so a stale response cannot persist a preference.
+    pub fn respond<E>(
+        &self,
+        transfer_id: &str,
+        accept: bool,
+        prepare: impl FnOnce(&str) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let question = self.waiting.lock().get(transfer_id).cloned();
+        let Some(question) = question else {
+            return Ok(false);
+        };
+        let mut decision = question.decision.lock();
+        if !decision.active || decision.answer.is_some() || Instant::now() >= question.deadline {
+            return Ok(false);
+        }
+        prepare(&question.peer)?;
+        decision.answer = Some(accept);
+        drop(decision);
+        question.changed.notify_one();
+        Ok(true)
     }
 
-    /// How many questions are waiting, for a diagnostic or a test.
+    /// Currently registered questions, including answered ones whose waiter has not retired them yet.
     #[must_use]
     pub fn waiting(&self) -> usize {
-        self.waiting.lock().answers.len()
+        self.waiting.lock().len()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Pending, TransferDesk};
-    use std::sync::Arc;
+    use super::{MAX_PENDING_OFFERS, Pending, TransferDesk};
+    use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::Duration;
 
@@ -170,52 +181,241 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_answer_reaches_the_thread_that_is_waiting() {
-        let desk = Arc::new(TransferDesk::new());
-        let waiter = Arc::clone(&desk);
-        let question = pending("one");
-        let asked = thread::spawn(move || waiter.ask(&question, || {}, Duration::from_secs(5)));
+    fn answer(desk: &TransferDesk, id: &str, accept: bool) -> bool {
+        desk.respond(id, accept, |_| Ok::<_, ()>(())).unwrap()
+    }
 
-        // The prompt is announced from inside `ask`, so polling is how the test learns the entry exists — the same thing
-        // a person does, minus the reading.
-        while desk.waiting() == 0 {
-            thread::sleep(Duration::from_millis(5));
+    #[test]
+    fn an_answer_reaches_the_waiter_and_keeps_the_peer_bound_to_it() {
+        for accept in [false, true] {
+            let desk = Arc::new(TransferDesk::new());
+            let waiter = Arc::clone(&desk);
+            let (ready, announced) = mpsc::channel();
+            let asked = thread::spawn(move || {
+                waiter.ask(
+                    &pending("one"),
+                    || ready.send(()).unwrap(),
+                    Duration::from_secs(5),
+                )
+            });
+            announced.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert!(
+                desk.respond("one", accept, |peer| {
+                    assert_eq!(peer, "peer");
+                    Ok::<_, ()>(())
+                })
+                .unwrap()
+            );
+            assert_eq!(asked.join().unwrap(), Some(accept));
+            assert_eq!(desk.waiting(), 0);
         }
-        assert!(desk.respond("one", false), "the question is waiting");
-        assert!(!asked.join().expect("the thread"), "the answer was refused");
-        assert_eq!(desk.waiting(), 0, "the answered question is gone");
     }
 
     #[test]
-    fn the_peer_is_available_while_the_question_waits() {
-        // ★ "Always accept this device" needs the device, and the answer alone does not carry one. The desk keeps it with
-        // the question rather than the caller remembering a second map.
-        let desk = Arc::new(TransferDesk::new());
-        let waiter = Arc::clone(&desk);
-        let question = pending("with-peer");
-        let asked = thread::spawn(move || waiter.ask(&question, || {}, Duration::from_secs(5)));
-        while desk.waiting() == 0 {
-            thread::sleep(Duration::from_millis(5));
-        }
-        assert_eq!(desk.peer_of("with-peer"), Some("peer".to_owned()));
-        assert!(desk.respond("with-peer", true));
-        assert!(asked.join().expect("the thread"));
-        assert_eq!(desk.peer_of("with-peer"), None, "the answered question is gone");
-    }
-
-    #[test]
-    fn an_unknown_question_cannot_be_answered() {
+    fn silence_and_unknown_ids_never_accept_or_prepare() {
         let desk = TransferDesk::new();
-        assert!(!desk.respond("nothing", true));
-    }
-
-    #[test]
-    fn a_prompt_nobody_answers_is_accepted_when_it_expires() {
-        let desk = TransferDesk::new();
-        // A timeout of zero is the far edge of the policy and the only one a test can reach without waiting. The answer
-        // is `true`, which is the behaviour before prompts existed.
-        assert!(desk.ask(&pending("slow"), || {}, Duration::ZERO));
+        assert_eq!(
+            desk.ask(
+                &pending("expired"),
+                || {
+                    assert!(
+                        !desk
+                            .respond("expired", true, |_| -> Result<(), ()> {
+                                panic!("expired preference")
+                            })
+                            .unwrap()
+                    );
+                },
+                Duration::ZERO
+            ),
+            Some(false)
+        );
+        assert!(
+            !desk
+                .respond("unknown", true, |_| -> Result<(), ()> {
+                    panic!("unknown preference")
+                })
+                .unwrap()
+        );
         assert_eq!(desk.waiting(), 0);
+    }
+
+    #[test]
+    fn an_answer_cannot_be_overwritten_before_the_waiter_consumes_it() {
+        let desk = TransferDesk::new();
+        assert_eq!(
+            desk.ask(
+                &pending("one"),
+                || {
+                    assert!(answer(&desk, "one", false));
+                    assert!(
+                        !desk
+                            .respond("one", true, |_| -> Result<(), ()> {
+                                panic!("duplicate preference")
+                            })
+                            .unwrap()
+                    );
+                },
+                Duration::from_secs(5)
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn preparation_failure_keeps_the_question_available_for_explicit_retry() {
+        let desk = TransferDesk::new();
+        assert_eq!(
+            desk.ask(
+                &pending("one"),
+                || {
+                    assert_eq!(
+                        desk.respond("one", true, |_| Err("write refused")),
+                        Err("write refused")
+                    );
+                    assert!(answer(&desk, "one", false));
+                },
+                Duration::from_secs(5)
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn duplicate_registration_neither_announces_nor_replaces_the_original() {
+        let desk = TransferDesk::new();
+        assert_eq!(
+            desk.ask(
+                &pending("one"),
+                || {
+                    assert_eq!(
+                        desk.ask(
+                            &pending("one"),
+                            || panic!("duplicate announcement"),
+                            Duration::ZERO
+                        ),
+                        None
+                    );
+                    assert!(answer(&desk, "one", true));
+                },
+                Duration::from_secs(5)
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_panicking_announcement_releases_its_slot() {
+        let desk = TransferDesk::new();
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| desk.ask(
+                &pending("one"),
+                || panic!("announcement failed"),
+                Duration::from_secs(5)
+            )))
+            .is_err()
+        );
+        assert_eq!(desk.waiting(), 0);
+        assert!(!answer(&desk, "one", true));
+    }
+
+    #[test]
+    fn an_announcement_retires_before_its_identifier_can_be_reused() {
+        struct Notice<'a>(&'a TransferDesk);
+        impl Drop for Notice<'_> {
+            fn drop(&mut self) {
+                assert_eq!(self.0.waiting(), 1);
+                assert_eq!(
+                    self.0
+                        .ask(&pending("one"), || panic!("newer notice"), Duration::ZERO),
+                    None
+                );
+            }
+        }
+        let desk = TransferDesk::new();
+        assert_eq!(
+            desk.ask(&pending("one"), || Notice(&desk), Duration::ZERO),
+            Some(false)
+        );
+        assert_eq!(desk.waiting(), 0);
+    }
+
+    #[test]
+    fn preparation_does_not_hold_the_registry_or_another_question_lock() {
+        let desk = Arc::new(TransferDesk::new());
+        let waiter = Arc::clone(&desk);
+        let (ready, announced) = mpsc::channel();
+        let asked = thread::spawn(move || {
+            waiter.ask(
+                &pending("one"),
+                || ready.send(()).unwrap(),
+                Duration::from_secs(5),
+            )
+        });
+        announced.recv_timeout(Duration::from_secs(2)).unwrap();
+        let responder = Arc::clone(&desk);
+        let (entered, preparing) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let responding = thread::spawn(move || {
+            responder.respond("one", true, |_| {
+                entered.send(()).unwrap();
+                resume.recv_timeout(Duration::from_secs(2)).unwrap();
+                Ok::<_, ()>(())
+            })
+        });
+        preparing.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            desk.ask(
+                &pending("two"),
+                || {
+                    assert!(answer(&desk, "two", false));
+                },
+                Duration::from_secs(5)
+            ),
+            Some(false)
+        );
+        release.send(()).unwrap();
+        assert!(responding.join().unwrap().unwrap());
+        assert_eq!(asked.join().unwrap(), Some(true));
+    }
+
+    #[test]
+    fn a_full_queue_rejects_without_announcing_and_slots_are_reusable() {
+        let desk = Arc::new(TransferDesk::new());
+        let (ready, announced) = mpsc::channel();
+        let mut waiters = Vec::new();
+        for index in 0..MAX_PENDING_OFFERS {
+            let waiter = Arc::clone(&desk);
+            let ready = ready.clone();
+            waiters.push(thread::spawn(move || {
+                waiter.ask(
+                    &pending(&index.to_string()),
+                    || ready.send(()).unwrap(),
+                    Duration::from_secs(10),
+                )
+            }));
+        }
+        for _ in 0..MAX_PENDING_OFFERS {
+            announced.recv_timeout(Duration::from_secs(3)).unwrap();
+        }
+        assert_eq!(
+            desk.ask(
+                &pending("overflow"),
+                || panic!("full queue announcement"),
+                Duration::ZERO
+            ),
+            None
+        );
+        for index in 0..MAX_PENDING_OFFERS {
+            assert!(answer(&desk, &index.to_string(), false));
+        }
+        for waiter in waiters {
+            assert_eq!(waiter.join().unwrap(), Some(false));
+        }
+        assert_eq!(desk.waiting(), 0);
+        assert_eq!(
+            desk.ask(&pending("new"), || {}, Duration::ZERO),
+            Some(false)
+        );
     }
 }
