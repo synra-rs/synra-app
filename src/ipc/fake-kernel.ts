@@ -172,7 +172,7 @@ export class FakeKernel implements Bridge {
       case 'pairing_listen':
       case 'pairing_connect':
         // The preview has no enrolled identity or TLS; it cannot manufacture a usable certificate or grant.
-        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', params: {}, actions: [] })
+        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', retryable: false, params: {}, actions: [] })
       case 'pairing_status':
       case 'pairing_cancel':
         return null

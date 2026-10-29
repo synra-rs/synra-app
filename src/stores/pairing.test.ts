@@ -100,3 +100,50 @@ it('keeps an import refusal when a previously started status read succeeds', asy
   await reading
   expect(store.error?.code).toBe('not_paired')
 })
+
+it('retains an accepted task if its status refresh fails and blocks a second start', async () => {
+  call.mockImplementation(async (command: string) => {
+    if (command === 'pairing_listen')
+      return { ok: true, value: task }
+    if (command === 'pairing_status')
+      return { ok: false, error: { code: 'timeout', message: 'error.timeout' } }
+    throw new Error(command)
+  })
+  const store = usePairingStore()
+  expect(await store.listen('peer', 'invitation')).toBe(false)
+  expect(store.snapshot).toEqual(task)
+  expect(store.active).toBe(true)
+  expect(store.statusError?.code).toBe('timeout')
+  expect(store.commandError).toBeUndefined()
+  expect(await store.connect('peer', 'reply')).toBe(false)
+  await store.exportInvitation()
+  expect(call.mock.calls.map(([command]) => command)).toEqual(['pairing_listen', 'pairing_status'])
+  call.mockResolvedValue({ ok: true, value: task })
+  expect(await store.refresh()).toBe(true)
+  expect(store.statusError).toBeUndefined()
+})
+
+it('serializes cancellation until the backend has answered', async () => {
+  let finish!: (answer: unknown) => void
+  call.mockImplementation(async (command: string) => {
+    if (command === 'pairing_status')
+      return { ok: true, value: task }
+    if (command === 'pairing_cancel') {
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    }
+    throw new Error(command)
+  })
+  const store = usePairingStore()
+  await store.refresh()
+  const first = store.cancel()
+  expect(await store.cancel()).toBe(false)
+  store.resetDraft()
+  expect(store.active).toBe(true)
+  expect(call.mock.calls.filter(([command]) => command === 'pairing_cancel')).toHaveLength(1)
+  call.mockResolvedValue({ ok: true, value: { ...task, phase: 'cancelled' } })
+  finish({ ok: true, value: null })
+  expect(await first).toBe(true)
+  expect(store.snapshot?.phase).toBe('cancelled')
+})

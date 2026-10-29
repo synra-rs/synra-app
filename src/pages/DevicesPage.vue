@@ -40,7 +40,7 @@
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
 
     <div v-show="showPairing" id="device-pairing">
-      <PairingPanel :selected="selectedPeer" />
+      <PairingPanel :selected="selectedPeer" :visible="showPairing" @select="selectedDeviceId = $event" />
     </div>
 
     <!--
