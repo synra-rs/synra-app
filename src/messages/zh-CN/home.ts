@@ -2,22 +2,19 @@ import type { LocaleEntries } from '../types'
 
 export const home = {
   'home.title': '首页',
-  'home.share.placeholder': '粘贴要分享的链接或文字',
-  'home.share.action': '分享',
-  'home.share.clipboard': '分享剪贴板',
   'home.wire.label': '设备连接',
   'home.wire.states.transferring.headline': '传输中',
-  'home.wire.states.transferring.detail': '正在发送内容。',
+  'home.wire.states.transferring.detail': '正在传输内容。',
   'home.wire.states.connected.headline': '已连接',
-  'home.wire.states.connected.detail': '可以发送内容。',
+  'home.wire.states.connected.detail': '设备已就绪。',
   'home.wire.states.offline.headline': '无法连接',
   'home.wire.states.offline.detail': '已配对，设备暂未响应。',
   'home.wire.states.none.headline': '尚无设备',
-  'home.wire.states.none.detail': '配对设备后即可分享。',
+  'home.wire.states.none.detail': '配对设备以建立连接。',
   'home.wire.action': '配对设备',
   'home.inFlight.title': '正在传输',
   'home.inFlight.empty': '暂无正在传输的内容。',
-  'home.inFlight.action': '选择设备',
+  'home.inFlight.action': '管理设备',
   'home.inFlight.sending': '正在发送',
   'home.inFlight.receiving': '正在接收',
   'home.inFlight.cancel': '取消',
@@ -46,10 +43,5 @@ export const home = {
   'home.received.retryingAt': '正在重试（{attempts}/{max}），下次重试：{time}',
   'home.received.noAnswer': '暂未收到回复，下次启动应用时将再次尝试。',
   'home.receivedFiles.title': '收到的文件',
-  'home.receivedFiles.empty': '收件箱中暂无文件。',
-  'home.receivedFiles.open': '打开',
-  'home.receivedFiles.showInFolder': '在文件夹中显示',
-  'home.receivedFiles.delete': '删除',
-  'home.receivedFiles.deleteConfirm': '从收件箱中删除此文件？',
-  'home.receivedFiles.keep': '保留'
+  'home.receivedFiles.empty': '收件箱中暂无文件。'
 } satisfies Partial<LocaleEntries>

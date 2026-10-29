@@ -7,25 +7,6 @@
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
-      ★ The desktop's own share entry. Everything else on this page is about intents that arrived from somewhere else;
-      without this box the app could show what it received and never let the user start one.
-    -->
-    <div class="row gap-2">
-      <AInput
-        v-model:value="shareText"
-        :placeholder="messages.home.share.placeholder"
-        allow-clear
-        @press-enter="share"
-      />
-      <AButton :loading="sharing" :disabled="shareText.trim() === ''" @click="share">
-        {{ messages.home.share.action }}
-      </AButton>
-      <AButton :loading="sharingClipboard" @click="shareClipboard">
-        {{ messages.home.share.clipboard }}
-      </AButton>
-    </div>
-
-    <!--
       ★ The wire (R27). This is the one thing on this screen worth spending boldness on, and the only place the frosted
       material and the glow are allowed to mean something: `floating` is the glass (R43), and `shadow-glow` appears only
       when the line is *live* (R45 — glow is a state, not a skin).
@@ -87,7 +68,7 @@
 
       <AList v-else size="small">
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
-          <div class="stack gap-2">
+          <div class="min-w-0 w-full stack gap-2">
             <div class="row-between gap-3">
               <div class="min-w-0 stack gap-0.5">
                 <span class="truncate text-sm">{{ transfer.peerName }}</span>
@@ -162,14 +143,14 @@
 
       <AList v-else size="small">
         <AList.Item v-for="intent in intents" :key="intent.intentId">
-          <div class="stack gap-2">
-            <div class="row gap-3">
+          <div class="min-w-0 w-full stack gap-2">
+            <div class="min-w-0 row flex-wrap gap-3">
               <ATag class="m-0" :color="intentStateColor(intent.state)">
                 {{ intentStateLabel(intent.state) }}
               </ATag>
-              <span v-if="intent.pluginId" class="truncate text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
+              <span v-if="intent.pluginId" class="max-w-full min-w-0 break-all text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
               <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
-              <span v-if="intent.traceId" class="truncate text-xs text-ink-dim font-mono" :title="intent.traceId">
+              <span v-if="intent.traceId" class="max-w-full min-w-0 break-all text-xs text-ink-dim font-mono" :title="intent.traceId">
                 {{ messages.home.received.trace }} {{ intent.traceId }}
               </span>
             </div>
@@ -241,25 +222,7 @@
               <span class="truncate text-sm">{{ file.fileName }}</span>
               <span class="truncate text-xs text-ink-dim font-mono">{{ file.path }}</span>
             </div>
-            <div class="row shrink-0 gap-2">
-              <span class="text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
-              <AButton size="small" :loading="revealing === file.path" @click="revealReceived(file)">
-                {{ messages.home.receivedFiles.showInFolder }}
-              </AButton>
-              <AButton size="small" :loading="opening === file.path" @click="openReceived(file)">
-                {{ messages.home.receivedFiles.open }}
-              </AButton>
-              <APopconfirm
-                :title="messages.home.receivedFiles.deleteConfirm"
-                :ok-text="messages.home.receivedFiles.delete"
-                :cancel-text="messages.home.receivedFiles.keep"
-                @confirm="discardReceived(file)"
-              >
-                <AButton size="small" danger :loading="discarding === file.path">
-                  {{ messages.home.receivedFiles.delete }}
-                </AButton>
-              </APopconfirm>
-            </div>
+            <span class="shrink-0 text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
           </div>
         </AList.Item>
       </AList>
@@ -292,7 +255,7 @@
  * worth looking at.
  */
 import type { IntentCandidate, IntentRetry, IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, Input as AInput, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -322,59 +285,6 @@ const { intents, transfers } = storeToRefs(intentsStore)
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
-
-/** The text the user is sharing from this window. */
-const shareText = ref('')
-
-/** Whether the dispatch is in flight. */
-const sharing = ref(false)
-
-/** Whether the clipboard dispatch is in flight. */
-const sharingClipboard = ref(false)
-
-/**
- * Starts an intent from the text in the box.
- *
- * The source is the contract's `share` variant, not a URL-only shortcut: the same text may become a link, a note or a
- * plugin action depending on what the user installed, and deciding that here would be the page routing around the board.
- */
-async function share(): Promise<void> {
-  const text = shareText.value.trim()
-  if (text === '')
-    return
-  error.value = undefined
-  sharing.value = true
-  const answer = await kernel.call<string>('intent_dispatch', {
-    source: { kind: 'share', text, title: null }
-  })
-  sharing.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  shareText.value = ''
-  await load()
-}
-
-/**
- * Shares whatever is on the clipboard.
- *
- * The shell reads it exactly once, for this request, and refuses an empty clipboard. The page never reads it: a page
- * that could would be able to look at the clipboard whenever it liked.
- */
-async function shareClipboard(): Promise<void> {
-  error.value = undefined
-  sharingClipboard.value = true
-  const answer = await kernel.call<string>('intent_dispatch', {
-    source: { kind: 'clipboard' }
-  })
-  sharingClipboard.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  await load()
-}
 
 /**
  * The files already in the inbox, newest first.
@@ -497,9 +407,6 @@ async function load(): Promise<void> {
   received.value = receivedAnswer.value
 }
 
-/** The received file whose Open command is in flight. */
-const opening = ref<string | undefined>(undefined)
-
 /** The intent whose decision is in flight, so its buttons can say so and cannot be pressed twice. */
 const deciding = ref<string | undefined>(undefined)
 
@@ -603,60 +510,6 @@ function intentError(intent: IntentSnapshot): string {
   return messages.kernelErrors[error.message as keyof typeof messages.kernelErrors]
     ?? messages.errors[error.code as keyof typeof messages.errors]
     ?? messages.errors.unknown
-}
-
-/** The received file whose Show-in-folder command is in flight. */
-const revealing = ref<string | undefined>(undefined)
-
-/** The received file whose delete is in flight. */
-const discarding = ref<string | undefined>(undefined)
-
-/**
- * Deletes a received file, after the row's confirmation.
- *
- * The list is updated only when the shell says the file is gone: removing the row first would show a file as deleted
- * while the command could still refuse. The shell runs the same inbox containment check as Open and Reveal.
- */
-async function discardReceived(file: ReceivedFile): Promise<void> {
-  error.value = undefined
-  discarding.value = file.path
-  const answer = await kernel.call<null>('transfer_discard', { path: file.path })
-  discarding.value = undefined
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  received.value = received.value.filter(candidate => candidate.path !== file.path)
-}
-
-/**
- * Shows a received file in the platform's file manager.
- *
- * The shell runs the same inbox containment check as Open: revealing a path tells the user what is on their disk, and a
- * webview that could name any path would turn "where did that file land" into a file browser.
- */
-async function revealReceived(file: ReceivedFile): Promise<void> {
-  error.value = undefined
-  revealing.value = file.path
-  const answer = await kernel.call<null>('transfer_reveal', { path: file.path })
-  revealing.value = undefined
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/**
- * Opens a received file with the platform's default application.
- *
- * The shell checks the path is inside the inbox before launching anything; this side only carries the one the list
- * returned. A refusal is shown where every other one on this page is.
- */
-async function openReceived(file: ReceivedFile): Promise<void> {
-  error.value = undefined
-  opening.value = file.path
-  const answer = await kernel.call<null>('transfer_open', { path: file.path })
-  opening.value = undefined
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 onMounted(load)

@@ -17,8 +17,9 @@ import type { TransferSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { setLocalePreference } from '../locale'
 import { formatTime } from '../locale-format'
 
 const mocks = vi.hoisted(() => ({
@@ -89,7 +90,30 @@ beforeEach(() => {
   mocks.subscribe.mockResolvedValue(() => {})
 })
 
+afterEach(() => setLocalePreference('system'))
+
 describe('the home page', () => {
+  it.each(['en', 'zh-CN'])('shows activity data without built-in feature launchers in %s', async (language) => {
+    setLocalePreference(language)
+    answer({ intent_list: [INTENT] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    try {
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.home.received.title)
+      expect(wrapper.text()).toContain(messages.home.received.states.succeeded)
+      expect(wrapper.text()).toContain('@synra-plugin/github')
+      expect(wrapper.text()).toContain('01HQ00000000000000000TRACE1')
+      const labels = wrapper.findAll('button').map(button => button.text())
+      for (const retired of ['Share', 'Share clipboard', '分享', '分享剪贴板'])
+        expect(labels).not.toContain(retired)
+      expect(wrapper.findComponent({ name: 'AInput' }).exists()).toBe(false)
+      expect(mocks.call.mock.calls.every(([command]) => ['intent_list', 'transfer_list', 'transfer_received'].includes(command))).toBe(true)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('asks for the intents when it is mounted', async () => {
     answer({ intent_list: [] })
 
@@ -97,43 +121,6 @@ describe('the home page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('intent_list')
-    wrapper.unmount()
-  })
-
-  it('dispatches the text the user shares from the desk', async () => {
-    // ★ The page listed intents but could not start one. The box is the desktop's share entry; the command is the
-    // contract's `share` source, not a page-specific shortcut.
-    answer({ intent_list: [], intent_dispatch: '11111111-1111-4111-8111-111111111111' })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
-    await flushPromises()
-
-    const field = wrapper.find(`input[placeholder="${messages.home.share.placeholder}"]`)
-    expect(field.exists(), 'the share box is missing').toBe(true)
-    await field.setValue('https://example.test/a-link')
-    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.home.share.action)
-    await button?.trigger('click')
-    await flushPromises()
-
-    expect(mocks.call).toHaveBeenCalledWith('intent_dispatch', {
-      source: { kind: 'share', text: 'https://example.test/a-link', title: null }
-    })
-    expect((field.element as HTMLInputElement).value).toBe('')
-    wrapper.unmount()
-  })
-
-  it('shares the clipboard without the page reading it', async () => {
-    // ★ The shell reads the clipboard once, for this request. A page that read it itself could look whenever it liked;
-    // the command is the whole permission.
-    answer({ intent_list: [], intent_dispatch: '11111111-1111-4111-8111-111111111111' })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
-    await flushPromises()
-
-    const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.home.share.clipboard)
-    expect(button, 'the share-clipboard button is missing').toBeDefined()
-    await button?.trigger('click')
-    await flushPromises()
-
-    expect(mocks.call).toHaveBeenCalledWith('intent_dispatch', { source: { kind: 'clipboard' } })
     wrapper.unmount()
   })
 
@@ -278,9 +265,6 @@ describe('the home page', () => {
     // history is a read of the inbox, not a remembered table.
     answer({
       intent_list: [],
-      transfer_open: null,
-      transfer_reveal: null,
-      transfer_discard: null,
       transfer_received: [
         { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
         { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2_048, receivedAtMs: 1 }
@@ -295,25 +279,10 @@ describe('the home page', () => {
     expect(wrapper.text()).toContain('notes.txt')
     expect(wrapper.text()).toContain('C:/inbox/notes.txt')
 
-    const open = wrapper.findAll('button').find(button => button.text() === messages.home.receivedFiles.open)
-    expect(open, 'a received file has no open action').toBeDefined()
-    await open?.trigger('click')
-    await flushPromises()
-    expect(mocks.call).toHaveBeenCalledWith('transfer_open', { path: 'C:/inbox/notes.txt' })
-
-    const reveal = wrapper.findAll('button').find(button => button.text() === messages.home.receivedFiles.showInFolder)
-    expect(reveal, 'a received file has no show-in-folder action').toBeDefined()
-    await reveal?.trigger('click')
-    await flushPromises()
-    expect(mocks.call).toHaveBeenCalledWith('transfer_reveal', { path: 'C:/inbox/notes.txt' })
-
-    const question = wrapper.findAllComponents({ name: 'APopconfirm' }).at(0)
-    expect(question, 'deleting a received file asks first').toBeDefined()
-    await question?.vm.$emit('confirm')
-    await flushPromises()
-    expect(mocks.call).toHaveBeenCalledWith('transfer_discard', { path: 'C:/inbox/notes.txt' })
-    expect(wrapper.text()).not.toContain('notes.txt')
     expect(wrapper.text()).toContain('photo.png')
+    expect(wrapper.text()).toContain('2.0 KiB')
+    expect(wrapper.findAll('button').some(button => ['Open', 'Show in folder', 'Delete'].includes(button.text()))).toBe(false)
+    expect(mocks.call.mock.calls.every(([command]) => ['intent_list', 'transfer_list', 'transfer_received'].includes(command))).toBe(true)
     wrapper.unmount()
   })
 

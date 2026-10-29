@@ -36,14 +36,6 @@ export const devices = {
   'devices.forget': '取消配对',
   'devices.forgetTitle': '取消与此设备的配对？之后需要重新配对才能连接。',
   'devices.forgetCancel': '保留配对',
-  'devices.sendText': '发送文字',
-  'devices.sendFile': '发送文件',
-  'devices.sendTitle': name => `发送给 ${name}`,
-  'devices.sendPlaceholder': '输入要发送的内容',
-  'devices.sendAction': '发送',
-  'devices.sendCancel': '取消',
-  'devices.sentMessage': '消息已发送。',
-  'devices.sentFile': name => `已发送 ${name}。`,
   'devices.online': '可连接',
   'devices.offline': '无法连接'
 } satisfies Partial<LocaleEntries>

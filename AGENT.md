@@ -38,6 +38,11 @@ workspace", which reads like a broken guard and is really a wrong directory.
 | A card's description lives in `commands::devices` | `card_for` / `card_from_paired` / `card_from_seen` are the only builders; a second one drifts |
 | `AppState.hosted_ui` records which plugin page is in which WebView | A token is a nonce: it cannot say which plugin a page is |
 
+**Host UI boundary (28 R56):** pages provide device and plugin management, settings, diagnostics, and generic activity
+views and controls. Content sharing, clipboard, direct text/file sending and file-opening launchers belong in plugin
+pages. Plugin names, trace IDs and example task records are display data, not permission to add fixed plugin features.
+Preserve generic task approvals and cancellation, and distinguish plugin management's Open button from a business action.
+
 ## 3. Types at the IPC boundary come from `@synra/protocol`
 
 Never hand-write the shape of a command's answer. Doing that hid two defects at once: the settings page typed

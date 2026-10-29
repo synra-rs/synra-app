@@ -41,17 +41,6 @@
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
 
-    <!-- ★ A send that worked is worth one line. The transfer itself appears on the home page, but a person who pressed
-         Send is standing on this screen and needs an answer here rather than an absence of errors. -->
-    <AAlert
-      v-if="sent"
-      type="success"
-      show-icon
-      closable
-      :message="sent"
-      @close="sent = undefined"
-    />
-
     <PairingPanel :selected="selectedPeer" />
 
     <!--
@@ -137,7 +126,7 @@
               <span v-if="card.address" class="text-xs text-ink-dim font-mono">{{ card.address }}</span>
 
               <!--
-                The one action a discovered device needs. Shown only when it is unpaired: once paired, the row's work is sending, and a
+                The one action a discovered device needs. Shown only when it is unpaired: once paired, the row manages that relationship, and a
                 button that offered to pair again would be offering to repeat the decision the user already made.
               -->
               <AButton
@@ -165,58 +154,11 @@
                   {{ messages.devices.forget }}
                 </AButton>
               </APopconfirm>
-
-              <!--
-                ★ A paired device that is reachable is the one thing a send needs. The command has existed since the
-                transfer pipeline landed and the interface had no caller, so the app could receive but not send.
-              -->
-              <AButton
-                v-if="card.paired && card.online && !!card.deviceId"
-                size="small"
-                type="primary"
-                @click="askSendText(card)"
-              >
-                {{ messages.devices.sendText }}
-              </AButton>
-
-              <!--
-                ★ The native picker is the platform's. The path it answers is what the transfer command takes, and the
-                plugin's permission is named in `capabilities/default.json` beside `core:default`.
-              -->
-              <AButton
-                v-if="card.paired && card.online && !!card.deviceId"
-                size="small"
-                :loading="pickingFile === card.deviceId"
-                @click="pickAndSendFile(card)"
-              >
-                {{ messages.devices.sendFile }}
-              </AButton>
             </div>
           </div>
         </AList.Item>
       </template>
     </AList>
-
-    <!--
-      ★ Text first because a text send is a complete send: it needs no file dialog, and the command turns it into a file
-      on the other side anyway. The modal is the library's, so the focus trap and the Escape key are not this page's.
-    -->
-    <AModal
-      :open="sendTo !== undefined"
-      :title="sendTitle"
-      :ok-text="messages.devices.sendAction"
-      :cancel-text="messages.devices.sendCancel"
-      :confirm-loading="sendingText"
-      :ok-button-props="{ disabled: draft.trim().length === 0 }"
-      @ok="sendText"
-      @cancel="closeSend"
-    >
-      <ATextarea
-        v-model:value="draft"
-        :rows="4"
-        :placeholder="messages.devices.sendPlaceholder"
-      />
-    </AModal>
   </section>
 </template>
 
@@ -258,7 +200,7 @@
  * that needs the user to act.
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Empty as AEmpty, List as AList, Modal as AModal, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag, Textarea as ATextarea } from 'ant-design-vue'
+import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -273,9 +215,6 @@ const pairing = usePairingStore()
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
-
-/** The sentence a completed send leaves behind. Cleared on the next send, or when the user closes it. */
-const sent = ref<string | undefined>(undefined)
 
 /**
  * The two scans `ScanOptions` describes, as this page asks for them.
@@ -406,101 +345,6 @@ async function forget(deviceId: string): Promise<void> {
     await loadSnapshot()
   else
     refuse(answer.error)
-}
-
-/** The device a text is being written for, and the draft itself. */
-const sendTo = ref<{ id: string, name: string } | undefined>(undefined)
-const draft = ref('')
-const sendingText = ref(false)
-
-const sendTitle = computed(() =>
-  sendTo.value ? messages.devices.sendTitle(sendTo.value.name) : ''
-)
-
-function askSendText(card: { deviceId: string, displayName: string }): void {
-  sendTo.value = { id: card.deviceId, name: card.displayName }
-  draft.value = ''
-  error.value = undefined
-}
-
-function closeSend(): void {
-  if (!sendingText.value) {
-    sendTo.value = undefined
-    draft.value = ''
-  }
-}
-
-/**
- * Sends the draft as a file.
- *
- * The kernel writes the text into the outbox and sends that file, so the receiving side sees an ordinary attachment; the
- * name in the request is what that file is called. The transfer itself is not waited for here: it appears in the home
- * list through `transferUpdated`, which is the same path every other send uses.
- */
-async function sendText(): Promise<void> {
-  const target = sendTo.value
-  const text = draft.value.trim()
-  if (!target || text.length === 0)
-    return
-  repeat.value = sendText
-  error.value = undefined
-  sent.value = undefined
-  sendingText.value = true
-  const answer = await kernel.call<string>('transfer_send_text', {
-    request: {
-      to: target.id,
-      text,
-      fileName: 'message.txt'
-    }
-  })
-  sendingText.value = false
-  if (!answer.ok) {
-    refuse(answer.error)
-    return
-  }
-  sendTo.value = undefined
-  draft.value = ''
-  sent.value = messages.devices.sentMessage
-}
-
-/** The device whose file picker is open. */
-const pickingFile = ref<string | undefined>(undefined)
-
-/**
- * Opens the platform's file picker and sends the chosen path.
- *
- * The dialog is loaded on demand: the import is a plugin, and a build without it (or a test) should not fail before
- * the user asks to send a file. A cancelled dialog is not an error; a picker that cannot open is one, and it is shown
- * with the same notice as every other failure on this page.
- */
-async function pickAndSendFile(card: { deviceId: string }): Promise<void> {
-  repeat.value = () => pickAndSendFile(card)
-  error.value = undefined
-  sent.value = undefined
-  pickingFile.value = card.deviceId
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
-      multiple: false,
-      directory: false,
-      title: messages.devices.sendFile
-    })
-    if (typeof selected !== 'string')
-      return
-    const answer = await kernel.call<string>('transfer_send_file', {
-      request: { to: card.deviceId, path: selected }
-    })
-    if (!answer.ok)
-      refuse(answer.error)
-    else
-      sent.value = messages.devices.sentFile(selected.split(/[\\/]/).pop() ?? selected)
-  }
-  catch {
-    error.value = { code: 'internal', message: 'error.internal' }
-  }
-  finally {
-    pickingFile.value = undefined
-  }
 }
 
 async function loadSnapshot(): Promise<void> {

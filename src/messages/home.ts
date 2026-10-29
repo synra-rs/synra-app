@@ -7,12 +7,6 @@
 export const home = {
   title: 'Home',
 
-  share: {
-    placeholder: 'Paste a link or some text to share',
-    action: 'Share',
-    clipboard: 'Share clipboard'
-  },
-
   /**
    * The wire (R27): the one thing on this screen worth spending boldness on, and the only place glass and glow are
    * allowed to mean something. Every string here describes a **real** state — there is no decorative animation, and
@@ -21,10 +15,10 @@ export const home = {
   wire: {
     label: 'This device and the others',
     states: {
-      transferring: { headline: 'Transferring', detail: 'A send is in progress.' },
-      connected: { headline: 'Connected', detail: 'Ready to send.' },
+      transferring: { headline: 'Transferring', detail: 'A transfer is in progress.' },
+      connected: { headline: 'Connected', detail: 'The device is available.' },
       offline: { headline: 'Not reachable', detail: 'Paired, but it is not answering right now.' },
-      none: { headline: 'No device yet', detail: 'Pair one to send it something.' }
+      none: { headline: 'No device yet', detail: 'Pair a device to connect.' }
     },
     action: 'Pair a device'
   },
@@ -32,13 +26,13 @@ export const home = {
   inFlight: {
     title: 'In flight',
     empty: 'Nothing is moving to or from another device.',
-    action: 'Choose a device',
+    action: 'Manage devices',
     sending: 'Sending',
     receiving: 'Receiving',
     cancel: 'Cancel',
     confirm: 'Abandon this transfer?',
     abandon: 'Abandon',
-    keep: 'Keep sending',
+    keep: 'Continue transfer',
     progress: '{done} of {total}'
   },
 
@@ -75,11 +69,6 @@ export const home = {
   /** The files in the inbox — the history an in-flight row cannot be. */
   receivedFiles: {
     title: 'Received files',
-    empty: 'No file has landed in the inbox yet.',
-    open: 'Open',
-    showInFolder: 'Show in folder',
-    delete: 'Delete',
-    deleteConfirm: 'Delete this file from the inbox?',
-    keep: 'Keep'
+    empty: 'No file has landed in the inbox yet.'
   }
 } as const

@@ -14,7 +14,7 @@ export const englishMessages = {
   app: {
     name: 'Synra',
     offline: 'Network unavailable.',
-    offlineDetail: 'Sharing and pairing will fail until it comes back.'
+    offlineDetail: 'Device communication may be limited until the network returns.'
   },
 
   nav,

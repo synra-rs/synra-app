@@ -16,16 +16,15 @@
 
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setLocalePreference } from '../locale'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
-  subscribe: vi.fn(),
-  open: vi.fn()
+  subscribe: vi.fn()
 }))
 
 vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
-vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 
 const DevicesPage = (await import('./DevicesPage.vue')).default
 const { useDevicesStore } = await import('../stores/devices')
@@ -62,10 +61,35 @@ beforeEach(() => {
   mocks.call.mockReset()
   mocks.subscribe.mockReset()
   mocks.subscribe.mockResolvedValue(() => {})
-  mocks.open.mockReset()
 })
 
 describe('the devices page', () => {
+  afterEach(() => setLocalePreference('system'))
+
+  it.each(['en', 'zh-CN'])('keeps device management separate from feature launchers in %s', async (language) => {
+    setLocalePreference(language)
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_status: null
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      const labels = wrapper.findAll('button').map(button => button.text())
+      expect(labels).toContain(messages.devices.forget)
+      for (const retired of ['Send text', 'Send file', '发送文字', '发送文件'])
+        expect(labels).not.toContain(retired)
+      expect(wrapper.findComponent({ name: 'AModal' }).exists()).toBe(false)
+      expect(mocks.call.mock.calls.every(([command]) => ['devices_snapshot', 'pairing_status'].includes(command))).toBe(true)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('asks for the snapshot when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } })
 
@@ -124,76 +148,6 @@ describe('the devices page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('devices_scan_cancel', { scanId: 'scan-1' })
-    wrapper.unmount()
-  })
-
-  it('sends a text to a paired, reachable device', async () => {
-    // ★ The app could receive and not send. `transfer_send_text` had a command and no caller; this is the shortest
-    // complete send path, because the kernel turns the text into a file on the other side.
-    mocks.call.mockImplementation(async (command: string) => {
-      if (command === 'devices_snapshot')
-        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } }
-      if (command === 'transfer_send_text')
-        return { ok: true, value: '66666666-6666-4666-8666-666666666666' }
-      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
-    })
-
-    const wrapper = mount(DevicesPage)
-    await flushPromises()
-
-    const send = wrapper.findAll('button').find(button => button.text() === messages.devices.sendText)
-    expect(send, 'a reachable paired device has no send action').toBeDefined()
-    await send?.trigger('click')
-    await flushPromises()
-
-    const modal = wrapper.findComponent({ name: 'AModal' })
-    expect(modal.exists(), 'the send dialog did not open').toBe(true)
-
-    const textarea = document.querySelector('textarea')
-    expect(textarea, 'the dialog has no text field').not.toBeNull()
-    textarea!.value = 'hello from the test'
-    textarea!.dispatchEvent(new Event('input', { bubbles: true }))
-    await flushPromises()
-
-    await modal.vm.$emit('ok')
-    await flushPromises()
-
-    expect(mocks.call).toHaveBeenCalledWith('transfer_send_text', {
-      request: {
-        to: DEVICES[0]!.deviceId,
-        text: 'hello from the test',
-        fileName: 'message.txt'
-      }
-    })
-    expect(wrapper.text()).toContain(messages.devices.sentMessage)
-    wrapper.unmount()
-  })
-
-  it('sends the path the native picker answers', async () => {
-    // ★ The picker is the platform's, and the path it answers is exactly what `transfer_send_file` takes. Mocking the
-    // plugin rather than the command is what proves the two are joined by the page.
-    mocks.open.mockResolvedValue('C:/files/notes.txt')
-    mocks.call.mockImplementation(async (command: string) => {
-      if (command === 'devices_snapshot')
-        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } }
-      if (command === 'transfer_send_file')
-        return { ok: true, value: null }
-      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
-    })
-
-    const wrapper = mount(DevicesPage)
-    await flushPromises()
-
-    const send = wrapper.findAll('button').find(button => button.text() === messages.devices.sendFile)
-    expect(send, 'a reachable paired device has no file send action').toBeDefined()
-    await send?.trigger('click')
-    await flushPromises()
-
-    expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false, directory: false }))
-    expect(mocks.call).toHaveBeenCalledWith('transfer_send_file', {
-      request: { to: DEVICES[0]!.deviceId, path: 'C:/files/notes.txt' }
-    })
-    expect(wrapper.text()).toContain(messages.devices.sentFile('notes.txt'))
     wrapper.unmount()
   })
 

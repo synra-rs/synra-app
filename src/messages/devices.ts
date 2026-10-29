@@ -48,16 +48,6 @@ export const devices = {
   forget: 'Forget',
   forgetTitle: 'Forget this device? It will have to be paired again.',
   forgetCancel: 'Keep',
-  /** Sending a text is the send path that needs no file dialog: the kernel turns it into a file on the other side. */
-  sendText: 'Send text',
-  sendFile: 'Send file',
-  sendTitle: (name: string): string => `Send to ${name}`,
-  sendPlaceholder: 'What do you want to send?',
-  sendAction: 'Send',
-  sendCancel: 'Cancel',
-  /** What a completed send leaves on the screen. */
-  sentMessage: 'Sent the message.',
-  sentFile: (name: string): string => `Sent ${name}.`,
   online: 'Reachable',
   offline: 'Not reachable'
 } as const
