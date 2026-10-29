@@ -1,13 +1,11 @@
 <template>
-  <section class="stack gap-6">
-    <h1 class="text-xl font-semibold">
-      {{ messages.settings.title }}
-    </h1>
+  <section class="stack gap-6 pb-4">
+    <PageHeader :title="messages.settings.title" />
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="reload" />
 
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.settings.device }}
       </h2>
 
@@ -57,7 +55,7 @@
     <CredentialPanel />
 
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.settings.preferences }}
       </h2>
 
@@ -95,7 +93,7 @@
     </section>
 
     <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.settings.transfers.title }}
       </h2>
       <div class="row-between gap-4">
@@ -105,6 +103,7 @@
         </div>
         <ASwitch
           :checked="askCancel"
+          :aria-label="messages.settings.transfers.cancelAsk"
           :loading="savingCancel"
           @change="(checked) => saveCancel(checked === true)"
         />
@@ -117,6 +116,7 @@
         </div>
         <ASwitch
           :checked="notifyOnReceive"
+          :aria-label="messages.settings.transfers.notify"
           :loading="savingNotify"
           @change="(checked) => saveNotify(checked === true)"
         />
@@ -124,7 +124,7 @@
     </section>
 
     <section class="stack gap-3">
-      <h2 class="m-0 text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.settings.startup.title }}
       </h2>
       <div class="row-between gap-4">
@@ -134,6 +134,7 @@
         </div>
         <ASwitch
           :checked="launchAtLogin"
+          :aria-label="messages.settings.startup.launchAtLogin"
           :disabled="launchAtLoginUnavailable"
           :loading="savingLaunchAtLogin"
           @change="(checked) => saveLaunchAtLogin(checked === true)"
@@ -145,7 +146,7 @@
     </section>
 
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.settings.trusted.title }}
       </h2>
       <HelpText>
@@ -159,7 +160,7 @@
       -->
       <AEmpty v-if="trusted.length === 0" :image="AEmpty.PRESENTED_IMAGE_SIMPLE" :description="messages.settings.trusted.empty" />
       <AList v-else size="small">
-        <AList.Item v-for="device in trusted" :key="device.id">
+        <AList.Item v-for="device in trusted" :key="device.id" :style="{ paddingInline: 0 }">
           <div class="row-between gap-3">
             <span class="min-w-0 row gap-2">
               <span class="truncate text-sm">{{ device.name }}</span>
@@ -186,7 +187,7 @@
       default somebody else chose.
     -->
           <section class="stack gap-3">
-            <h2 class="m-0 text-base font-medium">
+            <h2 class="m-0 text-sm font-medium">
               {{ messages.settings.registry.title }}
             </h2>
             <HelpText>
@@ -223,7 +224,7 @@
       is the whole of the setting.
     -->
           <section class="stack gap-3">
-            <h2 class="m-0 text-base font-medium">
+            <h2 class="m-0 text-sm font-medium">
               {{ messages.settings.updates.title }}
             </h2>
             <HelpText>
@@ -250,7 +251,7 @@
     -->
           <section class="stack gap-3">
             <div class="row-between gap-4">
-              <h2 class="m-0 text-base font-medium">
+              <h2 class="m-0 text-sm font-medium">
                 {{ messages.settings.metrics.title }}
               </h2>
               <AButton size="small" :loading="refreshing" @click="refreshMetrics">
@@ -276,7 +277,7 @@
             </div>
             <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
             <AList v-else-if="metrics" size="small">
-              <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)">
+              <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)" :style="{ paddingInline: 0 }">
                 <div class="row-between gap-3">
                   <span class="min-w-0 truncate text-xs font-mono">{{ seriesKey(series.key) }}</span>
                   <span class="text-sm font-mono">{{ seriesValue(series.value) }}</span>
@@ -290,7 +291,7 @@
       the kernel applies when it next starts, so it reads as housekeeping rather than as a control a user watches.
     -->
           <section class="stack gap-3">
-            <h2 class="m-0 text-base font-medium">
+            <h2 class="m-0 text-sm font-medium">
               {{ messages.settings.audit.title }}
             </h2>
             <HelpText>
@@ -316,7 +317,7 @@
       name things the user might not have meant to share.
     -->
           <section class="stack gap-3">
-            <h2 class="m-0 text-base font-medium">
+            <h2 class="m-0 text-sm font-medium">
               {{ messages.settings.diagnostics.title }}
             </h2>
             <HelpText>
@@ -475,7 +476,6 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import CredentialPanel from '../components/CredentialPanel.vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
-
 /**
  * This device's own settings.
  *
@@ -492,6 +492,8 @@ import ErrorNotice from '../components/ErrorNotice.vue'
  * be the fake control this page's doc comment refuses to draw.
  */
 import HelpText from '../components/HelpText.vue'
+
+import PageHeader from '../components/PageHeader.vue'
 import { kernel } from '../kernel'
 import { localePreference } from '../locale'
 import { formatDateTime } from '../locale-format'

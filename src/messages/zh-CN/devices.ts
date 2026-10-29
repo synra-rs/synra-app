@@ -14,6 +14,7 @@ export const devices = {
   'devices.unpaired': '未配对',
   'devices.pair': '配对',
   'devices.pairingTitle': '配对设备',
+  'devices.pairingResume': '继续配对',
   'devices.pairingInstructions': '在第一台设备导出邀请。在第二台设备选择第一台设备，导入邀请并生成回复，再将回复导入第一台设备。请通过可信渠道直接交换邀请和回复；网络发现无法验证设备身份。',
   'devices.pairingExport': '导出此设备的邀请',
   'devices.pairingInvitation': '发送给目标设备的邀请',

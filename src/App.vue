@@ -77,8 +77,8 @@
         </div>
       </aside>
 
-      <main ref="contentPane" tabindex="0" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
-        <div class="mx-auto max-w-3xl min-w-0 w-full">
+      <main ref="contentPane" tabindex="0" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-sm focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
+        <div class="mx-auto max-w-5xl min-w-0 w-full">
           <!--
             ★ The one global fact that changes what every page can do. A device row can say "not reachable", but that is
             about one peer; this is about the machine, and every sharing path needs it.

@@ -25,7 +25,7 @@ export const home = {
 
   inFlight: {
     title: 'In flight',
-    empty: 'Nothing is moving to or from another device.',
+    empty: 'No transfers in progress.',
     action: 'Manage devices',
     sending: 'Sending',
     receiving: 'Receiving',
@@ -37,9 +37,8 @@ export const home = {
   },
 
   received: {
-    title: 'Received',
-    empty: 'Nothing has arrived from another device yet.',
-    action: 'Pair a device',
+    title: 'Tasks',
+    empty: 'No tasks to display.',
     accept: 'Accept',
     decline: 'Decline',
     offline: 'offline',

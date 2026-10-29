@@ -66,6 +66,56 @@ beforeEach(() => {
 describe('the devices page', () => {
   afterEach(() => setLocalePreference('system'))
 
+  it('opens pairing on demand and keeps the selected invitation draft when hidden', async () => {
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: DEVICES },
+      pairing_status: null
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.pair)?.trigger('click')
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      await wrapper.get('#device-pairing textarea').setValue('invitation-draft')
+      await flushPromises()
+      const toggle = wrapper.get('[aria-controls="device-pairing"]')
+      await toggle.trigger('click')
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      await toggle.trigger('click')
+      await flushPromises()
+      expect((wrapper.get('#device-pairing textarea').element as HTMLTextAreaElement).value).toBe('invitation-draft')
+      expect(mocks.call.mock.calls.map(([command]) => command).sort()).toEqual(['devices_snapshot', 'pairing_status'])
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('reveals a pairing task restored from the shared service', async () => {
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: DEVICES },
+      pairing_status: { requestId: 'restored', peerId: DEVICES[1]!.deviceId, phase: 'listening', expiresAtMs: Date.now() + 60_000, reply: 'reply', errorCode: null, detail: null }
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      expect(wrapper.text()).toContain(messages.devices.pairingPhases.listening)
+      expect(wrapper.get('[aria-controls="device-pairing"]').text()).toBe(messages.devices.pairingResume)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it.each(['en', 'zh-CN'])('keeps device management separate from feature launchers in %s', async (language) => {
     setLocalePreference(language)
     const answers: Record<string, unknown> = {

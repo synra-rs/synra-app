@@ -2,6 +2,10 @@ import type { LocaleEntries } from '../types'
 
 export const plugins = {
   'plugins.title': '插件',
+  'plugins.installHeading': '安装插件',
+  'plugins.manage': '权限与管理',
+  'plugins.enableLabel': name => `启用 ${name}`,
+  'plugins.openLabel': name => `打开 ${name}`,
   'plugins.states.installed': '已安装',
   'plugins.states.validated': '已验证',
   'plugins.states.granted': '已授权',
@@ -58,6 +62,7 @@ export const plugins = {
   'plugins.limitFuel': '每次调用的执行额度',
   'plugins.leftBehind': count => `${count} 个路径未能删除`,
   'plugins.catalog.placeholder': '搜索插件注册表',
+  'plugins.catalog.title': '查找插件',
   'plugins.catalog.action': '搜索',
   'plugins.catalog.empty': '没有匹配的插件。',
   'plugins.catalog.preview': '预览',

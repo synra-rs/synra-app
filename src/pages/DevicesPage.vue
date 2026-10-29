@@ -1,10 +1,6 @@
 <template>
-  <section class="stack gap-6">
-    <div class="row-between gap-4">
-      <h1 class="text-xl font-semibold">
-        {{ messages.devices.title }}
-      </h1>
-
+  <section class="stack gap-6 pb-4">
+    <PageHeader :title="messages.devices.title">
       <!--
         The scan is a control, so it is the component library's (R51): "you cannot press it twice" is `:disabled` and
         "it is running" is `:loading` — a hand-rolled button has to remember both, and antd announces both to a screen
@@ -14,9 +10,8 @@
         than streaming events, so waiting for the store to say otherwise would leave the button live and unlabelled for the
         second and a half the network is being asked.
       -->
-      <div class="row gap-2">
+      <div class="row flex-wrap gap-2">
         <AButton
-          type="primary"
           :loading="scanning"
           :disabled="scanning"
           @click="scan"
@@ -36,12 +31,17 @@
         >
           {{ messages.devices.cancelScan }}
         </AButton>
+        <AButton type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="showPairing = !showPairing">
+          {{ pairing.active ? messages.devices.pairingResume : messages.devices.pairingTitle }}
+        </AButton>
       </div>
-    </div>
+    </PageHeader>
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
 
-    <PairingPanel :selected="selectedPeer" />
+    <div v-show="showPairing" id="device-pairing">
+      <PairingPanel :selected="selectedPeer" />
+    </div>
 
     <!--
       The scan's own report, as three labelled facts rather than one line joined by separators (R21): "found 2 ·
@@ -102,7 +102,7 @@
 
     <AList v-else :data-source="cards">
       <template #renderItem="{ item: card }">
-        <AList.Item>
+        <AList.Item :style="{ paddingInline: 0 }">
           <div class="w-full row-between flex-wrap gap-3">
             <div class="min-w-0 stack gap-0.5">
               <span class="truncate text-sm font-medium">{{ card.displayName }}</span>
@@ -118,7 +118,7 @@
               <ATag :color="card.paired ? 'default' : 'warning'">
                 {{ card.paired ? messages.devices.paired : messages.devices.unpaired }}
               </ATag>
-              <ATag :color="card.online ? 'default' : 'error'">
+              <ATag color="default">
                 {{ card.online ? messages.devices.online : messages.devices.offline }}
               </ATag>
 
@@ -201,9 +201,10 @@
  */
 import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import ErrorNotice from '../components/ErrorNotice.vue'
+import PageHeader from '../components/PageHeader.vue'
 import PairingPanel from '../components/PairingPanel.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
@@ -212,6 +213,13 @@ import { usePairingStore } from '../stores/pairing'
 
 const devices = useDevicesStore()
 const pairing = usePairingStore()
+const showPairing = ref(false)
+
+// A restored running task or a pairing failure must be visible even before a row is selected.
+watch(() => [pairing.active, pairing.error], ([active, failure]) => {
+  if (active || failure)
+    showPairing.value = true
+}, { immediate: true })
 
 /** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
 const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
@@ -324,6 +332,7 @@ const cancellingScan = ref(false)
  */
 function pair(deviceId: string): void {
   selectedDeviceId.value = deviceId
+  showPairing.value = true
 }
 
 /** The device whose forget command is in flight. */

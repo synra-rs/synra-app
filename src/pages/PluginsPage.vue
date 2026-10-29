@@ -1,8 +1,10 @@
 <template>
-  <section class="stack gap-6">
-    <h1 class="text-xl font-semibold">
-      {{ messages.plugins.title }}
-    </h1>
+  <section class="stack gap-6 pb-4">
+    <PageHeader :title="messages.plugins.title">
+      <AButton ref="installToggle" type="primary" data-testid="install-toggle" :aria-expanded="installExpanded" aria-controls="plugin-install" @click="installExpanded = !installExpanded">
+        {{ messages.plugins.installHeading }}
+      </AButton>
+    </PageHeader>
 
     <!--
       The install form. Two sources, named rather than guessed: a directory on this device, or a package id in the
@@ -10,73 +12,79 @@
       `@acme/hello` and `C:\plugins\hello` are both "a string with a slash" and a page that guessed would eventually guess
       wrong.
     -->
-    <ASegmented v-model:value="installMode" :options="installOptions" />
-    <div class="row flex-wrap gap-2">
-      <AInput
-        v-model:value="installPath"
-        :placeholder="installLabel"
-        :aria-label="installLabel"
-        class="min-w-0 w-full sm:flex-1"
-        allow-clear
-        @press-enter="install"
-      />
-      <AButton :loading="installing" :disabled="installPath.trim() === ''" @click="install">
-        {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
-      </AButton>
+    <section v-show="installExpanded" id="plugin-install" class="stack gap-4 border border-line rounded-surface bg-surface p-4" :aria-label="messages.plugins.installHeading">
+      <ASegmented v-model:value="installMode" :options="installOptions" />
+      <div class="row flex-wrap gap-2">
+        <AInput
+          v-model:value="installPath"
+          :placeholder="installLabel"
+          :aria-label="installLabel"
+          class="min-w-0 w-full sm:flex-1"
+          allow-clear
+          @press-enter="install"
+        />
+        <AButton data-testid="install-submit" :loading="installing" :disabled="installPath.trim() === ''" @click="install">
+          {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
+        </AButton>
 
-      <!--
-        ★ A directory path typed by hand is the one form here that can be got wrong without noticing. The picker answers
-        the same string the input takes, so the install path itself is unchanged.
-      -->
-      <AButton v-if="installMode === 'path'" :loading="choosing" @click="chooseDirectory">
-        {{ messages.plugins.chooseDirectory }}
-      </AButton>
-      <AButton v-if="installMode === 'path'" :loading="choosing" @click="choosePackage">
-        {{ messages.plugins.choosePackage }}
-      </AButton>
-    </div>
+        <!--
+          ★ A directory path typed by hand is the one form here that can be got wrong without noticing. The picker answers
+          the same string the input takes, so the install path itself is unchanged.
+        -->
+        <AButton v-if="installMode === 'path'" :loading="choosing" @click="chooseDirectory">
+          {{ messages.plugins.chooseDirectory }}
+        </AButton>
+        <AButton v-if="installMode === 'path'" :loading="choosing" @click="choosePackage">
+          {{ messages.plugins.choosePackage }}
+        </AButton>
+      </div>
+    </section>
 
     <!--
       The registry's own index. A result is a name and a description, not a decision: Preview opens the same permission
       dialog an install by id would, so a search hit cannot install anything the user has not seen.
     -->
-    <section class="stack gap-2">
-      <div class="row gap-2">
-        <AInput
-          v-model:value="searchText"
-          :placeholder="messages.plugins.catalog.placeholder"
-          allow-clear
-          @press-enter="search"
-        />
-        <ASelect v-model:value="searchSort" :options="sortOptions" class="w-fit" />
-        <AButton :loading="searching" :disabled="searchText.trim() === ''" @click="search">
-          {{ messages.plugins.catalog.action }}
-        </AButton>
-      </div>
-      <AList v-if="results.length > 0" :data-source="results" size="small">
-        <template #renderItem="{ item }">
-          <AList.Item>
-            <div class="row-between gap-4">
-              <div class="stack">
-                <span class="truncate text-sm font-medium">
-                  {{ item.title }} <span class="text-ink-dim">{{ item.version }}</span>
-                </span>
-                <span class="text-sm text-ink-dim">{{ item.description ?? item.pluginId }}</span>
-              </div>
-              <AButton size="small" @click="previewResult(item)">
-                {{ messages.plugins.catalog.preview }}
-              </AButton>
-            </div>
-          </AList.Item>
-        </template>
-      </AList>
-      <AButton v-if="hasMore" :loading="searching" block @click="loadMore">
-        {{ messages.plugins.catalog.loadMore }}
-      </AButton>
-      <p v-else-if="searched && !searching" class="m-0 text-sm text-ink-dim">
-        {{ messages.plugins.catalog.empty }}
-      </p>
-    </section>
+    <ACollapse ghost data-testid="catalog-panel">
+      <ACollapse.Panel key="catalog" :header="messages.plugins.catalog.title" force-render>
+        <div class="stack gap-3">
+          <div class="row gap-2">
+            <AInput
+              v-model:value="searchText"
+              :placeholder="messages.plugins.catalog.placeholder"
+              allow-clear
+              @press-enter="search"
+            />
+            <ASelect v-model:value="searchSort" :options="sortOptions" class="w-fit" />
+            <AButton :loading="searching" :disabled="searchText.trim() === ''" @click="search">
+              {{ messages.plugins.catalog.action }}
+            </AButton>
+          </div>
+          <AList v-if="results.length > 0" :data-source="results" size="small">
+            <template #renderItem="{ item }">
+              <AList.Item :style="{ paddingInline: 0 }">
+                <div class="row-between gap-4">
+                  <div class="stack">
+                    <span class="truncate text-sm font-medium">
+                      {{ item.title }} <span class="text-ink-dim">{{ item.version }}</span>
+                    </span>
+                    <span class="text-sm text-ink-dim">{{ item.description ?? item.pluginId }}</span>
+                  </div>
+                  <AButton size="small" @click="previewResult(item)">
+                    {{ messages.plugins.catalog.preview }}
+                  </AButton>
+                </div>
+              </AList.Item>
+            </template>
+          </AList>
+          <AButton v-if="hasMore" :loading="searching" block @click="loadMore">
+            {{ messages.plugins.catalog.loadMore }}
+          </AButton>
+          <p v-else-if="searched && !searching" class="m-0 text-sm text-ink-dim">
+            {{ messages.plugins.catalog.empty }}
+          </p>
+        </div>
+      </ACollapse.Panel>
+    </ACollapse>
 
     <!--
       A registry install asks first. The preview is the publisher's own claim — the signature is checked on the bytes —
@@ -116,38 +124,6 @@
         <p v-if="preview.sizeBytes" class="m-0 text-sm text-ink-dim">
           {{ messages.plugins.preview.size.replace('{size}', (preview.sizeBytes / 1_048_576).toFixed(1)) }}
         </p>
-      </div>
-    </AModal>
-
-    <!--
-      ★ The removal dialog, not a one-line confirm, because there are two outcomes and one of them deletes user data.
-      `get-container="false"` keeps it inside this component instead of teleporting to `body`: the page's own tests can
-      then see the checkbox and the button, and a dialog that is testable is one whose decision is actually asserted.
-
-      The checkbox starts unticked every time the dialog opens: "keep the data" is the reversible answer, and a checkbox
-      that remembered the previous destructive choice would be a dialog that deletes on a second visit by default.
-    -->
-    <AModal
-      :open="removing !== undefined"
-      :title="messages.plugins.removeTitle"
-      :ok-text="messages.plugins.removeAction"
-      :get-container="false"
-      @ok="remove()"
-      @cancel="removing = undefined"
-    >
-      <div class="stack gap-3">
-        <p class="m-0 text-sm">
-          {{ messages.plugins.removeDetail(removing?.title ?? '') }}
-        </p>
-        <span class="break-all text-xs text-ink-dim font-mono">
-          {{ messages.plugins.removeDataPath(removing?.dataPath ?? '') }}
-        </span>
-        <ACheckbox
-          :checked="removeData"
-          @update:checked="(checked) => (removeData = checked)"
-        >
-          {{ messages.plugins.removeDeleteData }}
-        </ACheckbox>
       </div>
     </AModal>
 
@@ -215,11 +191,7 @@
       somewhere else. It said "this screen cannot install anything yet" while that was true; leaving the sentence behind
       would be the kind of comment that outlives its fact and sends the next reader looking for a missing feature.
     -->
-    <!--
-      A filter over what is installed, not a catalogue search: this shell has no registry client, and a box that looked
-      like one would promise results it cannot fetch (16 §4). It matches the id, the title and the description, because
-      those are the three things a person remembers about a plugin.
-    -->
+    <!-- Local filtering stays separate from the explicitly opened registry search. -->
     <AInput
       v-if="plugins.length > 0"
       v-model:value="query"
@@ -255,14 +227,15 @@
     -->
     <AList v-else :data-source="visible">
       <template #renderItem="{ item: plugin }">
-        <AList.Item>
-          <div class="w-full stack gap-3">
-            <div class="row-between gap-4">
-              <span class="truncate text-base font-medium">{{ plugin.title }}</span>
+        <AList.Item :style="{ paddingInline: 0 }">
+          <div class="min-w-0 w-full stack gap-3">
+            <div class="min-w-0 row flex-wrap gap-3">
+              <span class="min-w-0 w-full truncate text-base font-medium sm:w-auto sm:flex-1" :title="plugin.title">{{ plugin.title }}</span>
 
               <!-- R23: the state is the word in the tag; the colour is the redundancy that survives a greyscale shot. -->
               <!-- The switch is the user's decision about whether it runs; should_run is this **and** the consent. -->
               <ASwitch
+                :aria-label="messages.plugins.enableLabel(plugin.title)"
                 :checked="plugin.enabled"
                 :loading="toggling === plugin.pluginId"
                 @change="(checked) => toggle(plugin, checked as boolean)"
@@ -270,6 +243,21 @@
               <ATag :color="stateColour(plugin.state)" class="shrink-0">
                 {{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}
               </ATag>
+              <!--
+                ★ A faulted plugin is enabled and trusted; what failed was starting it. Retry asks again without
+                changing either switch, which is the difference between "try it now" and "turn it off and on".
+              -->
+              <AButton
+                v-if="plugin.state === 'faulted'"
+                size="small"
+                :loading="reloading === plugin.pluginId"
+                @click="retry(plugin)"
+              >
+                {{ messages.plugins.retry }}
+              </AButton>
+              <AButton v-if="plugin.hasUi" :aria-label="messages.plugins.openLabel(plugin.title)" :loading="opening === plugin.pluginId" @click="open(plugin)">
+                {{ messages.plugins.openAction }}
+              </AButton>
             </div>
 
             <!--
@@ -292,71 +280,10 @@
             -->
             <AAlert v-if="plugin.stateReason" type="warning" show-icon :message="plugin.stateReason" />
 
-            <dl class="m-0 row flex-wrap gap-4 text-xs">
-              <div class="row gap-1">
-                <dt class="m-0 text-ink-dim">
-                  {{ messages.plugins.pluginId }}
-                </dt>
-                <dd class="m-0 font-mono">
-                  {{ plugin.pluginId }}
-                </dd>
-              </div>
-              <div class="row gap-1">
-                <dt class="m-0 text-ink-dim">
-                  {{ messages.plugins.version }}
-                </dt>
-                <dd class="m-0 font-mono">
-                  {{ plugin.version }}
-                </dd>
-              </div>
-              <div class="row gap-1">
-                <dt class="m-0 text-ink-dim">
-                  {{ messages.plugins.publisher }}
-                </dt>
-                <dd class="m-0 font-mono">
-                  {{ plugin.publisher }}
-                </dd>
-              </div>
-              <!-- ★ Four of the quota's numbers, when the report carries a quota. The rung and the sentence say how the
-                   plugin is doing; these say what it is allowed to do, which is the other half of the same question. -->
-              <div v-if="healthLimits(plugin.health)" class="row gap-1">
-                <dt class="m-0 text-ink-dim">
-                  {{ messages.plugins.limits }}
-                </dt>
-                <dd class="m-0">
-                  {{ healthLimits(plugin.health) }}
-                </dd>
-              </div>
-            </dl>
-
-            <!-- ★ The rest of the quota, behind a disclosure. Four numbers answer "can it work"; the other nine answer
-                 "what exactly did the host decide", and a user who needs them is already looking for this card. A native
-                 `<details>` rather than a popover: it is the same disclosure with no portal to position, and a test can
-                 read the content whether it is open or not. -->
-            <details v-if="quotaRows(plugin.health).length" class="text-xs">
-              <summary class="cursor-pointer text-ink-dim">
-                {{ messages.plugins.allLimits }}
-              </summary>
-              <dl class="m-0 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                <div v-for="row in quotaRows(plugin.health)" :key="row.label" class="row gap-1">
-                  <dt class="m-0 text-ink-dim">
-                    {{ row.label }}
-                  </dt>
-                  <dd class="m-0">
-                    {{ row.value }}
-                  </dd>
-                </div>
-              </dl>
-            </details>
-
             <p v-if="plugin.description" class="m-0 text-sm text-ink-dim">
               {{ plugin.description }}
             </p>
 
-            <!--
-              What the registry publishes, when the user asked. It is not fetched on mount: one check is one request per
-              plugin, and a list of ten would make opening the page depend on ten round trips.
-            -->
             <AAlert
               v-if="plugin.update"
               :type="plugin.update.needsNewConsent ? 'warning' : 'info'"
@@ -373,242 +300,322 @@
               </template>
             </AAlert>
 
-            <p v-if="plugin.updateCheckedAtMs !== undefined" class="m-0 text-xs text-ink-dim">
-              {{ messages.plugins.lastChecked.replace('{time}', formatDateTime(plugin.updateCheckedAtMs)) }}
-            </p>
+            <ACollapse ghost data-plugin-management>
+              <ACollapse.Panel :key="plugin.pluginId" :header="messages.plugins.manage" force-render>
+                <div class="min-w-0 stack gap-4">
+                  <dl class="m-0 row flex-wrap gap-4 text-xs">
+                    <div class="row gap-1">
+                      <dt class="m-0 text-ink-dim">
+                        {{ messages.plugins.pluginId }}
+                      </dt>
+                      <dd class="m-0 break-all font-mono">
+                        {{ plugin.pluginId }}
+                      </dd>
+                    </div>
+                    <div class="row gap-1">
+                      <dt class="m-0 text-ink-dim">
+                        {{ messages.plugins.version }}
+                      </dt>
+                      <dd class="m-0 break-all font-mono">
+                        {{ plugin.version }}
+                      </dd>
+                    </div>
+                    <div class="row gap-1">
+                      <dt class="m-0 text-ink-dim">
+                        {{ messages.plugins.publisher }}
+                      </dt>
+                      <dd class="m-0 break-all font-mono">
+                        {{ plugin.publisher }}
+                      </dd>
+                    </div>
+                    <!-- ★ Four of the quota's numbers, when the report carries a quota. The rung and the sentence say how the
+                         plugin is doing; these say what it is allowed to do, which is the other half of the same question. -->
+                    <div v-if="healthLimits(plugin.health)" class="row gap-1">
+                      <dt class="m-0 text-ink-dim">
+                        {{ messages.plugins.limits }}
+                      </dt>
+                      <dd class="m-0">
+                        {{ healthLimits(plugin.health) }}
+                      </dd>
+                    </div>
+                  </dl>
 
-            <!--
-              What the plugin asked for, and what it was refused: the second list is the one that turns this screen from
-              a settings page into the thing a user reads before installing something. "Nothing" is a word rather than
-              an empty space, because an empty space reads as "not loaded".
-            -->
-            <div class="stack gap-1">
-              <div class="row flex-wrap gap-2">
-                <span class="text-xs text-ink-dim">{{ messages.plugins.granted }}</span>
-                <span v-if="plugin.granted?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
-                <ATag v-for="capability in plugin.granted" :key="capability" class="font-mono">
-                  {{ capability }}
-                </ATag>
-              </div>
+                  <!-- ★ The rest of the quota, behind a disclosure. Four numbers answer "can it work"; the other nine answer
+                       "what exactly did the host decide", and a user who needs them is already looking for this card. A native
+                       `<details>` rather than a popover: it is the same disclosure with no portal to position, and a test can
+                       read the content whether it is open or not. -->
+                  <details v-if="quotaRows(plugin.health).length" class="text-xs">
+                    <summary class="cursor-pointer text-ink-dim">
+                      {{ messages.plugins.allLimits }}
+                    </summary>
+                    <dl class="m-0 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                      <div v-for="row in quotaRows(plugin.health)" :key="row.label" class="row gap-1">
+                        <dt class="m-0 text-ink-dim">
+                          {{ row.label }}
+                        </dt>
+                        <dd class="m-0">
+                          {{ row.value }}
+                        </dd>
+                      </div>
+                    </dl>
+                  </details>
 
-              <div class="row flex-wrap gap-2">
-                <span class="text-xs text-ink-dim">{{ messages.plugins.refused }}</span>
-                <span v-if="plugin.denied?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
-                <ATag v-for="capability in plugin.denied" :key="capability" color="error" class="font-mono">
-                  {{ capability }}
-                </ATag>
-              </div>
-            </div>
+                  <!--
+                    What the registry publishes, when the user asked. It is not fetched on mount: one check is one request per
+                    plugin, and a list of ten would make opening the page depend on ten round trips.
+                  -->
 
-            <!--
-              The decision itself: one checkbox per **requested** capability, starting from what was already granted.
+                  <p v-if="plugin.updateCheckedAtMs !== undefined" class="m-0 text-xs text-ink-dim">
+                    {{ messages.plugins.lastChecked.replace('{time}', formatDateTime(plugin.updateCheckedAtMs)) }}
+                  </p>
 
-              ★ Not an "allow everything" button. This is the one screen where the user is asked what a plugin may do,
-              and a single button would hand over exactly what the per-capability model exists to itemise. `requested`
-              is what the manifest declares, so the boxes are what the *plugin* asks for rather than what it was given.
-            -->
-            <div v-if="plugin.requested?.length" class="stack gap-2">
-              <span class="text-xs text-ink-dim">{{ messages.plugins.requested }}</span>
+                  <!--
+                    What the plugin asked for, and what it was refused: the second list is the one that turns this screen from
+                    a settings page into the thing a user reads before installing something. "Nothing" is a word rather than
+                    an empty space, because an empty space reads as "not loaded".
+                  -->
+                  <div class="stack gap-1">
+                    <div class="row flex-wrap gap-2">
+                      <span class="text-xs text-ink-dim">{{ messages.plugins.granted }}</span>
+                      <span v-if="plugin.granted?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
+                      <ATag v-for="capability in plugin.granted" :key="capability" class="max-w-full whitespace-normal break-all font-mono">
+                        {{ capability }}
+                      </ATag>
+                    </div>
 
-              <!--
-                `:value` + `@update:value` rather than `v-model`: the map may not have an entry yet on the first render,
-                and `v-model` on a possibly-undefined key does not type-check under `exactOptionalPropertyTypes`.
-              -->
-              <ACheckboxGroup
-                :value="selection[plugin.pluginId] ?? []"
-                class="stack"
-                @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
-              >
-                <ACheckbox
-                  v-for="capability in plugin.requested"
-                  :key="capability"
-                  :value="capability"
-                  class="text-xs font-mono"
-                >
-                  {{ capability }}
-                </ACheckbox>
-              </ACheckboxGroup>
+                    <div class="row flex-wrap gap-2">
+                      <span class="text-xs text-ink-dim">{{ messages.plugins.refused }}</span>
+                      <span v-if="plugin.denied?.length === 0" class="text-xs text-ink-dim">{{ messages.plugins.none }}</span>
+                      <ATag v-for="capability in plugin.denied" :key="capability" color="error" class="max-w-full whitespace-normal break-all font-mono">
+                        {{ capability }}
+                      </ATag>
+                    </div>
+                  </div>
 
-              <AButton
-                size="small"
-                :loading="consenting === plugin.pluginId"
-                @click="consent(plugin, selection[plugin.pluginId] ?? [])"
-              >
-                {{ messages.plugins.consentAction }}
-              </AButton>
-            </div>
+                  <!--
+                    The decision itself: one checkbox per **requested** capability, starting from what was already granted.
 
-            <!--
-              ★ What the plugin **actually did**, beside what it may do. The granted list is a permission; this is a record
-              of the gate's calls, which is what makes "granted" different from "used" (09 §159, 18 §5).
+                    ★ Not an "allow everything" button. This is the one screen where the user is asked what a plugin may do,
+                    and a single button would hand over exactly what the per-capability model exists to itemise. `requested`
+                    is what the manifest declares, so the boxes are what the *plugin* asks for rather than what it was given.
+                  -->
+                  <div v-if="plugin.requested?.length" class="stack gap-2">
+                    <span class="text-xs text-ink-dim">{{ messages.plugins.requested }}</span>
 
-              Reading is a separate question from granting, so the trail is *pulled* rather than pushed: a page that asked on
-              mount would read one ring per plugin that nobody asked about, and a page that read once would show activity from
-              before whatever the user came back to check.
-            -->
-            <details class="stack gap-2" @toggle="(event) => openAudit(plugin.pluginId, event)">
-              <summary class="cursor-pointer text-xs text-ink-dim">
-                {{ messages.plugins.audit.title }}
-              </summary>
-              <ul v-if="(audit[plugin.pluginId]?.length ?? 0) > 0" class="m-0 ps-5 text-xs">
-                <!--
-                  The index is part of the key: two calls to the same capability can happen in the same millisecond, and the
-                  ring records both. Keying on the pair would make Vue draw one row for two calls.
-                -->
-                <li v-for="(entry, index) in audit[plugin.pluginId]" :key="`${entry.atMs}-${entry.capability}-${index}`">
-                  <span class="font-mono">{{ entry.capability }}</span>
-                  <span :class="entry.allowed ? 'text-ink-dim' : 'text-danger'">
-                    {{ entry.allowed ? messages.plugins.audit.allowed : messages.plugins.audit.refused }}
-                  </span>
-                  <!-- Why it was refused, when the gate said why: the stable outcome name, not a sentence this page wrote. -->
-                  <span v-if="!entry.allowed && entry.reason" class="text-xs text-ink-dim font-mono">{{ entry.reason }}</span>
-                  <!-- ★ The action this call belongs to. It is the id a bug report quotes for `synra logs --trace`. -->
-                  <span v-if="entry.traceId" class="text-xs text-ink-dim font-mono" :title="entry.traceId">
-                    {{ messages.plugins.audit.trace }} {{ entry.traceId }}
-                  </span>
-                  <span class="text-ink-dim">{{ formatTime(entry.atMs) }}</span>
-                </li>
-              </ul>
-              <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
-                {{ messages.plugins.audit.empty }}
-              </p>
-              <!--
-                ★ Only beside rows that exist. Clearing an empty trail would be a button whose only effect is to redraw
-                the sentence above it, and the absence of the button is also the honest state of "nothing to clear".
+                    <!--
+                      `:value` + `@update:value` rather than `v-model`: the map may not have an entry yet on the first render,
+                      and `v-model` on a possibly-undefined key does not type-check under `exactOptionalPropertyTypes`.
+                    -->
+                    <ACheckboxGroup
+                      :value="selection[plugin.pluginId] ?? []"
+                      class="stack"
+                      @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
+                    >
+                      <ACheckbox
+                        v-for="capability in plugin.requested"
+                        :key="capability"
+                        :value="capability"
+                        class="text-xs font-mono"
+                      >
+                        {{ capability }}
+                      </ACheckbox>
+                    </ACheckboxGroup>
 
-                No confirmation. This is a log of what a plugin did, not data the plugin produced; the button is inside a
-                section the user chose to open, and a dialog for it would be the friction that teaches people to dismiss
-                dialogs. The irreversible-action rule in this page is about removal, which deletes files.
-              -->
-              <AButton
-                v-if="(audit[plugin.pluginId]?.length ?? 0) > 0"
-                size="small"
-                :loading="clearingAudit === plugin.pluginId"
-                @click="clearTrail(plugin.pluginId)"
-              >
-                {{ messages.plugins.audit.clear }}
-              </AButton>
-              <!--
-                ★ Offered only while the last page came back **full** — that is the one signal a limit-only query gives
-                that more rows may exist. Clicking it when nothing remains answers `[]` and hides the button, which is one
-                wasted read rather than a control that disappears while a page was still coming.
-              -->
-              <AButton
-                v-if="!auditDone[plugin.pluginId] && (audit[plugin.pluginId]?.length ?? 0) > 0"
-                size="small"
-                :loading="loadingMoreAudit === plugin.pluginId"
-                @click="loadMoreAudit(plugin.pluginId)"
-              >
-                {{ messages.plugins.audit.more }}
-              </AButton>
-            </details>
+                    <AButton
+                      size="small"
+                      :loading="consenting === plugin.pluginId"
+                      @click="consent(plugin, selection[plugin.pluginId] ?? [])"
+                    >
+                      {{ messages.plugins.consentAction }}
+                    </AButton>
+                  </div>
 
-            <!--
-              Removal asks first, and the question says what happens to the data: this is the one action on the card that
-              cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
-            -->
-            <div class="row flex-wrap gap-2">
-              <!--
-                ★ Only when the card says the plugin has a page. `hasUi`, not `hybrid`: a UI-only plugin has a page and no
-                headless half, and a card that gated on both would leave that shape with no way in.
-              -->
-              <AButton v-if="plugin.hasUi" size="small" :loading="opening === plugin.pluginId" @click="open(plugin)">
-                {{ messages.plugins.openAction }}
-              </AButton>
+                  <!--
+                    ★ What the plugin **actually did**, beside what it may do. The granted list is a permission; this is a record
+                    of the gate's calls, which is what makes "granted" different from "used" (09 §159, 18 §5).
 
-              <AButton size="small" :loading="syncing === plugin.pluginId" @click="sync(plugin)">
-                {{ syncing === plugin.pluginId ? messages.plugins.syncing : messages.plugins.syncAction }}
-              </AButton>
+                    Reading is a separate question from granting, so the trail is *pulled* rather than pushed: a page that asked on
+                    mount would read one ring per plugin that nobody asked about, and a page that read once would show activity from
+                    before whatever the user came back to check.
+                  -->
+                  <details class="stack gap-2" @toggle="(event) => openAudit(plugin.pluginId, event)">
+                    <summary class="cursor-pointer text-xs text-ink-dim">
+                      {{ messages.plugins.audit.title }}
+                    </summary>
+                    <ul v-if="(audit[plugin.pluginId]?.length ?? 0) > 0" class="m-0 ps-5 text-xs">
+                      <!--
+                        The index is part of the key: two calls to the same capability can happen in the same millisecond, and the
+                        ring records both. Keying on the pair would make Vue draw one row for two calls.
+                      -->
+                      <li v-for="(entry, index) in audit[plugin.pluginId]" :key="`${entry.atMs}-${entry.capability}-${index}`">
+                        <span class="max-w-full whitespace-normal break-all font-mono">{{ entry.capability }}</span>
+                        <span :class="entry.allowed ? 'text-ink-dim' : 'text-danger'">
+                          {{ entry.allowed ? messages.plugins.audit.allowed : messages.plugins.audit.refused }}
+                        </span>
+                        <!-- Why it was refused, when the gate said why: the stable outcome name, not a sentence this page wrote. -->
+                        <span v-if="!entry.allowed && entry.reason" class="text-xs text-ink-dim font-mono">{{ entry.reason }}</span>
+                        <!-- ★ The action this call belongs to. It is the id a bug report quotes for `synra logs --trace`. -->
+                        <span v-if="entry.traceId" class="text-xs text-ink-dim font-mono" :title="entry.traceId">
+                          {{ messages.plugins.audit.trace }} {{ entry.traceId }}
+                        </span>
+                        <span class="text-ink-dim">{{ formatTime(entry.atMs) }}</span>
+                      </li>
+                    </ul>
+                    <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
+                      {{ messages.plugins.audit.empty }}
+                    </p>
+                    <!--
+                      ★ Only beside rows that exist. Clearing an empty trail would be a button whose only effect is to redraw
+                      the sentence above it, and the absence of the button is also the honest state of "nothing to clear".
 
-              <AButton size="small" :loading="checking === plugin.pluginId" @click="checkUpdate(plugin)">
-                {{ messages.plugins.checkUpdates }}
-              </AButton>
+                      No confirmation. This is a log of what a plugin did, not data the plugin produced; the button is inside a
+                      section the user chose to open, and a dialog for it would be the friction that teaches people to dismiss
+                      dialogs. The irreversible-action rule in this page is about removal, which deletes files.
+                    -->
+                    <AButton
+                      v-if="(audit[plugin.pluginId]?.length ?? 0) > 0"
+                      size="small"
+                      :loading="clearingAudit === plugin.pluginId"
+                      @click="clearTrail(plugin.pluginId)"
+                    >
+                      {{ messages.plugins.audit.clear }}
+                    </AButton>
+                    <!--
+                      ★ Offered only while the last page came back **full** — that is the one signal a limit-only query gives
+                      that more rows may exist. Clicking it when nothing remains answers `[]` and hides the button, which is one
+                      wasted read rather than a control that disappears while a page was still coming.
+                    -->
+                    <AButton
+                      v-if="!auditDone[plugin.pluginId] && (audit[plugin.pluginId]?.length ?? 0) > 0"
+                      size="small"
+                      :loading="loadingMoreAudit === plugin.pluginId"
+                      @click="loadMoreAudit(plugin.pluginId)"
+                    >
+                      {{ messages.plugins.audit.more }}
+                    </AButton>
+                  </details>
 
-              <AButton
-                v-if="plugin.update"
-                type="primary"
-                size="small"
-                :loading="updating === plugin.pluginId"
-                @click="applyUpdate(plugin)"
-              >
-                {{ messages.plugins.updateAction }}
-              </AButton>
+                  <!--
+                    Removal asks first, and the question says what happens to the data: this is the one action on the card that
+                    cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
+                  -->
+                  <div class="row flex-wrap gap-2">
+                    <AButton size="small" :loading="syncing === plugin.pluginId" @click="sync(plugin)">
+                      {{ syncing === plugin.pluginId ? messages.plugins.syncing : messages.plugins.syncAction }}
+                    </AButton>
 
-              <!--
-                ★ A faulted plugin is enabled and trusted; what failed was starting it. Retry asks again without
-                changing either switch, which is the difference between "try it now" and "turn it off and on".
-              -->
-              <AButton
-                v-if="plugin.state === 'faulted'"
-                size="small"
-                :loading="reloading === plugin.pluginId"
-                @click="retry(plugin)"
-              >
-                {{ messages.plugins.retry }}
-              </AButton>
+                    <AButton size="small" :loading="checking === plugin.pluginId" @click="checkUpdate(plugin)">
+                      {{ messages.plugins.checkUpdates }}
+                    </AButton>
 
-              <AButton size="small" danger @click="askRemove(plugin)">
-                {{ messages.plugins.removeAction }}
-              </AButton>
-            </div>
+                    <AButton
+                      v-if="plugin.update"
+                      type="primary"
+                      size="small"
+                      :loading="updating === plugin.pluginId"
+                      @click="applyUpdate(plugin)"
+                    >
+                      {{ messages.plugins.updateAction }}
+                    </AButton>
+
+                    <AButton size="small" danger @click="askRemove(plugin)">
+                      {{ messages.plugins.removeAction }}
+                    </AButton>
+                  </div>
+                </div>
+              </ACollapse.Panel>
+            </ACollapse>
           </div>
         </AList.Item>
       </template>
     </AList>
-    <section class="stack gap-3">
-      <h2 class="text-base font-medium">
-        {{ messages.plugins.publishers.title }}
-      </h2>
-      <HelpText>
-        {{ messages.plugins.publishers.detail }}
-      </HelpText>
+    <ACollapse ghost>
+      <ACollapse.Panel key="publishers" :header="messages.plugins.publishers.title" force-render>
+        <div class="stack gap-3">
+          <HelpText>
+            {{ messages.plugins.publishers.detail }}
+          </HelpText>
 
-      <!--
-        What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
-        nobody has decided yet"; the decision is the user's, and it is per key rather than per publisher name.
-      -->
-      <AEmpty v-if="publishers.length === 0" :description="messages.plugins.publishers.empty" />
-      <AList v-else size="small">
-        <AList.Item v-for="publisher in publishers" :key="publisher.publisherId">
-          <div class="row-between gap-3">
-            <span class="min-w-0 stack gap-0.5">
-              <span class="truncate text-sm">{{ publisher.publisherId }}</span>
-              <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
-            </span>
-            <span class="row gap-2">
-              <ATag class="m-0">
-                {{ publisher.trust }}
-              </ATag>
-              <AButton
-                v-if="publisher.trust !== 'trusted'"
-                size="small"
-                :loading="deciding === publisher.publisherId"
-                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'trusted')"
-              >
-                {{ messages.plugins.publishers.trust }}
-              </AButton>
-              <AButton
-                v-if="publisher.trust !== 'revoked'"
-                size="small"
-                :loading="deciding === publisher.publisherId"
-                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'revoked')"
-              >
-                {{ messages.plugins.publishers.revoke }}
-              </AButton>
-            </span>
-          </div>
-        </AList.Item>
-      </AList>
-    </section>
+          <!--
+            What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
+            nobody has decided yet"; the decision is the user's, and it is per key rather than per publisher name.
+          -->
+          <AEmpty v-if="publishers.length === 0" :description="messages.plugins.publishers.empty" />
+          <AList v-else size="small">
+            <AList.Item v-for="publisher in publishers" :key="publisher.publisherId" :style="{ paddingInline: 0 }">
+              <div class="row-between gap-3">
+                <span class="min-w-0 stack gap-0.5">
+                  <span class="truncate text-sm">{{ publisher.publisherId }}</span>
+                  <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
+                </span>
+                <span class="row gap-2">
+                  <ATag class="m-0">
+                    {{ publisher.trust }}
+                  </ATag>
+                  <AButton
+                    v-if="publisher.trust !== 'trusted'"
+                    size="small"
+                    :loading="deciding === publisher.publisherId"
+                    @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'trusted')"
+                  >
+                    {{ messages.plugins.publishers.trust }}
+                  </AButton>
+                  <AButton
+                    v-if="publisher.trust !== 'revoked'"
+                    size="small"
+                    :loading="deciding === publisher.publisherId"
+                    @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'revoked')"
+                  >
+                    {{ messages.plugins.publishers.revoke }}
+                  </AButton>
+                </span>
+              </div>
+            </AList.Item>
+          </AList>
+        </div>
+      </ACollapse.Panel>
+    </ACollapse>
   </section>
+
+  <!--
+      ★ The removal dialog, not a one-line confirm, because there are two outcomes and one of them deletes user data.
+      `get-container="false"` keeps it inside this component instead of teleporting to `body`: the page's own tests can
+      then see the checkbox and the button, and a dialog that is testable is one whose decision is actually asserted.
+
+      The checkbox starts unticked every time the dialog opens: "keep the data" is the reversible answer, and a checkbox
+      that remembered the previous destructive choice would be a dialog that deletes on a second visit by default.
+    -->
+  <AModal
+    :open="removing !== undefined"
+    :title="messages.plugins.removeTitle"
+    :ok-text="messages.plugins.removeAction"
+    :get-container="false"
+    @ok="remove()"
+    @cancel="removing = undefined"
+  >
+    <div class="stack gap-3">
+      <p class="m-0 text-sm">
+        {{ messages.plugins.removeDetail(removing?.title ?? '') }}
+      </p>
+      <span class="break-all text-xs text-ink-dim font-mono">
+        {{ messages.plugins.removeDataPath(removing?.dataPath ?? '') }}
+      </span>
+      <ACheckbox
+        :checked="removeData"
+        @update:checked="(checked) => (removeData = checked)"
+      >
+        {{ messages.plugins.removeDeleteData }}
+      </ACheckbox>
+    </div>
+  </AModal>
 </template>
 
 <script setup lang="ts">
 import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
 import type { AuditEntry, Failure } from './plugins/actions'
-import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
+import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Collapse as ACollapse, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 /**
  * What is installed, and what each one has been allowed to do.
@@ -625,6 +632,7 @@ import ErrorNotice from '../components/ErrorNotice.vue'
  * would show that plugin as working, which is the specific mistake `PluginSnapshot.state` exists to prevent.
  */
 import HelpText from '../components/HelpText.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
@@ -1001,6 +1009,8 @@ async function sync(plugin: PluginSnapshot): Promise<void> {
 
 /** The directory the user typed. */
 const installPath = ref('')
+const installExpanded = ref(false)
+const installToggle = ref<{ $el: HTMLButtonElement }>()
 
 /** Where the install comes from: a directory this device has, or the registry it was configured with. */
 const installMode = ref<'path' | 'registry'>('path')
@@ -1326,6 +1336,9 @@ async function completeInstall(
   }
   note.value = [messages.plugins.installedSwitchedOff, ...(report.warnings ?? [])].join(' ')
   installPath.value = ''
+  installExpanded.value = false
+  await nextTick()
+  installToggle.value?.$el.focus()
   await load()
 
   // ★ Asked after the list is re-read, so a key the user already trusted (or a package with no signature) does not

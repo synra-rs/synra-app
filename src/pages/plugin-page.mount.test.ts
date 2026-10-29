@@ -112,6 +112,70 @@ afterEach(() => {
 })
 
 describe('the plugins page', () => {
+  it('opens installation on demand and preserves its draft without background reads', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active' })], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(PluginsPage, { attachTo: document.body })
+    try {
+      await flushPromises()
+      const install = wrapper.get('#plugin-install')
+      expect(install.isVisible()).toBe(false)
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      expect(install.isVisible()).toBe(true)
+      await install.get('input[aria-label]').setValue('C:/plugins/starter/dist')
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      expect((install.get('input[aria-label]').element as HTMLInputElement).value).toBe('C:/plugins/starter/dist')
+      const management = wrapper.get('[data-plugin-management] .ant-collapse-header')
+      expect(management.attributes('aria-expanded')).toBe('false')
+      await management.trigger('click')
+      await flushPromises()
+      expect(management.attributes('aria-expanded')).toBe('true')
+      expect(mocks.call.mock.calls.map(([command]) => command)).toEqual(['plugins_list', 'plugins_publishers'])
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('preserves a refused install draft and restores focus after a successful retry', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [], plugins_publishers: [] }
+    let refused = true
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : command === 'plugins_install' && !refused
+        ? { ok: true, value: { pluginId: '@acme/hello', version: '1.0.0', enabled: false } }
+        : { ok: false, error: { code: 'invalid', message: 'error.invalid', retryable: false } })
+    const wrapper = mount(PluginsPage, { attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('#plugin-install input[aria-label]').setValue('C:/incomplete-plugin')
+      await flushPromises()
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('plugins_install', { source: { source: 'path', path: 'C:/incomplete-plugin' } })
+      expect(wrapper.get('#plugin-install').isVisible()).toBe(true)
+      expect((wrapper.get('#plugin-install input[aria-label]').element as HTMLInputElement).value).toBe('C:/incomplete-plugin')
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('invalid')
+      refused = false
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('#plugin-install').isVisible()).toBe(false)
+      expect(document.activeElement).toBe(wrapper.get('[data-testid="install-toggle"]').element)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it.each(['en', 'zh-CN'])('shows only actionable preview health notices in %s', async (language) => {
     setLocalePreference(language)
     const answers: Record<string, unknown> = { plugins_list: PLUGINS, plugins_publishers: [] }
@@ -602,7 +666,7 @@ describe('the plugins page', () => {
     await mode.vm.$emit('update:value', 'registry')
     await flushPromises()
     await wrapper.find('input[placeholder="Plugin id, e.g. @acme/hello"]').setValue('@acme/hello')
-    const install = wrapper.findAll('button').find(button => button.text().includes('Install'))
+    const install = wrapper.get('[data-testid="install-submit"]')
     await install?.trigger('click')
     await flushPromises()
 

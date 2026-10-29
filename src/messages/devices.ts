@@ -23,6 +23,7 @@ export const devices = {
   unpaired: 'Not paired',
   pair: 'Pair',
   pairingTitle: 'Pair devices',
+  pairingResume: 'Continue pairing',
   pairingInstructions: 'Export an invitation on the first device. On the second device select the first and import its invitation to create a reply. Return the reply to the first device and import it there. Only import content obtained directly from the intended device through a trusted channel; network discovery cannot verify its identity.',
   pairingExport: 'Export this device invitation',
   pairingInvitation: 'Invitation to send to the intended device',

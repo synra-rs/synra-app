@@ -31,8 +31,9 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 
 const HomePage = (await import('./HomePage.vue')).default
 const { useIntentsStore } = await import('../stores/intents')
+const { useDevicesStore } = await import('../stores/devices')
 const { useNoticesStore } = await import('../stores/notices')
-const { INTENT } = await import('../ipc/fake-kernel-fixtures')
+const { INTENT, DEVICES, IDENTITY } = await import('../ipc/fake-kernel-fixtures')
 const { messages } = await import('../messages')
 
 function installBrowserApis(): void {
@@ -342,7 +343,12 @@ describe('the home page', () => {
     await flushPromises()
 
     useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
+    useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES })
     await flushPromises()
+    // A peer missing from discovery still has a transfer name; do not show the first reachable device instead.
+    const connection = wrapper.get(`section[aria-label="${messages.home.wire.label}"]`)
+    expect(connection.text()).toContain(transfer.peerName)
+    expect(connection.text()).not.toContain(DEVICES[0]!.displayName)
     // ★ The bar and the sentence are two views of one number: "50%" is what a progress element announces, and the byte
     // count is what a user can quote when the number is wrong.
     expect(wrapper.text()).toContain('50%')

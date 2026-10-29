@@ -78,6 +78,8 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
   unconditionally), `ResizeObserver`, `IntersectionObserver`; plus a fresh Pinia and, if the page uses it, a router.
 - Answer mocks **by command name**. A blanket `{ ok: true, value: [] }` fails far from the call that was wrong.
 - Assert a notice through its **props**, not its text; the text is a translated sentence.
+- Visibility and focus tests mount with `attachTo: document.body` and always unmount. Detached trees can report misleading
+  visibility; forms with segmented controls contain radio inputs, so target the named text input rather than the first input.
 - An assertion against a field the DTO does not have passes on `undefined`. `INTENT.summary` did.
 - **`crate::testing::state()` puts every test in one directory** (`temp_dir()/synra-app-tests`), while `file_state()` gets a
   named one. A test that writes files and uses `state()` therefore shares a data directory with every other such test, and

@@ -5,6 +5,10 @@
  */
 export const plugins = {
   title: 'Plugins',
+  installHeading: 'Install plugin',
+  manage: 'Permissions and management',
+  enableLabel: (name: string) => `Enable ${name}`,
+  openLabel: (name: string) => `Open ${name}`,
   states: {
     installed: 'Installed',
     validated: 'Validated',
@@ -83,6 +87,7 @@ export const plugins = {
   leftBehind: (count: number) => `${count} path(s) could not be removed`,
   /** The registry's own index, searched by keyword. */
   catalog: {
+    title: 'Find plugins',
     placeholder: 'Search the registry',
     action: 'Search',
     empty: 'Nothing matched.',

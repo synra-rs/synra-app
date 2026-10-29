@@ -1,73 +1,46 @@
 <template>
-  <section class="stack gap-8">
-    <h1 class="text-xl font-semibold">
-      {{ messages.home.title }}
-    </h1>
+  <section class="stack gap-6 pb-4">
+    <PageHeader :title="messages.home.title">
+      <AButton @click="router.push('/devices')">
+        {{ wire.state === 'none' ? messages.home.wire.action : messages.home.inFlight.action }}
+      </AButton>
+    </PageHeader>
 
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
-    <!--
-      ★ The wire (R27). This is the one thing on this screen worth spending boldness on, and the only place the frosted
-      material and the glow are allowed to mean something: `floating` is the glass (R43), and `shadow-glow` appears only
-      when the line is *live* (R45 — glow is a state, not a skin).
-
-      It is also the **one** piece of the interface that is deliberately not the component library's. antd has no such
-      control, and the whole point of the rule is that a screen has one memorable thing — wrapping it in a Card would
-      make it furniture. Everything around it is antd: the actions, the lists, the tags.
-
-      It shows a real state, never a decorative animation (R27), and the state is written out as well as drawn, because
-      colour alone is not a state (R23).
-    -->
-    <div class="flex flex-col gap-4 floating p-5">
-      <p class="text-xs text-ink-dim">
-        {{ messages.home.wire.label }}
-      </p>
-
-      <div class="row gap-3 sm:gap-4">
-        <span class="shrink-0 truncate text-sm font-medium">
+    <!-- A compact connection surface; glass is reserved for actual overlays. -->
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4" :aria-label="messages.home.wire.label">
+      <div class="row-between flex-wrap gap-2">
+        <span class="text-xs text-ink-dim">{{ messages.home.wire.label }}</span>
+        <span class="text-sm font-medium">{{ state.headline }}</span>
+      </div>
+      <div class="min-w-0 row gap-3">
+        <span class="max-w-1/3 min-w-0 truncate text-sm" :title="devices.identity?.displayName">
           {{ devices.identity?.displayName ?? messages.app.name }}
         </span>
-
         <span class="relative h-0.5 min-w-6 flex-1 rounded-pill bg-line" aria-hidden="true">
-          <span
-            class="absolute start-0 inset-y-0 rounded-pill bg-primary"
-            :class="[wireWidth, wireLive && 'shadow-glow']"
-          />
+          <span class="absolute start-0 inset-y-0 rounded-pill bg-primary" :class="[wireWidth, wireLive && 'shadow-glow']" />
         </span>
-
-        <span class="shrink-0 truncate text-sm" :class="wire.device ? 'text-ink' : 'text-ink-dim'">
-          {{ wire.device?.displayName ?? messages.devices.empty }}
+        <span class="max-w-1/3 min-w-0 truncate text-end text-sm" :class="wirePeerName ? 'text-ink' : 'text-ink-dim'" :title="wirePeerName">
+          {{ wirePeerName ?? messages.home.wire.action }}
         </span>
       </div>
-
-      <div class="stack">
-        <p class="text-base font-medium">
-          {{ state.headline }}
-        </p>
-        <p class="text-sm text-ink-dim">
-          {{ state.detail }}
-        </p>
-      </div>
-
-      <!-- R28: an empty state is an invitation with a next step, not a sentence. -->
-      <AButton v-if="wire.state === 'none'" class="w-fit" @click="router.push('/devices')">
-        {{ messages.home.wire.action }}
-      </AButton>
-    </div>
+      <p v-if="wire.state === 'none' || wire.state === 'offline'" class="m-0 text-xs text-ink-dim">
+        {{ state.detail }}
+      </p>
+    </section>
 
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.home.inFlight.title }}
       </h2>
 
-      <AEmpty v-if="transfers.length === 0" :description="messages.home.inFlight.empty">
-        <AButton @click="router.push('/devices')">
-          {{ messages.home.inFlight.action }}
-        </AButton>
-      </AEmpty>
+      <p v-if="transfers.length === 0" class="m-0 border-b border-line py-4 text-sm text-ink-dim">
+        {{ messages.home.inFlight.empty }}
+      </p>
 
       <AList v-else size="small">
-        <AList.Item v-for="transfer in transfers" :key="transfer.transferId">
+        <AList.Item v-for="transfer in transfers" :key="transfer.transferId" :style="{ paddingInline: 0 }">
           <div class="min-w-0 w-full stack gap-2">
             <div class="row-between gap-3">
               <div class="min-w-0 stack gap-0.5">
@@ -131,18 +104,16 @@
     </section>
 
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.home.received.title }}
       </h2>
 
-      <AEmpty v-if="intents.length === 0" :description="messages.home.received.empty">
-        <AButton @click="router.push('/devices')">
-          {{ messages.home.received.action }}
-        </AButton>
-      </AEmpty>
+      <p v-if="intents.length === 0" class="m-0 border-b border-line py-4 text-sm text-ink-dim">
+        {{ messages.home.received.empty }}
+      </p>
 
       <AList v-else size="small">
-        <AList.Item v-for="intent in intents" :key="intent.intentId">
+        <AList.Item v-for="intent in intents" :key="intent.intentId" :style="{ paddingInline: 0 }">
           <div class="min-w-0 w-full stack gap-2">
             <div class="min-w-0 row flex-wrap gap-3">
               <ATag class="m-0" :color="intentStateColor(intent.state)">
@@ -209,14 +180,16 @@
       inbox; this is where a person finds what arrived earlier without being told to open a directory by hand.
     -->
     <section class="stack gap-3">
-      <h2 class="text-base font-medium">
+      <h2 class="m-0 text-sm font-medium">
         {{ messages.home.receivedFiles.title }}
       </h2>
 
-      <AEmpty v-if="received.length === 0" :description="messages.home.receivedFiles.empty" />
+      <p v-if="received.length === 0" class="m-0 py-4 text-sm text-ink-dim">
+        {{ messages.home.receivedFiles.empty }}
+      </p>
 
       <AList v-else size="small">
-        <AList.Item v-for="file in received" :key="file.path">
+        <AList.Item v-for="file in received" :key="file.path" :style="{ paddingInline: 0 }">
           <div class="row-between gap-3">
             <div class="min-w-0 stack gap-0.5">
               <span class="truncate text-sm">{{ file.fileName }}</span>
@@ -255,11 +228,12 @@
  * worth looking at.
  */
 import type { IntentCandidate, IntentRetry, IntentSnapshot, ReceivedFile, SuggestedAction, TransferSnapshot } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
+import { Button as AButton, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
+import PageHeader from '../components/PageHeader.vue'
 
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
@@ -346,8 +320,9 @@ async function cancelTransfer(transfer: TransferSnapshot): Promise<void> {
 
 /** Which of the four real states the wire is in, and which device it is about. */
 const wire = computed(() => {
-  if (transfers.value.length > 0)
-    return { state: 'transferring' as const, device: devices.cards.find(card => card.paired && card.online) }
+  const transfer = transfers.value[0]
+  if (transfer)
+    return { state: 'transferring' as const, device: devices.cards.find(card => card.deviceId === transfer.peerDevice) }
 
   const reachable = devices.cards.find(card => card.paired && card.online)
   if (reachable)
@@ -361,6 +336,9 @@ const wire = computed(() => {
 })
 
 const state = computed(() => messages.home.wire.states[wire.value.state])
+const wirePeerName = computed(() => wire.value.state === 'transferring'
+  ? wire.value.device?.displayName ?? transfers.value[0]?.peerName
+  : wire.value.device?.displayName)
 
 /**
  * The four states are distinct as **shapes**, not only as colours (R23): nothing paired is a short stub, a paired device
