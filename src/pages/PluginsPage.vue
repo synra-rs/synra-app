@@ -507,7 +507,7 @@
               Removal asks first, and the question says what happens to the data: this is the one action on the card that
               cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
             -->
-            <div class="row gap-2">
+            <div class="row flex-wrap gap-2">
               <!--
                 ★ Only when the card says the plugin has a page. `hasUi`, not `hybrid`: a UI-only plugin has a page and no
                 headless half, and a card that gated on both would leave that shape with no way in.
