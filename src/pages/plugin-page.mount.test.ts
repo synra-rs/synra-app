@@ -1101,7 +1101,8 @@ describe('the plugins page', () => {
               atMs: 1_700_000_000_000,
               capability: 'log:write',
               allowed: true,
-              traceId: '01a150c8-c332-768d-9dd1-981502aa1854'
+              traceId: '01a150c8-c332-768d-9dd1-981502aa1854',
+              elapsedMs: 1.25
             }
           ]
         }
@@ -1115,7 +1116,9 @@ describe('the plugins page', () => {
     expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit', expect.anything())
     // Nothing to clear yet, so no control for it: the button's absence is part of the same "not asked" state.
     expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.clear)).toBe(false)
-    const trail = wrapper.find('details')
+    await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+    await flushPromises()
+    const trail = wrapper.find('[data-plugin-audit]')
     expect(trail.exists()).toBe(true)
     ;(trail.element as HTMLDetailsElement).open = true
     // ★ Setting `open` queues the browser's own `toggle` event; dispatching a second one by hand would read the trail
@@ -1134,6 +1137,8 @@ describe('the plugins page', () => {
     // ★ The action's trace is shown on the row that has one, and absent from the row that does not. It is the id a user
     // pastes into `synra logs --trace`; a row without it means "this call had no action behind it", not a missing lookup.
     expect(rows[1]?.text()).toContain('01a150c8-c332-768d-9dd1-981502aa1854')
+    expect(rows[1]?.text()).toContain(messages.plugins.audit.elapsed(1.25))
+    expect(rows[1]?.get('time').text()).toBe('2023-11-14T22:13:20.000Z')
     expect(rows[0]?.text()).not.toContain('01a150c8-c332-768d-9dd1-981502aa1854')
     // A two-row page cannot have another one, so the control for it is absent.
     expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.audit.more)).toBe(false)
@@ -1162,7 +1167,9 @@ describe('the plugins page', () => {
     const wrapper = mountPlugins()
     await flushPromises()
 
-    const trail = wrapper.find('details')
+    await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+    await flushPromises()
+    const trail = wrapper.find('[data-plugin-audit]')
     ;(trail.element as HTMLDetailsElement).open = true
     await flushPromises()
 
@@ -1194,7 +1201,9 @@ describe('the plugins page', () => {
     const wrapper = mountPlugins()
     await flushPromises()
 
-    const trail = wrapper.find('details')
+    await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+    await flushPromises()
+    const trail = wrapper.find('[data-plugin-audit]')
     ;(trail.element as HTMLDetailsElement).open = true
     // Setting `open` queues the browser's own `toggle` event; a second, hand-dispatched one would read the trail twice.
     await flushPromises()
@@ -1202,6 +1211,55 @@ describe('the plugins page', () => {
     expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('unsupported')
     expect(wrapper.text()).not.toContain(messages.plugins.audit.empty)
     wrapper.unmount()
+  })
+
+  it('keeps failed clearing local to its plugin and retries without another read', async () => {
+    let refuse = true
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_audit')
+        return { ok: true, value: [{ atMs: 0, capability: 'saved-record', allowed: true }] }
+      if (command === 'plugins_audit_clear')
+        return refuse ? { ok: false, error: { code: 'unavailable', message: 'error.unavailable', retryable: true, actions: [{ kind: 'retry' }] } } : { ok: true, value: null }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+      await flushPromises()
+      const trail = wrapper.get('[data-plugin-audit]')
+      ;(trail.element as HTMLDetailsElement).open = true
+      await flushPromises()
+      await trail.findAll('button').find(button => button.text() === messages.plugins.audit.clear)!.trigger('click')
+      await flushPromises()
+      await trail.findAll('button').find(button => button.text() === messages.plugins.audit.confirmClear)!.trigger('click')
+      await flushPromises()
+      expect(trail.findComponent(ErrorNotice).props('code')).toBe('unavailable')
+      expect(trail.text()).toContain('saved-record')
+      expect(trail.text()).toContain(messages.plugins.audit.clearDetail)
+      await trail.findAll('button').find(button => button.text() === messages.plugins.audit.cancel)!.trigger('click')
+      await flushPromises()
+      await trail.findAll('button').find(button => button.text() === messages.actions.retry)!.trigger('click')
+      await flushPromises()
+      expect(trail.text()).toContain(messages.plugins.audit.clearDetail)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_audit_clear')).toHaveLength(1)
+      refuse = false
+      await trail.findAll('button').find(button => button.text() === messages.actions.retry)!.trigger('click')
+      await flushPromises()
+      expect(trail.findComponent(ErrorNotice).exists()).toBe(false)
+      expect(trail.text()).not.toContain('saved-record')
+      expect(trail.text()).not.toContain(messages.plugins.audit.clearDetail)
+      expect(document.activeElement).toBe(trail.get('summary').element)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_audit')).toHaveLength(1)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_audit_clear')).toHaveLength(2)
+    }
+    finally {
+      wrapper.unmount()
+    }
   })
 
   it('clears the history from the card that drew it', async () => {
@@ -1227,10 +1285,12 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mountPlugins()
+    const wrapper = mountPlugins({ attachTo: document.body })
     await flushPromises()
 
-    const trail = wrapper.find('details')
+    await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+    await flushPromises()
+    const trail = wrapper.find('[data-plugin-audit]')
     ;(trail.element as HTMLDetailsElement).open = true
     // Setting `open` queues the browser's own `toggle` event; a second, hand-dispatched one would read the trail twice.
     await flushPromises()
@@ -1240,7 +1300,19 @@ describe('the plugins page', () => {
     await clear?.trigger('click')
     await flushPromises()
 
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit_clear', expect.anything())
+    const cancel = wrapper.findAll('button').find(button => button.text() === messages.plugins.audit.cancel)!
+    expect(document.activeElement).toBe(cancel.element)
+    await cancel.trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(clear?.element)
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit_clear', expect.anything())
+    await clear?.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === messages.plugins.audit.confirmClear)!.trigger('click')
+    await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('plugins_audit_clear', { pluginId: '@acme/hello' })
+    expect(document.activeElement).toBe(trail.get('summary').element)
     expect(wrapper.text()).not.toContain('log:write')
     expect(wrapper.text()).toContain(messages.plugins.audit.empty)
     // The read happened once, before the clear; a second one would be a round trip for a list that is now empty.

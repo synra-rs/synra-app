@@ -19,12 +19,24 @@
  */
 
 import type {
+  AuditEntryDto,
   DeviceCard,
   IdentitySnapshot,
   IntentSnapshot,
   PluginSnapshot,
   TransferSnapshot
 } from '@synra/protocol'
+
+/** Preview records use the protocol DTO and server order; they are never imported by the native bridge. */
+export const PLUGIN_AUDIT: Readonly<Record<string, readonly AuditEntryDto[]>> = {
+  '@synra-plugin/github': [
+    { atMs: 1_700_000_001_000, capability: 'net:fetch:example.invalid', allowed: false, reason: 'capability_not_granted', elapsedMs: 0.15, traceId: '01HQ00000000000000000TRACE1' },
+    { atMs: 1_700_000_000_000, capability: 'platform:open-url', allowed: true, elapsedMs: 2.4 }
+  ],
+  '@synra-plugin/shortcuts': [
+    { atMs: 1_700_000_000_000, capability: 'log:write', allowed: true, elapsedMs: 0.2 }
+  ]
+}
 
 /** A device id that is shaped like one, so nothing here accidentally tests id parsing. */
 export const SELF_ID = '01HQ0000000000000000000SELF'

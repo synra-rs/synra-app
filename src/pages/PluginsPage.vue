@@ -236,7 +236,7 @@
       an update — so each one is a list item with several lines rather than a card (R26). The lines are labelled
       separately instead of joined by separators, which is the shape R21 retires.
     -->
-    <AList v-else-if="visible.length > 0" :data-source="visible">
+    <AList v-else-if="visible.length > 0" :data-source="visible" row-key="pluginId">
       <template #renderItem="{ item: plugin }">
         <AList.Item :style="{ paddingInline: 0 }">
           <div class="min-w-0 w-full stack gap-3">
@@ -456,62 +456,7 @@
                     mount would read one ring per plugin that nobody asked about, and a page that read once would show activity from
                     before whatever the user came back to check.
                   -->
-                  <details class="stack gap-2" @toggle="(event) => openAudit(plugin.pluginId, event)">
-                    <summary class="cursor-pointer text-xs text-ink-dim">
-                      {{ messages.plugins.audit.title }}
-                    </summary>
-                    <ul v-if="(audit[plugin.pluginId]?.length ?? 0) > 0" class="m-0 ps-5 text-xs">
-                      <!--
-                        The index is part of the key: two calls to the same capability can happen in the same millisecond, and the
-                        ring records both. Keying on the pair would make Vue draw one row for two calls.
-                      -->
-                      <li v-for="(entry, index) in audit[plugin.pluginId]" :key="`${entry.atMs}-${entry.capability}-${index}`">
-                        <span class="max-w-full whitespace-normal break-all font-mono">{{ entry.capability }}</span>
-                        <span :class="entry.allowed ? 'text-ink-dim' : 'text-danger'">
-                          {{ entry.allowed ? messages.plugins.audit.allowed : messages.plugins.audit.refused }}
-                        </span>
-                        <!-- Why it was refused, when the gate said why: the stable outcome name, not a sentence this page wrote. -->
-                        <span v-if="!entry.allowed && entry.reason" class="text-xs text-ink-dim font-mono">{{ entry.reason }}</span>
-                        <!-- ★ The action this call belongs to. It is the id a bug report quotes for `synra logs --trace`. -->
-                        <span v-if="entry.traceId" class="text-xs text-ink-dim font-mono" :title="entry.traceId">
-                          {{ messages.plugins.audit.trace }} {{ entry.traceId }}
-                        </span>
-                        <span class="text-ink-dim">{{ formatTime(entry.atMs) }}</span>
-                      </li>
-                    </ul>
-                    <p v-else-if="audit[plugin.pluginId] !== undefined" class="m-0 text-xs text-ink-dim">
-                      {{ messages.plugins.audit.empty }}
-                    </p>
-                    <!--
-                      ★ Only beside rows that exist. Clearing an empty trail would be a button whose only effect is to redraw
-                      the sentence above it, and the absence of the button is also the honest state of "nothing to clear".
-
-                      No confirmation. This is a log of what a plugin did, not data the plugin produced; the button is inside a
-                      section the user chose to open, and a dialog for it would be the friction that teaches people to dismiss
-                      dialogs. The irreversible-action rule in this page is about removal, which deletes files.
-                    -->
-                    <AButton
-                      v-if="(audit[plugin.pluginId]?.length ?? 0) > 0"
-                      size="small"
-                      :loading="clearingAudit === plugin.pluginId"
-                      @click="clearTrail(plugin.pluginId)"
-                    >
-                      {{ messages.plugins.audit.clear }}
-                    </AButton>
-                    <!--
-                      ★ Offered only while the last page came back **full** — that is the one signal a limit-only query gives
-                      that more rows may exist. Clicking it when nothing remains answers `[]` and hides the button, which is one
-                      wasted read rather than a control that disappears while a page was still coming.
-                    -->
-                    <AButton
-                      v-if="!auditDone[plugin.pluginId] && (audit[plugin.pluginId]?.length ?? 0) > 0"
-                      size="small"
-                      :loading="loadingMoreAudit === plugin.pluginId"
-                      @click="loadMoreAudit(plugin.pluginId)"
-                    >
-                      {{ messages.plugins.audit.more }}
-                    </AButton>
-                  </details>
+                  <PluginAudit :plugin-id="plugin.pluginId" :active="(managementOpen[plugin.pluginId] ?? []).includes(plugin.pluginId)" />
 
                   <!--
                     Removal asks first, and the question says what happens to the data: this is the one action on the card that
@@ -630,7 +575,7 @@
 
 <script setup lang="ts">
 import type { CatalogItem, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
-import type { AuditEntry, Failure } from './plugins/actions'
+import type { Failure } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Collapse as ACollapse, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
@@ -655,11 +600,12 @@ import PageHeader from '../components/PageHeader.vue'
 
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
-import { formatDateTime, formatTime } from '../locale-format'
+import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { AUDIT_PAGE, clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, setEnabled, uninstall } from './plugins/actions'
 import { useCatalog } from './plugins/catalog'
+import PluginAudit from './plugins/PluginAudit.vue'
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -1155,69 +1101,6 @@ async function choosePackage(): Promise<void> {
 
 /** The report of the last successful registry update, until the user dismisses it. */
 const lastUpdate = ref<{ pluginId: string, version: string, warnings: readonly string[] } | undefined>(undefined)
-
-/** What each plugin's audit ring said, once asked. `undefined` means "not asked yet". */
-const audit = ref<Record<string, AuditEntry[] | undefined>>({})
-
-/** Whether a plugin's history has been read to its end. Absent means "not known yet", which draws the button. */
-const auditDone = ref<Record<string, boolean>>({})
-
-/** The plugin whose next page is in flight. */
-const loadingMoreAudit = ref<string | undefined>(undefined)
-
-/**
- * Loads a plugin's recent calls whenever its section is opened.
- *
- * ★ The first page replaces whatever was there: reopening the section is the user asking "what has it been doing lately",
- * and appending to a list from before they closed it would mix two reads.
- */
-async function openAudit(pluginId: string, event: Event): Promise<void> {
-  if (!(event.target as HTMLDetailsElement).open)
-    return
-  const outcome = await readAudit(kernel, pluginId)
-  if (!outcome.ok) {
-    error.value = outcome.failure
-    return
-  }
-  audit.value[pluginId] = [...outcome.value]
-  // A short page is the only "no more" signal a limit-only query gives.
-  auditDone.value[pluginId] = outcome.value.length < AUDIT_PAGE
-}
-
-/** Appends the next page of one plugin's history. */
-async function loadMoreAudit(pluginId: string): Promise<void> {
-  loadingMoreAudit.value = pluginId
-  error.value = undefined
-  const outcome = await readAudit(kernel, pluginId, AUDIT_PAGE, audit.value[pluginId]?.length ?? 0)
-  loadingMoreAudit.value = undefined
-  if (!outcome.ok) {
-    error.value = outcome.failure
-    return
-  }
-  // ★ Appended rather than replaced: the offset is "how many rows this card has already shown", and the page is a
-  // continuation of the same order. A failed read leaves the rows that did arrive, because they are still true.
-  audit.value[pluginId] = [...(audit.value[pluginId] ?? []), ...outcome.value]
-  auditDone.value[pluginId] = outcome.value.length < AUDIT_PAGE
-}
-
-/** The plugin whose history is being cleared. */
-const clearingAudit = ref<string | undefined>(undefined)
-
-/** Forgets a plugin's history, and redraws the section as empty rather than re-reading it. */
-async function clearTrail(pluginId: string): Promise<void> {
-  clearingAudit.value = pluginId
-  error.value = undefined
-  const outcome = await clearAudit(kernel, pluginId)
-  clearingAudit.value = undefined
-  if (!outcome.ok) {
-    error.value = outcome.failure
-    return
-  }
-  // ★ Emptied here rather than re-read: the command just removed every record, so a read would ask the ring for a list
-  // whose answer is already known. `[]` and not `undefined`, because "asked and empty" is the state that draws the
-  // sentence; `undefined` would put the section back to "not asked yet".
-  audit.value[pluginId] = []
-}
 
 /** The plugin whose update is being checked. */
 const checking = ref<string | undefined>(undefined)

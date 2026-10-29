@@ -27,7 +27,7 @@
  * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
  */
 
-import type { DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
+import type { AuditEntryDto, DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
 
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
@@ -36,6 +36,7 @@ import {
   IDENTITY,
   INTENT,
   INTENTS,
+  PLUGIN_AUDIT,
   PLUGINS,
   TRANSFERS
 } from './fake-kernel-fixtures'
@@ -100,6 +101,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
  */
 export class FakeKernel implements Bridge {
   readonly #config = new PreviewConfig()
+  readonly #audit = new Map<string, AuditEntryDto[]>(Object.entries(PLUGIN_AUDIT).map(([id, rows]) => [id, rows.map(row => ({ ...row }))]))
   /** Handlers by channel, so `listen` can hand back an unsubscribe that actually unsubscribes. */
   readonly #handlers = new Map<string, Set<(payload: unknown) => void>>()
 
@@ -179,11 +181,13 @@ export class FakeKernel implements Bridge {
       case 'plugins_request_registry_search':
         // A search that finds nothing is an answer, not a refusal; the page draws its own empty state.
         return []
-      case 'plugins_audit':
-        // No calls is an answer too: the page has an empty state for it.
-        return []
+      case 'plugins_audit': {
+        const offset = Number(args?.offset ?? 0)
+        const limit = Number(args?.limit ?? 20)
+        return (this.#audit.get(String(args?.pluginId)) ?? []).slice(offset, offset + limit).map(row => ({ ...row }))
+      }
       case 'plugins_audit_clear':
-        // `Unit`: the shell answers nothing on success, and the page replaces its list with the empty state itself.
+        this.#audit.delete(String(args?.pluginId))
         return null
       case 'diag_export':
         // `One`: a path and the two section lists. A fake that answered `null` would make the result panel untestable in

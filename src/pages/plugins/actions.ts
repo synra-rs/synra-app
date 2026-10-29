@@ -14,7 +14,7 @@
  * is described.
  */
 
-import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { AuditEntryDto, CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 
@@ -49,16 +49,6 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
   return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
 }
 
-/** One audited capability call, as `plugins_audit` answers it. */
-export interface AuditEntry {
-  readonly atMs: number
-  readonly capability: string
-  readonly allowed: boolean
-  readonly reason?: string
-  readonly elapsedMs?: number
-  readonly traceId?: string
-}
-
 /** How many recorded calls one page of the audit section asks for. */
 export const AUDIT_PAGE = 20
 
@@ -68,8 +58,8 @@ export async function audit(
   pluginId: string,
   limit = AUDIT_PAGE,
   offset = 0
-): Promise<Outcome<readonly AuditEntry[]>> {
-  const answer = await kernel.call<AuditEntry[]>('plugins_audit', { pluginId, limit, offset })
+): Promise<Outcome<readonly AuditEntryDto[]>> {
+  const answer = await kernel.call<AuditEntryDto[]>('plugins_audit', { pluginId, limit, offset })
   // ★ No reversal: the command reads `plugin_audit` with `ORDER BY at_ms DESC, id DESC`, so its answer is already the
   // order a reader wants. The old copy was reversed because it was a tail of the in-memory ring, which reports oldest
   // first — a copy is still there, but nothing reads it.

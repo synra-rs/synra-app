@@ -24,6 +24,7 @@
  * test that demanded an object would force the fake to invent an update that does not exist.
  */
 
+import type { AuditEntryDto } from '@synra/protocol'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,6 +34,22 @@ import { describe, expect, it } from 'vitest'
 import { FakeKernel } from './fake-kernel'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+
+it('keeps preview audit pages independent and clears only the selected plugin', async () => {
+  const kernel = new FakeKernel()
+  const first = await kernel.invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 1, offset: 0 }) as AuditEntryDto[]
+  const next = await kernel.invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 1, offset: 1 }) as AuditEntryDto[]
+  expect(first).toHaveLength(1)
+  expect(next).toHaveLength(1)
+  expect(first[0]?.atMs).toBeGreaterThan(next[0]!.atMs)
+  first.splice(0, 1)
+  expect(await kernel.invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 20 })).toHaveLength(2)
+  await kernel.invoke('plugins_audit_clear', { pluginId: '@synra-plugin/github' })
+  expect(await kernel.invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 20 })).toEqual([])
+  expect(await kernel.invoke('plugins_audit', { pluginId: '@synra-plugin/shortcuts', limit: 20 })).toHaveLength(1)
+  expect(await new FakeKernel().invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 20 })).toHaveLength(2)
+})
+
 /** The contract, in the sibling core checkout — the same file `scripts/check-shapes.ts` reads. */
 const CONTRACT_RS = resolve(HERE, '..', '..', '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
 

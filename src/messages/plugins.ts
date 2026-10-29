@@ -63,6 +63,12 @@ export const plugins = {
   },
   audit: {
     title: 'Recent calls',
+    loading: 'Reading calls…',
+    details: 'Details',
+    elapsed: (ms: number) => `${ms} ms`,
+    clearDetail: 'Clear this plugin’s call history on this device? This cannot be undone. Plugin data and permissions stay unchanged.',
+    confirmClear: 'Clear call history',
+    cancel: 'Cancel',
     allowed: 'allowed',
     refused: 'refused',
     empty: 'No calls have been recorded.',
