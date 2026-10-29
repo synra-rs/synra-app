@@ -27,7 +27,7 @@
  * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
  */
 
-import type { AuditEntryDto, DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
+import type { AuditEntryDto, DevicesSnapshot, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
@@ -83,6 +83,8 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   transfer_discard: ['path'],
   plugins_audit: ['pluginId', 'limit'],
   plugins_audit_clear: ['pluginId'],
+  plugins_sync_plan: ['pluginId'],
+  plugins_sync_run: ['plan'],
   plugins_catalog_search: ['query'],
   plugins_request_registry_search: ['query'],
   // The removal takes both arguments and the shell refuses without either, so the fake must require them too — this is
@@ -189,6 +191,27 @@ export class FakeKernel implements Bridge {
       case 'plugins_audit_clear':
         this.#audit.delete(String(args?.pluginId))
         return null
+      case 'plugins_sync_plan':
+        return {
+          pluginId: String(args?.pluginId),
+          targets: DEVICES.filter(device => device.paired).map(device => ({
+            deviceId: device.deviceId,
+            displayName: device.displayName,
+            online: device.online,
+            needsArtifact: true
+          }))
+        } satisfies SyncPlanDto
+      case 'plugins_sync_run': {
+        const plan = args?.plan as SyncPlanDto
+        return {
+          updated: plan.targets.filter(target => target.online && target.needsArtifact).length,
+          unchanged: plan.targets.filter(target => !target.needsArtifact).length,
+          failures: plan.targets.filter(target => !target.online && target.needsArtifact).map(target => ({
+            deviceId: target.deviceId,
+            error: { code: 'unavailable', message: 'error.unavailable', retryable: true }
+          }))
+        } satisfies SyncReport
+      }
       case 'diag_export':
         // `One`: a path and the two section lists. A fake that answered `null` would make the result panel untestable in
         // the dev build, and the shape here is the one `DiagExportResult` declares.

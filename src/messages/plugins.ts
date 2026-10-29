@@ -202,6 +202,21 @@ export const plugins = {
    * the kernel telling the page what it would do.
    */
   syncAction: 'Sync to devices',
+  sync: {
+    title: (name: string) => `Sync ${name}`,
+    planning: 'Reading target devices…',
+    stale: 'The plan is out of date. Refresh it before syncing.',
+    online: 'Online',
+    offline: 'Offline',
+    needed: 'Needs plugin files',
+    current: 'Already has this version',
+    noDevices: 'No paired device is available.',
+    noneOnline: 'The devices that need files are offline. Reconnect them and refresh the plan.',
+    failureDetails: 'Failure details',
+    close: 'Close',
+    refresh: 'Refresh plan',
+    start: 'Start sync'
+  },
   syncing: 'Syncing…',
   /** Nothing to send: every paired device already reported this version. */
   syncNothing: 'Every paired device already has this version.',

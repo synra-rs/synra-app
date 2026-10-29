@@ -24,16 +24,36 @@
  * test that demanded an object would force the fake to invent an update that does not exist.
  */
 
-import type { AuditEntryDto } from '@synra/protocol'
+import type { AuditEntryDto, SyncPlanDto, SyncReport } from '@synra/protocol'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { KernelClient } from './client'
 import { FakeKernel } from './fake-kernel'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+
+it('previews synchronization through the client without contacting real devices', async () => {
+  const client = new KernelClient(new FakeKernel())
+  const planned = await client.call<SyncPlanDto>('plugins_sync_plan', { pluginId: '@synra-plugin/github' })
+  expect(planned.ok).toBe(true)
+  if (!planned.ok)
+    throw new Error('preview plan failed')
+  expect(planned.value.pluginId).toBe('@synra-plugin/github')
+  expect(planned.value.targets).not.toHaveLength(0)
+  const plan = { ...planned.value, targets: planned.value.targets.map(target => ({ ...target, online: false })) }
+  const sent = await client.call<SyncReport>('plugins_sync_run', { plan })
+  expect(sent.ok).toBe(true)
+  if (!sent.ok)
+    throw new Error('preview run failed')
+  expect(sent.value.updated).toBe(0)
+  expect(sent.value.failures?.[0]?.deviceId).toBe(plan.targets[0]?.deviceId)
+  expect(sent.value.failures?.[0]?.error).toMatchObject({ code: 'unavailable' })
+  expect(planned.value.targets[0]?.online).toBe(true)
+})
 
 it('keeps preview audit pages independent and clears only the selected plugin', async () => {
   const kernel = new FakeKernel()

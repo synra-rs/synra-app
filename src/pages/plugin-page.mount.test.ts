@@ -495,12 +495,11 @@ describe('the plugins page', () => {
     const wrapper = mountPlugins()
     await flushPromises()
 
-    // The card's button, not the dialog's own footer button: the dialog renders (closed) before the list, so a search by
-    // text alone would click the control it is supposed to be opening.
-    const remove = wrapper
+    await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+    await flushPromises()
+    const remove = wrapper.get('[data-plugin-management]')
       .findAll('button')
-      .filter(candidate => candidate.classes().includes('ant-btn-dangerous'))
-      .at(-1)
+      .find(candidate => candidate.text() === messages.plugins.removeAction)
     expect(remove, 'the remove button is missing').toBeDefined()
     await remove?.trigger('click')
     await flushPromises()
@@ -533,6 +532,62 @@ describe('the plugins page', () => {
     // ★ And what survived: the row is gone, so the note is the only place a locked directory is reported.
     expect(wrapper.text()).toContain(messages.plugins.leftBehind(1))
     wrapper.unmount()
+  })
+
+  it('locks a pending removal and keeps failures inside its decision with a fresh data choice on reopen', async () => {
+    let finish!: (value: unknown) => void
+    let refuse = true
+    const pending = new Promise((resolve) => {
+      finish = resolve
+    })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_uninstall')
+        return refuse ? pending : { ok: true, value: { bytesFreed: 0, dataKept: true, leftovers: ['/tmp/locked-directory'] } }
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+      await flushPromises()
+      const remove = wrapper.findAll('button').find(button => button.text() === messages.plugins.removeAction)!
+      await remove.trigger('click')
+      await flushPromises()
+      const modal = wrapper.findAllComponents({ name: 'AModal' }).find(candidate => candidate.props('title') === messages.plugins.removeTitle)!
+      expect(document.activeElement?.textContent?.replaceAll(' ', '')).toBe(messages.plugins.audit.cancel)
+      const checkbox = modal.findComponent({ name: 'ACheckbox' })
+      await checkbox.vm.$emit('update:checked', true)
+      await modal.vm.$emit('ok')
+      await modal.vm.$emit('ok')
+      await flushPromises()
+      expect(checkbox.props('disabled')).toBe(true)
+      await modal.vm.$emit('cancel')
+      await flushPromises()
+      expect(modal.props('open')).toBe(true)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_uninstall')).toHaveLength(1)
+      finish({ ok: false, error: { code: 'unavailable', message: 'error.unavailable', actions: [{ kind: 'retry' }] } })
+      await flushPromises()
+      expect(modal.findComponent(ErrorNotice).props('code')).toBe('unavailable')
+      expect(modal.props('open')).toBe(true)
+      expect(checkbox.props('checked')).toBe(true)
+      await modal.vm.$emit('cancel')
+      await flushPromises()
+      await remove.trigger('click')
+      await flushPromises()
+      expect(checkbox.props('checked')).toBe(false)
+      expect(modal.findComponent(ErrorNotice).exists()).toBe(false)
+      refuse = false
+      await checkbox.vm.$emit('update:checked', true)
+      await modal.vm.$emit('ok')
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.plugins.removedKept('Hello', '0 B'))
+      expect(wrapper.text()).toContain('/tmp/locked-directory')
+    }
+    finally {
+      wrapper.unmount()
+    }
   })
 
   it('shows what the plugin asks for, not only what it was given', async () => {
@@ -653,11 +708,186 @@ describe('the plugins page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('plugins_sync_plan', { pluginId: '@acme/hello' })
+    expect(mocks.call).not.toHaveBeenCalledWith('plugins_sync_run', expect.anything())
+    expect(wrapper.text()).toContain('Laptop')
+    await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.sync.start)!.trigger('click')
+    await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('plugins_sync_run', { plan })
     expect(mocks.call.mock.calls.findIndex(([command]) => command === 'plugins_sync_plan'))
       .toBeLessThan(mocks.call.mock.calls.findIndex(([command]) => command === 'plugins_sync_run'))
     expect(wrapper.text()).toContain(messages.plugins.syncDone(1, 0, 0))
     wrapper.unmount()
+  })
+
+  it('retains partial sync results and shows the failed device and structured reason', async () => {
+    const plan = { pluginId: '@acme/hello', targets: [
+      { deviceId: 'one', displayName: 'Laptop', needsArtifact: true, online: true, version: '0.9.0' },
+      { deviceId: 'two', displayName: 'Phone', needsArtifact: true, online: false }
+    ] }
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan')
+        return { ok: true, value: plan }
+      if (command === 'plugins_sync_run')
+        return { ok: true, value: { updated: 1, unchanged: 0, failures: [{ deviceId: 'two', error: { code: 'unavailable', message: 'error.unavailable', params: { reason: 'connection lost' } } }] } }
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-plugin-management] .ant-collapse-header').trigger('click')
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.plugins.syncAction)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-sync-targets]').text()).toContain('Phone')
+      expect(wrapper.get('[data-sync-targets]').text()).toContain(messages.plugins.sync.offline)
+      expect(wrapper.get('[data-sync-targets]').text()).toContain('0.9.0')
+      const close = wrapper.findAll('button').find(button => button.text() === messages.plugins.sync.close)!
+      expect(document.activeElement).toBe(close.element)
+      await wrapper.findAll('button').find(button => button.text() === messages.plugins.sync.start)!.trigger('click')
+      await flushPromises()
+      const report = wrapper.get('[data-sync-report]')
+      expect(report.text()).toContain(messages.plugins.syncDone(1, 0, 1))
+      expect(report.text()).toContain('Phone')
+      expect(report.findComponent(ErrorNotice).props('code')).toBe('unavailable')
+      expect(report.text()).toContain('connection lost')
+      expect(wrapper.findAll('button').some(button => button.text() === messages.plugins.sync.start)).toBe(false)
+      await close.trigger('click')
+      await flushPromises()
+      expect(document.activeElement?.textContent).toBe(messages.plugins.syncAction)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('does not send to an offline-only plan and refreshes a refused read without automatic sync', async () => {
+    let refuse = true
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan') {
+        return refuse
+          ? { ok: false, error: { code: 'unavailable', message: 'error.unavailable', actions: [{ kind: 'retry' }] } }
+          : { ok: true, value: { pluginId: '@acme/hello', targets: [{ deviceId: 'one', displayName: 'Laptop', online: false, needsArtifact: true }] } }
+      }
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.plugins.syncAction)!.trigger('click')
+      await flushPromises()
+      const modal = wrapper.findAllComponents({ name: 'AModal' }).find(candidate => candidate.props('title') === messages.plugins.sync.title('Hello'))!
+      expect(modal.findComponent(ErrorNotice).props('code')).toBe('unavailable')
+      refuse = false
+      await modal.findComponent(ErrorNotice).vm.$emit('retry')
+      await flushPromises()
+      expect(modal.findComponent(ErrorNotice).exists()).toBe(false)
+      expect(modal.text()).toContain(messages.plugins.sync.noneOnline)
+      const start = modal.findAll('button').find(button => button.text() === messages.plugins.sync.start)!
+      expect(start.attributes('disabled')).toBeDefined()
+      await start.trigger('click')
+      expect(mocks.call).not.toHaveBeenCalledWith('plugins_sync_run', expect.anything())
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('discards a closed sync plan and locks only its own plugin while it is pending', async () => {
+    let finish!: (value: unknown) => void
+    const pending = new Promise((resolve) => {
+      finish = resolve
+    })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card(), card({ pluginId: '@acme/two', title: 'Second' })] }
+      if (command === 'plugins_sync_plan')
+        return pending
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      const triggers = wrapper.findAll('button').filter(button => button.text() === messages.plugins.syncAction)
+      await triggers[0]!.trigger('click')
+      await flushPromises()
+      const checks = wrapper.findAll('button').filter(button => button.text() === messages.plugins.checkUpdates)
+      expect(checks[0]!.attributes('disabled')).toBeDefined()
+      expect(checks[1]!.attributes('disabled')).toBeUndefined()
+      const modal = wrapper.findAllComponents({ name: 'AModal' }).find(candidate => candidate.props('title') === messages.plugins.sync.title('Hello'))!
+      await modal.vm.$emit('cancel')
+      await flushPromises()
+      finish({ ok: true, value: { pluginId: '@acme/hello', targets: [{ deviceId: 'one', displayName: 'Late device', online: true, needsArtifact: true }] } })
+      await flushPromises()
+      expect(modal.props('open')).toBe(false)
+      expect(wrapper.text()).not.toContain('Late device')
+      expect(mocks.call).not.toHaveBeenCalledWith('plugins_sync_run', expect.anything())
+      expect(checks[0]!.attributes('disabled')).toBeUndefined()
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('keeps a refused sync plan visible but requires refresh before another send', async () => {
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan')
+        return { ok: true, value: { pluginId: '@acme/hello', targets: [{ deviceId: 'one', displayName: 'Laptop', online: true, needsArtifact: true }] } }
+      if (command === 'plugins_sync_run')
+        return { ok: false, error: { code: 'unavailable', message: 'error.unavailable', actions: [{ kind: 'retry' }] } }
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.plugins.syncAction)!.trigger('click')
+      await flushPromises()
+      const start = wrapper.findAll('button').find(button => button.text() === messages.plugins.sync.start)!
+      await start.trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-sync-targets]').text()).toContain('Laptop')
+      expect(wrapper.text()).not.toContain(messages.plugins.sync.noneOnline)
+      expect(start.attributes('disabled')).toBeDefined()
+      const modal = wrapper.findAllComponents({ name: 'AModal' }).find(candidate => candidate.props('title') === messages.plugins.sync.title('Hello'))!
+      await modal.findComponent(ErrorNotice).vm.$emit('retry')
+      await flushPromises()
+      expect(start.attributes('disabled')).toBeUndefined()
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_sync_run')).toHaveLength(1)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_sync_plan')).toHaveLength(2)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('invalidates a sync preview when the installed version changes before confirmation', async () => {
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_sync_plan')
+        return { ok: true, value: { pluginId: '@acme/hello', targets: [{ deviceId: 'one', displayName: 'Laptop', online: true, needsArtifact: true }] } }
+      return { ok: true, value: [] }
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.plugins.syncAction)!.trigger('click')
+      await flushPromises()
+      usePluginsStore().upsert(card({ version: '2.0.0' }))
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.plugins.sync.stale)
+      expect(wrapper.find('[data-sync-targets]').exists()).toBe(false)
+      expect(wrapper.findAll('button').some(button => button.text() === messages.plugins.sync.start)).toBe(false)
+      expect(mocks.call).not.toHaveBeenCalledWith('plugins_sync_run', expect.anything())
+    }
+    finally {
+      wrapper.unmount()
+    }
   })
 
   it('says there is nothing to send when every device already has it', async () => {

@@ -166,6 +166,16 @@
       </template>
     </AAlert>
 
+    <details v-if="removalLeftovers.length" class="text-xs text-ink-dim">
+      <summary class="min-h-11 cursor-pointer py-3">
+        {{ messages.plugins.leftBehind(removalLeftovers.length) }}
+      </summary>
+      <ul class="m-0 ps-5">
+        <li v-for="path in removalLeftovers" :key="path" class="break-all font-mono">
+          {{ path }}
+        </li>
+      </ul>
+    </details>
     <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
 
     <!--
@@ -248,7 +258,8 @@
               <ASwitch
                 :aria-label="messages.plugins.enableLabel(plugin.title)"
                 :checked="plugin.enabled"
-                :loading="toggling === plugin.pluginId"
+                :loading="operations.busy.get(plugin.pluginId) === 'toggle'"
+                :disabled="operations.busy.has(plugin.pluginId)"
                 @change="(checked) => toggle(plugin, checked as boolean)"
               />
               <ATag :color="stateColour(plugin.state)" class="shrink-0">
@@ -264,12 +275,13 @@
               <AButton
                 v-if="plugin.state === 'faulted'"
                 size="small"
-                :loading="reloading === plugin.pluginId"
+                :loading="operations.busy.get(plugin.pluginId) === 'reload'"
+                :disabled="operations.busy.has(plugin.pluginId)"
                 @click="retry(plugin)"
               >
                 {{ messages.plugins.retry }}
               </AButton>
-              <AButton v-if="plugin.hasUi" :aria-label="messages.plugins.openLabel(plugin.title)" :loading="opening === plugin.pluginId" @click="open(plugin)">
+              <AButton v-if="plugin.hasUi" :aria-label="messages.plugins.openLabel(plugin.title)" :loading="operations.busy.get(plugin.pluginId) === 'open'" :disabled="operations.busy.has(plugin.pluginId)" @click="open(plugin)">
                 {{ messages.plugins.openAction }}
               </AButton>
             </div>
@@ -422,7 +434,7 @@
                     -->
                     <ACheckboxGroup
                       :value="selection[plugin.pluginId] ?? plugin.granted"
-                      :disabled="consenting.has(plugin.pluginId)"
+                      :disabled="operations.busy.has(plugin.pluginId)"
                       class="stack"
                       :style="{ alignSelf: 'flex-start' }"
                       @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
@@ -441,7 +453,8 @@
                       v-if="plugin.state === 'awaiting_consent' || permissionChanged(plugin)"
                       size="small"
                       class="self-start"
-                      :loading="consenting.has(plugin.pluginId)"
+                      :loading="operations.busy.get(plugin.pluginId) === 'consent'"
+                      :disabled="operations.busy.has(plugin.pluginId)"
                       @click="consent(plugin, selection[plugin.pluginId] ?? plugin.granted)"
                     >
                       {{ messages.plugins.consentAction }}
@@ -462,12 +475,10 @@
                     Removal asks first, and the question says what happens to the data: this is the one action on the card that
                     cannot be undone, and a button that only said "Remove" would leave the user to find out what it took with it.
                   -->
-                  <div class="row flex-wrap gap-2">
-                    <AButton size="small" :loading="syncing === plugin.pluginId" @click="sync(plugin)">
-                      {{ syncing === plugin.pluginId ? messages.plugins.syncing : messages.plugins.syncAction }}
-                    </AButton>
+                  <div class="row flex-wrap gap-2 [&>.ant-modal-root]:contents">
+                    <PluginSync :plugin="plugin" :operations="operations" />
 
-                    <AButton size="small" :loading="checking === plugin.pluginId" @click="checkUpdate(plugin)">
+                    <AButton size="small" :loading="operations.busy.get(plugin.pluginId) === 'check'" :disabled="operations.busy.has(plugin.pluginId)" @click="checkUpdate(plugin)">
                       {{ messages.plugins.checkUpdates }}
                     </AButton>
 
@@ -475,13 +486,14 @@
                       v-if="plugin.update"
                       type="primary"
                       size="small"
-                      :loading="updating === plugin.pluginId"
+                      :loading="operations.busy.get(plugin.pluginId) === 'update'"
+                      :disabled="operations.busy.has(plugin.pluginId)"
                       @click="applyUpdate(plugin)"
                     >
                       {{ messages.plugins.updateAction }}
                     </AButton>
 
-                    <AButton size="small" danger @click="askRemove(plugin)">
+                    <AButton size="small" danger :disabled="operations.busy.has(plugin.pluginId)" @click="askRemove(plugin)">
                       {{ messages.plugins.removeAction }}
                     </AButton>
                   </div>
@@ -551,12 +563,23 @@
   <AModal
     :open="removing !== undefined"
     :title="messages.plugins.removeTitle"
-    :ok-text="messages.plugins.removeAction"
     :get-container="false"
+    :closable="!removalBusy"
+    :mask-closable="!removalBusy"
+    :keyboard="!removalBusy"
     @ok="remove()"
-    @cancel="removing = undefined"
+    @cancel="closeRemoval"
   >
+    <template #footer>
+      <AButton ref="removalCancel" :disabled="removalBusy" @click="closeRemoval">
+        {{ messages.plugins.audit.cancel }}
+      </AButton>
+      <AButton type="primary" danger :loading="removalBusy" @click="remove">
+        {{ messages.plugins.removeAction }}
+      </AButton>
+    </template>
     <div class="stack gap-3">
+      <ErrorNotice v-if="removalError" :code="removalError.code" :message="removalError.message" :actions="removalError.actions" @retry="remove" />
       <p class="m-0 text-sm">
         {{ messages.plugins.removeDetail(removing?.title ?? '') }}
       </p>
@@ -565,6 +588,7 @@
       </span>
       <ACheckbox
         :checked="removeData"
+        :disabled="removalBusy"
         @update:checked="(checked) => (removeData = checked)"
       >
         {{ messages.plugins.removeDeleteData }}
@@ -603,12 +627,15 @@ import { kernel } from '../kernel'
 import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { decide, installFrom, installFromRegistry, planSync, previewInstall, runSync, setEnabled, uninstall } from './plugins/actions'
+import { decide, installFrom, installFromRegistry, previewInstall, setEnabled, uninstall } from './plugins/actions'
 import { useCatalog } from './plugins/catalog'
+import { usePluginOperations } from './plugins/operations'
 import PluginAudit from './plugins/PluginAudit.vue'
+import PluginSync from './plugins/PluginSync.vue'
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
+const operations = usePluginOperations()
 
 /** Which capabilities the user has ticked, per plugin. Seeded from `granted` when the cards arrive. */
 const selection = reactive<Record<string, string[]>>({})
@@ -799,9 +826,6 @@ async function decidePublisher(publisherId: string, fingerprint: string, trust: 
   return true
 }
 
-/** Pending permission decisions are independent per plugin and cannot be submitted twice. */
-const consenting = reactive(new Set<string>())
-
 /**
  * Records the ticked capabilities and replaces the card with the answer's own.
  *
@@ -809,12 +833,10 @@ const consenting = reactive(new Set<string>())
  * what the kernel just recorded — a re-read would answer the same question a moment later and about every plugin.
  */
 async function consent(plugin: PluginSnapshot, granted: readonly string[]): Promise<void> {
-  if (consenting.has(plugin.pluginId))
-    return
-  consenting.add(plugin.pluginId)
   error.value = undefined
-  const outcome = await decide(kernel, plugin.pluginId, granted)
-  consenting.delete(plugin.pluginId)
+  const outcome = await operations.run(plugin.pluginId, 'consent', () => decide(kernel, plugin.pluginId, granted))
+  if (!outcome)
+    return
   if (!outcome.ok) {
     error.value = outcome.failure
     return
@@ -822,9 +844,6 @@ async function consent(plugin: PluginSnapshot, granted: readonly string[]): Prom
   pluginsStore.upsert(outcome.value)
   selection[outcome.value.pluginId] = [...outcome.value.granted]
 }
-
-/** The plugin whose switch is being written, so it shows a spinner and cannot be pressed twice. */
-const toggling = ref<string | undefined>(undefined)
 
 /**
  * Turns a plugin on or off.
@@ -834,10 +853,10 @@ const toggling = ref<string | undefined>(undefined)
  * the first time the kernel answered something other than what the click assumed.
  */
 async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
-  toggling.value = plugin.pluginId
   error.value = undefined
-  const outcome = await setEnabled(kernel, plugin.pluginId, enabled)
-  toggling.value = undefined
+  const outcome = await operations.run(plugin.pluginId, 'toggle', () => setEnabled(kernel, plugin.pluginId, enabled))
+  if (!outcome)
+    return
   if (!outcome.ok)
     error.value = outcome.failure
 }
@@ -860,11 +879,25 @@ const removing = ref<PluginSnapshot | undefined>(undefined)
 
 /** Whether the removal being decided also deletes the plugin's data. Reset every time the dialog opens. */
 const removeData = ref(false)
+const removalError = ref<Failure>()
+const removalCancel = ref<{ $el: HTMLButtonElement }>()
+const removalBusy = computed(() => removing.value !== undefined && operations.busy.has(removing.value.pluginId))
+const removalLeftovers = ref<readonly string[]>([])
+
+function closeRemoval(): void {
+  if (!removalBusy.value)
+    removing.value = undefined
+}
 
 /** Opens the removal dialog for one plugin, with the reversible answer preselected. */
-function askRemove(plugin: PluginSnapshot): void {
+async function askRemove(plugin: PluginSnapshot): Promise<void> {
+  if (operations.busy.has(plugin.pluginId) || removing.value)
+    return
+  removalError.value = undefined
   removeData.value = false
   removing.value = plugin
+  await nextTick()
+  removalCancel.value?.$el.focus()
 }
 
 /**
@@ -941,10 +974,12 @@ async function remove(): Promise<void> {
   if (plugin === undefined)
     return
   const deleteData = removeData.value
-  error.value = undefined
-  const outcome = await uninstall(kernel, plugin.pluginId, deleteData)
+  removalError.value = undefined
+  const outcome = await operations.run(plugin.pluginId, 'remove', () => uninstall(kernel, plugin.pluginId, deleteData))
+  if (!outcome)
+    return
   if (!outcome.ok) {
-    error.value = outcome.failure
+    removalError.value = outcome.failure
     return
   }
   // ★ No event for a removal — there is no card for a plugin that no longer exists — so the store is told directly, then
@@ -952,21 +987,19 @@ async function remove(): Promise<void> {
   pluginsStore.forget(plugin.pluginId)
   removing.value = undefined
   const freed = formatBytes(outcome.value.bytesFreed)
-  const kept = deleteData
-    ? messages.plugins.removedDeleted(plugin.title, freed)
-    : messages.plugins.removedKept(plugin.title, freed)
+  const kept = outcome.value.dataKept
+    ? messages.plugins.removedKept(plugin.title, freed)
+    : messages.plugins.removedDeleted(plugin.title, freed)
   // ★ The removal cannot fail on a locked file — the row is already gone — so this sentence is where the user learns that
   // something survived. The full paths are in the report; the page names the count it can act on. `leftovers` is optional
   // in the protocol (absent when empty), so the absence is the ordinary case.
   const leftovers = outcome.value.leftovers ?? []
+  removalLeftovers.value = leftovers
   note.value = leftovers.length > 0
     ? `${kept} ${messages.plugins.leftBehind(leftovers.length)}`
     : kept
   await load()
 }
-
-/** The plugin whose page is being opened, so its button says so and cannot be pressed twice. */
-const opening = ref<string | undefined>(undefined)
 
 /**
  * Opens the plugin's page in its own window.
@@ -976,52 +1009,12 @@ const opening = ref<string | undefined>(undefined)
  * call answers `null` and the failure is shown here — the button is the request, not the window.
  */
 async function open(plugin: PluginSnapshot): Promise<void> {
-  opening.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<null>('plugin_ui_open', { pluginId: plugin.pluginId })
-  opening.value = undefined
+  const answer = await operations.run(plugin.pluginId, 'open', () => kernel.call<null>('plugin_ui_open', { pluginId: plugin.pluginId }))
+  if (!answer)
+    return
   if (!answer.ok)
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/** The plugin whose artifact is being sent, so its button says so and cannot be pressed twice. */
-const syncing = ref<string | undefined>(undefined)
-
-/**
- * Sends the artifact to the paired devices the plan says need it.
- *
- * ★ The plan is read before it is run, because it is the only place `online` is visible: a run over a plan whose targets
- * are all offline would report a failure per device for a network the user could have seen was down. When nothing needs
- * sending the button says so rather than showing a report of zeroes.
- */
-async function sync(plugin: PluginSnapshot): Promise<void> {
-  syncing.value = plugin.pluginId
-  error.value = undefined
-  note.value = undefined
-
-  const planned = await planSync(kernel, plugin.pluginId)
-  if (!planned.ok) {
-    syncing.value = undefined
-    error.value = planned.failure
-    return
-  }
-  if (!planned.value.targets.some(target => target.needsArtifact)) {
-    syncing.value = undefined
-    note.value = messages.plugins.syncNothing
-    return
-  }
-
-  const report = await runSync(kernel, planned.value)
-  syncing.value = undefined
-  if (!report.ok) {
-    error.value = report.failure
-    return
-  }
-  note.value = messages.plugins.syncDone(
-    report.value.updated,
-    report.value.unchanged,
-    report.value.failures?.length ?? 0
-  )
 }
 
 /** The directory the user typed. */
@@ -1102,17 +1095,14 @@ async function choosePackage(): Promise<void> {
 /** The report of the last successful registry update, until the user dismisses it. */
 const lastUpdate = ref<{ pluginId: string, version: string, warnings: readonly string[] } | undefined>(undefined)
 
-/** The plugin whose update is being checked. */
-const checking = ref<string | undefined>(undefined)
-
 /** Asks the registry about one plugin, and shows or forgets the last answer. */
 async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
-  checking.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<UpdateInfo | null>('plugins_check_update', {
+  const answer = await operations.run(plugin.pluginId, 'check', () => kernel.call<UpdateInfo | null>('plugins_check_update', {
     pluginId: plugin.pluginId
-  })
-  checking.value = undefined
+  }))
+  if (!answer)
+    return
   if (!answer.ok) {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
@@ -1128,15 +1118,12 @@ async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
   }
 }
 
-/** The plugin whose update is being installed. */
-const updating = ref<string | undefined>(undefined)
-
 /** Installs the newer version, then re-reads the list — the row the user sees comes from the store. */
 async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
-  updating.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<InstallReport>('plugins_update', { pluginId: plugin.pluginId })
-  updating.value = undefined
+  const answer = await operations.run(plugin.pluginId, 'update', () => kernel.call<InstallReport>('plugins_update', { pluginId: plugin.pluginId }))
+  if (!answer)
+    return
   if (!answer.ok) {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
@@ -1149,9 +1136,6 @@ async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
   await load()
 }
 
-/** The plugin whose load is being tried again. */
-const reloading = ref<string | undefined>(undefined)
-
 /**
  * Asks the kernel to load a faulted plugin again.
  *
@@ -1159,10 +1143,10 @@ const reloading = ref<string | undefined>(undefined)
  * from. A refusal leaves the card as the kernel described it rather than replacing it with a second sentence.
  */
 async function retry(plugin: PluginSnapshot): Promise<void> {
-  reloading.value = plugin.pluginId
   error.value = undefined
-  const answer = await kernel.call<PluginSnapshot>('plugins_reload', { pluginId: plugin.pluginId })
-  reloading.value = undefined
+  const answer = await operations.run(plugin.pluginId, 'reload', () => kernel.call<PluginSnapshot>('plugins_reload', { pluginId: plugin.pluginId }))
+  if (!answer)
+    return
   if (!answer.ok)
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
