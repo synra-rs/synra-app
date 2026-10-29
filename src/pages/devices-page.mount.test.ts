@@ -6,7 +6,8 @@
  *
  * The join between the store and the screen, which is what the last few rounds changed: the page reads
  * `useDevicesStore`, `src/events.ts` writes it, and a card that arrived by event must reach the DOM without the page
- * asking the kernel again. Clicking is not tested — the calls those clicks make are asserted in the command layer.
+ * asking the kernel again. Command tests cover the kernel; these tests cover confirmation, focus, refusal and races
+ * at the page's production entry points.
  *
  * # Why the browser APIs are installed here as well as in the plugins page's test
  *
@@ -17,6 +18,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import ErrorNotice from '../components/ErrorNotice.vue'
 import { setLocalePreference } from '../locale'
 
 const mocks = vi.hoisted(() => ({
@@ -129,7 +131,9 @@ describe('the devices page', () => {
     try {
       await flushPromises()
       const labels = wrapper.findAll('button').map(button => button.text())
-      expect(labels).toContain(messages.devices.forget)
+      expect(labels).not.toContain(messages.devices.forget)
+      await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
+      expect(wrapper.findAll('button').map(button => button.text())).toContain(messages.devices.forget)
       for (const retired of ['Send text', 'Send file', '发送文字', '发送文件'])
         expect(labels).not.toContain(retired)
       expect(wrapper.findComponent({ name: 'AModal' }).exists()).toBe(false)
@@ -166,8 +170,7 @@ describe('the devices page', () => {
     wrapper.unmount()
   })
 
-  it('cancels a running scan by the id the start command answered', async () => {
-    // ★ The start command always answered a scan id; the page threw it away, so a scan could only be waited out.
+  it('cancels a running scan by the id in the authoritative snapshot', async () => {
     let snapshots = 0
     mocks.call.mockImplementation(async (command: string) => {
       if (command === 'devices_snapshot') {
@@ -205,22 +208,289 @@ describe('the devices page', () => {
     // ★ Forgetting undoes the expensive step: the next send to that device has to pair again. The confirmation is the
     // page's, and the command is only reached through it — a button that forgot on the first click would be one click
     // away from a decision the user cannot undo.
-    mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: undefined } })
+    mocks.call.mockImplementation(async (command: string) => ({
+      ok: true,
+      value: command === 'devices_snapshot' ? { identity: IDENTITY, devices: DEVICES } : null
+    }))
 
     const wrapper = mount(DevicesPage)
     await flushPromises()
 
-    const forget = wrapper.findAll('button').find(button => button.text() === messages.devices.forget)
-    expect(forget, 'a paired device has no forget button').toBeDefined()
-
-    // ★ The popconfirm is a component, not a DOM assertion: jsdom does not run antd's portal transition, and what this
-    // test is about is that the command is behind the confirmation rather than on the first click.
-    const confirmation = wrapper.findComponent({ name: 'APopconfirm' })
-    expect(confirmation.exists(), 'the confirmation is missing').toBe(true)
-    await confirmation.vm.$emit('confirm')
+    await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === messages.devices.forget)!.trigger('click')
+    await flushPromises()
+    expect(mocks.call).not.toHaveBeenCalledWith('devices_forget', expect.anything())
+    expect(wrapper.get('[role="dialog"]').text()).toContain(messages.devices.forgetTitle(DEVICES[0]!.displayName))
+    await wrapper.get('[role="dialog"]').findAll('button').find(button => button.text() === messages.devices.forget)!.trigger('click')
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('devices_forget', { deviceId: DEVICES[0]!.deviceId })
     wrapper.unmount()
+  })
+
+  it('groups device relationships and reveals technical facts only in details', async () => {
+    mocks.call.mockImplementation(async (command: string) => ({ ok: true, value: command === 'devices_snapshot' ? { identity: IDENTITY, devices: DEVICES } : null }))
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+    const paired = wrapper.get(`section[aria-label="${messages.devices.paired}"]`)
+    const nearby = wrapper.get(`section[aria-label="${messages.devices.nearby}"]`)
+    expect(paired.text()).toContain(DEVICES[0]!.displayName)
+    expect(nearby.text()).toContain(DEVICES[1]!.displayName)
+    expect(paired.text()).not.toContain(DEVICES[1]!.displayName)
+    expect(nearby.text()).not.toContain(DEVICES[1]!.deviceId)
+    expect(nearby.text()).not.toContain(DEVICES[1]!.address)
+    await nearby.get('[aria-expanded]').trigger('click')
+    expect(nearby.text()).toContain(DEVICES[1]!.deviceId)
+    expect(nearby.text()).toContain(DEVICES[1]!.address)
+    useDevicesStore().upsert({ ...DEVICES[1]!, blocked: true, displayName: 'Renamed device' })
+    await flushPromises()
+    expect(nearby.text()).toContain(messages.devices.blocked)
+    expect(nearby.get('[aria-expanded]').attributes('aria-expanded')).toBe('true')
+    expect(nearby.text()).toContain('Renamed device')
+    wrapper.unmount()
+  })
+
+  it('retains the confirmation and paired state after refusal and prevents duplicate submissions', async () => {
+    let finish!: (value: unknown) => void
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      if (command === 'devices_forget') {
+        return new Promise((resolve) => {
+          finish = resolve
+        })
+      }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
+      const trigger = wrapper.findAll('button').find(button => button.text() === messages.devices.forget)!
+      trigger.element.focus()
+      await trigger.trigger('click')
+      await flushPromises()
+      const dialog = wrapper.get('[role="dialog"]')
+      const keep = dialog.findAll('button').find(button => button.text() === messages.devices.forgetCancel)!
+      expect(document.activeElement).toBe(keep.element)
+      const confirm = dialog.findAll('button').find(button => button.text() === messages.devices.forget)!
+      await confirm.trigger('click')
+      await confirm.trigger('click')
+      await keep.trigger('click')
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'devices_forget')).toHaveLength(1)
+      expect(wrapper.get('[role="dialog"]').isVisible()).toBe(true)
+      expect(keep.attributes('disabled')).toBeDefined()
+      finish({ ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } })
+      await flushPromises()
+      expect(wrapper.get('[role="dialog"]').findComponent(ErrorNotice).props('code')).toBe('timeout')
+      expect(useDevicesStore().get(DEVICES[0]!.deviceId)?.paired).toBe(true)
+      await keep.trigger('click')
+      await flushPromises()
+      expect(document.activeElement).toBe(trigger.element)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('keeps a successful removal when refreshing the remaining devices fails', async () => {
+    let removed = false
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot') {
+        return removed
+          ? { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
+          : { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      }
+      if (command === 'devices_forget')
+        removed = true
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === messages.devices.forget)!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[role="dialog"]').findAll('button').find(button => button.text() === messages.devices.forget)!.trigger('click')
+    await flushPromises()
+    expect(useDevicesStore().get(DEVICES[0]!.deviceId)).toBeUndefined()
+    expect(wrapper.text()).toContain(messages.devices.forgotten(DEVICES[0]!.displayName))
+    expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('can stop a scan restored from the store without starting a new scan', async () => {
+    let running = true
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot') {
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: running ? { scanId: 'restored-scan', found: 2, elapsedMs: 200, totalMs: 1000 } : undefined } }
+      }
+      if (command === 'devices_scan_cancel')
+        running = false
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
+    await flushPromises()
+    expect(mocks.call).toHaveBeenCalledWith('devices_scan_cancel', { scanId: 'restored-scan' })
+    expect(mocks.call.mock.calls.some(([command]) => command === 'devices_scan_start')).toBe(false)
+    expect(wrapper.text()).toContain(messages.devices.scanStopRequested)
+    wrapper.unmount()
+  })
+
+  it('reports cached fallback separately from a successful network scan', async () => {
+    mocks.call.mockImplementation(async (command: string, args?: { opts?: { cachedOnly?: boolean } }) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      if (command === 'devices_scan_start') {
+        return args?.opts?.cachedOnly
+          ? { ok: true, value: 'cached' }
+          : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } }
+      }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain(messages.devices.scanCached)
+    expect(wrapper.text()).not.toContain(messages.devices.scanFinished)
+    expect(wrapper.text()).toContain(DEVICES[0]!.displayName)
+    wrapper.unmount()
+  })
+
+  it('shows a read failure without pretending the device list is empty and can recover', async () => {
+    let failed = true
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot') {
+        return failed
+          ? { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
+          : { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
+      expect(wrapper.text()).not.toContain(messages.devices.empty)
+      expect(wrapper.text()).not.toContain(messages.devices.scanFinished)
+      failed = false
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.refresh)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.findComponent(ErrorNotice).exists()).toBe(false)
+      expect(wrapper.text()).toContain(DEVICES[0]!.displayName)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('does not report scan success if reading its result fails', async () => {
+    let scanned = false
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot') {
+        return scanned
+          ? { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
+          : { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      }
+      if (command === 'devices_scan_start') {
+        scanned = true
+        return { ok: true, value: 'scan' }
+      }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).not.toContain(messages.devices.scanFinished)
+      expect(wrapper.text()).toContain(messages.devices.knownOnly)
+      expect(wrapper.text()).toContain(DEVICES[0]!.displayName)
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('can request cancellation before start returns and waits for the pending call', async () => {
+    let finish!: (value: unknown) => void
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES } }
+      if (command === 'devices_scan_start') {
+        return new Promise((resolve) => {
+          finish = resolve
+        })
+      }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
+      useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES, scanning: { scanId: 'pending-scan', found: 0, elapsedMs: 0, totalMs: 1000 } })
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('devices_scan_cancel', { scanId: 'pending-scan' })
+      expect(wrapper.text()).toContain(messages.devices.scanStopping)
+      const scan = wrapper.findAll('button').find(button => button.text() === messages.devices.scanning)!
+      expect(scan.attributes('disabled')).toBeDefined()
+      finish({ ok: true, value: 'pending-scan' })
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.devices.scanStopRequested)
+      expect(wrapper.text()).not.toContain(messages.devices.scanFinished)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('never retries a failed cancellation against a different scan', async () => {
+    let scanId = 'original-scan'
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } } }
+      if (command === 'devices_scan_cancel')
+        return { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
+      scanId = 'replacement-scan'
+      useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES, scanning: { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } })
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.actions.retry)!.trigger('click')
+      await flushPromises()
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'devices_scan_cancel')).toEqual([
+        ['devices_scan_cancel', { scanId: 'original-scan' }]
+      ])
+      expect(useDevicesStore().scan?.scanId).toBe('replacement-scan')
+      expect(wrapper.findComponent(ErrorNotice).exists()).toBe(false)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('discards a snapshot that returns after the page has been unmounted', async () => {
+    let finish!: (value: unknown) => void
+    mocks.call.mockImplementation(async (command: string) => command === 'devices_snapshot'
+      ? new Promise((resolve) => { finish = resolve })
+      : { ok: true, value: null })
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+    wrapper.unmount()
+    finish({ ok: true, value: { identity: IDENTITY, devices: DEVICES } })
+    await flushPromises()
+    expect(useDevicesStore().cards).toEqual([])
   })
 })

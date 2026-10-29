@@ -16,6 +16,7 @@
  * report into the line of source that was wrong.
  */
 
+import type { DevicesSnapshot } from '@synra/protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { KERNEL_EVENT_CHANNEL } from './channel'
@@ -62,6 +63,29 @@ describe('a call that is missing an argument the shell requires', () => {
 })
 
 describe('the two scan modes', () => {
+  it('exposes the running scan through the real client snapshot until completion or cancellation', async () => {
+    vi.useFakeTimers()
+    const client = new KernelClient(new FakeKernel())
+    const started = await client.call<string>('devices_scan_start', { opts: { includePaired: false, cachedOnly: false } })
+    expect(started.ok).toBe(true)
+    if (!started.ok)
+      throw new Error('scan start refused')
+    const running = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(running).toMatchObject({ ok: true, value: { scanning: { scanId: started.value, elapsedMs: 0 } } })
+    vi.advanceTimersByTime(300)
+    const progressed = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(progressed).toMatchObject({ ok: true, value: { scanning: { scanId: started.value, elapsedMs: 300 } } })
+    vi.advanceTimersByTime(600)
+    const completed = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(completed.ok && completed.value.scanning).toBeUndefined()
+    const restarted = await client.call<string>('devices_scan_start', { opts: { includePaired: false, cachedOnly: false } })
+    expect(restarted.ok).toBe(true)
+    await client.call('devices_scan_cancel', { scanId: started.value })
+    const cancelled = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(cancelled.ok && cancelled.value.scanning).toBeUndefined()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('publishes nothing for a cached scan and reports a network scan as events', async () => {
     // ★ The fake used to scan whatever it was asked for, so the one mode this shell can answer looked exactly like the one
     // it cannot — in every test, and in `pnpm dev`. Both halves are asserted here, because "no events" only means

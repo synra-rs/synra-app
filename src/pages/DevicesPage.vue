@@ -1,208 +1,124 @@
 <template>
-  <section class="stack gap-6 pb-4">
-    <PageHeader :title="messages.devices.title">
-      <!--
-        The scan is a control, so it is the component library's (R51): "you cannot press it twice" is `:disabled` and
-        "it is running" is `:loading` — a hand-rolled button has to remember both, and antd announces both to a screen
-        reader. The label is the command's own word in progress (R32).
-
-        ★ `scanning` is the kernel's scan **or** this page's own call being served: a real scan answers the invoke rather
-        than streaming events, so waiting for the store to say otherwise would leave the button live and unlabelled for the
-        second and a half the network is being asked.
-      -->
-      <div class="row flex-wrap gap-2">
-        <AButton
-          :loading="scanning"
-          :disabled="scanning"
-          @click="scan"
-        >
-          {{ scanning ? messages.devices.scanning : messages.devices.scan }}
-        </AButton>
-
-        <!--
-          ★ The scan id is what the cancel command identifies, and the start command has always answered it. The page
-          threw it away, so a scan could only be waited out; `devices_scan_cancel` had a command and no caller.
-        -->
-        <AButton
-          v-if="scanId && devices.scanning"
-          danger
-          :loading="cancellingScan"
-          @click="cancelScan"
-        >
+  <section class="pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+    <div class="stack gap-6">
+      <PageHeader :title="messages.devices.title">
+        <AButton v-if="scanState" :loading="cancellingScan" :disabled="cancellingScan" @click="cancelScan">
           {{ messages.devices.cancelScan }}
         </AButton>
-        <AButton type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="showPairing = !showPairing">
+        <AButton v-else :loading="startingScan" :disabled="scanning" @click="scan">
+          {{ startingScan ? messages.devices.scanning : messages.devices.scan }}
+        </AButton>
+        <AButton ref="pairTrigger" type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="showPairing = !showPairing">
           {{ pairing.active ? messages.devices.pairingResume : messages.devices.pairingTitle }}
         </AButton>
+      </PageHeader>
+
+      <div v-if="snapshotError" class="stack gap-2">
+        <ErrorNotice :code="snapshotError.code" :message="snapshotError.message" :actions="snapshotError.actions?.filter(action => action.kind !== 'retry')" />
+        <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
+          {{ messages.devices.knownOnly }}
+        </p>
+        <div>
+          <AButton :loading="refreshing" :disabled="refreshing" @click="refresh">
+            {{ messages.devices.refresh }}
+          </AButton>
+        </div>
       </div>
-    </PageHeader>
+      <p v-if="notice" class="m-0 text-sm" role="status">
+        {{ notice }}
+      </p>
 
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="repeat()" />
+      <div v-show="showPairing" id="device-pairing">
+        <PairingPanel :selected="selectedPeer" :visible="showPairing" @select="selectedDeviceId = $event" />
+      </div>
 
-    <div v-show="showPairing" id="device-pairing">
-      <PairingPanel :selected="selectedPeer" :visible="showPairing" @select="selectedDeviceId = $event" />
-    </div>
-
-    <!--
-      The scan's own report, as three labelled facts rather than one line joined by separators (R21): "found 2 ·
-      1200ms of 3000ms" is three things pretending to be one, and the join is the shape the design document retires.
-    -->
-    <div v-if="scanState" class="stack gap-2">
-      <AProgress :percent="scanPercent" :show-info="false" />
-
-      <dl class="m-0 row flex-wrap gap-4 text-xs">
-        <div class="row gap-1">
-          <dt class="m-0 text-ink-dim">
-            {{ messages.devices.scanProgress }}
-          </dt>
-          <dd class="m-0 text-ink">
-            {{ scanState.found }}
-          </dd>
-        </div>
-        <div class="row gap-1">
-          <dt class="m-0 text-ink-dim">
-            {{ messages.devices.scanElapsed }}
-          </dt>
-          <dd class="m-0 text-ink">
-            {{ scanState.elapsedMs }} ms
-          </dd>
-        </div>
-        <div class="row gap-1">
-          <dt class="m-0 text-ink-dim">
-            {{ messages.devices.scanTotal }}
-          </dt>
-          <dd class="m-0 text-ink">
-            {{ scanState.totalMs }} ms
-          </dd>
-        </div>
-      </dl>
-    </div>
-
-    <!--
-      R28: an empty state is an invitation with a next step, not a sentence — so this one carries the same action the
-      header does, rather than telling the user to go and find it.
-
-      R26: and what is below it is a list, not a grid of cards. A device is a row of facts; a screen of isomorphic
-      rounded cards is the shape the design document retires.
-    -->
-    <AEmpty v-if="devices.cards.length === 0" :description="messages.devices.empty">
-      <template #image>
-        <!--
-          The icon rather than antd's default illustration: that illustration draws its own light-grey palette into a
-          screen whose neutrals are all one hue (§1.4), and empty states are named as the places that must not compete
-          for attention (R27).
-        -->
-        <span class="i-carbon-devices text-xl text-ink-dim" aria-hidden="true" />
-      </template>
-
-      <AButton :loading="devices.scanning" :disabled="devices.scanning" @click="scan">
-        {{ messages.devices.emptyAction }}
-      </AButton>
-    </AEmpty>
-
-    <AList v-else :data-source="cards">
-      <template #renderItem="{ item: card }">
-        <AList.Item :style="{ paddingInline: 0 }">
-          <div class="w-full row-between flex-wrap gap-3">
-            <div class="min-w-0 stack gap-0.5">
-              <span class="truncate text-sm font-medium">{{ card.displayName }}</span>
-              <span class="truncate text-xs text-ink-dim">{{ card.platform }}</span>
-            </div>
-
-            <!--
-              Two questions, two tags: a paired device that is offline is one the user can still send to later, and an
-              online device that is unpaired is one they have to pair first. The word is always inside the tag (R23),
-              and the colour marks the answer that needs the user rather than decorating the ones that are fine.
-            -->
-            <div class="row flex-wrap gap-2">
-              <ATag :color="card.paired ? 'default' : 'warning'">
-                {{ card.paired ? messages.devices.paired : messages.devices.unpaired }}
-              </ATag>
-              <ATag color="default">
-                {{ card.online ? messages.devices.online : messages.devices.offline }}
-              </ATag>
-
-              <!-- An address is machine-issued, which is what monospace is for (R21). -->
-              <span v-if="card.address" class="text-xs text-ink-dim font-mono">{{ card.address }}</span>
-
-              <!--
-                The one action a discovered device needs. Shown only when it is unpaired: once paired, the row manages that relationship, and a
-                button that offered to pair again would be offering to repeat the decision the user already made.
-              -->
-              <AButton
-                v-if="!card.paired && !!card.deviceId"
-                size="small"
-                :disabled="pairing.active || pairing.busy"
-                @click="pair(card.deviceId)"
-              >
-                {{ messages.devices.pair }}
-              </AButton>
-
-              <!--
-                ★ Only a paired device can be forgotten: an unpaired discovery is not something this device agreed to
-                know, so "forget it" would be a button about a relationship that does not exist. The confirmation is
-                inline rather than a second page: pairing is the expensive step, and forgetting undoes it.
-              -->
-              <APopconfirm
-                v-if="card.paired && !!card.deviceId"
-                :title="messages.devices.forgetTitle"
-                :ok-text="messages.devices.forget"
-                :cancel-text="messages.devices.forgetCancel"
-                @confirm="forget(card.deviceId)"
-              >
-                <AButton size="small" danger :loading="forgetting === card.deviceId">
-                  {{ messages.devices.forget }}
-                </AButton>
-              </APopconfirm>
-            </div>
+      <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
+        <div v-if="scanError" class="stack gap-2">
+          <ErrorNotice :code="scanError.code" :message="scanError.message" :actions="scanError.actions?.filter(action => action.kind !== 'retry')" />
+          <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
+            {{ messages.devices.scanFailedKnown }}
+          </p>
+          <div v-if="scanError.retryable">
+            <AButton :disabled="cancellingScan || (!failedCancelId && scanning)" @click="retryScan">
+              {{ messages.actions.retry }}
+            </AButton>
           </div>
-        </AList.Item>
-      </template>
-    </AList>
+        </div>
+        <p v-else class="m-0 row flex-wrap gap-2 text-sm text-ink-dim">
+          <span v-if="scanning" class="i-carbon-circle-dash animate-spin" aria-hidden="true" />
+          <span>{{ scanSummary }}</span>
+          <span v-if="scanState">{{ messages.devices.scanProgress }} {{ scanState.found }}</span>
+        </p>
+        <details v-if="scanState" class="text-xs text-ink-dim">
+          <summary class="min-h-11 row cursor-pointer md:min-h-8">
+            {{ messages.devices.scanDetails }}
+          </summary>
+          <dl class="grid m-0 gap-2 py-2">
+            <dt>{{ messages.devices.scanId }}</dt><dd class="m-0 break-all font-mono">
+              {{ scanState.scanId }}
+            </dd>
+            <dt>{{ messages.devices.scanElapsed }}</dt><dd class="m-0">
+              {{ scanState.elapsedMs }} ms
+            </dd>
+            <dt>{{ messages.devices.scanTotal }}</dt><dd class="m-0">
+              {{ scanState.totalMs }} ms
+            </dd>
+          </dl>
+        </details>
+      </div>
+
+      <p v-if="refreshing && !ready && !devices.cards.length" class="m-0 text-sm text-ink-dim" role="status">
+        {{ messages.devices.loading }}
+      </p>
+      <AEmpty v-else-if="ready && !snapshotError && !devices.cards.length && !scanning" :description="scanReport === 'finished' ? messages.devices.scanEmpty : messages.devices.empty">
+        <template #image>
+          <span class="i-carbon-devices text-xl text-ink-dim" aria-hidden="true" />
+        </template>
+        <AButton @click="scan">
+          {{ messages.devices.emptyAction }}
+        </AButton>
+      </AEmpty>
+
+      <section v-if="devices.paired.length" :aria-label="messages.devices.paired">
+        <h2 ref="pairedHeading" class="m-0 text-base font-medium" tabindex="-1">
+          {{ messages.devices.paired }}
+        </h2>
+        <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @forget="askForget" />
+      </section>
+      <section v-if="nearby.length" :aria-label="messages.devices.nearby">
+        <h2 class="m-0 text-base font-medium">
+          {{ messages.devices.nearby }}
+        </h2>
+        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @pair="pair" />
+      </section>
+    </div>
+
+    <AModal v-if="forgetTarget" :open="true" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :get-container="false" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
+      <div class="stack gap-4">
+        <p class="m-0 text-sm">
+          {{ messages.devices.forgetHelp }}
+        </p>
+        <p class="m-0 break-all text-xs text-ink-dim font-mono">
+          {{ forgetTarget.deviceId }}
+        </p>
+        <ErrorNotice v-if="forgetError" :code="forgetError.code" :message="forgetError.message" :actions="forgetError.actions?.filter(action => action.kind !== 'retry')" />
+        <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+          <AButton ref="keepButton" :disabled="forgetting" @click="closeForget">
+            {{ messages.devices.forgetCancel }}
+          </AButton>
+          <AButton type="primary" danger :loading="forgetting" :disabled="forgetting || !devices.get(forgetTarget.deviceId)?.paired" @click="forget">
+            {{ messages.devices.forget }}
+          </AButton>
+        </div>
+      </div>
+    </AModal>
   </section>
 </template>
 
 <script setup lang="ts">
-/**
- * Pairing, sending, and what is nearby.
- *
- * # Why the scan is worth a button here
- *
- * The snapshot is a *picture*, and a picture of a list of devices does not show that the list is live. The scan is the one
- * action that asks the kernel to look, so it is the only way to exercise the path the design document cares about — listen
- * first, then apply by sequence number, and re-read on a gap.
- *
- * ★ **And the scan takes options, which this page used not to send at all.** The call was `call('devices_scan_start')`
- * with no arguments, while the shell's wrapper declares `opts: ScanOptions` as required. Tauri deserializes a command's
- * arguments *before* the command runs, so the call was refused by the bridge — `command devices_scan_start missing
- * required key opts` — and a rejection that is not an `IpcError` is what the client reports as "The interface could not
- * reach the kernel". The kernel never saw the call, the reason was in `params.detail` and nothing renders that, and the
- * fake kernel answered anyway because it ignored its arguments. So the arguments are typed now, and the fake requires
- * them.
- *
- * ★ **Which scan to ask for is the kernel's answer rather than this page's guess.** The page asks for the scan the button
- * means; the shell answers it by running its **own** discovery (`src-tauri/src/discovery.rs` — the sockets are the
- * window's, the way [05 §2.1](../../design-docs/05-system-architecture.md) arranges a desktop host) and writes what it
- * hears into the list this page reads. Only a window that could not bind those sockets refuses that mode, and then the
- * page asks for the cached scan instead — which is not the page papering over a failure but the half of the refusal a
- * caller acts on.
- *
- * ★ **What that costs in this page's shape.** A real scan *answers the call*; it does not stream events, because this shell
- * publishes no kernel events yet. So the button's busy state is the page's own (`busy`, below), and the list is re-read
- * when the call returns — the progress report under the header is exercised by the fake kernel, which does publish
- * `scanUpdated`, and by a snapshot taken while a scan is in flight (the shell records one there; it clears it before it
- * answers).
- *
- * # Why paired and online are two columns
- *
- * They answer different questions. A paired device that is offline is one the user can still send to later; a device that
- * is online but unpaired is one the user has to pair first. Collapsing them into a status string loses exactly the case
- * that needs the user to act.
- */
-import type { DevicesSnapshot, ScanOptions, ScanState, SuggestedAction } from '@synra/protocol'
-import { Button as AButton, Empty as AEmpty, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
-import { computed, onMounted, ref, watch } from 'vue'
-
+import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
+import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
+import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PairingPanel from '../components/PairingPanel.vue'
@@ -210,227 +126,217 @@ import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { usePairingStore } from '../stores/pairing'
+import DeviceRow from './devices/DeviceRow.vue'
 
 const devices = useDevicesStore()
 const pairing = usePairingStore()
+const selectedDeviceId = ref<string>()
+const selectedPeer = computed(() => selectedDeviceId.value ? devices.get(selectedDeviceId.value) : undefined)
+const nearby = computed(() => devices.cards.filter(card => !card.paired))
 const showPairing = ref(false)
-
-// A restored running task or a pairing failure must be visible even before a row is selected.
 watch(() => [pairing.active, pairing.error], ([active, failure]) => {
   if (active || failure)
     showPairing.value = true
 }, { immediate: true })
-
-/** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
-const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
-
-/**
- * The two scans `ScanOptions` describes, as this page asks for them.
- *
- * ★ Both flags are written out rather than left to a default, because the struct on the wire requires both: it denies
- * unknown fields and has no `serde(default)`, so a payload that omitted `includePaired` would fail in the bridge exactly
- * the way the missing `opts` did.
- *
- * ★ The type comes from the contract rather than from this file. `@synra/protocol`'s `ui.ts` is the hand-written mirror of
- * `synra-ipc`'s DTOs, and importing it is what makes a field renamed in Rust fail *here*, at compile time. This page
- * declared its own copy for one round, because the package's entry point exported the shapes the interface **reads** and
- * not the argument it **sends** — a copy that would have gone on compiling while the kernel refused the payload. The
- * export was added and the copy deleted; the mirror is what a caller should be holding.
- */
-const NETWORK_SCAN: ScanOptions = { includePaired: false, cachedOnly: false }
-
-/** The scan this shell can answer: read what the daemon has already written down, and wait for nothing. */
-const CACHED_SCAN: ScanOptions = { includePaired: false, cachedOnly: true }
-
-/** Records a refusal for the notice above, which is the one caller that needs a code, a key and the actions. */
-function refuse(answer: { readonly code: string, readonly message: string, readonly actions?: readonly SuggestedAction[] | undefined }): void {
-  error.value = { code: answer.code, message: answer.message, actions: answer.actions }
-}
-
-/**
- * The scan in progress, or nothing.
- *
- * Read through a `computed` so the template's `v-if` narrows the same value it renders, rather than a store property
- * that is re-read between the test and the use.
- */
-const scanState = computed<ScanState | undefined>(() => devices.scan)
-
-/**
- * The devices as the list takes them.
- *
- * Copied because `AList`'s `dataSource` is typed as a mutable array and the store's list is `readonly`. The copy is
- * made once per change rather than once per render, because the store replaces the whole array whenever anything in it
- * moves.
- */
-const cards = computed(() => [...devices.cards])
-
-/**
- * How far the scan has got, as a percentage.
- *
- * Clamped rather than trusted: both numbers are the kernel's clock, and a bar that reads 130% is a control telling the
- * user something false about the machine. Zero when there is no budget to divide by.
- */
-const scanPercent = computed(() => {
-  const current = scanState.value
-  if (current === undefined || current.totalMs <= 0)
-    return 0
-  return Math.min(100, Math.max(0, Math.round((current.elapsedMs / current.totalMs) * 100)))
-})
-
-/**
- * Whether a scan this page started is being served.
- *
- * ★ Why the page keeps its own flag rather than reading `devices.scanning` alone.
- *
- * That field is the **kernel's** scan, and it arrives in a snapshot — so it changes only when a snapshot is taken. A real
- * scan answers the call rather than streaming events (this shell publishes no kernel events yet; the fake kernel does, and
- * that is where the progress bar below is exercised), so between the click and the answer the store would say nothing and
- * the button would stay live and unlabelled for the second and a half the network is being asked.
- */
-const busy = ref(false)
-
-/** What the scan control shows: either scan, from the page's point of view, is "this button has been pressed". */
-const scanning = computed(() => devices.scanning || busy.value)
-
-/**
- * The call the error surface's retry repeats (R33).
- *
- * The kernel's `retry` action means "that call, again" — and every call this page makes has its refusal rendered by the
- * notice above, so the failing one is remembered beside the refusal instead of being guessed from its code.
- */
-const repeat = ref<() => Promise<void>>(loadSnapshot)
-
-/**
- * ★ The page no longer subscribes to the channel, and that is not a regression.
- *
- * `src/events.ts` owns the one subscription, judges every event by its sequence number and applies the device cards to
- * the store this page reads. What used to be here was a listener with an empty body — registered at mount, held until
- * unmount, doing nothing — because the comment at the time said the dispatcher would "do the real work" and nobody had
- * wired one. Two listeners would now mean two sequence trackers on one channel, each concluding it had missed events.
- */
-onMounted(loadSnapshot)
-
-/**
- * Reads the device list once.
- *
- * Startup and the notice's retry are the same read, which is why they are one function: the ordering the comment above
- * is about is the caller's to get right, and two copies of it would be two places to get it wrong in.
- */
-/** The user's selection; names and device metadata are read from the current device store. */
-const selectedDeviceId = ref<string>()
-const selectedPeer = computed(() => selectedDeviceId.value === undefined ? undefined : devices.get(selectedDeviceId.value))
-
-/** The running scan's identifier, which is what `devices_scan_cancel` takes. */
-const scanId = ref<string | undefined>(undefined)
-const cancellingScan = ref(false)
-
-/**
- * Asks a discovered device to pair.
- *
- * ★ Why the button is only on unpaired rows: pairing is the decision that a device is recognised, and offering it again on a
- * row that already carries the answer would ask the user to repeat something they already settled.
- */
 function pair(deviceId: string): void {
+  if (pairing.active || pairing.busy)
+    return
   selectedDeviceId.value = deviceId
   showPairing.value = true
 }
 
-/** The device whose forget command is in flight. */
-const forgetting = ref<string | undefined>(undefined)
-
-/**
- * Forgets a paired device, after the confirmation.
- *
- * The event removes the card too, but the snapshot is re-read for the same reason pairing re-reads it: the list is the
- * kernel's answer about what this device knows, and patching it here would make the page a second source of truth.
- */
-async function forget(deviceId: string): Promise<void> {
-  repeat.value = () => forget(deviceId)
-  error.value = undefined
-  forgetting.value = deviceId
-  const answer = await kernel.call<null>('devices_forget', { deviceId })
-  forgetting.value = undefined
-  if (answer.ok)
-    await loadSnapshot()
-  else
-    refuse(answer.error)
+let disposed = false
+let readRevision = 0
+let reading: Promise<boolean> | undefined
+const snapshotError = ref<IpcError>()
+const refreshing = ref(false)
+const ready = ref(devices.identity !== undefined)
+function refresh(): Promise<boolean> {
+  readRevision += 1
+  if (reading)
+    return reading
+  refreshing.value = true
+  reading = readLatest().finally(() => {
+    reading = undefined
+    refreshing.value = false
+  })
+  return reading
 }
-
-async function loadSnapshot(): Promise<void> {
-  repeat.value = loadSnapshot
-  error.value = undefined
-
-  const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
-  if (answer.ok)
+async function readLatest(): Promise<boolean> {
+  while (true) {
+    if (disposed)
+      return false
+    const revision = readRevision
+    const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
+    if (disposed)
+      return false
+    if (revision !== readRevision)
+      continue
+    snapshotError.value = answer.ok ? undefined : answer.error
+    if (!answer.ok)
+      return false
     devices.applySnapshot(answer.value)
-  else
-    refuse(answer.error)
+    ready.value = true
+    return true
+  }
 }
 
-/**
- * Starts the scan, in the mode this kernel can answer.
- *
- * ★ The second call is not a fallback for a failure; it is the kernel's own instruction. A shell that could not bind the
- * discovery sockets refuses the network scan with `unsupported` — no network, a firewall, a sandbox — and its reason says
- * the known devices are still listed, and `params` is not something the interface renders (R34). So the half of that
- * refusal a caller acts on is the code it branches by, which is what the client's header says codes are for.
- */
+const NETWORK_SCAN: ScanOptions = { includePaired: false, cachedOnly: false }
+const CACHED_SCAN: ScanOptions = { includePaired: false, cachedOnly: true }
+const startingScan = ref(false)
+const cancellingScan = ref(false)
+const stopAccepted = ref(false)
+const scanState = computed(() => devices.scan)
+const scanning = computed(() => startingScan.value || devices.scanning || cancellingScan.value)
+const scanReport = ref<'finished' | 'stopRequested' | 'cached'>()
+const scanError = ref<IpcError>()
+const failedCancelId = ref<string>()
+const scanSummary = computed(() => scanning.value
+  ? stopAccepted.value ? messages.devices.scanStopping : messages.devices.scanning
+  : scanReport.value === 'cached'
+    ? messages.devices.scanCached
+    : scanReport.value === 'stopRequested' ? messages.devices.scanStopRequested : messages.devices.scanFinished)
+
 async function scan(): Promise<void> {
-  repeat.value = scan
-  error.value = undefined
-  busy.value = true
-
+  if (scanning.value)
+    return
+  startingScan.value = true
+  stopAccepted.value = false
+  scanReport.value = undefined
+  scanError.value = undefined
+  failedCancelId.value = undefined
   try {
-    const started = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
-    if (!started.ok) {
-      if (started.error.code !== 'unsupported') {
-        refuse(started.error)
+    const answer = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
+    if (disposed)
+      return
+    if (!answer.ok) {
+      if (answer.error.code !== 'unsupported') {
+        scanError.value = answer.error
         return
       }
-
       const cached = await kernel.call<string>('devices_scan_start', { opts: CACHED_SCAN })
+      if (disposed)
+        return
       if (!cached.ok) {
-        refuse(cached.error)
+        scanError.value = cached.error
         return
       }
-      // A cached scan is over before it answers, so there is nothing to cancel.
-      scanId.value = undefined
+      scanReport.value = 'cached'
     }
-    else {
-      scanId.value = started.value
-    }
-
-    // ★ The list is where a scan shows itself, so it is re-read whichever mode answered the call.
-    //
-    // A real scan writes what it heard into the same table this read uses before it answers, and a cached scan reads that
-    // table — and nothing else would tell this page the table changed, because the shell publishes no kernel events yet.
-    await loadSnapshot()
+    const refreshed = await refresh()
+    if (refreshed && !disposed && !devices.scanning && scanReport.value !== 'cached')
+      scanReport.value = stopAccepted.value ? 'stopRequested' : 'finished'
   }
   finally {
-    busy.value = false
+    startingScan.value = false
   }
 }
 
-/**
- * Stops the running scan.
- *
- * The identifier comes from `devices_scan_start`'s answer; the command refuses one that is not the scan it is running, so
- * a stale click cannot stop a later scan.
- */
 async function cancelScan(): Promise<void> {
-  const id = scanId.value
-  if (!id)
+  const id = scanState.value?.scanId
+  if (!id || cancellingScan.value)
     return
-  repeat.value = cancelScan
-  error.value = undefined
   cancellingScan.value = true
-  const answer = await kernel.call<null>('devices_scan_cancel', { scanId: id })
-  cancellingScan.value = false
-  if (!answer.ok) {
-    refuse(answer.error)
-    return
+  scanError.value = undefined
+  failedCancelId.value = id
+  try {
+    const answer = await kernel.call<null>('devices_scan_cancel', { scanId: id })
+    if (disposed)
+      return
+    if (!answer.ok) {
+      scanError.value = answer.error
+      return
+    }
+    stopAccepted.value = true
+    await refresh()
+    if (!disposed && !startingScan.value && !devices.scanning)
+      scanReport.value = 'stopRequested'
   }
-  scanId.value = undefined
-  await loadSnapshot()
+  finally {
+    cancellingScan.value = false
+  }
 }
+
+async function retryScan(): Promise<void> {
+  if (failedCancelId.value) {
+    if (scanState.value?.scanId === failedCancelId.value)
+      await cancelScan()
+    else if (await refresh())
+      scanError.value = undefined
+  }
+  else {
+    await scan()
+  }
+}
+watch(() => devices.scanning, (running, wasRunning) => {
+  if (wasRunning && !running && !startingScan.value && !cancellingScan.value && !scanError.value && scanReport.value !== 'cached')
+    scanReport.value = stopAccepted.value ? 'stopRequested' : 'finished'
+})
+
+const forgetTarget = ref<DeviceCard>()
+const forgetError = ref<IpcError>()
+const forgetting = ref(false)
+const notice = ref('')
+const keepButton = ref<InstanceType<typeof AButton>>()
+const pairTrigger = ref<InstanceType<typeof AButton>>()
+const pairedHeading = ref<HTMLElement>()
+let forgetTrigger: HTMLElement | null = null
+async function askForget(card: DeviceCard): Promise<void> {
+  if (forgetting.value || !devices.get(card.deviceId)?.paired)
+    return
+  forgetTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  forgetTarget.value = card
+  forgetError.value = undefined
+  await nextTick()
+  if (!disposed)
+    keepButton.value?.$el.focus()
+}
+async function closeForget(): Promise<void> {
+  if (forgetting.value)
+    return
+  forgetTarget.value = undefined
+  forgetError.value = undefined
+  await nextTick()
+  if (!disposed) {
+    if (forgetTrigger?.isConnected)
+      forgetTrigger.focus()
+    else
+      pairTrigger.value?.$el.focus()
+  }
+}
+async function forget(): Promise<void> {
+  const target = forgetTarget.value
+  if (forgetting.value || !target || !devices.get(target.deviceId)?.paired)
+    return
+  forgetting.value = true
+  forgetError.value = undefined
+  try {
+    const answer = await kernel.call<null>('devices_forget', { deviceId: target.deviceId })
+    if (disposed)
+      return
+    if (!answer.ok) {
+      forgetError.value = answer.error
+      return
+    }
+    // The command has removed the relationship even when a subsequent read fails.
+    devices.remove(target.deviceId)
+    notice.value = messages.devices.forgotten(target.displayName)
+    forgetTarget.value = undefined
+    await refresh()
+    await nextTick()
+    if (!disposed)
+      (pairedHeading.value ?? pairTrigger.value?.$el)?.focus()
+  }
+  finally {
+    forgetting.value = false
+  }
+}
+
+onScopeDispose(() => {
+  disposed = true
+  readRevision += 1
+})
+onMounted(() => {
+  void refresh()
+})
 </script>

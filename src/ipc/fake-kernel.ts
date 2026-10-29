@@ -27,7 +27,7 @@
  * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
  */
 
-import type { AuditEntryDto, DevicesSnapshot, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { AuditEntryDto, DevicesSnapshot, ScanState, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
@@ -112,6 +112,7 @@ export class FakeKernel implements Bridge {
 
   /** The scan's timer, so a second `devices_scan_start` does not leave the first one running. */
   #scanTimer: ReturnType<typeof setInterval> | undefined
+  #scan: ScanState | undefined
 
   /**
    * Refuses a call that is missing an argument the shell requires.
@@ -160,10 +161,7 @@ export class FakeKernel implements Bridge {
           this.#stopScan()
           return 'scan-cached'
         }
-        this.#startScan()
-        // ★ The shell answers the new scan's id, and `One` means one value — a string is one. Returning `null` was the
-        // fake disagreeing with the contract in the one direction a fake must not: more permissive than the shell.
-        return 'scan-network'
+        return this.#startScan()
       }
       case 'devices_scan_cancel':
         this.#stopScan()
@@ -375,7 +373,8 @@ export class FakeKernel implements Bridge {
   #devicesSnapshot(): DevicesSnapshot {
     return {
       identity: { ...IDENTITY },
-      devices: DEVICES.map(device => ({ ...device }))
+      devices: DEVICES.map(device => ({ ...device })),
+      ...(this.#scan ? { scanning: { ...this.#scan } } : {})
     }
   }
 
@@ -386,12 +385,13 @@ export class FakeKernel implements Bridge {
    * about the listen-then-snapshot ordering or the sequence tracker, and those are the parts that are hardest to notice
    * being wrong.
    */
-  #startScan(): void {
+  #startScan(): string {
     this.#stopScan()
     const scanId = '01HQ00000000000000000SCAN01'
     const totalMs = 900
     const startedAt = Date.now()
-    this.#emit('scanUpdated', { scanId, elapsedMs: 0, totalMs, found: 0 })
+    this.#scan = { scanId, elapsedMs: 0, totalMs, found: 0 }
+    this.#emit('scanUpdated', this.#scan)
 
     this.#scanTimer = setInterval(() => {
       const elapsedMs = Date.now() - startedAt
@@ -401,11 +401,14 @@ export class FakeKernel implements Bridge {
         this.#emit('deviceCardUpdated', { ...DEVICES[1]!, lastSeenMs: Date.now() })
         return
       }
-      this.#emit('scanUpdated', { scanId, elapsedMs, totalMs, found: 0 })
+      this.#scan = { scanId, elapsedMs, totalMs, found: 0 }
+      this.#emit('scanUpdated', this.#scan)
     }, 300)
+    return scanId
   }
 
   #stopScan(): void {
+    this.#scan = undefined
     if (this.#scanTimer !== undefined) {
       clearInterval(this.#scanTimer)
       this.#scanTimer = undefined
