@@ -50,11 +50,10 @@ describe('a call that is missing an argument the shell requires', () => {
     ).resolves.toBe('scan-cached')
   })
 
-  it('rejects a key the command declares even when the fake ignores the value', async () => {
-    // `devices_scan_cancel` never reads its identifier — it stops the timer. The *key* is still what the bridge
-    // deserializes, so a caller that omits it reaches a command the shell never runs.
+  it('requires a cancellation identifier and refuses one without a running task', async () => {
     await expect(new FakeKernel().invoke('devices_scan_cancel')).rejects.toThrow('missing required key scanId')
-    await expect(new FakeKernel().invoke('devices_scan_cancel', { scanId: 'scan-1' })).resolves.toBeNull()
+    const refused = await new KernelClient(new FakeKernel()).call('devices_scan_cancel', { scanId: 'scan-1' })
+    expect(refused).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
   })
 
   it('asks nothing of a command that takes nothing', async () => {
@@ -80,16 +79,22 @@ describe('the two scan modes', () => {
     expect(completed.ok && completed.value.scanning).toBeUndefined()
     const restarted = await client.call<string>('devices_scan_start', { opts: { includePaired: false, cachedOnly: false } })
     expect(restarted.ok).toBe(true)
-    await client.call('devices_scan_cancel', { scanId: started.value })
+    if (!restarted.ok)
+      throw new Error('scan restart refused')
+    expect(restarted.value).not.toBe(started.value)
+    const staleCancel = await client.call('devices_scan_cancel', { scanId: started.value })
+    expect(staleCancel).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
+    await client.call('devices_scan_cancel', { scanId: restarted.value })
+    const stopping = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(stopping).toMatchObject({ ok: true, value: { scanning: { scanId: restarted.value } } })
+    vi.advanceTimersByTime(300)
     const cancelled = await client.call<DevicesSnapshot>('devices_snapshot')
     expect(cancelled.ok && cancelled.value.scanning).toBeUndefined()
     expect(vi.getTimerCount()).toBe(0)
   })
 
   it('publishes nothing for a cached scan and reports a network scan as events', async () => {
-    // ★ The fake used to scan whatever it was asked for, so the one mode this shell can answer looked exactly like the one
-    // it cannot — in every test, and in `pnpm dev`. Both halves are asserted here, because "no events" only means
-    // something beside a mode that does have them.
+    // Cached reads publish no progress; network scans publish start and completion.
     vi.useFakeTimers()
     const kernel = new FakeKernel()
     const seen: unknown[] = []
@@ -104,19 +109,32 @@ describe('the two scan modes', () => {
     expect(seen.length, 'a network scan is what the events exist for').toBeGreaterThan(0)
   })
 
-  it('stops the previous scan rather than leaving two timers running', async () => {
+  it('refuses overlap until completion and cached reads do not stop the admitted scan', async () => {
     vi.useFakeTimers()
     const kernel = new FakeKernel()
     const seen: unknown[] = []
     await kernel.listen(KERNEL_EVENT_CHANNEL, payload => seen.push(payload))
 
-    await kernel.invoke('devices_scan_start', { opts: { includePaired: false, cachedOnly: false } })
-    await kernel.invoke('devices_scan_start', { opts: { includePaired: false, cachedOnly: false } })
-    // The two starts answer with an event each, and both happen at the same mocked instant — so a timer the first one left
-    // behind would tick in step with the second one's, and one window would carry two events instead of one.
+    const client = new KernelClient(kernel)
+    const started = await client.call<string>('devices_scan_start', { opts: { cachedOnly: false } })
+    if (!started.ok)
+      throw new Error('scan start refused')
+    const overlapping = await client.call('devices_scan_start', { opts: { cachedOnly: false } })
+    expect(overlapping).toMatchObject({ ok: false, error: { code: 'rate_limited', params: { running: started.value } } })
+    await client.call('devices_scan_start', { opts: { cachedOnly: true } })
+    const afterCache = await client.call('devices_snapshot')
+    expect(afterCache).toMatchObject({ ok: true, value: { scanning: { scanId: started.value } } })
     seen.length = 0
 
     vi.advanceTimersByTime(300)
     expect(seen.length).toBe(1)
+    await client.call('devices_scan_cancel', { scanId: started.value })
+    const whileStopping = await client.call('devices_scan_start', { opts: { cachedOnly: false } })
+    expect(whileStopping).toMatchObject({ ok: false, error: { code: 'rate_limited' } })
+    vi.advanceTimersByTime(300)
+    expect(seen.length).toBe(2)
+    const afterCompletion = await client.call<DevicesSnapshot>('devices_snapshot')
+    expect(afterCompletion.ok && afterCompletion.value.scanning).toBeUndefined()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

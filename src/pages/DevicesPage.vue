@@ -191,11 +191,12 @@ const scanning = computed(() => startingScan.value || devices.scanning || cancel
 const scanReport = ref<'finished' | 'stopRequested' | 'cached'>()
 const scanError = ref<IpcError>()
 const failedCancelId = ref<string>()
+let scanGeneration = 0
 const scanSummary = computed(() => scanning.value
   ? stopAccepted.value ? messages.devices.scanStopping : messages.devices.scanning
   : scanReport.value === 'cached'
     ? messages.devices.scanCached
-    : scanReport.value === 'stopRequested' ? messages.devices.scanStopRequested : messages.devices.scanFinished)
+    : scanReport.value === 'stopRequested' ? messages.devices.scanStopped : messages.devices.scanFinished)
 
 async function scan(): Promise<void> {
   if (scanning.value)
@@ -236,6 +237,7 @@ async function cancelScan(): Promise<void> {
   const id = scanState.value?.scanId
   if (!id || cancellingScan.value)
     return
+  const generation = scanGeneration
   cancellingScan.value = true
   scanError.value = undefined
   failedCancelId.value = id
@@ -247,9 +249,9 @@ async function cancelScan(): Promise<void> {
       scanError.value = answer.error
       return
     }
-    stopAccepted.value = true
-    await refresh()
-    if (!disposed && !startingScan.value && !devices.scanning)
+    stopAccepted.value = generation === scanGeneration && (!scanState.value || scanState.value.scanId === id)
+    const refreshed = await refresh()
+    if (refreshed && !disposed && !startingScan.value && !devices.scanning && stopAccepted.value)
       scanReport.value = 'stopRequested'
   }
   finally {
@@ -268,6 +270,13 @@ async function retryScan(): Promise<void> {
     await scan()
   }
 }
+watch(() => devices.scan?.scanId, (scanId, previousId) => {
+  if (scanId && scanId !== previousId) {
+    scanGeneration += 1
+    stopAccepted.value = false
+    scanReport.value = undefined
+  }
+}, { flush: 'sync' })
 watch(() => devices.scanning, (running, wasRunning) => {
   if (wasRunning && !running && !startingScan.value && !cancellingScan.value && !scanError.value && scanReport.value !== 'cached')
     scanReport.value = stopAccepted.value ? 'stopRequested' : 'finished'

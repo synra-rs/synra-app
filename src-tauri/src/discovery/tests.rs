@@ -118,18 +118,23 @@ fn a_scan_publishes_a_deadline_the_worker_reads_and_releases_it_before_answering
     let discovery = discovery(&state);
     let deadline = discovery.on_demand();
 
-    discovery.scan_with_wait(Duration::from_millis(60), 1_000, |window| {
-        assert_eq!(
-            deadline.load(Ordering::Relaxed),
-            1_060,
-            "the worker sees the deadline during the wait"
-        );
-        assert_eq!(
-            window,
-            Duration::from_millis(60),
-            "the caller waits the requested window"
-        );
-    });
+    discovery.scan_with_wait(
+        Duration::from_millis(60),
+        1_000,
+        &synra_core::supervisor::Cancellation::new(),
+        |window| {
+            assert_eq!(
+                deadline.load(Ordering::Relaxed),
+                1_060,
+                "the worker sees the deadline during the wait"
+            );
+            assert_eq!(
+                window,
+                Duration::from_millis(60),
+                "the caller waits the requested window"
+            );
+        },
+    );
     assert_eq!(
         deadline.load(Ordering::Relaxed),
         0,
@@ -150,4 +155,32 @@ fn recording_a_sighting_names_what_it_wrote() {
         vec![PEER.to_owned()],
         "a second sighting is still an announcement"
     );
+}
+
+#[test]
+fn cancellation_before_admission_never_publishes_demand_or_enters_the_wait() {
+    let state = crate::testing::state();
+    let discovery = discovery(&state);
+    let cancellation = synra_core::supervisor::Cancellation::new();
+    cancellation.cancel();
+    discovery.scan_with_wait(Duration::from_millis(60), 1_000, &cancellation, |_| {
+        panic!("cancelled scan waited")
+    });
+    assert_eq!(discovery.on_demand().load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn releasing_an_old_demand_window_does_not_erase_a_replacement_deadline() {
+    let state = crate::testing::state();
+    let discovery = discovery(&state);
+    let deadline = discovery.on_demand();
+    discovery.scan_with_wait(
+        Duration::from_millis(60),
+        1_000,
+        &synra_core::supervisor::Cancellation::new(),
+        |_| {
+            deadline.store(2_000, Ordering::Relaxed);
+        },
+    );
+    assert_eq!(deadline.load(Ordering::Relaxed), 2_000);
 }

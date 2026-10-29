@@ -24,9 +24,26 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::Mutex;
 
 use synra_core::intent::Board;
+use synra_core::supervisor::Cancellation;
 use synra_core::{Host, Identity, SharedHost, shared};
-use synra_ipc::{IpcError, IdentitySnapshot, ScanState};
+use synra_ipc::{IdentitySnapshot, IpcError, ScanState};
 use synra_store::{Paths, SynraDb};
+
+/// One admitted network scan; cancellation is a request until its owner exits.
+#[derive(Debug)]
+pub(crate) struct ScanTask {
+    pub snapshot: ScanState,
+    pub cancellation: Cancellation,
+}
+
+impl ScanTask {
+    pub fn new(snapshot: ScanState) -> Self {
+        Self {
+            snapshot,
+            cancellation: Cancellation::new(),
+        }
+    }
+}
 
 /// One read of this process's facts, for the process gauges.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -71,8 +88,9 @@ pub struct AppState {
     /// ★ The loop owns the schedule; this is the part the interface reads. It is a separate map rather than the queue
     /// itself because the queue holds `Instant`s, a policy and cancellation, and none of that belongs in a DTO. The loop
     /// writes this map after every failed attempt and removes the entry when the intent is answered or ends.
-    pub intent_retries:
-        Arc<Mutex<std::collections::HashMap<synra_protocol::ids::IntentId, synra_ipc::IntentRetry>>>,
+    pub intent_retries: Arc<
+        Mutex<std::collections::HashMap<synra_protocol::ids::IntentId, synra_ipc::IntentRetry>>,
+    >,
     /// The plugins this shell can ask, when it has an engine.
     pub plugins: Option<Arc<Mutex<synra_core::dispatch::PluginSet>>>,
     /// What the startup load pass did: what runs, what did not, and why.
@@ -98,7 +116,7 @@ pub struct AppState {
     /// list of already-known devices needs — still answers. See [`crate::discovery`].
     pub discovery: Option<crate::discovery::Discovery>,
     /// The scan in progress, if any.
-    pub scanning: Arc<Mutex<Option<ScanState>>>,
+    pub(crate) scanning: Arc<Mutex<Option<ScanTask>>>,
     /// How many scans this process has started.
     ///
     /// A counter rather than a random identifier, and the reason is narrow: a scan identifier is only ever compared
@@ -221,7 +239,8 @@ pub struct AppState {
     /// ★ A conditional request is the whole point: a bucket's `index.json` changes rarely, and a page that re-read it on
     /// every visit pays for a body it already has. The cache is keyed by URL and bounded by the process, not by time —
     /// a document that answered 304 is the same document.
-    pub registry_cache: Arc<Mutex<std::collections::HashMap<String, crate::commands::registry::CachedDocument>>>,
+    pub registry_cache:
+        Arc<Mutex<std::collections::HashMap<String, crate::commands::registry::CachedDocument>>>,
 }
 
 /// One plugin page this shell opened, as the window that opened it knows it.
@@ -247,10 +266,7 @@ pub struct HostedUi {
 /// same function the shell calls — not build a second histogram with the same name and hope the two agree. The daemon has
 /// the same function over the same store hook; the hosts differ in where their recorder comes from, not in what a write
 /// reports.
-pub fn observe_db_writes(
-    db: &mut SynraDb,
-    metrics: &Arc<synra_observe::metrics::RingRecorder>,
-) {
+pub fn observe_db_writes(db: &mut SynraDb, metrics: &Arc<synra_observe::metrics::RingRecorder>) {
     let recorder = Arc::clone(metrics);
     db.observe_writes(Arc::new(move |kind, elapsed| {
         recorder.histogram_observe(
@@ -270,7 +286,12 @@ impl AppState {
     ///
     /// [`IpcError`] when the identity cannot be read or written. A shell with no identity has nothing to show a user
     /// and nothing to present to a peer, so this is a start-up refusal rather than a degraded mode.
-    pub fn new(mut db: SynraDb, paths: Paths, platform: &str, now_ms: i64) -> Result<Self, IpcError> {
+    pub fn new(
+        mut db: SynraDb,
+        paths: Paths,
+        platform: &str,
+        now_ms: i64,
+    ) -> Result<Self, IpcError> {
         let started = std::time::Instant::now();
         let identity = Identity::load(&db, platform, now_ms).map_err(internal)?;
         // Written back because `load` generates one on a fresh installation, and a generated identity that is only in
@@ -303,45 +324,51 @@ impl AppState {
             env!("CARGO_PKG_VERSION"),
         );
         // Read before the identity is moved into its Arc below: the desk needs the identifier and the field takes ownership.
-    let local_id = identity.device_id;
+        let local_id = identity.device_id;
 
-    // ★ Built before the host, because the host is given one.
-    //
-    // `Host::with_metrics` existed for the daemon and the window built its host without one, so `frames_sent_total`,
-    // `frames_received_total` and `links_opened_total` were written by nothing in the one host a desktop user runs.
-    let metrics = Arc::new(synra_observe::metrics::RingRecorder::new());
-    // ★ The store reports every write's duration to this recorder. Installed once, where the database is owned, rather
-    // than at each call site — the store's write methods are the one funnel every write goes through.
-    observe_db_writes(&mut db, &metrics);
+        // ★ Built before the host, because the host is given one.
+        //
+        // `Host::with_metrics` existed for the daemon and the window built its host without one, so `frames_sent_total`,
+        // `frames_received_total` and `links_opened_total` were written by nothing in the one host a desktop user runs.
+        let metrics = Arc::new(synra_observe::metrics::RingRecorder::new());
+        // ★ The store reports every write's duration to this recorder. Installed once, where the database is owned, rather
+        // than at each call site — the store's write methods are the one funnel every write goes through.
+        observe_db_writes(&mut db, &metrics);
 
-    // ★ The board survives a restart, and it did not before: a window that closed forgot every intent — including a
-    // remote action a peer was still waiting on, so the peer retried and the action ran twice. The mapping is the kernel's
-    // (`synra_core::intent::persist`), the same one the daemon writes; this only decides what a failure means.
-    let mut board = Board::new();
-    match synra_core::intent::persist::restore(&mut board, &db) {
-        Ok(report) => {
-            if report.restored > 0 {
-                eprintln!("synra: restored {} intent(s) from the last run", report.restored);
+        // ★ The board survives a restart, and it did not before: a window that closed forgot every intent — including a
+        // remote action a peer was still waiting on, so the peer retried and the action ran twice. The mapping is the kernel's
+        // (`synra_core::intent::persist`), the same one the daemon writes; this only decides what a failure means.
+        let mut board = Board::new();
+        match synra_core::intent::persist::restore(&mut board, &db) {
+            Ok(report) => {
+                if report.restored > 0 {
+                    eprintln!(
+                        "synra: restored {} intent(s) from the last run",
+                        report.restored
+                    );
+                }
+                for (intent, why) in report.unreadable {
+                    eprintln!(
+                        "synra: stored intent {intent} could not be read back and was skipped: {why}"
+                    );
+                }
+                for intent in report.duplicates {
+                    eprintln!("synra: intent {intent} was restored twice");
+                }
             }
-            for (intent, why) in report.unreadable {
-                eprintln!("synra: stored intent {intent} could not be read back and was skipped: {why}");
-            }
-            for intent in report.duplicates {
-                eprintln!("synra: intent {intent} was restored twice");
-            }
+            // A host that refused to start over unreadable rows would turn one bad document into the loss of every intent
+            // behind it — including the ones a peer is waiting on. The absence is named rather than silent.
+            Err(error) => eprintln!("synra: the stored intents could not be read: {error}"),
         }
-        // A host that refused to start over unreadable rows would turn one bad document into the loss of every intent
-        // behind it — including the ones a peer is waiting on. The absence is named rather than silent.
-        Err(error) => eprintln!("synra: the stored intents could not be read: {error}"),
-    }
 
-    // ★ The process facts are kept between reads rather than rebuilt: `sysinfo` computes CPU usage as a delta between
-    // two refreshes, so a fresh `System` would report zero on every panel poll. The first refresh here is the baseline.
-    let process_pid = sysinfo::Pid::from_u32(std::process::id());
-    let mut process_system = sysinfo::System::new();
-    let _ = process_system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
+        // ★ The process facts are kept between reads rather than rebuilt: `sysinfo` computes CPU usage as a delta between
+        // two refreshes, so a fresh `System` would report zero on every panel poll. The first refresh here is the baseline.
+        let process_pid = sysinfo::Pid::from_u32(std::process::id());
+        let mut process_system = sysinfo::System::new();
+        let _ = process_system
+            .refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
 
-    let state = Self {
+        let state = Self {
             process_pid,
             process_system: Mutex::new(process_system),
             host: shared(Host::new(identity.clone(), peer).with_metrics(Arc::clone(&metrics))),
@@ -378,51 +405,56 @@ impl AppState {
             registry_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
 
-    // ★ One prune per construction, not per request: a cache whose files are never removed is a directory that grows with
-    // every registry this device ever asked about. A failure to prune is a diagnostic, not a reason to refuse to start.
-    crate::commands::registry::prune_documents(&state, now_ms);
+        // ★ One prune per construction, not per request: a cache whose files are never removed is a directory that grows with
+        // every registry this device ever asked about. A failure to prune is a diagnostic, not a reason to refuse to start.
+        crate::commands::registry::prune_documents(&state, now_ms);
 
-    // ★ And the audit table gets the same treatment for the same reason: the sink writes a row on every gated call, and
-    // nothing in this shell swept them. The retention window is configured (`audit.retentionDays`), defaulting to the
-    // design's seven days; see `prune_audit`.
-    crate::commands::plugins::prune_audit(&state, now_ms);
-    // ★ The intents table gets the same treatment, and for the same reason: a row is written on every change, so a shell
-    // that restores without pruning grows a history it never reads. The window is the design's "24 hours after they
-    // finish" (`17 §6`), and it is one constant in the kernel because the daemon sweeps the same table.
-    //
-    // ★ Before the sweep, the other half of a restored board: a `Dispatching` intent is work whose answer is still coming —
-    // but only for as long as the far side's late queue keeps it. Once that window has passed no answer can arrive, and a
-    // row that says "running" for ever is both wrong on the home page and uncollectable (the sweep only takes finished
-    // intents). The kernel decides; this writes the rows so the decision survives the next start too.
-    let expired = {
-        let mut board = state.board.lock();
-        synra_core::intent::persist::expire_unanswered(&mut board, now_ms)
-    };
-    for intent in &expired {
-        crate::commands::intent::checkpoint(&state, *intent);
-    }
-    if !expired.is_empty() {
-        eprintln!("synra: {} dispatched intent(s) ended without an answer", expired.len());
-    }
-    match synra_core::intent::persist::collect(
-        &state.db(),
-        synra_core::intent::persist::INTENT_RETENTION_MS,
-        now_ms,
-    ) {
-        Ok(0) => {}
-        Ok(removed) => eprintln!("synra: removed {removed} finished intent(s) past their retention"),
-        Err(error) => eprintln!("synra: finished intents could not be collected: {error}"),
-    }
-    // ★ What it cost to get here — the shell's own half of M4's cold-start budget. Recorded on the recorder the
-    // performance panel reads, so "cold start < 500 ms" can be checked against a number rather than a stopwatch.
-    state.metrics.histogram_observe(
-        &synra_observe::metrics::SeriesKey::new(
-            "startup_duration_ms",
-            [("phase".to_owned(), "state".to_owned())],
-        ),
-        started.elapsed().as_secs_f64() * 1_000.0,
-    );
-    Ok(state)
+        // ★ And the audit table gets the same treatment for the same reason: the sink writes a row on every gated call, and
+        // nothing in this shell swept them. The retention window is configured (`audit.retentionDays`), defaulting to the
+        // design's seven days; see `prune_audit`.
+        crate::commands::plugins::prune_audit(&state, now_ms);
+        // ★ The intents table gets the same treatment, and for the same reason: a row is written on every change, so a shell
+        // that restores without pruning grows a history it never reads. The window is the design's "24 hours after they
+        // finish" (`17 §6`), and it is one constant in the kernel because the daemon sweeps the same table.
+        //
+        // ★ Before the sweep, the other half of a restored board: a `Dispatching` intent is work whose answer is still coming —
+        // but only for as long as the far side's late queue keeps it. Once that window has passed no answer can arrive, and a
+        // row that says "running" for ever is both wrong on the home page and uncollectable (the sweep only takes finished
+        // intents). The kernel decides; this writes the rows so the decision survives the next start too.
+        let expired = {
+            let mut board = state.board.lock();
+            synra_core::intent::persist::expire_unanswered(&mut board, now_ms)
+        };
+        for intent in &expired {
+            crate::commands::intent::checkpoint(&state, *intent);
+        }
+        if !expired.is_empty() {
+            eprintln!(
+                "synra: {} dispatched intent(s) ended without an answer",
+                expired.len()
+            );
+        }
+        match synra_core::intent::persist::collect(
+            &state.db(),
+            synra_core::intent::persist::INTENT_RETENTION_MS,
+            now_ms,
+        ) {
+            Ok(0) => {}
+            Ok(removed) => {
+                eprintln!("synra: removed {removed} finished intent(s) past their retention")
+            }
+            Err(error) => eprintln!("synra: finished intents could not be collected: {error}"),
+        }
+        // ★ What it cost to get here — the shell's own half of M4's cold-start budget. Recorded on the recorder the
+        // performance panel reads, so "cold start < 500 ms" can be checked against a number rather than a stopwatch.
+        state.metrics.histogram_observe(
+            &synra_observe::metrics::SeriesKey::new(
+                "startup_duration_ms",
+                [("phase".to_owned(), "state".to_owned())],
+            ),
+            started.elapsed().as_secs_f64() * 1_000.0,
+        );
+        Ok(state)
     }
 
     /// How long this shell has been running.
@@ -445,8 +477,10 @@ impl AppState {
             *last = seconds;
             delta
         };
-        self.metrics
-            .counter_add(&synra_observe::metrics::SeriesKey::new("uptime_seconds", []), delta);
+        self.metrics.counter_add(
+            &synra_observe::metrics::SeriesKey::new("uptime_seconds", []),
+            delta,
+        );
     }
 
     /// Samples this process for the process gauges.
@@ -458,7 +492,8 @@ impl AppState {
         // The lock lives only as long as the read: the caller then writes the gauges, which take the recorder's own lock,
         // and holding both in one order here would be a second order to deadlock on.
         let mut system = self.process_system.lock();
-        let _ = system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[self.process_pid]), true);
+        let _ =
+            system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[self.process_pid]), true);
         let process = system.process(self.process_pid)?;
         let memory_bytes = process.memory();
         let cpu_percent = f64::from(process.cpu_usage());
@@ -660,7 +695,11 @@ mod tests {
         let state = crate::testing::state();
 
         assert!(
-            state.metrics.snapshot().get("startup_duration_ms{phase=state}").is_some(),
+            state
+                .metrics
+                .snapshot()
+                .get("startup_duration_ms{phase=state}")
+                .is_some(),
             "the state's own construction time is not recorded"
         );
     }
@@ -676,7 +715,10 @@ mod tests {
         state.host.lock().count_frame_sent("kernel.test");
 
         assert_eq!(
-            state.metrics.snapshot().get("frames_sent_total{event=kernel.test}"),
+            state
+                .metrics
+                .snapshot()
+                .get("frames_sent_total{event=kernel.test}"),
             Some(&Value::Counter(1)),
             "the host's frame counter is the shell's recorder"
         );
@@ -695,7 +737,11 @@ mod tests {
             .expect("the write is made");
 
         assert!(
-            state.metrics.snapshot().get("db_write_duration_us{kind=config}").is_some(),
+            state
+                .metrics
+                .snapshot()
+                .get("db_write_duration_us{kind=config}")
+                .is_some(),
             "the store's write was not counted by the shell's recorder"
         );
     }
@@ -710,6 +756,9 @@ mod tests {
         state.record_uptime(10);
         state.record_uptime(14);
 
-        assert_eq!(state.metrics.snapshot().get("uptime_seconds"), Some(&Value::Counter(14)));
+        assert_eq!(
+            state.metrics.snapshot().get("uptime_seconds"),
+            Some(&Value::Counter(14))
+        );
     }
 }

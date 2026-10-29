@@ -24,7 +24,7 @@ export const devices = {
   'devices.scanDetails': '扫描详情',
   'devices.scanId': '扫描标识',
   'devices.scanFinished': '扫描已结束。',
-  'devices.scanStopRequested': '已请求停止扫描。',
+  'devices.scanStopped': '扫描已停止。',
   'devices.scanStopping': '正在等待扫描停止。',
   'devices.scanCached': '当前无法扫描网络，已显示已知设备。',
   'devices.scanFailedKnown': '当前显示此前已知的设备，本次扫描未完成。',

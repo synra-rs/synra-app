@@ -444,15 +444,16 @@ fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers
     // interface reads to disable the button and draw the bar, so a scan that records nothing looks like a dead button, and
     // one that never clears looks like a button that has died.
     let (state, deadline) = with_discovery();
+    let subscriber = state.events.subscribe();
     let scan_id = super::scan_with(
         &state,
         &ScanOptions {
             timeout_ms: Some(60),
             ..ScanOptions::default()
         },
-        |discovery, budget| {
+        |discovery, budget, cancellation| {
             // The production path publishes its deadline before this wait; inspecting here cannot miss a short scan.
-            discovery.scan_with_wait(budget, 1_000, |window| {
+            discovery.scan_with_wait(budget, 1_000, cancellation, |window| {
                 assert_eq!(window, Duration::from_millis(60));
                 let snapshot = devices_snapshot(&state).expect("running snapshot");
                 assert_eq!(snapshot.scanning.expect("scan in progress").total_ms, 60);
@@ -475,6 +476,13 @@ fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers
         0,
         "with the deadline released, so nothing keeps broadcasting"
     );
+    let delivery = state.events.take(subscriber).expect("start and completion");
+    assert_eq!(delivery.events().len(), 2);
+    for event in delivery.events() {
+        assert!(
+            matches!(event, synra_ipc::event::KernelEvent::ScanUpdated(scan) if scan.scan_id == scan_id)
+        );
+    }
 
     // ★ The scan is measured where it runs. An empty test network found nothing, and "found nothing" is still an
     // observation — a histogram with no observations would be a shape rather than a measurement.
@@ -491,6 +499,125 @@ fn a_network_scan_records_itself_while_it_runs_and_clears_that_before_it_answers
     assert!(
         snapshot.get("scan_duration_ms").is_some(),
         "the scan's time is recorded"
+    );
+}
+
+#[test]
+fn overlapping_network_scans_are_refused_until_the_owner_exits_even_after_cancel() {
+    let (state, deadline) = with_discovery();
+    super::scan_with(
+        &state,
+        &ScanOptions::default(),
+        |discovery, budget, cancellation| {
+            discovery.scan_with_wait(budget, 1_000, cancellation, |_| {
+                let id = devices_snapshot(&state)
+                    .expect("snapshot")
+                    .scanning
+                    .expect("active")
+                    .scan_id;
+                devices_scan_start(&state, &cached()).expect("cache does not need the scanner");
+                assert!(deadline.load(Ordering::Relaxed) > 0);
+                devices_scan_cancel(&state, &id).expect("request accepted");
+                assert!(cancellation.is_cancelled());
+                let refused = devices_scan_start(&state, &ScanOptions::default())
+                    .expect_err("the old owner has not exited");
+                assert_eq!(refused.code, ErrorCode::RateLimited);
+                assert_eq!(refused.params["running"].as_str(), Some(id.as_str()));
+                assert_eq!(
+                    devices_snapshot(&state)
+                        .expect("snapshot")
+                        .scanning
+                        .expect("still active")
+                        .scan_id,
+                    id
+                );
+            });
+        },
+    )
+    .expect("first scan");
+    assert_eq!(deadline.load(Ordering::Relaxed), 0);
+    assert!(
+        devices_snapshot(&state)
+            .expect("snapshot")
+            .scanning
+            .is_none()
+    );
+    super::scan_with(&state, &ScanOptions::default(), |_, _, _| {})
+        .expect("the next scan is admitted");
+}
+
+#[test]
+fn a_real_scan_can_be_cancelled_from_another_command_and_publishes_completion() {
+    let (state, deadline) = with_discovery();
+    let subscriber = state.events.subscribe();
+    std::thread::scope(|scope| {
+        let scanning = scope.spawn(|| devices_scan_start(&state, &ScanOptions::default()));
+        let limit = std::time::Instant::now() + Duration::from_secs(5);
+        while deadline.load(Ordering::Relaxed) == 0 {
+            assert!(std::time::Instant::now() < limit, "scan never began");
+            std::thread::yield_now();
+        }
+        let id = devices_snapshot(&state)
+            .expect("snapshot")
+            .scanning
+            .expect("active scan")
+            .scan_id;
+        devices_scan_cancel(&state, &id).expect("cancel the real wait");
+        assert_eq!(scanning.join().expect("worker").expect("scan result"), id);
+    });
+    assert_eq!(deadline.load(Ordering::Relaxed), 0);
+    assert!(
+        devices_snapshot(&state)
+            .expect("snapshot")
+            .scanning
+            .is_none()
+    );
+    let events = state.events.take(subscriber).expect("scan events");
+    assert_eq!(events.events().len(), 2);
+    assert_eq!(
+        state
+            .metrics
+            .snapshot()
+            .get("scans_total{result=cancelled}"),
+        Some(&synra_observe::metrics::Value::Counter(1))
+    );
+}
+
+#[test]
+fn a_worker_unwind_releases_both_the_demand_and_the_task() {
+    let (state, deadline) = with_discovery();
+    let subscriber = state.events.subscribe();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = super::scan_with(
+            &state,
+            &ScanOptions::default(),
+            |discovery, budget, cancellation| {
+                discovery.scan_with_wait(budget, 1_000, cancellation, |_| {
+                    panic!("injected scan failure")
+                });
+            },
+        );
+    }));
+    assert!(result.is_err());
+    assert_eq!(deadline.load(Ordering::Relaxed), 0);
+    assert!(
+        devices_snapshot(&state)
+            .expect("snapshot")
+            .scanning
+            .is_none()
+    );
+    assert_eq!(
+        state
+            .events
+            .take(subscriber)
+            .expect("completion after failure")
+            .events()
+            .len(),
+        2
+    );
+    assert_eq!(
+        state.metrics.snapshot().get("scans_total{result=failed}"),
+        Some(&synra_observe::metrics::Value::Counter(1))
     );
 }
 
@@ -538,10 +665,7 @@ fn the_options_the_interface_sends_deserialize_into_this_commands_argument() {
     assert_eq!(parsed.timeout_ms, None);
 }
 
-/// The only scan this shell can start.
-///
-/// ★ It finishes before it answers and records nothing, which is why the tests about *cancelling* no longer set up with
-/// it: there is no scan in progress to cancel. They install the state directly instead, in [`scanning`].
+/// An immediate read, which does not disturb an admitted network scan.
 fn cached() -> ScanOptions {
     ScanOptions {
         cached_only: true,
@@ -549,28 +673,38 @@ fn cached() -> ScanOptions {
     }
 }
 
-/// A scan that is genuinely running, put in place directly.
-///
-/// ★ This is the setup the cancellation tests used to reach through the command, and no longer can. An active scan is
-/// refused for the reason [`devices_scan_start`] gives, and a cached one is over before it answers — so **nothing in this
-/// shell can leave a scan in progress**, which is a fact about the shell rather than about cancelling. What is written
-/// here is the state a future active scan would leave, and `devices_scan_cancel` is tested against it rather than
-/// against a scan that never ran.
+/// An admitted task for argument-validation tests; lifecycle tests use the real discovery path below.
 fn scanning(state: &AppState, scan_id: &str) {
-    *state.scanning.lock() = Some(ScanState {
+    *state.scanning.lock() = Some(crate::state::ScanTask::new(ScanState {
         scan_id: scan_id.to_owned(),
         elapsed_ms: 0,
         total_ms: 5_000,
         found: 0,
-    });
+    }));
 }
 
 #[test]
-fn a_cancelled_scan_is_gone_from_the_next_snapshot() {
+fn cancellation_requests_a_stop_without_pretending_the_worker_has_exited() {
     let state = testing::state();
     scanning(&state, "scan-1");
     devices_scan_cancel(&state, "scan-1").expect("cancels");
-    assert_eq!(devices_snapshot(&state).expect("a snapshot").scanning, None);
+    assert!(
+        state
+            .scanning
+            .lock()
+            .as_ref()
+            .expect("still owned")
+            .cancellation
+            .is_cancelled()
+    );
+    assert_eq!(
+        devices_snapshot(&state)
+            .expect("a snapshot")
+            .scanning
+            .expect("still running")
+            .scan_id,
+        "scan-1"
+    );
 }
 
 #[test]

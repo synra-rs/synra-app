@@ -29,7 +29,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { KernelClient } from './client'
 import { FakeKernel } from './fake-kernel'
@@ -189,7 +189,22 @@ describe('every answer the fake gives, against the arity the kernel declares', (
       // Not a skip: a command the fake answers and the contract does not declare is the fake inventing a command.
       expect(declared, `${command} is not declared by ${CONTRACT_RS}`).toBeDefined()
 
-      const answer = await new FakeKernel().invoke(command, args)
+      const kernel = new FakeKernel()
+      let answer: unknown
+      if (command === 'devices_scan_cancel') {
+        vi.useFakeTimers()
+        try {
+          const scanId = await kernel.invoke('devices_scan_start', { opts: { cachedOnly: false } })
+          answer = await kernel.invoke(command, { scanId })
+          vi.advanceTimersByTime(300)
+        }
+        finally {
+          vi.useRealTimers()
+        }
+      }
+      else {
+        answer = await kernel.invoke(command, args)
+      }
 
       // `Unit` says the payload is nothing, so there is no shape to hold it to — the point of the arity is that a caller
       // has nothing to read, and whatever it is, the app must not depend on it.

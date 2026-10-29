@@ -27,7 +27,7 @@
  * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
  */
 
-import type { AuditEntryDto, DevicesSnapshot, ScanState, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { AuditEntryDto, DevicesSnapshot, ScanOptions, ScanState, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
@@ -110,9 +110,11 @@ export class FakeKernel implements Bridge {
   /** Monotonic, because the dispatcher's judgement is a function of it. */
   #seq = 0
 
-  /** The scan's timer, so a second `devices_scan_start` does not leave the first one running. */
+  /** One admitted scan, with completion published by its timer. */
   #scanTimer: ReturnType<typeof setInterval> | undefined
   #scan: ScanState | undefined
+  #scanNumber = 0
+  #scanCancelled = false
 
   /**
    * Refuses a call that is missing an argument the shell requires.
@@ -149,22 +151,17 @@ export class FakeKernel implements Bridge {
       case 'devices_snapshot':
         return this.#devicesSnapshot()
       case 'devices_scan_start': {
-        // ★ The mode matters, and this fake used to scan whatever it was asked for.
-        //
-        // A cached scan is over before it answers and publishes nothing, which is what the shell answers today; a network
-        // scan is the one that reports itself as events. A fake that animated for both made the only mode a real shell
-        // can currently answer invisible in every test — and made the page's two calls look like one call.
-        const opts = args?.opts as { readonly cachedOnly?: boolean } | undefined
-        if (opts?.cachedOnly === true) {
-          // Nothing to wait for and nothing to publish: the scan is over before the answer, which is what the shell
-          // answers today.
-          this.#stopScan()
+        // Cached reads do not acquire or interrupt the admitted network scanner.
+        const opts = args?.opts as ScanOptions | undefined
+        if (opts?.cachedOnly === true || opts?.timeoutMs === 0) {
           return 'scan-cached'
         }
         return this.#startScan()
       }
       case 'devices_scan_cancel':
-        this.#stopScan()
+        if (!this.#scan || this.#scan.scanId !== args?.scanId)
+          throw Object.assign(new Error('error.invalid_argument'), { code: 'invalid_argument', retryable: false, params: { scanId: args?.scanId, running: this.#scan?.scanId }, actions: [] })
+        this.#scanCancelled = true
         return null
       case 'pairing_invite':
       case 'pairing_listen':
@@ -386,19 +383,23 @@ export class FakeKernel implements Bridge {
    * being wrong.
    */
   #startScan(): string {
-    this.#stopScan()
-    const scanId = '01HQ00000000000000000SCAN01'
+    if (this.#scan)
+      throw Object.assign(new Error('error.rate_limited'), { code: 'rate_limited', retryable: false, params: { running: this.#scan.scanId }, actions: [] })
+    const scanId = `preview-scan-${++this.#scanNumber}`
     const totalMs = 900
     const startedAt = Date.now()
+    this.#scanCancelled = false
     this.#scan = { scanId, elapsedMs: 0, totalMs, found: 0 }
     this.#emit('scanUpdated', this.#scan)
 
     this.#scanTimer = setInterval(() => {
       const elapsedMs = Date.now() - startedAt
-      if (elapsedMs >= totalMs) {
+      if (this.#scanCancelled || elapsedMs >= totalMs) {
+        const cancelled = this.#scanCancelled
         this.#stopScan()
-        this.#emit('scanUpdated', { scanId, elapsedMs: totalMs, totalMs, found: 1 })
-        this.#emit('deviceCardUpdated', { ...DEVICES[1]!, lastSeenMs: Date.now() })
+        this.#emit('scanUpdated', { scanId, elapsedMs, totalMs, found: cancelled ? 0 : 1 })
+        if (!cancelled)
+          this.#emit('deviceCardUpdated', { ...DEVICES[1]!, lastSeenMs: Date.now() })
         return
       }
       this.#scan = { scanId, elapsedMs, totalMs, found: 0 }

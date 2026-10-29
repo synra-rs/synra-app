@@ -27,11 +27,11 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use synra_core::discovery::Candidate;
-use synra_core::supervisor::{Supervisor, TaskId, TaskSpec, run_task};
+use synra_core::supervisor::{Cancellation, Supervisor, TaskId, TaskSpec, run_task};
 use synra_core::{DiscoveryService, QUERY_INTERVAL, SharedHost};
 use synra_protocol::discovery::DeviceAnnouncement;
 use synra_protocol::limits::SCAN_PASSIVE;
@@ -60,11 +60,19 @@ pub(crate) fn note_sighting(sightings: &Sightings, device_id: &str) {
     sightings.lock().insert(device_id.to_owned());
 }
 
-/// How often the wait loop looks at the clock.
-///
-/// Not a deadline for anything: the whole wait is bounded by the protocol's scan window, and this is only how often the
-/// loop comes back round. The daemon's own scan waits in the same slices.
-const WAIT_SLICE: Duration = Duration::from_millis(20);
+/// Releases only the demand window this call published, including during unwinding.
+struct DemandWindow<'a> {
+    deadline: &'a AtomicI64,
+    value: i64,
+}
+
+impl Drop for DemandWindow<'_> {
+    fn drop(&mut self) {
+        let _ = self
+            .deadline
+            .compare_exchange(self.value, 0, Ordering::Relaxed, Ordering::Relaxed);
+    }
+}
 
 /// The discovery worker, and the deadline a caller publishes to ask it to look now.
 ///
@@ -98,6 +106,12 @@ impl std::fmt::Debug for Discovery {
             .debug_struct("Discovery")
             .field("service", &self.service)
             .finish_non_exhaustive()
+    }
+}
+
+impl Drop for Discovery {
+    fn drop(&mut self) {
+        self.stop.cancel();
     }
 }
 
@@ -236,13 +250,15 @@ impl Discovery {
     /// it before the answers arrived. The wait is bounded by the protocol's own window (1.2 seconds) and not by the
     /// network, and the window is longer than the protocol's probe timeout, so the answers to the broadcast this triggers
     /// have arrived, been absorbed and been written down before this returns.
-    pub fn scan(&self, budget: Duration) {
-        self.scan_with_wait(budget, synra_store::sqlite::now_ms(), |window| {
-            let started = Instant::now();
-            while started.elapsed() < window {
-                std::thread::sleep(WAIT_SLICE);
-            }
-        });
+    pub(crate) fn scan(&self, budget: Duration, cancellation: &Cancellation) {
+        self.scan_with_wait(
+            budget,
+            synra_store::sqlite::now_ms(),
+            cancellation,
+            |window| {
+                let _ = cancellation.wait(window);
+            },
+        );
     }
 
     /// Publishes and clears the same deadline around a caller-supplied wait, so tests need no scheduler race.
@@ -250,20 +266,28 @@ impl Discovery {
         &self,
         budget: Duration,
         now_ms: i64,
+        cancellation: &Cancellation,
         wait: impl FnOnce(Duration),
     ) {
+        if cancellation.is_cancelled() || self.is_stopped() {
+            return;
+        }
         // ★ The shell's clock is already the signed reading this deadline and the discovery table use, so nothing is
         // converted here. The daemon does convert (`millis_reading`), because its clock counts **unsigned** milliseconds —
         // two hosts, two clocks, one field, and the difference is worth a line rather than a copy of the daemon's code.
         let deadline = now_ms.saturating_add(as_millis(budget));
         self.on_demand.store(deadline, Ordering::Relaxed);
+        let _window = DemandWindow {
+            deadline: &self.on_demand,
+            value: deadline,
+        };
 
         wait(SCAN_PASSIVE.min(budget));
 
         // ★ Released rather than left to expire. The worker would notice within one tick of its own, and a scan that keeps
         // broadcasting after its caller was answered is a scan the user did not ask for — the daemon's own scan says the
         // same thing in the same place.
-        self.on_demand.store(0, Ordering::Relaxed);
+        // DemandWindow releases our deadline before the command reports completion.
     }
 }
 

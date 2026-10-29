@@ -335,7 +335,7 @@ describe('the devices page', () => {
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('devices_scan_cancel', { scanId: 'restored-scan' })
     expect(mocks.call.mock.calls.some(([command]) => command === 'devices_scan_start')).toBe(false)
-    expect(wrapper.text()).toContain(messages.devices.scanStopRequested)
+    expect(wrapper.text()).toContain(messages.devices.scanStopped)
     wrapper.unmount()
   })
 
@@ -442,8 +442,70 @@ describe('the devices page', () => {
       expect(scan.attributes('disabled')).toBeDefined()
       finish({ ok: true, value: 'pending-scan' })
       await flushPromises()
-      expect(wrapper.text()).toContain(messages.devices.scanStopRequested)
+      expect(wrapper.text()).toContain(messages.devices.scanStopped)
       expect(wrapper.text()).not.toContain(messages.devices.scanFinished)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('waits for actual completion and does not carry a stop into a replacement scan', async () => {
+    let scanId: string | undefined = 'original-scan'
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: scanId ? { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } : undefined } }
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.devices.scanStopping)
+      expect(wrapper.text()).not.toContain(messages.devices.scanStopped)
+      scanId = 'replacement-scan'
+      useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES, scanning: { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } })
+      await flushPromises()
+      expect(wrapper.text()).not.toContain(messages.devices.scanStopping)
+      scanId = undefined
+      useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES })
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.devices.scanFinished)
+      expect(wrapper.text()).not.toContain(messages.devices.scanStopped)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it.each([false, true])('ignores an earlier cancellation even if the replacement has finished: %s', async (replacementFinished) => {
+    let scanId: string | undefined = 'original-scan'
+    let finish!: (value: unknown) => void
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'devices_snapshot')
+        return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: scanId ? { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } : undefined } }
+      if (command === 'devices_scan_cancel')
+        return new Promise((resolve) => { finish = resolve })
+      return { ok: true, value: null }
+    })
+    const wrapper = mount(DevicesPage)
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
+      scanId = 'replacement-scan'
+      useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES, scanning: { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } })
+      await flushPromises()
+      if (replacementFinished) {
+        scanId = undefined
+        useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES })
+        await flushPromises()
+      }
+      finish({ ok: true, value: null })
+      await flushPromises()
+      expect(wrapper.text()).not.toContain(messages.devices.scanStopping)
+      expect(wrapper.text()).not.toContain(messages.devices.scanStopped)
+      expect(useDevicesStore().scan?.scanId).toBe(replacementFinished ? undefined : 'replacement-scan')
     }
     finally {
       wrapper.unmount()

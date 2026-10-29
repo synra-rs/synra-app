@@ -14,12 +14,13 @@
 //! is exactly the failure this module's own header forbids: an answer that says something happened when nothing did. They
 //! arrive with the session commands, against a real [`Host`] API.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use synra_core::supervisor::Cancellation;
 use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions, ScanState};
 use synra_protocol::DeviceId;
 
-use crate::state::{AppState, internal};
+use crate::state::{AppState, ScanTask, internal};
 
 /// How long a scan runs, from what the caller asked for.
 ///
@@ -85,7 +86,11 @@ pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
             .then_with(|| left.device_id.cmp(&right.device_id))
     });
 
-    let scanning = state.scanning.lock().clone();
+    let scanning = state
+        .scanning
+        .lock()
+        .as_ref()
+        .map(|task| task.snapshot.clone());
     Ok(DevicesSnapshot {
         identity: state.identity_snapshot(crate::KERNEL_VERSION),
         devices: cards,
@@ -126,7 +131,7 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
 fn scan_with(
     state: &AppState,
     opts: &ScanOptions,
-    scan: impl FnOnce(&crate::discovery::Discovery, Duration),
+    scan: impl FnOnce(&crate::discovery::Discovery, Duration, &Cancellation),
 ) -> Result<String, IpcError> {
     let scan_id = state.next_scan_id();
 
@@ -161,33 +166,90 @@ fn scan_with(
         total_ms: u64::try_from(budget.as_millis()).unwrap_or(u64::MAX),
         found: 0,
     };
-    *state.scanning.lock() = Some(running.clone());
+    let cancellation = {
+        let mut scanning = state.scanning.lock();
+        if let Some(active) = scanning.as_ref() {
+            return Err(IpcError::unknown(synra_protocol::ErrorCode::RateLimited)
+                .with_params(serde_json::json!({"running": active.snapshot.scan_id})));
+        }
+        let task = ScanTask::new(running.clone());
+        let cancellation = task.cancellation.clone();
+        *scanning = Some(task);
+        cancellation
+    };
+    let mut completion = ScanCompletion {
+        state,
+        scan_id: &scan_id,
+        started: Instant::now(),
+        found: 0,
+        completed: false,
+        cancellation: &cancellation,
+    };
     // ★ The window learns the scan started without asking. The comment here used to say this shell published no kernel
-    // events, and while that was true the Scan button had to poll to draw anything. The finishing side is still a
-    // snapshot: the discovered count is the database's answer, not this function's, and inventing one here would be a
-    // second source for it.
+    // events, and while that was true the Scan button had to poll to draw anything. Completion publishes another event
+    // after clearing the task; the global event handler then reads the authoritative snapshot.
     state.publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(
         running,
     )));
     // ★ Reset before the scan and read after it: the counter is "what this scan heard", not "what this process has ever
     // heard", and a value left over from the previous scan would make the second one look more successful than it was.
-    let started = std::time::Instant::now();
     discovery.reset_sightings();
-    scan(discovery, budget);
-    let found = discovery.sightings();
-    count_scan(state, "ran");
-    observe_candidates(state, found);
-    state.metrics.histogram_observe(
-        &synra_observe::metrics::SeriesKey::new("scan_duration_ms", []),
-        started.elapsed().as_secs_f64() * 1_000.0,
-    );
-    // Cleared before the answer, because the scan this records is over. This is also the field's whole meaning: a finished
-    // scan recorded as a running one is what disabled the Scan button and drew the bar that could not move.
-    *state.scanning.lock() = None;
-
+    scan(discovery, budget, &cancellation);
+    completion.found = discovery.sightings();
+    completion.completed = true;
+    // Discovery has released its demand window. Only now can a new task own the scanner.
+    drop(completion);
     announce_cards(state);
 
     Ok(scan_id)
+}
+
+/// Clears only this task and notifies readers, even if its worker unwinds.
+struct ScanCompletion<'a> {
+    state: &'a AppState,
+    scan_id: &'a str,
+    started: Instant,
+    found: u64,
+    completed: bool,
+    cancellation: &'a Cancellation,
+}
+
+impl Drop for ScanCompletion<'_> {
+    fn drop(&mut self) {
+        let finished = {
+            let mut scanning = self.state.scanning.lock();
+            if scanning
+                .as_ref()
+                .is_none_or(|task| task.snapshot.scan_id != self.scan_id)
+            {
+                return;
+            }
+            scanning.take().map(|task| ScanState {
+                elapsed_ms: u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                found: u32::try_from(self.found).unwrap_or(u32::MAX),
+                ..task.snapshot
+            })
+        };
+        if let Some(finished) = finished {
+            let result = if !self.completed {
+                "failed"
+            } else if self.cancellation.is_cancelled() {
+                "cancelled"
+            } else {
+                "ran"
+            };
+            count_scan(self.state, result);
+            observe_candidates(self.state, self.found);
+            self.state.metrics.histogram_observe(
+                &synra_observe::metrics::SeriesKey::new("scan_duration_ms", []),
+                self.started.elapsed().as_secs_f64() * 1_000.0,
+            );
+            self.state
+                .publish(synra_ipc::event::KernelEvent::ScanUpdated(Box::new(
+                    finished,
+                )));
+        }
+    }
 }
 
 /// Counts one scan by how it ended, with the daemon's own label spelling (`ran` / `unavailable`).
@@ -235,7 +297,7 @@ fn announce_cards(state: &AppState) {
     }
 }
 
-/// Ends a scan.
+/// Requests cancellation and wakes the admitted scan. Its owner publishes actual completion.
 ///
 /// # Errors
 ///
@@ -253,25 +315,24 @@ pub fn devices_scan_cancel(state: &AppState, scan_id: &str) -> Result<(), IpcErr
     // `devices_snapshot` reads this same table on every screen refresh, and a cancel that held the lock while building
     // its refusal would make a refresh behind it wait — which is how a settings screen ends up stuttering every time
     // someone presses stop.
-    let running = {
+    let cancellation = {
         let scanning = state.scanning.lock();
-        scanning.as_ref().map(|running| running.scan_id.clone())
+        let running = scanning.as_ref().ok_or_else(|| {
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"scanId": scan_id}))
+        })?;
+        if running.snapshot.scan_id != scan_id {
+            return Err(
+                IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                    serde_json::json!({"scanId": scan_id, "running": running.snapshot.scan_id}),
+                ),
+            );
+        }
+        let cancellation = running.cancellation.clone();
+        drop(scanning);
+        cancellation
     };
-    let running = running.ok_or_else(|| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"scanId": scan_id}))
-    })?;
-    if running != scan_id {
-        return Err(
-            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
-                serde_json::json!({
-                    "scanId": scan_id,
-                    "running": running,
-                }),
-            ),
-        );
-    }
-    *state.scanning.lock() = None;
+    cancellation.cancel();
     Ok(())
 }
 

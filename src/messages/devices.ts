@@ -33,7 +33,7 @@ export const devices = {
   scanDetails: 'Scan details',
   scanId: 'Scan ID',
   scanFinished: 'Scan finished.',
-  scanStopRequested: 'Stop request accepted.',
+  scanStopped: 'Scan stopped.',
   scanStopping: 'Waiting for the scan to stop.',
   scanCached: 'Discovery is unavailable. Showing known devices.',
   scanFailedKnown: 'Showing previously known devices. This scan did not complete.',
