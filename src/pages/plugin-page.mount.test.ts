@@ -21,6 +21,8 @@ import type { PluginSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PLUGINS } from '../ipc/fake-kernel-fixtures'
+import { setLocalePreference } from '../locale'
 import { formatDateTime } from '../locale-format'
 
 const mocks = vi.hoisted(() => ({
@@ -105,10 +107,32 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setLocalePreference('system')
   window.history.replaceState({}, '', '/')
 })
 
 describe('the plugins page', () => {
+  it.each(['en', 'zh-CN'])('shows only actionable preview health notices in %s', async (language) => {
+    setLocalePreference(language)
+    const answers: Record<string, unknown> = { plugins_list: PLUGINS, plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mount(PluginsPage)
+    try {
+      await flushPromises()
+      const notices = wrapper.findAllComponents({ name: 'AAlert' })
+      expect(notices.some(notice => notice.props('message') === messages.plugins.healthLabel('good'))).toBe(false)
+      const fault = notices.find(notice => notice.props('message') === messages.plugins.healthLabel('faulted'))
+      expect(fault?.props('type')).toBe('error')
+      expect(fault?.props('description')).toBeUndefined()
+      expect(wrapper.text()).not.toContain('plugin.health.')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('fills the install path from the platform directory picker', async () => {
     // ★ The path was a hand-typed string. The picker answers the same string the input takes, so the install path itself
     // is unchanged — only the way it is produced is.
@@ -229,7 +253,7 @@ describe('the plugins page', () => {
 
   it('warns when a loaded plugin is over its limits', async () => {
     // ★ The health rung, which the shell used to leave as `None` for every card. A degraded plugin is still `enabled` and
-    // may still say `running`, so the state tag cannot tell this story — the warning and the quota's own sentence do.
+    // may still say `running`, so the warning explains the reported rung in the selected interface language.
     mocks.call.mockResolvedValue({
       ok: true,
       value: [card({
@@ -260,8 +284,9 @@ describe('the plugins page', () => {
     const wrapper = mount(PluginsPage)
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.plugins.healthLabel('degraded'))
-    expect(wrapper.text()).toContain('running at a reduced quota')
+    const warning = wrapper.findAllComponents({ name: 'AAlert' }).find(notice => notice.props('message') === messages.plugins.healthLabel('degraded'))
+    expect(warning?.props('type')).toBe('warning')
+    expect(warning?.props('description')).toBeUndefined()
     // ★ The quota's own numbers, not a second opinion: the rung says how the plugin is doing, these say what it may do.
     // A report with no quota shows no Limits row at all, which the fixture above would catch if the row always rendered.
     expect(wrapper.text()).toContain(messages.plugins.limits)

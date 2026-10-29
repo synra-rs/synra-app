@@ -83,8 +83,8 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     hybrid: false,
     hasUi: false,
     health: {
-      health: 'healthy',
-      explanation: 'plugin.health.ok',
+      health: 'good',
+      explanation: 'running normally',
       callsAdmitted: 12,
       callsRefused: 0,
       usage: null
@@ -107,7 +107,7 @@ export const PLUGINS: readonly PluginSnapshot[] = [
     hasUi: false,
     health: {
       health: 'faulted',
-      explanation: 'plugin.health.quotaExceeded',
+      explanation: 'this plugin exceeded its limits repeatedly and has been disabled',
       callsAdmitted: 40,
       callsRefused: 3,
       usage: null
