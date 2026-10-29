@@ -10,6 +10,7 @@ import type { IntentSnapshot, TransferSnapshot } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { KernelClient } from '../ipc/client'
 import { useIntentsStore } from './intents'
 
 function intent(intentId: string, overrides: Partial<IntentSnapshot> = {}): IntentSnapshot {
@@ -69,5 +70,42 @@ describe('the intents store', () => {
     const store = useIntentsStore()
 
     expect(store.apply({ type: 'deviceCardUpdated', payload: {} } as never)).toBe(false)
+  })
+
+  it('does not restore a completed transfer from a delayed recovery read', async () => {
+    const store = useIntentsStore()
+    const row = transfer('first')
+    store.applySnapshot({ intents: [intent('task')], transfers: [row] })
+    let finish!: (value: unknown) => void
+    const client = new KernelClient({
+      invoke: () => new Promise((resolve) => { finish = resolve }),
+      listen: async () => () => {}
+    })
+    const read = store.readTransfers(client)
+    store.apply({ type: 'transferFinished', payload: { transferId: 'first' } })
+    finish([row])
+    await read
+    expect(store.transfers).toEqual([])
+    expect(store.intents.map(entry => entry.intentId)).toEqual(['task'])
+  })
+
+  it('applies only the latest recovery read and leaves state intact on refusal', async () => {
+    const store = useIntentsStore()
+    const finishes: ((value: unknown) => void)[] = []
+    const client = new KernelClient({
+      invoke: () => new Promise((resolve) => { finishes.push(resolve) }),
+      listen: async () => () => {}
+    })
+    const first = store.readTransfers(client)
+    const second = store.readTransfers(client)
+    finishes[1]!([transfer('new')])
+    await second
+    finishes[0]!([transfer('old')])
+    await first
+    expect(store.transfers.map(entry => entry.transferId)).toEqual(['new'])
+    const refused = store.readTransfers(client)
+    finishes[2]!({ code: 'timeout', message: 'error.timeout', retryable: true })
+    expect(await refused).toMatchObject({ ok: false })
+    expect(store.transfers.map(entry => entry.transferId)).toEqual(['new'])
   })
 })

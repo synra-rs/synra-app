@@ -10,6 +10,13 @@ export const transfers = {
     detail: 'Nothing is stored until you answer.',
     accept: 'Accept',
     reject: 'Reject',
-    always: 'Always accept from this device'
+    always: 'Always accept from this device',
+    pending: (count: number): string => `${count} requests waiting`,
+    details: 'Request details',
+    fileName: 'File name',
+    deviceId: 'Device ID',
+    transferId: 'Transfer ID',
+    answered: 'Response sent. Waiting for transfer status.',
+    checkStatus: 'Check status'
   }
 } as const

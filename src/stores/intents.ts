@@ -15,10 +15,13 @@
  */
 
 import type { IntentSnapshot, KernelEvent, TransferSnapshot } from '@synra/protocol'
+import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useIntentsStore = defineStore('intents', () => {
+  let transferRevision = 0
+  let latestTransferRead = 0
   /** Intents that have arrived and are not finished, in the order the kernel first reported them. */
   const intents = ref<readonly IntentSnapshot[]>([])
 
@@ -27,8 +30,21 @@ export const useIntentsStore = defineStore('intents', () => {
 
   /** Replaces the whole picture, for the first read after startup. */
   function applySnapshot(next: { intents: readonly IntentSnapshot[], transfers: readonly TransferSnapshot[] }): void {
+    transferRevision++
     intents.value = [...next.intents]
     transfers.value = [...next.transfers]
+  }
+
+  /** A manual recovery read cannot restore a request that a newer event already finished. */
+  async function readTransfers(client: Pick<KernelClient, 'call'>): Promise<CallResult<readonly TransferSnapshot[]>> {
+    const ticket = ++latestTransferRead
+    const started = transferRevision
+    const answer = await client.call<readonly TransferSnapshot[]>('transfer_list')
+    if (answer.ok && ticket === latestTransferRead && started === transferRevision) {
+      transferRevision++
+      transfers.value = [...answer.value]
+    }
+    return answer
   }
 
   /** Applies one event. Answers whether this store knew what it was. */
@@ -41,9 +57,11 @@ export const useIntentsStore = defineStore('intents', () => {
         intents.value = intents.value.filter(intent => intent.intentId !== event.payload.intentId)
         return true
       case 'transferUpdated':
+        transferRevision++
         transfers.value = upsert(transfers.value, event.payload, transfer => transfer.transferId)
         return true
       case 'transferFinished':
+        transferRevision++
         transfers.value = transfers.value.filter(transfer => transfer.transferId !== event.payload.transferId)
         return true
       default:
@@ -56,7 +74,7 @@ export const useIntentsStore = defineStore('intents', () => {
     return intents.value.find(intent => intent.intentId === intentId)
   }
 
-  return { apply, applySnapshot, intent, intents, transfers }
+  return { apply, applySnapshot, readTransfers, intent, intents, transfers }
 })
 
 /**
