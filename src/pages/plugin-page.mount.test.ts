@@ -21,6 +21,7 @@ import type { PluginSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter, createWebHashHistory } from 'vue-router'
 import { PLUGINS } from '../ipc/fake-kernel-fixtures'
 import { setLocalePreference } from '../locale'
 import { formatDateTime } from '../locale-format'
@@ -95,7 +96,16 @@ function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
   } as PluginSnapshot
 }
 
-beforeEach(() => {
+let pageRouter: ReturnType<typeof createRouter>
+
+function mountPlugins(options: { attachTo?: HTMLElement } = {}) {
+  return mount(PluginsPage, { ...options, global: { plugins: [pageRouter] } })
+}
+
+beforeEach(async () => {
+  pageRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/plugins', component: PluginsPage }] })
+  await pageRouter.push('/plugins')
+  await pageRouter.isReady()
   // A fresh pinia per test: the store is what the page reads, so a card left by the previous test would be the page
   // showing something this test never asked for.
   installBrowserApis()
@@ -117,7 +127,7 @@ describe('the plugins page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(PluginsPage, { attachTo: document.body })
+    const wrapper = mountPlugins({ attachTo: document.body })
     try {
       await flushPromises()
       const install = wrapper.get('#plugin-install')
@@ -152,7 +162,7 @@ describe('the plugins page', () => {
       : command === 'plugins_install' && !refused
         ? { ok: true, value: { pluginId: '@acme/hello', version: '1.0.0', enabled: false } }
         : { ok: false, error: { code: 'invalid', message: 'error.invalid', retryable: false } })
-    const wrapper = mount(PluginsPage, { attachTo: document.body })
+    const wrapper = mountPlugins({ attachTo: document.body })
     try {
       await flushPromises()
       await wrapper.get('[data-testid="install-toggle"]').trigger('click')
@@ -182,7 +192,7 @@ describe('the plugins page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     try {
       await flushPromises()
       const notices = wrapper.findAllComponents({ name: 'AAlert' })
@@ -203,7 +213,7 @@ describe('the plugins page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     try {
       await flushPromises()
       expect(wrapper.get('input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installPath)
@@ -228,7 +238,7 @@ describe('the plugins page', () => {
     mocks.open.mockResolvedValue('C:/plugins/hello')
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const choose = wrapper.findAll('button').find(button => button.text() === messages.plugins.chooseDirectory)
@@ -249,7 +259,7 @@ describe('the plugins page', () => {
     mocks.open.mockResolvedValue('C:/plugins/hello.synra')
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const choose = wrapper.findAll('button').find(button => button.text() === messages.plugins.choosePackage)
@@ -268,49 +278,88 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
-  it('filters the installed list to a plugin named in the query', async () => {
-    // ★ A package notice links to the plugin it was about. The query fills the page's existing filter rather than adding a
-    // second way to select a card.
-    window.history.replaceState({}, '', '/?plugin=@acme/hello')
+  it('opens the exact plugin from a hash route and follows query-only navigation', async () => {
+    pageRouter.options.history.destroy()
+    window.history.replaceState({}, '', '/#/plugins?plugin=%40acme%2Fhello')
+    pageRouter = createRouter({ history: createWebHashHistory(), routes: [{ path: '/plugins', component: PluginsPage }] })
     mocks.call.mockImplementation(async (command: string) => command === 'plugins_list'
-      ? { ok: true, value: [card()] }
+      ? { ok: true, value: [card(), card({ pluginId: '@acme/hello-extra', title: 'Other plugin' })] }
       : { ok: true, value: [] })
 
-    const wrapper = mount(PluginsPage)
-    await flushPromises()
-
-    const filter = wrapper.find(`input[placeholder="${messages.plugins.filterPlaceholder}"]`)
-    expect((filter.element as HTMLInputElement).value).toBe('@acme/hello')
-    expect(wrapper.text()).toContain('Hello')
-    wrapper.unmount()
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await pageRouter.isReady()
+      await flushPromises()
+      expect(wrapper.get('[data-testid="plugin-target"]').text()).toContain('Hello')
+      expect(wrapper.text()).not.toContain('Other plugin')
+      expect(wrapper.get('[data-plugin-management] .ant-collapse-header').attributes('aria-expanded')).toBe('true')
+      expect(document.activeElement).toBe(wrapper.get('[data-testid="plugin-target"] span').element)
+      await pageRouter.push({ path: '/plugins', query: { plugin: '@acme/hello-extra', origin: 'notice' } })
+      await flushPromises()
+      expect(wrapper.get('[data-testid="plugin-target"]').text()).toContain('Other plugin')
+      expect(wrapper.get('[data-plugin-management] .ant-collapse-header').attributes('aria-expanded')).toBe('true')
+      await wrapper.get('[data-testid="plugin-target"] button').trigger('click')
+      await flushPromises()
+      expect(pageRouter.currentRoute.value.query).toEqual({ origin: 'notice' })
+      expect(window.location.hash).toBe('#/plugins?origin=notice')
+      expect(document.activeElement).toBe(wrapper.get(`input[placeholder="${messages.plugins.filterPlaceholder}"]`).element)
+      expect(wrapper.text()).toContain('Hello')
+      expect(wrapper.text()).toContain('Other plugin')
+      expect(mocks.call.mock.calls.map(([command]) => command)).toEqual(['plugins_list', 'plugins_publishers'])
+    }
+    finally {
+      wrapper.unmount()
+      pageRouter.options.history.destroy()
+    }
   })
 
-  it('offers to clear a filter that keeps every card out', async () => {
-    // ★ A notice can name a plugin that is no longer installed. The empty list has to offer the way back rather than
-    // leaving the user to discover that the box above is a filter.
-    window.history.replaceState({}, '', '/?plugin=@acme/missing')
+  it('explains a missing notification target and returns to the installed list', async () => {
+    await pageRouter.push({ path: '/plugins', query: { plugin: '@acme/missing' } })
     mocks.call.mockImplementation(async (command: string) => command === 'plugins_list'
       ? { ok: true, value: [card()] }
       : { ok: true, value: [] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.plugins.noMatch)
-    const clear = wrapper.findAll('button').find(button => button.text() === messages.plugins.clearFilter)
+    expect(wrapper.text()).toContain(messages.plugins.notFound('@acme/missing'))
+    const clear = wrapper.findAll('button').find(button => button.text() === messages.plugins.showAll)
     expect(clear, 'the empty list has no clear action').toBeDefined()
     await clear?.trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Hello')
-    expect(window.location.search).toBe('')
+    expect(pageRouter.currentRoute.value.fullPath).toBe('/plugins')
     wrapper.unmount()
+  })
+
+  it('keeps local filter drafts separate from notification targets and permission review', async () => {
+    mocks.call.mockImplementation(async (command: string) => command === 'plugins_list'
+      ? { ok: true, value: [card(), card({ pluginId: '@acme/other', title: 'Other plugin', state: 'active', granted: ['log:*'] })] }
+      : { ok: true, value: [] })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      expect(wrapper.findAll('button').filter(button => button.text() === messages.plugins.reviewPermissions)).toHaveLength(1)
+      expect(wrapper.text()).not.toContain('awaiting_consent')
+      await wrapper.get(`input[placeholder="${messages.plugins.filterPlaceholder}"]`).setValue('Other plugin')
+      await pageRouter.push({ path: '/plugins', query: { plugin: '@acme/hello' } })
+      await flushPromises()
+      expect(wrapper.get('[data-testid="plugin-target"]').text()).toContain('Hello')
+      await wrapper.get('[data-testid="plugin-target"] button').trigger('click')
+      await flushPromises()
+      expect((wrapper.get(`input[placeholder="${messages.plugins.filterPlaceholder}"]`).element as HTMLInputElement).value).toBe('Other plugin')
+      expect(wrapper.text()).not.toContain(messages.plugins.reviewPermissions)
+    }
+    finally {
+      wrapper.unmount()
+    }
   })
 
   it('asks for the list when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: [] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('plugins_list')
@@ -320,7 +369,7 @@ describe('the plugins page', () => {
   it('renders what the kernel answered', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: [card()] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(wrapper.text()).toContain('Hello')
@@ -333,7 +382,7 @@ describe('the plugins page', () => {
     // The green tag existed and was unreachable, so a running plugin looked as neutral as one with no state at all.
     mocks.call.mockResolvedValue({ ok: true, value: [card({ state: 'active', enabled: true })] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(wrapper.find('.ant-tag-success').exists(), 'an active plugin is not shown as success').toBe(true)
@@ -370,7 +419,7 @@ describe('the plugins page', () => {
       })]
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const warning = wrapper.findAllComponents({ name: 'AAlert' }).find(notice => notice.props('message') === messages.plugins.healthLabel('degraded'))
@@ -402,7 +451,7 @@ describe('the plugins page', () => {
       value: [card({ state: 'unavailable', stateReason: why })]
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(wrapper.text()).toContain(why)
@@ -418,7 +467,7 @@ describe('the plugins page', () => {
       return { ok: true, value: [card({ state: 'faulted', enabled: true, stateReason: 'it failed to start' })] }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const retry = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.retry)
@@ -443,7 +492,7 @@ describe('the plugins page', () => {
       }
       return { ok: true, value: [card()] }
     })
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     // The card's button, not the dialog's own footer button: the dialog renders (closed) before the list, so a search by
@@ -492,17 +541,54 @@ describe('the plugins page', () => {
     // `requested`.
     mocks.call.mockResolvedValue({ ok: true, value: [card({ granted: [], denied: [] })] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(wrapper.text()).toContain('log:*')
     wrapper.unmount()
   })
 
+  it('refreshes clean permission drafts from store events and preserves unsaved edits', async () => {
+    const initial = card({ state: 'active', granted: ['log:*'], requested: ['log:*', 'net:fetch:example.com'] })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [initial] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      if (command === 'plugins_consent_respond')
+        return { ok: true, value: { ...initial, granted: ['log:*', 'net:fetch:example.com'] } }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      const save = () => wrapper.findAll('button').find(button => button.text() === messages.plugins.consentAction)
+      expect(save()).toBeUndefined()
+      const store = usePluginsStore()
+      store.upsert({ ...initial, granted: ['net:fetch:example.com'] })
+      await flushPromises()
+      const choices = wrapper.findComponent({ name: 'ACheckboxGroup' })
+      expect(choices.props('value')).toEqual(['net:fetch:example.com'])
+      await choices.vm.$emit('update:value', ['log:*', 'net:fetch:example.com'])
+      await flushPromises()
+      store.upsert({ ...initial, granted: ['net:fetch:example.com'], stateReason: 'Unrelated runtime update' })
+      await flushPromises()
+      expect(choices.props('value')).toEqual(['log:*', 'net:fetch:example.com'])
+      await save()!.trigger('click')
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('plugins_consent_respond', { pluginId: initial.pluginId, granted: ['log:*', 'net:fetch:example.com'] })
+      expect(save()).toBeUndefined()
+      expect(wrapper.text()).not.toContain(messages.plugins.reviewPermissions)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('shows the refusal when the list cannot be read', async () => {
     mocks.call.mockResolvedValue({ ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     // ★ Asserted through the component rather than its words: the notice renders a translated sentence, so looking for the
@@ -518,7 +604,7 @@ describe('the plugins page', () => {
     // asserts is the join — the card's `hasUi` draws the control, and pressing it reaches the command with the id.
     mocks.call.mockResolvedValue({ ok: true, value: [card({ hasUi: true })] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.openAction)
@@ -534,7 +620,7 @@ describe('the plugins page', () => {
     // A button that can only refuse is worse than no button: the card already has the word for what the plugin is.
     mocks.call.mockResolvedValue({ ok: true, value: [card({ hasUi: false })] })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(wrapper.findAll('button').some(candidate => candidate.text() === messages.plugins.openAction)).toBe(false)
@@ -558,7 +644,7 @@ describe('the plugins page', () => {
       return { ok: true, value: [] }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)
@@ -590,7 +676,7 @@ describe('the plugins page', () => {
       return { ok: true, value: [] }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     await wrapper.findAll('button').find(candidate => candidate.text() === messages.plugins.syncAction)?.trigger('click')
@@ -619,7 +705,7 @@ describe('the plugins page', () => {
       }
       throw new Error(`unexpected command ${command}`)
     })
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
     expect(wrapper.text()).toContain(fingerprint)
     await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.trust)?.trigger('click')
@@ -630,6 +716,123 @@ describe('the plugins page', () => {
     expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: '@acme', fingerprint, trust: 'revoked' })
     expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('invalid_argument')
     wrapper.unmount()
+  })
+
+  it.each(['input', 'source', 'close', 'unmount'])('discards a pending registry preview after %s changes', async (change) => {
+    let resolve!: (value: unknown) => void
+    const pending = new Promise<unknown>((done) => {
+      resolve = done
+    })
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_preview')
+        return pending
+      if (command === 'plugins_list' || command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    let unmounted = false
+    try {
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      const mode = wrapper.findComponent({ name: 'ASegmented' })
+      await mode.vm.$emit('update:value', 'registry')
+      await wrapper.get('#plugin-install input[aria-label]').setValue('@acme/first')
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('#plugin-install input[aria-label]').trigger('keydown', { key: 'Enter', keyCode: 13 })
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_preview')).toHaveLength(1)
+      if (change === 'input') {
+        await wrapper.get('#plugin-install input[aria-label]').setValue('@acme/second')
+      }
+      else if (change === 'source') {
+        await mode.vm.$emit('update:value', 'path')
+      }
+      else if (change === 'close') {
+        await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      }
+      else {
+        wrapper.unmount()
+        unmounted = true
+      }
+      resolve({ ok: true, value: { pluginId: '@acme/first', title: 'Old preview', version: '1.0.0', publisher: 'acme', capabilities: [], headless: true, hasUi: false } })
+      await flushPromises()
+      expect(document.body.textContent).not.toContain('Old preview')
+      if (!unmounted) {
+        const modal = wrapper.findAllComponents({ name: 'AModal' }).find(modal => modal.props('title') === messages.plugins.preview.title)
+        expect(modal?.props('open')).toBe(false)
+      }
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_install')).toHaveLength(0)
+    }
+    finally {
+      if (!unmounted)
+        wrapper.unmount()
+    }
+  })
+
+  it('keeps the publisher prompt after a refused decision and allows retry', async () => {
+    const fingerprint = 'AB12CD34'
+    let trusted = false
+    let refuse = true
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [card()] }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [{ publisherId: '@acme', fingerprint, trust: trusted ? 'trusted' : 'seen', firstSeenMs: 0 }] }
+      if (command === 'plugins_install')
+        return { ok: true, value: { pluginId: '@acme/hello', version: '1.0.0', enabled: false, publisherId: '@acme', fingerprint } }
+      if (command === 'plugins_publisher_decide') {
+        if (refuse)
+          return { ok: false, error: { code: 'unavailable', message: 'error.unavailable', retryable: true } }
+        trusted = true
+        return { ok: true, value: null }
+      }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      await wrapper.get('input[aria-label]').setValue('C:/signed-plugin')
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      const trust = () => wrapper.findAll('button').find(button => button.text() === messages.plugins.publisherPrompt.trust)!
+      await trust().trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain(messages.plugins.publisherPrompt.title)
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('unavailable')
+      refuse = false
+      await trust().trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).not.toContain(messages.plugins.publisherPrompt.title)
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_publisher_decide')).toHaveLength(2)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('does not submit registry search while an IME composition is being confirmed', async () => {
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list' || command === 'plugins_publishers' || command === 'plugins_catalog_search')
+        return { ok: true, value: [] }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      const input = wrapper.get(`input[placeholder="${messages.plugins.catalog.placeholder}"]`)
+      await input.setValue('插件')
+      await input.trigger('keydown', { key: 'Enter', keyCode: 13, isComposing: true })
+      await input.trigger('keydown', { key: 'Enter', keyCode: 229 })
+      await flushPromises()
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_catalog_search')).toHaveLength(0)
+      await input.trigger('keydown', { key: 'Enter', keyCode: 13 })
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('plugins_catalog_search', { query: { query: '插件', offset: 0, sort: 'relevance' } })
+    }
+    finally {
+      wrapper.unmount()
+    }
   })
 
   it('installs from the registry when the mode says so', async () => {
@@ -659,7 +862,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const mode = wrapper.findComponent({ name: 'ASegmented' })
@@ -712,7 +915,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     await wrapper.find('input[placeholder="Search the registry"]').setValue('p')
@@ -746,7 +949,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const check = wrapper.findAll('button').find(button => button.text().includes('Check for updates'))
@@ -784,7 +987,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     await wrapper.findAll('button').find(button => button.text().includes('Check for updates'))?.trigger('click')
@@ -810,7 +1013,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(mocks.call).not.toHaveBeenCalledWith('plugins_check_update', expect.anything())
@@ -823,7 +1026,7 @@ describe('the plugins page', () => {
       ok: true,
       value: command === 'plugins_list' ? [card()] : []
     }))
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
     const store = usePluginsStore()
     const checkedAt = 1_700_000_000_000
@@ -857,7 +1060,7 @@ describe('the plugins page', () => {
       value: [card(), card({ pluginId: '@acme/other', title: 'Other' })]
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     await wrapper.find('input[placeholder="Filter installed plugins"]').setValue('other')
@@ -870,7 +1073,7 @@ describe('the plugins page', () => {
     // ★ The page stopped holding a copy of the list: it reads the store, and `src/events.ts` writes it. This asserts the
     // join — a card put in the store by something other than the page's own read still reaches the DOM.
     mocks.call.mockResolvedValue({ ok: true, value: [] })
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     usePluginsStore().upsert(card({ title: 'Arrived by event' }))
@@ -906,7 +1109,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     expect(mocks.call).not.toHaveBeenCalledWith('plugins_audit', expect.anything())
@@ -956,7 +1159,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const trail = wrapper.find('details')
@@ -988,7 +1191,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const trail = wrapper.find('details')
@@ -1024,7 +1227,7 @@ describe('the plugins page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(PluginsPage)
+    const wrapper = mountPlugins()
     await flushPromises()
 
     const trail = wrapper.find('details')

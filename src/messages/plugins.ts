@@ -7,6 +7,9 @@ export const plugins = {
   title: 'Plugins',
   installHeading: 'Install plugin',
   manage: 'Permissions and management',
+  reviewPermissions: 'Review permissions',
+  showAll: 'All plugins',
+  notFound: (id: string) => `Plugin ${id} is no longer installed.`,
   enableLabel: (name: string) => `Enable ${name}`,
   openLabel: (name: string) => `Open ${name}`,
   states: {
@@ -14,6 +17,9 @@ export const plugins = {
     validated: 'Validated',
     granted: 'Permissions granted',
     active: 'Active',
+    disabled: 'Disabled',
+    awaiting_consent: 'Needs permission review',
+    unreadable: 'Plugin files cannot be read',
     deactivated: 'Disabled',
     faulted: 'Stopped after an error',
     parked: 'Stopped'
@@ -136,7 +142,7 @@ export const plugins = {
   /** The list the user decides about, one checkbox each. */
   requested: 'It asks for',
   /** The button that records the decision. "Allow" rather than "Save": the act is approval, not persistence. */
-  consentAction: 'Allow selected',
+  consentAction: 'Save permissions',
 
   /**
    * The install form's words, added when the command became reachable from this window.

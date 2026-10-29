@@ -13,17 +13,18 @@
       wrong.
     -->
     <section v-show="installExpanded" id="plugin-install" class="stack gap-4 border border-line rounded-surface bg-surface p-4" :aria-label="messages.plugins.installHeading">
-      <ASegmented v-model:value="installMode" :options="installOptions" />
+      <ASegmented v-model:value="installMode" :options="installOptions" :disabled="installing" />
       <div class="row flex-wrap gap-2">
         <AInput
           v-model:value="installPath"
           :placeholder="installLabel"
           :aria-label="installLabel"
+          :disabled="installing"
           class="min-w-0 w-full sm:flex-1"
           allow-clear
-          @press-enter="install"
+          @press-enter="submitInstall"
         />
-        <AButton data-testid="install-submit" :loading="installing" :disabled="installPath.trim() === ''" @click="install">
+        <AButton data-testid="install-submit" :loading="installing || previewing !== undefined" :disabled="installPath.trim() === ''" @click="install">
           {{ installing ? messages.plugins.installing : messages.plugins.installAction }}
         </AButton>
 
@@ -31,10 +32,10 @@
           ★ A directory path typed by hand is the one form here that can be got wrong without noticing. The picker answers
           the same string the input takes, so the install path itself is unchanged.
         -->
-        <AButton v-if="installMode === 'path'" :loading="choosing" @click="chooseDirectory">
+        <AButton v-if="installMode === 'path'" :loading="choosing" :disabled="installing" @click="chooseDirectory">
           {{ messages.plugins.chooseDirectory }}
         </AButton>
-        <AButton v-if="installMode === 'path'" :loading="choosing" @click="choosePackage">
+        <AButton v-if="installMode === 'path'" :loading="choosing" :disabled="installing" @click="choosePackage">
           {{ messages.plugins.choosePackage }}
         </AButton>
       </div>
@@ -51,14 +52,16 @@
             <AInput
               v-model:value="searchText"
               :placeholder="messages.plugins.catalog.placeholder"
+              :aria-label="messages.plugins.catalog.placeholder"
               allow-clear
-              @press-enter="search"
+              @press-enter="submitSearch"
             />
             <ASelect v-model:value="searchSort" :options="sortOptions" class="w-fit" />
-            <AButton :loading="searching" :disabled="searchText.trim() === ''" @click="search">
+            <AButton :loading="searching" :disabled="searchText.trim() === '' || catalogBusy" @click="search">
               {{ messages.plugins.catalog.action }}
             </AButton>
           </div>
+          <ErrorNotice v-if="catalogError" :code="catalogError.code" :message="catalogError.message" :actions="catalogError.actions" @retry="retryCatalog" />
           <AList v-if="results.length > 0" :data-source="results" size="small">
             <template #renderItem="{ item }">
               <AList.Item :style="{ paddingInline: 0 }">
@@ -69,17 +72,17 @@
                     </span>
                     <span class="text-sm text-ink-dim">{{ item.description ?? item.pluginId }}</span>
                   </div>
-                  <AButton size="small" @click="previewResult(item)">
+                  <AButton size="small" :loading="previewing === item.pluginId" :disabled="previewing !== undefined || installing" @click="previewResult(item)">
                     {{ messages.plugins.catalog.preview }}
                   </AButton>
                 </div>
               </AList.Item>
             </template>
           </AList>
-          <AButton v-if="hasMore" :loading="searching" block @click="loadMore">
+          <AButton v-if="hasMore" :loading="loadingMore" :disabled="catalogBusy" block @click="loadMore">
             {{ messages.plugins.catalog.loadMore }}
           </AButton>
-          <p v-else-if="searched && !searching" class="m-0 text-sm text-ink-dim">
+          <p v-else-if="searched && !catalogBusy && !catalogError && results.length === 0" class="m-0 text-sm text-ink-dim">
             {{ messages.plugins.catalog.empty }}
           </p>
         </div>
@@ -95,7 +98,7 @@
       :title="messages.plugins.preview.title"
       :ok-text="messages.plugins.installAction"
       @ok="confirmPreview"
-      @cancel="preview = undefined"
+      @cancel="cancelPreview"
     >
       <div v-if="preview" class="stack gap-2">
         <p class="m-0 text-base font-medium">
@@ -139,7 +142,7 @@
       <template #description>
         <div class="stack gap-2">
           <span class="text-sm">{{ messages.plugins.publisherPrompt.detail }}</span>
-          <span class="truncate text-xs font-mono">{{ pendingPublisher.fingerprint }}</span>
+          <span class="break-all text-xs font-mono">{{ pendingPublisher.fingerprint }}</span>
           <span class="row gap-2">
             <AButton
               size="small"
@@ -192,14 +195,22 @@
       would be the kind of comment that outlives its fact and sends the next reader looking for a missing feature.
     -->
     <!-- Local filtering stays separate from the explicitly opened registry search. -->
+    <div v-if="targetPluginId" class="min-w-0 row-between flex-wrap gap-2" data-testid="plugin-target">
+      <span ref="targetHeading" tabindex="-1" class="min-w-0 break-all text-sm font-medium">{{ targetPlugin?.title ?? targetPluginId }}</span>
+      <AButton size="small" @click="leaveTarget">
+        {{ messages.plugins.showAll }}
+      </AButton>
+    </div>
+    <AAlert v-if="targetPluginId && !targetPlugin && !loading && !error" type="info" :message="messages.plugins.notFound(targetPluginId)" />
     <AInput
-      v-if="plugins.length > 0"
+      v-if="plugins.length > 0 && !targetPluginId"
+      ref="filterInput"
       v-model:value="query"
       :placeholder="messages.plugins.filterPlaceholder"
       allow-clear
     />
 
-    <AEmpty v-if="plugins?.length === 0" :description="messages.plugins.empty">
+    <AEmpty v-if="plugins?.length === 0 && !targetPluginId" :description="messages.plugins.empty">
       <template #image>
         <!--
           The icon rather than antd's default illustration: that illustration draws its own light-grey palette into a
@@ -214,7 +225,7 @@
       </AButton>
     </AEmpty>
 
-    <AEmpty v-else-if="visible.length === 0" :description="messages.plugins.noMatch">
+    <AEmpty v-else-if="visible.length === 0 && !targetPluginId" :description="messages.plugins.noMatch">
       <AButton size="small" @click="clearFilter">
         {{ messages.plugins.clearFilter }}
       </AButton>
@@ -225,7 +236,7 @@
       an update — so each one is a list item with several lines rather than a card (R26). The lines are labelled
       separately instead of joined by separators, which is the shape R21 retires.
     -->
-    <AList v-else :data-source="visible">
+    <AList v-else-if="visible.length > 0" :data-source="visible">
       <template #renderItem="{ item: plugin }">
         <AList.Item :style="{ paddingInline: 0 }">
           <div class="min-w-0 w-full stack gap-3">
@@ -243,6 +254,9 @@
               <ATag :color="stateColour(plugin.state)" class="shrink-0">
                 {{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}
               </ATag>
+              <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="managementOpen[plugin.pluginId] = [plugin.pluginId]">
+                {{ messages.plugins.reviewPermissions }}
+              </AButton>
               <!--
                 ★ A faulted plugin is enabled and trusted; what failed was starting it. Retry asks again without
                 changing either switch, which is the difference between "try it now" and "turn it off and on".
@@ -300,7 +314,7 @@
               </template>
             </AAlert>
 
-            <ACollapse ghost data-plugin-management>
+            <ACollapse :active-key="managementOpen[plugin.pluginId] ?? []" ghost data-plugin-management @change="keys => setManagement(plugin.pluginId, keys)">
               <ACollapse.Panel :key="plugin.pluginId" :header="messages.plugins.manage" force-render>
                 <div class="min-w-0 stack gap-4">
                   <dl class="m-0 row flex-wrap gap-4 text-xs">
@@ -407,8 +421,10 @@
                       and `v-model` on a possibly-undefined key does not type-check under `exactOptionalPropertyTypes`.
                     -->
                     <ACheckboxGroup
-                      :value="selection[plugin.pluginId] ?? []"
+                      :value="selection[plugin.pluginId] ?? plugin.granted"
+                      :disabled="consenting.has(plugin.pluginId)"
                       class="stack"
+                      :style="{ alignSelf: 'flex-start' }"
                       @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
                     >
                       <ACheckbox
@@ -422,9 +438,11 @@
                     </ACheckboxGroup>
 
                     <AButton
+                      v-if="plugin.state === 'awaiting_consent' || permissionChanged(plugin)"
                       size="small"
-                      :loading="consenting === plugin.pluginId"
-                      @click="consent(plugin, selection[plugin.pluginId] ?? [])"
+                      class="self-start"
+                      :loading="consenting.has(plugin.pluginId)"
+                      @click="consent(plugin, selection[plugin.pluginId] ?? plugin.granted)"
                     >
                       {{ messages.plugins.consentAction }}
                     </AButton>
@@ -611,11 +629,12 @@
 </template>
 
 <script setup lang="ts">
-import type { CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
+import type { CatalogItem, InstallPreviewDto, InstallReport, PluginSnapshot, PublisherDto, SuggestedAction, UpdateInfo } from '@synra/protocol'
 import type { AuditEntry, Failure } from './plugins/actions'
 import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGroup as ACheckboxGroup, Collapse as ACollapse, Empty as AEmpty, Input as AInput, List as AList, Modal as AModal, Segmented as ASegmented, Select as ASelect, Switch as ASwitch, Tag as ATag } from 'ant-design-vue'
 import { storeToRefs } from 'pinia'
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 /**
  * What is installed, and what each one has been allowed to do.
@@ -639,7 +658,8 @@ import { kernel } from '../kernel'
 import { formatDateTime, formatTime } from '../locale-format'
 import { messages } from '../messages'
 import { usePluginsStore } from '../stores/plugins'
-import { AUDIT_PAGE, clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, searchCatalog, setEnabled, uninstall } from './plugins/actions'
+import { AUDIT_PAGE, clearAudit, decide, installFrom, installFromRegistry, planSync, previewInstall, audit as readAudit, runSync, setEnabled, uninstall } from './plugins/actions'
+import { useCatalog } from './plugins/catalog'
 
 const pluginsStore = usePluginsStore()
 const { plugins } = storeToRefs(pluginsStore)
@@ -655,18 +675,76 @@ const selection = reactive<Record<string, string[]>>({})
  */
 const installed = computed(() => [...plugins.value])
 
+/** Exact editor values only; capability coverage and whether consent is needed remain kernel decisions. */
+function sameDecision(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every(capability => right.includes(capability))
+}
+
+function permissionChanged(plugin: PluginSnapshot): boolean {
+  return !sameDecision(selection[plugin.pluginId] ?? plugin.granted, plugin.granted)
+}
+
+watch(plugins, (next, previous) => {
+  const before = new Map((previous ?? []).map(plugin => [plugin.pluginId, plugin]))
+  const current = new Set(next.map(plugin => plugin.pluginId))
+  for (const plugin of next) {
+    const draft = selection[plugin.pluginId]
+    const old = before.get(plugin.pluginId)
+    if (!draft || !old || sameDecision(draft, old.granted))
+      selection[plugin.pluginId] = [...plugin.granted]
+  }
+  for (const id of Object.keys(selection)) {
+    if (!current.has(id))
+      delete selection[id]
+  }
+}, { immediate: true, flush: 'sync' })
+
 /** The filter the user typed, matched against id, title and description. */
 const query = ref('')
 
-/** Drops a filter that kept every card out — including one a package notice supplied. */
+const route = useRoute()
+const router = useRouter()
+const targetPluginId = computed(() => typeof route.query.plugin === 'string' ? route.query.plugin.trim() : '')
+const targetPlugin = computed(() => installed.value.find(plugin => plugin.pluginId === targetPluginId.value))
+const targetHeading = ref<HTMLElement>()
+const filterInput = ref<{ focus: () => void }>()
+const installToggle = ref<{ $el: HTMLButtonElement }>()
+const managementOpen = reactive<Record<string, string[]>>({})
+
+function setManagement(id: string, keys: string | number | (string | number)[]): void {
+  managementOpen[id] = (Array.isArray(keys) ? keys : [keys]).map(String)
+}
+
+// A notice selects an exact object, independently of the user's keyword filter. Query-only navigation reuses this page.
+watch(targetPluginId, async (id, previous) => {
+  if (previous)
+    managementOpen[previous] = []
+  if (!id)
+    return
+  managementOpen[id] = [id]
+  await nextTick()
+  targetHeading.value?.focus()
+}, { immediate: true, flush: 'post' })
+
+async function leaveTarget(): Promise<void> {
+  const { plugin: _plugin, ...query } = route.query
+  await router.replace({ path: route.path, query, hash: route.hash })
+  await nextTick()
+  if (filterInput.value)
+    filterInput.value.focus()
+  else
+    installToggle.value?.$el.focus()
+}
+
+/** Drops only the locally typed filter. */
 function clearFilter(): void {
   query.value = ''
-  // The query in the address bar is what put the filter there; leaving it would bring the same empty list back on reload.
-  window.history.replaceState({}, '', '/plugins')
 }
 
 /** What the list draws: the installed plugins the filter keeps. */
 const visible = computed(() => {
+  if (targetPluginId.value)
+    return targetPlugin.value ? [targetPlugin.value] : []
   const needle = query.value.trim().toLowerCase()
   if (needle === '')
     return installed.value
@@ -713,8 +791,8 @@ async function trustPendingPublisher(): Promise<void> {
   const pending = pendingPublisher.value
   if (!pending)
     return
-  await decidePublisher(pending.id, pending.fingerprint, 'trusted')
-  pendingPublisher.value = undefined
+  if (await decidePublisher(pending.id, pending.fingerprint, 'trusted') && pendingPublisher.value === pending)
+    pendingPublisher.value = undefined
 }
 
 /** Revokes the key the install just showed — the opposite answer, from the same prompt. */
@@ -722,18 +800,11 @@ async function revokePendingPublisher(): Promise<void> {
   const pending = pendingPublisher.value
   if (!pending)
     return
-  await decidePublisher(pending.id, pending.fingerprint, 'revoked')
-  pendingPublisher.value = undefined
+  if (await decidePublisher(pending.id, pending.fingerprint, 'revoked') && pendingPublisher.value === pending)
+    pendingPublisher.value = undefined
 }
 
-onMounted(async () => {
-  await load()
-  // ★ A package notice can link straight to the plugin it was about. The filter is the page's existing one, so arriving
-  // with `?plugin=x` shows the same list the user would get by typing `x` — no second filtering rule.
-  const plugin = new URLSearchParams(window.location.search).get('plugin')
-  if (plugin !== null && plugin.trim() !== '')
-    query.value = plugin
-})
+onMounted(load)
 
 /** Reads the installed plugins and the publishers this device has met. */
 async function load(): Promise<void> {
@@ -748,11 +819,6 @@ async function load(): Promise<void> {
 
   if (answer.ok) {
     pluginsStore.applySnapshot(answer.value)
-    // ★ The boxes start from what was already granted, so a second visit shows the decision rather than an empty form.
-    for (const plugin of answer.value) {
-      if (!(plugin.pluginId in selection))
-        selection[plugin.pluginId] = [...plugin.granted]
-    }
   }
   else {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
@@ -772,20 +838,23 @@ async function load(): Promise<void> {
 }
 
 /** Trusts or revokes a publisher's key, then re-reads so the row shows the decision the kernel stored. */
-async function decidePublisher(publisherId: string, fingerprint: string, trust: 'trusted' | 'revoked'): Promise<void> {
+async function decidePublisher(publisherId: string, fingerprint: string, trust: 'trusted' | 'revoked'): Promise<boolean> {
+  if (deciding.value !== undefined)
+    return false
   deciding.value = publisherId
   error.value = undefined
   const answer = await kernel.call<null>('plugins_publisher_decide', { publisherId, fingerprint, trust })
   deciding.value = undefined
   if (!answer.ok) {
     error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
+    return false
   }
   await load()
+  return true
 }
 
-/** The plugin whose decision is being written, so its button says so and cannot be pressed twice. */
-const consenting = ref<string | undefined>(undefined)
+/** Pending permission decisions are independent per plugin and cannot be submitted twice. */
+const consenting = reactive(new Set<string>())
 
 /**
  * Records the ticked capabilities and replaces the card with the answer's own.
@@ -794,10 +863,12 @@ const consenting = ref<string | undefined>(undefined)
  * what the kernel just recorded — a re-read would answer the same question a moment later and about every plugin.
  */
 async function consent(plugin: PluginSnapshot, granted: readonly string[]): Promise<void> {
-  consenting.value = plugin.pluginId
+  if (consenting.has(plugin.pluginId))
+    return
+  consenting.add(plugin.pluginId)
   error.value = undefined
   const outcome = await decide(kernel, plugin.pluginId, granted)
-  consenting.value = undefined
+  consenting.delete(plugin.pluginId)
   if (!outcome.ok) {
     error.value = outcome.failure
     return
@@ -1010,7 +1081,6 @@ async function sync(plugin: PluginSnapshot): Promise<void> {
 /** The directory the user typed. */
 const installPath = ref('')
 const installExpanded = ref(false)
-const installToggle = ref<{ $el: HTMLButtonElement }>()
 
 /** Where the install comes from: a directory this device has, or the registry it was configured with. */
 const installMode = ref<'path' | 'registry'>('path')
@@ -1217,67 +1287,58 @@ async function retry(plugin: PluginSnapshot): Promise<void> {
 /** The package a registry install would fetch, shown before anything is downloaded. */
 const preview = ref<InstallPreviewDto | undefined>(undefined)
 
-/** What the registry's index returned for the last search, and whether one has run. */
-const searchText = ref('')
-const searchSort = ref<CatalogSort>('relevance')
-const searched = ref(false)
-const searching = ref(false)
-const results = ref<CatalogItem[]>([])
+const {
+  text: searchText,
+  sort: searchSort,
+  results,
+  searched,
+  error: catalogError,
+  hasMore,
+  searching,
+  loadingMore,
+  busy: catalogBusy,
+  search,
+  loadMore,
+  retry: retryCatalog
+} = useCatalog(kernel)
 
-/** How many results one page asks for; `hasMore` reads the last page's length against it. */
-const SEARCH_PAGE = 20
-
-/** The sorts the search endpoint can honour, named in the interface's language. */
 const sortOptions = computed(() => [
   { label: messages.plugins.catalog.byRelevance, value: 'relevance' },
   { label: messages.plugins.catalog.byName, value: 'name' }
 ])
 
-/** Whether the last page was full, which is the only signal a search without a total gives that more may exist. */
-const hasMore = computed(() => results.value.length > 0 && results.value.length % SEARCH_PAGE === 0)
-
-/** Searches the configured registry from the first page, and says so when nothing matched. */
-async function search(): Promise<void> {
-  const text = searchText.value.trim()
-  if (text === '' || searching.value)
-    return
-  searching.value = true
-  error.value = undefined
-  const outcome = await searchCatalog(kernel, text, { offset: 0, sort: searchSort.value })
-  searching.value = false
-  searched.value = true
-  if (!outcome.ok) {
-    error.value = outcome.failure
-    results.value = []
-    return
-  }
-  results.value = [...outcome.value]
+function submitSearch(event: KeyboardEvent): void {
+  if (!event.isComposing && event.keyCode !== 229)
+    void search()
 }
 
-/** Asks for the next page and appends what was not already shown. */
-async function loadMore(): Promise<void> {
-  const text = searchText.value.trim()
-  if (text === '' || searching.value)
-    return
-  searching.value = true
-  error.value = undefined
-  const outcome = await searchCatalog(kernel, text, {
-    offset: results.value.length,
-    sort: searchSort.value
-  })
-  searching.value = false
-  if (!outcome.ok) {
-    error.value = outcome.failure
-    return
-  }
-  const known = new Set(results.value.map(item => item.pluginId))
-  results.value = [...results.value, ...outcome.value.filter(item => !known.has(item.pluginId))]
+function submitInstall(event: KeyboardEvent): void {
+  if (!event.isComposing && event.keyCode !== 229)
+    void install()
 }
 
-/** Opens the permission dialog for a search hit — the same dialog an install by id uses. */
-async function previewResult(item: CatalogItem): Promise<void> {
+const previewing = ref<string>()
+let previewRevision = 0
+
+function cancelPreview(): void {
+  previewRevision++
+  preview.value = undefined
+}
+
+watch([installMode, installPath, installExpanded], cancelPreview, { flush: 'sync' })
+onScopeDispose(cancelPreview)
+
+/** One preview at a time, tied to the current draft and page lifetime. */
+async function requestPreview(pluginId: string): Promise<void> {
+  if (previewing.value !== undefined || installing.value)
+    return
+  const revision = ++previewRevision
+  previewing.value = pluginId
   error.value = undefined
-  const outcome = await previewInstall(kernel, item.pluginId)
+  const outcome = await previewInstall(kernel, pluginId)
+  previewing.value = undefined
+  if (revision !== previewRevision)
+    return
   if (!outcome.ok) {
     error.value = outcome.failure
     return
@@ -1285,26 +1346,23 @@ async function previewResult(item: CatalogItem): Promise<void> {
   preview.value = outcome.value
 }
 
+/** Opens the permission dialog for a search hit — the same dialog an install by id uses. */
+async function previewResult(item: CatalogItem): Promise<void> {
+  await requestPreview(item.pluginId)
+}
+
 /** Installs from the source the user named, then re-reads the list. */
 async function install(): Promise<void> {
   const from = installPath.value.trim()
-  if (from === '' || installing.value)
+  if (from === '' || installing.value || previewing.value !== undefined)
     return
-  installing.value = true
-  error.value = undefined
 
-  // ★ A registry install asks first. The preview is the publisher's own claim about permissions, and a dialog that showed
-  // them is the difference between "install this name" and "install this thing that wants these".
   if (installMode.value === 'registry') {
-    const outcome = await previewInstall(kernel, from)
-    installing.value = false
-    if (!outcome.ok) {
-      error.value = outcome.failure
-      return
-    }
-    preview.value = outcome.value
+    await requestPreview(from)
     return
   }
+  installing.value = true
+  error.value = undefined
 
   const outcome = await installFrom(kernel, from)
   installing.value = false
