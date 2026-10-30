@@ -103,6 +103,12 @@ describe('the home page', () => {
       expect(wrapper.text()).toContain(messages.home.received.title)
       expect(wrapper.text()).toContain(messages.home.received.states.succeeded)
       expect(wrapper.text()).toContain('@synra-plugin/github')
+      // [05 §5](../../design-docs/05-home-and-activity.md): the trace need not be open on every row, but it must be
+      // readable in full once the row is opened — so the collapsed state is asserted, then the opened one.
+      expect(wrapper.text()).not.toContain('01HQ00000000000000000TRACE1')
+      const details = wrapper.findAll('button').find(button => button.text() === messages.home.received.details)
+      expect(details).toBeDefined()
+      await details!.trigger('click')
       expect(wrapper.text()).toContain('01HQ00000000000000000TRACE1')
       const labels = wrapper.findAll('button').map(button => button.text())
       for (const retired of ['Share', 'Share clipboard', '分享', '分享剪贴板'])
@@ -417,7 +423,11 @@ describe('the home page', () => {
     // assertion against a field the DTO does not have would pass on `undefined`.
     expect(wrapper.text()).toContain(INTENT.pluginId)
     // ★ And the trace id, which is what a user pastes into `synra logs --trace`. It was on the board and missing from
-    // the snapshot, so the filter had no id anyone could know.
+    // the snapshot, so the filter had no id anyone could know. It sits behind the row's disclosure now, so the check
+    // opens it the way a person would.
+    const details = wrapper.findAll('button').find(button => button.text() === messages.home.received.details)
+    expect(details, 'the details disclosure is missing').toBeDefined()
+    await details!.trigger('click')
     expect(wrapper.text()).toContain(INTENT.traceId)
     wrapper.unmount()
   })

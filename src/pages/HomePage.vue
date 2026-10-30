@@ -125,10 +125,6 @@
                 {{ intentStateLabel(intent.state) }}
               </ATag>
               <span v-if="intent.pluginId" class="max-w-full min-w-0 break-all text-xs text-ink-dim font-mono">{{ intent.pluginId }}</span>
-              <!-- ★ The id a bug report quotes: `synra logs --trace <id>` follows this one action across steps and devices. -->
-              <span v-if="intent.traceId" class="max-w-full min-w-0 break-all text-xs text-ink-dim font-mono" :title="intent.traceId">
-                {{ messages.home.received.trace }} {{ intent.traceId }}
-              </span>
             </div>
 
             <!--
@@ -175,6 +171,41 @@
             <p v-if="intent.error" class="m-0 text-xs">
               <span class="text-error">{{ intentError(intent) }}</span>
             </p>
+
+            <!--
+              ★ The row carries what a person scanning the list needs; this holds what they need once they have decided
+              to look. [05 §5](../design-docs/05-home-and-activity.md) requires the trace to be **readable and copyable in
+              full** — a disclosure rather than a permanent line, because a 26-character id on every row is noise until
+              someone is actually chasing one action.
+            -->
+            <div v-if="intent.traceId || intent.startedAtMs !== undefined" class="min-w-0 stack gap-1">
+              <button
+                type="button"
+                class="min-h-8 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable [&:hover]:text-ink"
+                :aria-expanded="expanded === intent.intentId"
+                @click="toggleExpanded(intent.intentId)"
+              >
+                {{ messages.home.received.details }}
+              </button>
+              <div v-if="expanded === intent.intentId" class="stack gap-1 text-xs">
+                <div v-if="intent.startedAtMs !== undefined" class="row flex-wrap items-baseline gap-2">
+                  <span class="text-ink-dim">{{ messages.home.received.startedAt }}</span>
+                  <span class="min-w-0 break-all font-mono">{{ formatClock(intent.startedAtMs) }}</span>
+                </div>
+                <div v-if="intent.traceId" class="row flex-wrap items-center gap-2">
+                  <span class="text-ink-dim">{{ messages.home.received.trace }}</span>
+                  <!-- The id alone, so a triple-click or the button both yield something pasteable into a command. -->
+                  <span class="min-w-0 select-text break-all font-mono" :data-testid="`trace-${intent.intentId}`">{{ intent.traceId }}</span>
+                  <AButton size="small" :data-testid="`copy-${intent.intentId}`" @click="copyTrace(intent.intentId, intent.traceId)">
+                    {{ copiedTrace === intent.traceId
+                      ? messages.home.received.copied
+                      : selectedTrace === intent.intentId
+                        ? messages.home.received.selectInstead
+                        : messages.home.received.copy }}
+                  </AButton>
+                </div>
+              </div>
+            </div>
           </div>
         </AList.Item>
       </AList>
@@ -388,6 +419,59 @@ async function load(): Promise<void> {
   }
   intentsStore.applySnapshot({ intents: intentAnswer.value, transfers: transferAnswer.value })
   received.value = receivedAnswer.value
+}
+
+/** The intent whose details are open; at most one, because two open disclosures in a list read as two claims. */
+const expanded = ref<string | undefined>(undefined)
+/** The trace just copied, so exactly one button says "Copied" and only until attention moves on. */
+const copiedTrace = ref<string | undefined>(undefined)
+/** The row whose clipboard write failed and whose id is selected instead, so its button says what to press. */
+const selectedTrace = ref<string | undefined>(undefined)
+
+function toggleExpanded(intentId: string): void {
+  expanded.value = expanded.value === intentId ? undefined : intentId
+}
+
+/**
+ * Copies the trace id and nothing else.
+ *
+ * [05 §5](../design-docs/05-home-and-activity.md): the copy is the value, not the label — a person pastes this into
+ * `synra logs --trace`, and "Trace 01HQ…" would be a command that fails.
+ *
+ * ★ When the clipboard refuses (no user activation, a denied permission, an insecure context) the id is selected
+ * instead of the click doing nothing. A button that reports neither success nor failure is one the user presses
+ * twice and then types the id by hand without knowing they had to.
+ */
+async function copyTrace(intentId: string, traceId: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(traceId)
+  }
+  catch {
+    selectTrace(intentId)
+    return
+  }
+  copiedTrace.value = traceId
+  window.setTimeout(() => {
+    if (copiedTrace.value === traceId)
+      copiedTrace.value = undefined
+  }, 2000)
+}
+
+/** Marks the attempt as a selection so the button says what to do next, and selects the text it names. */
+function selectTrace(intentId: string): void {
+  selectedTrace.value = intentId
+  const node = document.querySelector(`[data-testid="trace-${CSS.escape(intentId)}"]`)
+  if (!node)
+    return
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  window.setTimeout(() => {
+    if (selectedTrace.value === intentId)
+      selectedTrace.value = undefined
+  }, 4000)
 }
 
 /** The intent whose decision is in flight, so its buttons can say so and cannot be pressed twice. */

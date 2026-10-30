@@ -57,6 +57,14 @@ export const home = {
     },
     /** The id a person pastes into `synra logs --trace` to follow one action across devices. */
     trace: 'Trace',
+    /** The disclosure that holds what the row cannot show without crowding it. */
+    details: 'Details',
+    startedAt: 'Started',
+    /** The button copies the id alone — a label pasted into a command line would break it. */
+    copy: 'Copy',
+    copied: 'Copied',
+    /** The clipboard refused; the id is selected instead, so the next keystroke can still copy it. */
+    selectInstead: 'Selected — press Ctrl+C',
     /** A dispatch nobody has answered is being sent again; the numbers are this process's effort, not the action's. */
     retrying: 'Retrying ({attempts}/{max})',
     /** The same, with the clock time of the next attempt — an absolute time, so it stays true between events. */
