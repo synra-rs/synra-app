@@ -1296,6 +1296,11 @@ async function previewResult(item: CatalogItem): Promise<void> {
  * leaves the user to find the settings page themselves, which is what `07 §5.1` asks us not to do.
  *
  * If the kernel ever gives this its own code, delete the string and switch on that.
+ *
+ * Nothing guards the kernel side of this pairing. The wording lives in `registry_install`, on a branch no test there can
+ * reach (it needs `RegistryConfig` to resolve to zero mirrors, and the neighbouring offline test does not go through it),
+ * so rewording it fails nothing and the button just disappears. The two tests in `plugin-page.mount.test.ts` guard only
+ * this side; read them as "the interface reacts correctly to this sentence", not as "the sentence is stable".
  */
 function isMissingRegistry(failure: { code: string, message: string }): boolean {
   return failure.message.includes('no registry is configured')
