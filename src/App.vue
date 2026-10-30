@@ -56,8 +56,20 @@
           </button>
         </div>
 
+        <!--
+          ★ **The items carry the focus ring, and it took a browser to notice they did not.**
+
+            `a-menu` sets `outline: none` on its items and never replaces it, so a person tabbing through the sidebar
+            had no idea where they were — the exact failure `@synra/theme`'s `focusable` shortcut exists to prevent
+            ("`outline-none` without a replacement is the easiest accessibility mistake in this interface"). R35 says
+            the `focus-visible` ring is always present, so this is not a taste question.
+
+            It is written as an arbitrary variant on the *menu* rather than a class on each `a-menu-item`, because the
+            item is the library's element and its own selector is what has to change. `@synra/theme`'s ring is reused
+            by name (`ring-2` + `ring-primary-ink` + `ring-offset-screen`) instead of restating a colour.
+        -->
         <AMenu
-          class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain [&_.ant-menu-item:focus-visible]:ring-2 [&_.ant-menu-item:focus-visible]:ring-offset-2 [&_.ant-menu-item:focus-visible]:ring-primary-ink [&_.ant-menu-item:focus-visible]:ring-offset-screen"
           mode="inline"
           :inline-collapsed="rail"
           :selected-keys="[route.path]"
