@@ -73,3 +73,20 @@ export const actions = {
   retry: 'Try again',
   viewLogs: 'View the log'
 } as const
+
+/**
+ * The sentence for a refused call: message key first, code second, then the fallback.
+ *
+ * ★ This used to be written out twice — once in `ErrorNotice` and once in `HomePage`'s intent row — with a comment in
+ * the second saying it was "the same lookup `ErrorNotice` does". Same words, same three lines, two places to keep in
+ * step. The order is a decision, not a detail: the key is more specific than the code, and the code is more specific
+ * than nothing. Changing it in one copy and not the other would make one screen explain a failure differently from
+ * another, which is worse than either answer.
+ *
+ * `message` is optional because not every refusal carries one; `error.rs` builds the key from the code when it can.
+ */
+export function errorSentence(code: string, message?: string | undefined): string {
+  return (message === undefined ? undefined : kernelErrors[message as keyof typeof kernelErrors])
+    ?? errors[code as keyof typeof errors]
+    ?? errors.unknown
+}

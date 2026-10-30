@@ -291,6 +291,7 @@ import { formatBytes } from '../format'
 import { kernel } from '../kernel'
 import { formatDateTime, formatTime } from '../locale-format'
 import { messages } from '../messages'
+import { errorSentence } from '../messages/errors'
 import { useDevicesStore } from '../stores/devices'
 import { useIntentsStore } from '../stores/intents'
 import { useNoticesStore } from '../stores/notices'
@@ -590,9 +591,7 @@ function intentError(intent: IntentSnapshot): string {
   const error = intent.error
   if (!error)
     return ''
-  return messages.kernelErrors[error.message as keyof typeof messages.kernelErrors]
-    ?? messages.errors[error.code as keyof typeof messages.errors]
-    ?? messages.errors.unknown
+  return errorSentence(error.code, error.message)
 }
 
 onMounted(load)

@@ -49,6 +49,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { messages } from '../messages'
+import { errorSentence } from '../messages/errors'
 
 const props = defineProps<{
   readonly code: string
@@ -63,11 +64,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 
-const headline = computed(() =>
-  messages.kernelErrors[props.message as keyof typeof messages.kernelErrors]
-  ?? messages.errors[props.code as keyof typeof messages.errors]
-  ?? messages.errors.unknown
-)
+const headline = computed(() => errorSentence(props.code, props.message))
 const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
 
 /** Where an action points, when the interface has a screen for it. */
