@@ -211,6 +211,26 @@ describe('the plugins page', () => {
     }
   })
 
+  it('keeps a refused open on its own card too', async () => {
+    // The same rule as the switch: `open` is another button on the card, so its refusal belongs there as well.
+    const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active', hasUi: true })], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[aria-label="Open Hello"]').trigger('click')
+      await flushPromises()
+      const notices = wrapper.findAllComponents(ErrorNotice)
+      expect(notices).toHaveLength(1)
+      expect(wrapper.get('li').element.contains(notices[0]!.element)).toBe(true)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('opens installation on demand and preserves its draft without background reads', async () => {
     const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active' })], plugins_publishers: [] }
     mocks.call.mockImplementation(async (command: string) => command in answers

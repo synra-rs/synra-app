@@ -891,6 +891,15 @@ async function load(): Promise<void> {
   }
 }
 
+/**
+ * A refusal from an action taken **on one card**, kept beside that card.
+ *
+ * The page-level `error` sits above the list, and a card can be many screens below it — a switch that does not move
+ * plus a sentence nobody can see reads as "the click did nothing". Keyed by plugin id so two cards failing at once
+ * stay two facts, and so a second attempt on the same card clears only its own sentence.
+ */
+const cardErrors = reactive<Record<string, Failure | undefined>>({})
+
 /** Trusts or revokes a publisher's key, then re-reads so the row shows the decision the kernel stored. */
 async function decidePublisher(publisherId: string, fingerprint: string, trust: 'trusted' | 'revoked'): Promise<boolean> {
   if (deciding.value !== undefined)
@@ -914,26 +923,17 @@ async function decidePublisher(publisherId: string, fingerprint: string, trust: 
  * what the kernel just recorded — a re-read would answer the same question a moment later and about every plugin.
  */
 async function consent(plugin: PluginSnapshot, granted: readonly string[]): Promise<void> {
-  error.value = undefined
+  delete cardErrors[plugin.pluginId]
   const outcome = await operations.run(plugin.pluginId, 'consent', () => decide(kernel, plugin.pluginId, granted))
   if (!outcome)
     return
   if (!outcome.ok) {
-    error.value = outcome.failure
+    cardErrors[plugin.pluginId] = outcome.failure
     return
   }
   pluginsStore.upsert(outcome.value)
   selection[outcome.value.pluginId] = [...outcome.value.granted]
 }
-
-/**
- * A refusal from an action taken **on one card**, kept beside that card.
- *
- * The page-level `error` sits above the list, and a card can be many screens below it — a switch that does not move
- * plus a sentence nobody can see reads as "the click did nothing". Keyed by plugin id so two cards failing at once
- * stay two facts, and so a second attempt on the same card clears only its own sentence.
- */
-const cardErrors = reactive<Record<string, Failure | undefined>>({})
 
 /**
  * Turns a plugin on or off.
@@ -1099,12 +1099,12 @@ async function remove(): Promise<void> {
  * call answers `null` and the failure is shown here — the button is the request, not the window.
  */
 async function open(plugin: PluginSnapshot): Promise<void> {
-  error.value = undefined
+  delete cardErrors[plugin.pluginId]
   const answer = await operations.run(plugin.pluginId, 'open', () => kernel.call<null>('plugin_ui_open', { pluginId: plugin.pluginId }))
   if (!answer)
     return
   if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    cardErrors[plugin.pluginId] = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
 }
 
 /** The directory the user typed. */
@@ -1212,14 +1212,14 @@ const lastUpdate = ref<{ pluginId: string, version: string, warnings: readonly s
 
 /** Asks the registry about one plugin, and shows or forgets the last answer. */
 async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
-  error.value = undefined
+  delete cardErrors[plugin.pluginId]
   const answer = await operations.run(plugin.pluginId, 'check', () => kernel.call<UpdateInfo | null>('plugins_check_update', {
     pluginId: plugin.pluginId
   }))
   if (!answer)
     return
   if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    cardErrors[plugin.pluginId] = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
   }
   const current = pluginsStore.plugin(plugin.pluginId)
@@ -1235,12 +1235,12 @@ async function checkUpdate(plugin: PluginSnapshot): Promise<void> {
 
 /** Installs the newer version, then re-reads the list — the row the user sees comes from the store. */
 async function applyUpdate(plugin: PluginSnapshot): Promise<void> {
-  error.value = undefined
+  delete cardErrors[plugin.pluginId]
   const answer = await operations.run(plugin.pluginId, 'update', () => kernel.call<InstallReport>('plugins_update', { pluginId: plugin.pluginId }))
   if (!answer)
     return
   if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    cardErrors[plugin.pluginId] = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return
   }
   lastUpdate.value = {
