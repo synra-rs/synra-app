@@ -213,7 +213,7 @@
 import type { ConfigPatch, IpcError } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import CredentialPanel from '../components/CredentialPanel.vue'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -233,8 +233,37 @@ type Category = 'general' | 'security' | 'plugins' | 'diagnostics' | 'about'
 type Operation = 'name' | 'language' | 'startup' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'
 const category = ref<Category>('general')
 const categories = computed(() => (['general', 'security', 'plugins', 'diagnostics', 'about'] as const).map(value => ({ value, label: messages.settings.categories[value] })))
+
+/**
+ * `?category=` picks the section, so a search result lands on "Diagnostics" instead of the top of the page
+ * ([03 §5](../../design-docs/ui-design/03-shell-and-navigation.md) leaves this to the category implementation). A query
+ * value that is not a category is ignored rather than redirecting: a stale link should open the page, not an error.
+ *
+ * ★ **Watched, not read once on mount.** The search box is reachable *from* this page, so choosing a section while
+ *   already here is a query change on the same route — Vue Router reuses the component, `onMounted` does not run
+ *   again, and a mount-only read leaves the page on whatever section it was showing. That is what the first version
+ *   did, and the browser showed it: picking "Diagnostics" from here stayed on "General".
+ *
+ * Only the *query* is watched. After arrival the segmented control owns the selection, and watching the route object
+ * would fight the user the moment they pick another section while the query is still in the address.
+ */
+const route = useRoute()
+function categoryFromQuery(): Category | undefined {
+  const asked = route.query.category
+  return categories.value.find(item => item.value === asked)?.value
+}
 const categoryHeading = ref<HTMLElement>()
 const diagnosticsVisited = ref(false)
+// ★ Declared after both refs it writes: with `immediate: true` the callback runs during setup, and a watcher placed
+//   above `diagnosticsVisited` would read it in its temporal dead zone.
+watch(() => route.query.category, () => {
+  const asked = categoryFromQuery()
+  if (!asked)
+    return
+  category.value = asked
+  if (asked === 'diagnostics')
+    diagnosticsVisited.value = true
+}, { immediate: true })
 function selectCategory(value: unknown): void {
   if (categories.value.some(item => item.value === value))
     category.value = value as Category

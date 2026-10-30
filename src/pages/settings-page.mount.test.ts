@@ -81,9 +81,9 @@ function answer(byCommand: Record<string, unknown>) {
 }
 
 let testRouter: ReturnType<typeof createRouter>
-async function mountPage() {
+async function mountPage(path = '/settings') {
   testRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/settings', component: SettingsPage }, { path: '/', component: { template: '<p>Home</p>' } }] })
-  await testRouter.push('/settings')
+  await testRouter.push(path)
   await testRouter.isReady()
   return mount(RouterView, { attachTo: document.body, global: { plugins: [testRouter] } })
 }
@@ -981,6 +981,54 @@ describe('the settings page', () => {
       expect(wrapper.text()).toContain('recent log')
       expect(wrapper.findComponent(ErrorNotice).exists()).toBe(true)
       expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('internal')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  /**
+   * `?category=` is how a search result lands on the section it named. The diagnostics case is the one worth asserting
+   * rather than "general": that section mounts lazily, so a page that merely set the category would show an empty pane
+   * on arrival.
+   */
+  it('opens the section a query asked for', async () => {
+    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    const wrapper = await mountPage('/settings?category=diagnostics')
+    try {
+      await flushPromises()
+      const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'settings-category')!
+      expect(select.props('value')).toBe('diagnostics')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('ignores a query that names no section', async () => {
+    // A stale or hand-edited link should open the page, not throw or land on a blank pane.
+    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    const wrapper = await mountPage('/settings?category=not-a-section')
+    try {
+      await flushPromises()
+      const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'settings-category')!
+      expect(select.props('value')).toBe('general')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  /**
+   * ★ The search box is reachable from this very page, so the common case is a query change on the route that is
+   * already open. Vue Router reuses the component there and `onMounted` does not run again — a mount-only read left
+   * the page on "General" while the address said `category=diagnostics`, which is what the browser showed.
+   */
+  it('changes section when the query changes on the page already open', async () => {
+    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    const wrapper = await mountPage('/settings')
+    try {
+      await flushPromises()
+      const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'settings-category')!
+      expect(select.props('value')).toBe('general')
+
+      await testRouter.push('/settings?category=diagnostics')
+      await flushPromises()
+      expect(select.props('value')).toBe('diagnostics')
     }
     finally { wrapper.unmount() }
   })

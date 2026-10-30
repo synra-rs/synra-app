@@ -11,6 +11,8 @@
     <div class="fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] overflow-hidden screen md:grid-rows-[minmax(0,1fr)]" :class="rail ? 'md:grid-cols-[6rem_minmax(0,1fr)]' : 'md:grid-cols-[15rem_minmax(0,1fr)]'">
       <!-- The one prompt that is about a peer waiting on this answer; at the root so it is visible on every page. -->
       <TransferPrompt />
+      <!-- The shell's search: the entry is in the sidebar, the box is a modal at the root. -->
+      <SearchPalette ref="searchPalette" />
       <!--
         The navigation, in the three forms R11 gives it: an expanded sidebar at `lg` (which is also `minWidth`, R12), an
         icon rail at `md`, and nothing at all below that — where the bottom bar takes over.
@@ -32,6 +34,26 @@
         <div class="row shrink-0 gap-2 px-2 pb-3" :class="{ 'justify-center': rail }">
           <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
           <span v-if="!rail" class="text-lg font-semibold">Synra</span>
+          <!--
+            ★ The search entry lives beside the wordmark rather than in the page header, because it is the shell's and
+              not a page's: the same box on four pages would be four entries to keep in step. It stays in the rail form
+              too — this is the one control that is *more* useful when the sidebar is narrow.
+
+            ★ The `/` is shown, not described. A shortcut nobody can see is a shortcut only its author uses, and it
+              costs one character here.
+          -->
+          <button
+            type="button"
+            class="ms-auto row shrink-0 items-center gap-1 rounded-control px-1.5 py-1 text-ink-dim focusable @hover:bg-raised @hover:text-ink"
+            :class="{ 'ms-0': rail }"
+            :aria-label="messages.search.title"
+            :title="messages.search.title"
+            data-testid="search-entry"
+            @click="searchPalette?.show()"
+          >
+            <span class="i-carbon-search text-base" aria-hidden="true" />
+            <kbd v-if="!rail" class="border border-line rounded px-1 text-xs font-mono">{{ messages.search.shortcut }}</kbd>
+          </button>
         </div>
 
         <AMenu
@@ -174,6 +196,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import CrashNotice from './components/CrashNotice.vue'
 import NoticeHost from './components/NoticeHost.vue'
+import SearchPalette from './components/SearchPalette.vue'
 import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'
 import { locale, watchSystemLocale } from './locale'
@@ -196,6 +219,8 @@ watch(locale, (value) => {
 }, { immediate: true })
 const online = useNetworkStatus()
 const contentPane = ref<HTMLElement>()
+/** The search box, opened by its sidebar entry. The `/` shortcut is the component's own listener. */
+const searchPalette = ref<{ show: () => void }>()
 
 // Route content shares one scroll pane; each new page starts at its own beginning.
 watch(() => route.path, () => contentPane.value?.scrollTo({ top: 0, left: 0 }), { flush: 'post' })

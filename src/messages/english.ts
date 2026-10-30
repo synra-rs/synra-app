@@ -5,6 +5,7 @@ import { home } from './home'
 import { nav } from './nav'
 import { notices } from './notices'
 import { plugins } from './plugins'
+import { search } from './search'
 import { settings } from './settings'
 import { transfers } from './transfers'
 
@@ -30,6 +31,8 @@ export const englishMessages = {
   plugins,
 
   settings,
+
+  search,
 
   transfers,
 
