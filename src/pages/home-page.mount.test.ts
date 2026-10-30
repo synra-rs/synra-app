@@ -131,6 +131,34 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it('shows the four facts a received file row owes', async () => {
+    // ★ [05 §3](../../design-docs/05-home-and-activity.md) lists name, size and **received time** as the row's default
+    // content. The time was in the DTO from the start and the row never showed it, so a person could see that a file
+    // arrived but not when.
+    const receivedAtMs = Date.UTC(2026, 9, 30, 4, 5, 6)
+    answer({
+      intent_list: [],
+      transfer_received: [
+        { fileName: 'notes.md', path: 'C:\\inbox\\notes.md', bytes: 2048, receivedAtMs }
+      ]
+    })
+
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+    try {
+      const text = wrapper.text()
+      expect(text).toContain('notes.md')
+      expect(text).toContain('C:\\inbox\\notes.md')
+      expect(text).toContain('2.0 KiB')
+      // The formatted time, not the epoch: a raw millisecond count is not a time a person reads.
+      expect(text).toContain(messages.home.receivedFiles.receivedAt)
+      expect(text).not.toContain(String(receivedAtMs))
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('lets the user accept an intent on a candidate device', async () => {
     // ★ A candidate is a decision, not a status line. The page listed intents and never called `intent_decide`, so an
     // intent could arrive and nothing could start it.

@@ -76,6 +76,11 @@ export const home = {
   /** The files in the inbox — the history an in-flight row cannot be. */
   receivedFiles: {
     title: 'Received files',
-    empty: 'No file has landed in the inbox yet.'
+    empty: 'No file has landed in the inbox yet.',
+    /**
+     * `receivedAtMs` is the last write, not the start — [05 §5](../../design-docs/05-home-and-activity.md) forbids
+     * labelling one as the other.
+     */
+    receivedAt: 'Received'
   }
 } as const

@@ -230,6 +230,11 @@
             <div class="min-w-0 stack gap-0.5">
               <span class="truncate text-sm">{{ file.fileName }}</span>
               <span class="truncate text-xs text-ink-dim font-mono">{{ file.path }}</span>
+              <!-- ★ `receivedAtMs` is the write's end. [05 §5](../design-docs/05-home-and-activity.md) draws the line
+                   between a start and a finish, so the label says received rather than started. -->
+              <span class="text-xs text-ink-dim" :title="formatDateTime(file.receivedAtMs)">
+                {{ messages.home.receivedFiles.receivedAt }} {{ formatDateTime(file.receivedAtMs) }}
+              </span>
             </div>
             <span class="shrink-0 text-xs text-ink-dim">{{ formatBytes(file.bytes) }}</span>
           </div>
@@ -273,7 +278,7 @@ import PageHeader from '../components/PageHeader.vue'
 
 import { formatBytes } from '../format'
 import { kernel } from '../kernel'
-import { formatTime } from '../locale-format'
+import { formatDateTime, formatTime } from '../locale-format'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 import { useIntentsStore } from '../stores/intents'

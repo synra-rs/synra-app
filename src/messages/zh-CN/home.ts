@@ -47,5 +47,6 @@ export const home = {
   'home.received.retryingAt': '正在重试（{attempts}/{max}），下次重试：{time}',
   'home.received.noAnswer': '暂未收到回复，下次启动应用时将再次尝试。',
   'home.receivedFiles.title': '收到的文件',
-  'home.receivedFiles.empty': '收件箱中暂无文件。'
+  'home.receivedFiles.empty': '收件箱中暂无文件。',
+  'home.receivedFiles.receivedAt': '收到时间'
 } satisfies Partial<LocaleEntries>
