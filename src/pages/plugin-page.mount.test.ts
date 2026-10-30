@@ -1142,7 +1142,10 @@ describe('the plugins page', () => {
     await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.revoke)?.trigger('click')
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: '@acme', fingerprint, trust: 'revoked' })
-    expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('invalid_argument')
+    // Beside the key's own row rather than in the page-level slot: two refusals used to overwrite each other there.
+    const notice = wrapper.findComponent(ErrorNotice)
+    expect(notice.props('code')).toBe('invalid_argument')
+    expect(wrapper.get('#plugin-publishers').element.contains(notice.element)).toBe(true)
     wrapper.unmount()
   })
 

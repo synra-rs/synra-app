@@ -76,6 +76,13 @@
               </AButton>
             </span>
           </div>
+          <!-- ★ Under the row it belongs to: `deciding` is per key, and one page-level slot made two refusals overwrite each other. -->
+          <ErrorNotice
+            v-if="publisherErrors[publisher.publisherId]"
+            :code="publisherErrors[publisher.publisherId]!.code"
+            :message="publisherErrors[publisher.publisherId]!.message"
+            :actions="publisherErrors[publisher.publisherId]!.actions"
+          />
         </AList.Item>
       </AList>
     </section>
@@ -900,16 +907,25 @@ async function load(): Promise<void> {
  */
 const cardErrors = reactive<Record<string, Failure | undefined>>({})
 
+/**
+ * The same rule for the publisher's own row, keyed by the key rather than by a plugin.
+ *
+ * `decidePublisher` was the last action still writing the page-level `error`, and the argument against it is narrower
+ * here: the panel is near the top, so the sentence is not off screen. **What is still wrong is that one slot serves
+ * every row** — two keys refused in a row, and the first sentence is gone before it is read.
+ */
+const publisherErrors = reactive<Record<string, Failure | undefined>>({})
+
 /** Trusts or revokes a publisher's key, then re-reads so the row shows the decision the kernel stored. */
 async function decidePublisher(publisherId: string, fingerprint: string, trust: 'trusted' | 'revoked'): Promise<boolean> {
   if (deciding.value !== undefined)
     return false
   deciding.value = publisherId
-  error.value = undefined
+  delete publisherErrors[publisherId]
   const answer = await kernel.call<null>('plugins_publisher_decide', { publisherId, fingerprint, trust })
   deciding.value = undefined
   if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+    publisherErrors[publisherId] = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
     return false
   }
   await load()
