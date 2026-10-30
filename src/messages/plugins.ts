@@ -132,7 +132,14 @@ export const plugins = {
     detail: 'Keys that have signed a package this device verified.',
     empty: 'No signed package has been verified yet.',
     trust: 'Trust key',
-    revoke: 'Revoke key'
+    revoke: 'Revoke key',
+    /**
+     * The entry's own label, carrying the count of keys that still need a decision or were revoked. The list moved off
+     * the browsing path ([07 §1](../../design-docs/ui-design/07-plugins.md)), and a key waiting for a decision must not
+     * become invisible just because a manager is collapsed: the kernel keeps a plugin running after its key is revoked,
+     * so "nothing here needs you" would be the wrong thing for this button to say.
+     */
+    manage: (needsDecision: number) => needsDecision > 0 ? `Publishers · ${needsDecision} need a decision` : 'Publishers'
   },
   /** The question an install of a signed package asks next. */
   publisherPrompt: {

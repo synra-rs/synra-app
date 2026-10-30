@@ -917,6 +917,41 @@ describe('the plugins page', () => {
     wrapper.unmount()
   })
 
+  it('counts the keys that still need a decision on the manager entry', async () => {
+    const fingerprint = 'AB12 CD34 EF56 7890'
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: [] }
+      if (command === 'plugins_publishers') {
+        return {
+          ok: true,
+          value: [
+            { publisherId: '@seen', fingerprint, trust: 'seen', firstSeenMs: 1 },
+            { publisherId: '@revoked', fingerprint, trust: 'revoked', firstSeenMs: 1 },
+            { publisherId: '@trusted', fingerprint, trust: 'trusted', firstSeenMs: 1 }
+          ]
+        }
+      }
+      throw new Error(`unexpected command ${command}`)
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      // The list moved off the browsing path, so the count is the only thing that says a decision is outstanding: a
+      // revoked key does not stop the plugin it signed from running, so "everything is fine" would be a wrong summary.
+      expect(wrapper.get('[data-testid="publishers-toggle"]').text()).toBe(messages.plugins.publishers.manage(2))
+      // Collapsed by default: the manager is opened on purpose, not scrolled past. Asserted on `display` rather than
+      // `isVisible()` — this tree is not attached to the document, and jsdom reports a detached element as invisible
+      // whether or not it is displayed.
+      expect(wrapper.get('#plugin-publishers').attributes('style')).toContain('display: none')
+      await wrapper.get('[data-testid="publishers-toggle"]').trigger('click')
+      expect(wrapper.get('#plugin-publishers').attributes('style') ?? '').not.toContain('display: none')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('binds publisher decisions to the displayed fingerprint and shows a stale key refusal', async () => {
     const fingerprint = 'AB12 CD34 EF56 7890'
     mocks.call.mockImplementation(async (command: string, args?: { trust?: string }) => {
@@ -937,6 +972,9 @@ describe('the plugins page', () => {
     })
     const wrapper = mountPlugins()
     await flushPromises()
+    // The trust manager is its own entry now, so opening it is part of the path a person takes. `findAll` would have
+    // found the buttons inside a collapsed panel and the test would have passed while nobody could reach them.
+    await wrapper.get('[data-testid="publishers-toggle"]').trigger('click')
     expect(wrapper.text()).toContain(fingerprint)
     await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.trust)?.trigger('click')
     await flushPromises()

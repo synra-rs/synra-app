@@ -6,6 +6,15 @@
   -->
   <section class="mx-auto max-w-[1200px] min-w-0 stack gap-6 pb-4" data-page-width="workspace">
     <PageHeader :title="messages.plugins.title">
+      <!--
+        Trust management has its own entry ([07 §1](../../design-docs/ui-design/07-plugins.md)): it used to be a panel
+        below the installed list, so every visit to one's own plugins ended in a long list of signing keys. The label
+        carries the count of keys awaiting a decision, because the kernel keeps a plugin running after its key is revoked
+        and nothing on the rows can say so yet — a collapsed manager must not be how that goes unnoticed.
+      -->
+      <AButton data-testid="publishers-toggle" :aria-expanded="publishersExpanded" aria-controls="plugin-publishers" @click="publishersExpanded = !publishersExpanded">
+        {{ messages.plugins.publishers.manage(publishersNeedingDecision) }}
+      </AButton>
       <AButton ref="installToggle" type="primary" data-testid="install-toggle" :aria-expanded="installExpanded" aria-controls="plugin-install" @click="installExpanded = !installExpanded">
         {{ messages.plugins.installHeading }}
       </AButton>
@@ -17,6 +26,54 @@
       a property of either list.
     -->
     <ASegmented v-model:value="pluginCategory" :options="pluginCategoryOptions" data-testid="plugin-category" />
+
+    <!--
+      Trust management, opened from its own header button rather than sitting under whichever list was last scrolled to
+      ([07 §1](../../design-docs/ui-design/07-plugins.md)). `v-show` keeps a pending decision open across a category
+      switch, and the button's label carries the count so a collapsed manager cannot be the reason nobody noticed.
+    -->
+    <section v-show="publishersExpanded" id="plugin-publishers" class="stack gap-3 border border-line rounded-surface bg-surface p-4" :aria-label="messages.plugins.publishers.title">
+      <HelpText>
+        {{ messages.plugins.publishers.detail }}
+      </HelpText>
+
+      <!--
+        What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
+        nobody has decided yet"; the decision is the user's, and it is per key rather than per publisher name.
+      -->
+      <AEmpty v-if="publishers.length === 0" :description="messages.plugins.publishers.empty" />
+      <AList v-else size="small">
+        <AList.Item v-for="publisher in publishers" :key="publisher.publisherId" :style="{ paddingInline: 0 }">
+          <div class="row-between gap-3">
+            <span class="min-w-0 stack gap-0.5">
+              <span class="truncate text-sm">{{ publisher.publisherId }}</span>
+              <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
+            </span>
+            <span class="row gap-2">
+              <ATag class="m-0">
+                {{ publisher.trust }}
+              </ATag>
+              <AButton
+                v-if="publisher.trust !== 'trusted'"
+                size="small"
+                :loading="deciding === publisher.publisherId"
+                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'trusted')"
+              >
+                {{ messages.plugins.publishers.trust }}
+              </AButton>
+              <AButton
+                v-if="publisher.trust !== 'revoked'"
+                size="small"
+                :loading="deciding === publisher.publisherId"
+                @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'revoked')"
+              >
+                {{ messages.plugins.publishers.revoke }}
+              </AButton>
+            </span>
+          </div>
+        </AList.Item>
+      </AList>
+    </section>
 
     <!--
       The install form. Two sources, named rather than guessed: a directory on this device, or a package id in the
@@ -531,52 +588,6 @@
           </AList.Item>
         </template>
       </AList>
-      <ACollapse ghost>
-        <ACollapse.Panel key="publishers" :header="messages.plugins.publishers.title" force-render>
-          <div class="stack gap-3">
-            <HelpText>
-              {{ messages.plugins.publishers.detail }}
-            </HelpText>
-
-            <!--
-            What this device knows about the keys that sign packages. `seen` means "a verified signature came from this key and
-            nobody has decided yet"; the decision is the user's, and it is per key rather than per publisher name.
-          -->
-            <AEmpty v-if="publishers.length === 0" :description="messages.plugins.publishers.empty" />
-            <AList v-else size="small">
-              <AList.Item v-for="publisher in publishers" :key="publisher.publisherId" :style="{ paddingInline: 0 }">
-                <div class="row-between gap-3">
-                  <span class="min-w-0 stack gap-0.5">
-                    <span class="truncate text-sm">{{ publisher.publisherId }}</span>
-                    <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
-                  </span>
-                  <span class="row gap-2">
-                    <ATag class="m-0">
-                      {{ publisher.trust }}
-                    </ATag>
-                    <AButton
-                      v-if="publisher.trust !== 'trusted'"
-                      size="small"
-                      :loading="deciding === publisher.publisherId"
-                      @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'trusted')"
-                    >
-                      {{ messages.plugins.publishers.trust }}
-                    </AButton>
-                    <AButton
-                      v-if="publisher.trust !== 'revoked'"
-                      size="small"
-                      :loading="deciding === publisher.publisherId"
-                      @click="decidePublisher(publisher.publisherId, publisher.fingerprint, 'revoked')"
-                    >
-                      {{ messages.plugins.publishers.revoke }}
-                    </AButton>
-                  </span>
-                </div>
-              </AList.Item>
-            </AList>
-          </div>
-        </ACollapse.Panel>
-      </ACollapse>
     </div>
   </section>
 
@@ -1065,6 +1076,17 @@ const pluginCategoryOptions = computed(() => [
   { label: messages.plugins.categories.installed, value: 'installed' },
   { label: messages.plugins.categories.discover, value: 'discover' }
 ])
+
+/** Whether the trust manager is open. View state only; it does not change what is read. */
+const publishersExpanded = ref(false)
+
+/**
+ * Keys this device has seen but nobody has decided, plus keys the user revoked. Both are decisions waiting on a person:
+ * a `seen` key asks whether to trust it, and a `revoked` key is one whose trust was withdrawn while the plugin that it
+ * signed may still be running — the kernel does not stop a plugin when its key is revoked, it only refuses the next
+ * install or update. `trusted` keys are settled and are not counted.
+ */
+const publishersNeedingDecision = computed(() => publishers.value.filter(publisher => publisher.trust === 'seen' || publisher.trust === 'revoked').length)
 
 /** The mode's labels, as the segmented control shows them. */
 const installLabel = computed(() => installMode.value === 'registry' ? messages.plugins.installName : messages.plugins.installPath)
