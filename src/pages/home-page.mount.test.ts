@@ -136,10 +136,12 @@ describe('the home page', () => {
     // content. The time was in the DTO from the start and the row never showed it, so a person could see that a file
     // arrived but not when.
     const receivedAtMs = Date.UTC(2026, 9, 30, 4, 5, 6)
+    // A path long enough that clipping it would hide where the file actually is.
+    const path = 'C:\\Users\\someone\\AppData\\Roaming\\Synra\\inbox\\a-rather-long-folder-name\\notes.md'
     answer({
       intent_list: [],
       transfer_received: [
-        { fileName: 'notes.md', path: 'C:\\inbox\\notes.md', bytes: 2048, receivedAtMs }
+        { fileName: 'notes.md', path, bytes: 2048, receivedAtMs }
       ]
     })
 
@@ -148,11 +150,19 @@ describe('the home page', () => {
     try {
       const text = wrapper.text()
       expect(text).toContain('notes.md')
-      expect(text).toContain('C:\\inbox\\notes.md')
+      expect(text).toContain(path)
       expect(text).toContain('2.0 KiB')
       // The formatted time, not the epoch: a raw millisecond count is not a time a person reads.
       expect(text).toContain(messages.home.receivedFiles.receivedAt)
       expect(text).not.toContain(String(receivedAtMs))
+
+      // ★ `text()` returns the whole string whether or not CSS clips it, so the assertion that matters is on the
+      // class list: `truncate` would put an ellipsis in the middle of the one value a person needs to open the file,
+      // and this row has no detail view to open instead.
+      const shown = wrapper.findAll('span').find(span => span.text() === path)
+      expect(shown, 'the full path is not rendered').toBeDefined()
+      expect(shown!.classes()).not.toContain('truncate')
+      expect(shown!.attributes('title')).toBe(path)
     }
     finally {
       wrapper.unmount()

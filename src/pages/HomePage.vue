@@ -228,8 +228,14 @@
         <AList.Item v-for="file in received" :key="file.path" :style="{ paddingInline: 0 }">
           <div class="row-between gap-3">
             <div class="min-w-0 stack gap-0.5">
-              <span class="truncate text-sm">{{ file.fileName }}</span>
-              <span class="truncate text-xs text-ink-dim font-mono">{{ file.path }}</span>
+              <span class="truncate text-sm" :title="file.fileName">{{ file.fileName }}</span>
+              <!--
+                ★ Not truncated: [05 §3](../design-docs/05-home-and-activity.md) makes the full path part of what this row
+                owes, and a path is the one thing a person needs in order to open the file. Cutting it off left long
+                paths with nothing to fall back on — there is no detail view here to open. `title` is the shortcut for
+                the common case; the wrapping line is the answer.
+              -->
+              <span class="break-all text-xs text-ink-dim font-mono" :title="file.path">{{ file.path }}</span>
               <!-- ★ `receivedAtMs` is the write's end. [05 §5](../design-docs/05-home-and-activity.md) draws the line
                    between a start and a finish, so the label says received rather than started. -->
               <span class="text-xs text-ink-dim" :title="formatDateTime(file.receivedAtMs)">
