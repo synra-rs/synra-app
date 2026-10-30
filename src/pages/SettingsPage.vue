@@ -16,7 +16,12 @@
         </AButton>
       </template>
     </AAlert>
-    <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-8">
+    <!--
+      The category column is sized by its labels, not by a fixed 10rem: "Device and security" and "Plugins and sources"
+      are wider than the Chinese labels, and a fixed track truncated them to "Device and sec…" in English while looking
+      right in Chinese. `max-content` lets the longest label set the width; `minmax(0,1fr)` keeps the body able to shrink.
+    -->
+    <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[max-content_minmax(0,1fr)] lg:gap-8">
       <nav :aria-label="messages.settings.navigation" class="min-w-0">
         <label for="settings-category" class="sr-only">{{ messages.settings.navigation }}</label>
         <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
