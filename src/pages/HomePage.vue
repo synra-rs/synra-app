@@ -143,7 +143,12 @@
             <div v-for="candidate in intent.candidates" :key="candidate.deviceId" class="row-between gap-2">
               <span class="min-w-0 truncate text-xs">
                 {{ candidate.title }} · {{ deviceName(candidate.deviceId) }}
-                <span class="text-ink-dim font-mono">{{ candidate.deviceId }}</span>
+                <!--
+                ★ The id keeps a `title` even though the row truncates it: `deviceName` falls back to this id when the
+                device is not in the store, so on an unregistered device the clipped id is the *only* text in the row
+                that names it — and two devices with the same display name differ only here.
+              -->
+                <span class="text-ink-dim font-mono" :title="candidate.deviceId">{{ candidate.deviceId }}</span>
                 <span v-if="!candidate.online" class="text-ink-dim"> · {{ messages.home.received.offline }}</span>
               </span>
               <AButton

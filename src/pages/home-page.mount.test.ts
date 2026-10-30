@@ -187,6 +187,10 @@ describe('the home page', () => {
 
     const accept = wrapper.findAll('button').find(button => button.text() === messages.home.received.accept)
     expect(accept, 'the accept action is missing').toBeDefined()
+    // ★ The row truncates this line, and `deviceName` falls back to the id when the device is not in the store — so on
+    // an unregistered device the clipped id is the only text naming it. The `title` is where the whole value remains.
+    const idShown = wrapper.findAll('span').find(span => span.attributes('title') === intent.candidates[0]!.deviceId)
+    expect(idShown, 'the candidate id has no title').toBeDefined()
     await accept?.trigger('click')
     await flushPromises()
 
