@@ -186,6 +186,50 @@ describe('the plugins page', () => {
     }
   })
 
+  it('offers the settings page when the refusal says no registry is configured', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'no registry is configured for `@acme/hello`', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('#plugin-install input[aria-label]').setValue('C:/plugin')
+      await flushPromises()
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      // The kernel's own sentence survives — the button is added beside it, not instead of it.
+      expect(wrapper.findComponent(ErrorNotice).props('actions')).toEqual([{ kind: 'openSettings', section: 'plugins' }])
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('adds no settings button for a refusal that is not about the registry', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'this package needs a newer Synra', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[data-testid="install-toggle"]').trigger('click')
+      await flushPromises()
+      await wrapper.get('#plugin-install input[aria-label]').setValue('C:/plugin')
+      await flushPromises()
+      await wrapper.get('[data-testid="install-submit"]').trigger('click')
+      await flushPromises()
+      // Same code, different sentence: `unsupported` is shared, so the code alone must not earn a settings link.
+      expect(wrapper.findComponent(ErrorNotice).props('actions')).toBeUndefined()
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it.each(['en', 'zh-CN'])('shows only actionable preview health notices in %s', async (language) => {
     setLocalePreference(language)
     const answers: Record<string, unknown> = { plugins_list: PLUGINS, plugins_publishers: [] }

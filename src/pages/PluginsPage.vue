@@ -1287,6 +1287,20 @@ async function previewResult(item: CatalogItem): Promise<void> {
   await requestPreview(item.pluginId)
 }
 
+/**
+ * Whether a refusal is the kernel saying no registry is configured.
+ *
+ * Read from the sentence because that is all the kernel gives: `registry_install.rs` raises it as
+ * `ErrorCode::Unsupported` with this wording, and `Unsupported` is shared with several other refusals, so the code
+ * cannot tell them apart. Matching prose is fragile — but the alternative is a paragraph that names the problem and
+ * leaves the user to find the settings page themselves, which is what `07 §5.1` asks us not to do.
+ *
+ * If the kernel ever gives this its own code, delete the string and switch on that.
+ */
+function isMissingRegistry(failure: { code: string, message: string }): boolean {
+  return failure.message.includes('no registry is configured')
+}
+
 /** Installs from the source the user named, then re-reads the list. */
 async function install(): Promise<void> {
   const from = installPath.value.trim()
@@ -1324,8 +1338,11 @@ async function completeInstall(
   failure: Failure | undefined
 ): Promise<void> {
   if (!report) {
-    if (failure)
-      error.value = failure
+    if (failure) {
+      error.value = isMissingRegistry(failure)
+        ? { ...failure, actions: [{ kind: 'openSettings', section: 'plugins' } as const] }
+        : failure
+    }
     return
   }
   note.value = [messages.plugins.installedSwitchedOff, ...(report.warnings ?? [])].join(' ')
