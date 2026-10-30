@@ -157,7 +157,7 @@ describe('the settings page', () => {
     answer({ config_get: { values: { 'ui.locale': 'en' }, overridden: ['ui.locale'] }, identity_get: IDENTITY })
     const fallback = mocks.call.getMockImplementation()!
     mocks.call.mockImplementation((command: string, args?: unknown) => command === 'config_set'
-      ? { ok: false, error: { code: 'unauthorized', message: 'error.unauthorized', retryable: false } }
+      ? { ok: false, error: { code: 'capability_denied', message: 'error.capability_denied', retryable: false } }
       : fallback(command, args))
     const wrapper = await mountPage()
     try {
@@ -167,7 +167,7 @@ describe('the settings page', () => {
       await flushPromises()
       expect(localePreference.value).toBe('en')
       expect(wrapper.get('h1').text()).toBe('Settings')
-      expect(wrapper.text()).toContain(messages.errors.unauthorized)
+      expect(wrapper.text()).toContain(messages.errors.capability_denied)
     }
     finally {
       wrapper.unmount()

@@ -16,22 +16,12 @@
  */
 
 /** The kernel's error codes, as far as the interface says anything about them. */
-export type ErrorCode
-  = | 'capability_denied'
-    | 'device_offline'
-    | 'invalid_argument'
-    | 'not_found'
-    | 'plugin_faulted'
-    | 'unauthorized'
-    | string
+export type { ErrorCode } from '@synra/protocol'
 
 export const errors = {
   capability_denied: 'This needs a permission that has not been granted.',
   device_offline: 'That device is not answering.',
   invalid_argument: 'Something in the request was not valid.',
-  not_found: 'That is not here any more.',
-  plugin_faulted: 'That plugin stopped working.',
-  unauthorized: 'This is not allowed.',
   // ★ The rest of `synra_protocol::ErrorCode`, for the codes a person can actually act on. Every one of these used to
   // fall through to `unknown` — "That did not work." — which says nothing about whether to install something, pair
   // first, pick a smaller file, or simply try again. `04 §6` asks for a cause plus a recovery step; a shared fallback

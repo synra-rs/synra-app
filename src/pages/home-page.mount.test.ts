@@ -267,14 +267,14 @@ describe('the home page', () => {
       traceId: '01HQ00000000000000000TRACE3',
       state: 'failed',
       candidates: [],
-      error: { code: 'plugin_faulted', message: 'error.somethingUnmapped', retryable: false },
+      error: { code: 'plugin_not_installed', message: 'error.somethingUnmapped', retryable: false },
       startedAtMs: 1
     }
     answer({ intent_list: [intent] })
     const wrapper = mount(HomePage, { global: { plugins: [router()] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.errors.plugin_faulted)
+    expect(wrapper.text()).toContain(messages.errors.plugin_not_installed)
     expect(wrapper.text()).not.toContain('error.somethingUnmapped')
     wrapper.unmount()
   })
