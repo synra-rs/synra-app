@@ -21,7 +21,7 @@
       </PageHeader>
 
       <div v-if="snapshotError" class="stack gap-2">
-        <ErrorNotice :code="snapshotError.code" :message="snapshotError.message" :actions="snapshotError.actions?.filter(action => action.kind !== 'retry')" />
+        <ErrorNotice :code="snapshotError.code" :actions="snapshotError.actions?.filter(action => action.kind !== 'retry')" />
         <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
           {{ messages.devices.knownOnly }}
         </p>
@@ -41,7 +41,7 @@
 
       <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
         <div v-if="scanError" class="stack gap-2">
-          <ErrorNotice :code="scanError.code" :message="scanError.message" :actions="scanError.actions?.filter(action => action.kind !== 'retry')" />
+          <ErrorNotice :code="scanError.code" :actions="scanError.actions?.filter(action => action.kind !== 'retry')" />
           <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
             {{ messages.devices.scanFailedKnown }}
           </p>
@@ -108,7 +108,7 @@
         <p class="m-0 break-all text-xs text-ink-dim font-mono">
           {{ forgetTarget.deviceId }}
         </p>
-        <ErrorNotice v-if="forgetError" :code="forgetError.code" :message="forgetError.message" :actions="forgetError.actions?.filter(action => action.kind !== 'retry')" />
+        <ErrorNotice v-if="forgetError" :code="forgetError.code" :actions="forgetError.actions?.filter(action => action.kind !== 'retry')" />
         <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
           <AButton ref="keepButton" :disabled="forgetting" @click="closeForget">
             {{ messages.devices.forgetCancel }}

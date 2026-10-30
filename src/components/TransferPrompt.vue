@@ -56,7 +56,7 @@
     <ACheckbox v-model:checked="always" :disabled="busy || answered">
       {{ messages.transfers.prompt.always }}
     </ACheckbox>
-    <ErrorNotice v-if="replyError" :code="replyError.code" :message="replyError.message" :actions="withoutRetry(replyError.actions)" />
+    <ErrorNotice v-if="replyError" :code="replyError.code" :actions="withoutRetry(replyError.actions)" />
     <div v-if="!answered" class="row flex-wrap gap-2">
       <AButton type="primary" :loading="pending?.id === prompt.transferId && pending.accept" :disabled="busy" @click="answer(true)">
         {{ messages.transfers.prompt.accept }}
@@ -69,7 +69,7 @@
       {{ messages.transfers.prompt.answered }}
     </p>
     <div class="stack gap-2">
-      <ErrorNotice v-if="statusError" :code="statusError.code" :message="statusError.message" :actions="withoutRetry(statusError.actions)" />
+      <ErrorNotice v-if="statusError" :code="statusError.code" :actions="withoutRetry(statusError.actions)" />
       <AButton v-if="replyError || statusError || answered" :loading="reading" :disabled="busy || reading" @click="checkStatus">
         {{ messages.transfers.prompt.checkStatus }}
       </AButton>

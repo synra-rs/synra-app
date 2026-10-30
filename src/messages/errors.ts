@@ -4,11 +4,15 @@
  * Not an apology and not a shrug: what happened, in the interface's own words. The `code` is kept for the diagnostics
  * page — the main interface does not print raw error strings (R34).
  *
- * ★ **Two tables, and the order between them matters.** The host's `IpcError.message` is a **key**, not a sentence —
- * the interface is the side that renders it (`src/ipc/client.ts` explains why). A key is finer-grained than a code
- * (one code can have several messages), so `kernelErrors` is consulted first and `errors` is the fallback for codes
- * whose key we have not met yet. An unknown key is not blank: it falls back to the code's sentence, and then to
- * `unknown` — a chain that always says *something* true.
+ * ★ **One table.** The host's `IpcError.message` is a **key**, not a sentence — the interface is the side that renders
+ * it (`src/ipc/client.ts` explains why). `errorSentence` maps that key through the same table as the code: a key is
+ * `error.<reason>` with the reason in `snake_case` (`synra-ipc/src/error.rs`, `MessageKey`), so `error.timeout` and the
+ * code `timeout` are the same sentence, and a key we have not met falls back to the code's, then to `unknown` — a
+ * chain that always says *something* true.
+ *
+ * **A second table of `error.<camelCase>` keys used to live here.** Nothing in the kernel ever sent one: `MessageKey`
+ * is built from the code's own `snake_case` name, and the eight keys had zero senders outside tests. It was deleted
+ * rather than kept "in case" — a table nothing fills is a table nobody can test.
  */
 
 /** The kernel's error codes, as far as the interface says anything about them. */
@@ -20,23 +24,6 @@ export type ErrorCode
     | 'plugin_faulted'
     | 'unauthorized'
     | string
-
-export const kernelErrors = {
-  'error.identityHistoryMissing': 'The saved registration and its recovery record are missing. Restore a trusted database backup before repairing this identity.',
-  'error.badArgument': 'Something in the request was not valid.',
-  'error.bridgeFailed': 'The interface could not reach the kernel.',
-  'error.capabilityDenied': 'This needs a permission that has not been granted.',
-  'error.commandNotFound': 'That is not something this version can do.',
-  'error.storeUnavailable': 'The place that keeps this is not available.',
-  'error.timeout': 'The kernel did not answer in time.',
-  // ★ The key `IpcError::unknown` builds for `Unsupported`, which had no sentence until a refusal needed one.
-  //
-  // The shell answers `unsupported` for the halves this build does not have — a scan with no discovery service, a plugin
-  // with no engine — and every such refusal carries a `reason` in its `params`. The interface does not render `params`
-  // (R34), so until this line existed the user read the fallback for an unknown *code*, "That did not work.", which says
-  // nothing about whether to wait or give up.
-  'error.unsupported': 'This version cannot do that yet.'
-} as const
 
 export const errors = {
   capability_denied: 'This needs a permission that has not been granted.',
@@ -75,18 +62,18 @@ export const actions = {
 } as const
 
 /**
- * The sentence for a refused call: message key first, code second, then the fallback.
+ * The sentence for a refused call.
  *
  * ★ This used to be written out twice — once in `ErrorNotice` and once in `HomePage`'s intent row — with a comment in
- * the second saying it was "the same lookup `ErrorNotice` does". Same words, same three lines, two places to keep in
- * step. The order is a decision, not a detail: the key is more specific than the code, and the code is more specific
- * than nothing. Changing it in one copy and not the other would make one screen explain a failure differently from
- * another, which is worse than either answer.
+ * the second saying it was "the same lookup `ErrorNotice` does". Same words, same lines, two places to keep in step.
+ * Changing it in one copy and not the other would make one screen explain a failure differently from another, which is
+ * worse than either answer.
  *
- * `message` is optional because not every refusal carries one; `error.rs` builds the key from the code when it can.
+ * **It takes only the code now.** There used to be a second parameter for the kernel's message key, looked up in a
+ * table this file no longer has (top of the file says why it went). The key is built from the code's own name, so the
+ * lookup was `errors[code]` with extra steps.
  */
-export function errorSentence(code: string, message?: string | undefined): string {
-  return (message === undefined ? undefined : kernelErrors[message as keyof typeof kernelErrors])
-    ?? errors[code as keyof typeof errors]
+export function errorSentence(code: string): string {
+  return errors[code as keyof typeof errors]
     ?? errors.unknown
 }

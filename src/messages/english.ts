@@ -1,6 +1,6 @@
 import { crash } from './crash'
 import { devices } from './devices'
-import { actions, errors, kernelErrors } from './errors'
+import { actions, errors } from './errors'
 import { home } from './home'
 import { nav } from './nav'
 import { notices } from './notices'
@@ -35,8 +35,6 @@ export const englishMessages = {
   search,
 
   transfers,
-
-  kernelErrors,
 
   errors,
 

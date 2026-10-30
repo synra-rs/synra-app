@@ -80,7 +80,7 @@
           <ErrorNotice
             v-if="publisherErrors[publisher.publisherId]"
             :code="publisherErrors[publisher.publisherId]!.code"
-            :message="publisherErrors[publisher.publisherId]!.message"
+
             :actions="publisherErrors[publisher.publisherId]!.actions"
           />
         </AList.Item>
@@ -145,7 +145,7 @@
           {{ messages.plugins.catalog.action }}
         </AButton>
       </div>
-      <ErrorNotice v-if="catalogError" :code="catalogError.code" :message="catalogError.message" :actions="catalogError.actions" @retry="retryCatalog" />
+      <ErrorNotice v-if="catalogError" :code="catalogError.code" :actions="catalogError.actions" @retry="retryCatalog" />
       <AList v-if="results.length > 0" :data-source="results" size="small">
         <template #renderItem="{ item }">
           <AList.Item :style="{ paddingInline: 0 }">
@@ -266,7 +266,7 @@
         </li>
       </ul>
     </details>
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
+    <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="load" />
 
     <!--
       ★ The report the update command returns, kept until the user dismisses it. The shell also publishes a toast from the
@@ -398,7 +398,7 @@
               <ErrorNotice
                 v-if="cardErrors[plugin.pluginId]"
                 :code="cardErrors[plugin.pluginId]!.code"
-                :message="cardErrors[plugin.pluginId]!.message"
+
                 :actions="cardErrors[plugin.pluginId]!.actions"
               />
 
@@ -650,7 +650,7 @@
       </AButton>
     </template>
     <div class="stack gap-3">
-      <ErrorNotice v-if="removalError" :code="removalError.code" :message="removalError.message" :actions="removalError.actions" @retry="remove" />
+      <ErrorNotice v-if="removalError" :code="removalError.code" :actions="removalError.actions" @retry="remove" />
       <p class="m-0 text-sm">
         {{ messages.plugins.removeDetail(removing?.title ?? '') }}
       </p>

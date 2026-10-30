@@ -53,8 +53,6 @@ import { errorSentence } from '../messages/errors'
 
 const props = defineProps<{
   readonly code: string
-  /** The kernel's message **key** (not a sentence); see `messages.ts` for why it is consulted first. */
-  readonly message?: string | undefined
   readonly actions?: readonly SuggestedAction[] | undefined
 }>()
 
@@ -64,7 +62,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 
-const headline = computed(() => errorSentence(props.code, props.message))
+const headline = computed(() => errorSentence(props.code))
 const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
 
 /** Where an action points, when the interface has a screen for it. */

@@ -11,7 +11,7 @@
           <HelpText>
             {{ messages.settings.credentials.detail }}
           </HelpText>
-          <ErrorNotice v-if="credentials.error" :code="credentials.error.code" :message="credentials.error.message" :actions="credentials.error.actions" @retry="credentials.reload()" />
+          <ErrorNotice v-if="credentials.error" :code="credentials.error.code" :actions="credentials.error.actions" @retry="credentials.reload()" />
           <AButton :disabled="credentials.busy" @click="credentials.reload()">
             {{ messages.settings.credentials.refresh }}
           </AButton>
@@ -37,7 +37,7 @@
             <AAlert v-if="credentials.restartRequired" type="warning" show-icon :message="messages.settings.credentials.restart" />
             <AAlert v-if="credentials.repaired" type="success" show-icon :message="messages.settings.credentials.repaired" />
             <AAlert v-if="credentials.cleanup?.remaining" type="warning" show-icon :message="messages.settings.credentials.remaining(credentials.cleanup.remaining)" />
-            <ErrorNotice v-if="credentials.cleanup?.errorCode" :code="credentials.cleanup.errorCode" :message="`error.${credentials.cleanup.errorCode}`" />
+            <ErrorNotice v-if="credentials.cleanup?.errorCode" :code="credentials.cleanup.errorCode" />
             <div class="row flex-wrap gap-2">
               <AButton danger :disabled="credentials.busy || !target || credentials.repaired !== null" @click="confirmRepair">
                 {{ messages.settings.credentials.repair }}

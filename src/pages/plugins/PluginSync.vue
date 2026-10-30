@@ -16,7 +16,7 @@
       <p v-if="busy" role="status" class="m-0 text-sm text-ink-dim">
         {{ sending ? messages.plugins.syncing : messages.plugins.sync.planning }}
       </p>
-      <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="readPlan" />
+      <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="readPlan" />
       <p v-if="stale" class="m-0 text-sm text-ink-dim">
         {{ messages.plugins.sync.stale }}
       </p>
@@ -48,7 +48,7 @@
         <ul v-if="report.failures?.length" class="m-0 stack list-none gap-3 p-0">
           <li v-for="failure in report.failures" :key="failure.deviceId" class="min-w-0 stack gap-1">
             <span class="break-all text-sm">{{ deviceName(failure.deviceId) }}</span>
-            <ErrorNotice :code="failureOf(failure.error).code" :message="failureOf(failure.error).message" />
+            <ErrorNotice :code="failureOf(failure.error).code" />
             <details class="text-xs text-ink-dim">
               <summary class="min-h-11 cursor-pointer py-3">
                 {{ messages.plugins.sync.failureDetails }}

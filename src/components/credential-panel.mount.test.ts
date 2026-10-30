@@ -110,7 +110,7 @@ it('explains the trusted backup requirement when no registration or recovery rec
   call.mockResolvedValue({ ok: false, error: { code: 'not_paired', message: 'error.identityHistoryMissing' } })
   const wrapper = mount(CredentialPanel)
   await flushPromises()
-  expect(wrapper.text()).toContain(messages.kernelErrors['error.identityHistoryMissing'])
+  expect(wrapper.text()).toContain(messages.errors.not_paired)
   expect(wrapper.findAll('button').some(node => node.text() === messages.settings.credentials.repair)).toBe(false)
   expect(call.mock.calls.some(([command]) => command === 'identity_repair')).toBe(false)
   wrapper.unmount()

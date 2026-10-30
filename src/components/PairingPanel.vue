@@ -18,11 +18,11 @@
     <ErrorNotice
       v-if="pairing.commandError"
       :code="pairing.commandError.code"
-      :message="pairing.commandError.message"
+
       :actions="pairing.commandError.actions?.filter(action => action.kind !== 'retry')"
     />
     <div v-if="pairing.statusError" class="stack gap-2">
-      <ErrorNotice :code="pairing.statusError.code" :message="pairing.statusError.message" />
+      <ErrorNotice :code="pairing.statusError.code" />
       <AButton :loading="pairing.refreshing" :disabled="pairing.refreshing || pairing.busy" @click="pairing.refresh()">
         {{ messages.devices.pairingRefresh }}
       </AButton>
@@ -48,7 +48,7 @@
           {{ copyState === 'copied' ? messages.devices.pairingCopied : messages.devices.pairingCopy }}
         </AButton>
       </div>
-      <ErrorNotice v-if="currentTask.errorCode" :code="currentTask.errorCode" :message="`error.${currentTask.errorCode}`" />
+      <ErrorNotice v-if="currentTask.errorCode" :code="currentTask.errorCode" />
       <template v-if="pairing.active">
         <HelpText>{{ messages.devices.pairingCloseHelp }}</HelpText>
         <div>

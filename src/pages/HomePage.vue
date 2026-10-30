@@ -11,7 +11,7 @@
       </AButton>
     </PageHeader>
 
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="load" />
+    <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="load" />
 
     <!-- A compact connection surface; glass is reserved for actual overlays. -->
     <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4" :aria-label="messages.home.wire.label">
@@ -591,7 +591,7 @@ function intentError(intent: IntentSnapshot): string {
   const error = intent.error
   if (!error)
     return ''
-  return errorSentence(error.code, error.message)
+  return errorSentence(error.code)
 }
 
 onMounted(load)

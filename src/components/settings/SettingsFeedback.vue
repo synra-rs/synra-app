@@ -1,6 +1,6 @@
 <template>
   <div v-if="error || saved || checkRequired" class="min-w-0 stack gap-2" aria-live="polite">
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
+    <ErrorNotice v-if="error" :code="error.code" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
     <span v-else-if="saved" class="text-xs text-ink-dim">{{ messages.settings.edit.saved }}</span>
     <template v-if="checkRequired">
       <span class="text-xs text-ink-dim">{{ messages.settings.edit.checkDetail }}</span>

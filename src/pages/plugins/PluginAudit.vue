@@ -3,7 +3,7 @@
     <summary ref="summary" class="min-h-11 cursor-pointer py-3 text-sm text-ink-dim">
       {{ messages.plugins.audit.title }}
     </summary>
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="retryAudit" />
+    <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="retryAudit" />
     <p v-if="loading" role="status" class="m-0 text-xs text-ink-dim">
       {{ messages.plugins.audit.loading }}
     </p>
