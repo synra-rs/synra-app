@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { errors } from './messages/errors'
+import { actions, errors } from './messages/errors'
 
 /**
  * The codes `synra_protocol::ErrorCode` serializes, minus the ones the interface has nothing honest to say about yet.
@@ -45,5 +45,37 @@ describe('error sentences', () => {
     for (const code of ACTIONABLE_KERNEL_CODES) {
       expect(errors[code as keyof typeof errors]).not.toBe(errors.unknown)
     }
+  })
+})
+
+/**
+ * Every `SuggestedAction` variant has a label.
+ *
+ * ★ `ErrorNotice` renders `messages.actions[action.kind]` for all three of its branches — a routed button, the retry
+ * button, and the plain-text direction. When the kernel grows a seventh variant and this table does not, that
+ * expression is `undefined`: the notice draws a button with no words on it, next to an error explaining itself. The
+ * table has no fallback, so nothing else would catch it.
+ *
+ * These are the six `synra_protocol::SuggestedAction` variants. The enum is `#[non_exhaustive]`, which is exactly why
+ * the list is written here rather than derived: it is a reminder to update this file, not a claim it never changes.
+ */
+const SUGGESTED_ACTION_KINDS = [
+  'openSettings',
+  'requestCapability',
+  'installPlugin',
+  'connectDevice',
+  'retry',
+  'viewLogs'
+] as const
+
+describe('suggested action labels', () => {
+  it.each(SUGGESTED_ACTION_KINDS)('has a label for the kernel action %s', (kind) => {
+    expect(actions[kind]).toBeTypeOf('string')
+    expect(actions[kind].length).toBeGreaterThan(0)
+  })
+
+  it('declares no label the kernel cannot send', () => {
+    // The other direction: a label with no variant behind it is dead weight that looks like support.
+    expect(Object.keys(actions).sort()).toEqual([...SUGGESTED_ACTION_KINDS].sort())
   })
 })
