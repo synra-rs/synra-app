@@ -90,6 +90,7 @@ export const plugins = {
   'plugins.publishers.empty': '尚未验证过带签名的插件包。',
   'plugins.publishers.trust': '信任密钥',
   'plugins.publishers.revoke': '撤销信任',
+  'plugins.publishers.untrusted': '发布者未受信任',
   'plugins.publishers.manage': needsDecision => needsDecision > 0 ? `发布者 · ${needsDecision} 项待处理` : '发布者',
   'plugins.publisherPrompt.title': '此插件包带有签名',
   'plugins.publisherPrompt.detail': '请与发布者提供的指纹核对。信任此密钥也将影响之后安装的插件包。',

@@ -354,6 +354,14 @@
                 <ATag :color="stateColour(plugin.state)" class="shrink-0">
                   {{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}
                 </ATag>
+                <!--
+                  ★ Beside the state, not in the management panel: `07 §1` keeps a publisher that needs attention visible
+                  on the object it belongs to after the publisher list moved into its own panel. Default rather than
+                  warning colour — a revoked key is a decision, not a fault of the plugin, which the kernel keeps running.
+                -->
+                <ATag v-if="publisherNeedsAttention(plugin)" class="shrink-0" data-testid="plugin-publisher-untrusted">
+                  {{ messages.plugins.publishers.untrusted }}
+                </ATag>
                 <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="managementOpen[plugin.pluginId] = [plugin.pluginId]">
                   {{ messages.plugins.reviewPermissions }}
                 </AButton>
@@ -796,6 +804,23 @@ function stateColour(state: string): 'success' | 'error' | 'default' {
 
 /** The publishers whose signatures this device has seen. */
 const publishers = ref<readonly PublisherDto[]>([])
+
+/**
+ * Whether this plugin's publisher needs the user's attention.
+ *
+ * `PluginSnapshot` carries only the publisher id, so the answer comes from the publisher list by id — the same join an
+ * install report already does. The two rungs are exactly the ones the entry's own counter uses
+ * (`publishersNeedingDecision`): `seen` is a decision nobody has made, and `revoked` is a decision the kernel keeps
+ * running anyway. **Leaving `revoked` out here would let the button say "1 needs a decision" while the card it belongs
+ * to carries no mark at all** — the user would have to open the panel and match fingerprints to find which one.
+ *
+ * A publisher missing from the list yields `false`: the list is what this page read, and inventing a warning from an
+ * absence would put a mark on every plugin during the first load.
+ */
+function publisherNeedsAttention(plugin: PluginSnapshot): boolean {
+  return publishers.value.some(publisher => publisher.publisherId === plugin.publisher
+    && (publisher.trust === 'seen' || publisher.trust === 'revoked'))
+}
 
 /** The publisher whose decision is being written. */
 const deciding = ref<string | undefined>(undefined)

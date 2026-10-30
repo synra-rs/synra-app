@@ -137,6 +137,14 @@ export const plugins = {
     trust: 'Trust key',
     revoke: 'Revoke key',
     /**
+     * The mark on a card whose publisher needs attention — the same two rungs the entry's counter counts.
+     *
+     * Worded as "not trusted" rather than "undecided", because it also covers `revoked`: that key was decided against
+     * and the kernel runs the plugin anyway, so "nobody has decided" would be wrong for half the cases. Deliberately
+     * not an error colour — `07 §1` asks for visibility, and a revoked key is not a failure of the plugin.
+     */
+    untrusted: 'Publisher not trusted',
+    /**
      * The entry's own label, carrying the count of keys that still need a decision or were revoked. The list moved off
      * the browsing path ([07 §1](../../design-docs/ui-design/07-plugins.md)), and a key waiting for a decision must not
      * become invisible just because a manager is collapsed: the kernel keeps a plugin running after its key is revoked,

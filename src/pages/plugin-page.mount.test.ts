@@ -122,6 +122,48 @@ afterEach(() => {
 })
 
 describe('the plugins page', () => {
+  it.each([
+    ['seen', true],
+    ['revoked', true],
+    ['trusted', false]
+  ])('marks a card whose publisher is %s: %s', async (trust, marked) => {
+    // `seen` and `revoked` are the two rungs the entry's counter counts; `trusted` is the only one that needs no mark.
+    const answers: Record<string, unknown> = {
+      plugins_list: [card({ state: 'active' })],
+      plugins_publishers: [{ publisherId: 'acme', fingerprint: 'aaaa bbbb', trust, firstSeenMs: 1 }]
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.find('[data-testid="plugin-publisher-untrusted"]').exists()).toBe(marked)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('does not mark a card when the publisher list has no matching key', async () => {
+    // The first load reads plugins and publishers separately; an absent key must not read as a warning.
+    const answers: Record<string, unknown> = {
+      plugins_list: [card({ state: 'active' })],
+      plugins_publishers: [{ publisherId: 'someone-else', fingerprint: 'cccc dddd', trust: 'seen', firstSeenMs: 1 }]
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      expect(wrapper.find('[data-testid="plugin-publisher-untrusted"]').exists()).toBe(false)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('opens installation on demand and preserves its draft without background reads', async () => {
     const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active' })], plugins_publishers: [] }
     mocks.call.mockImplementation(async (command: string) => command in answers
