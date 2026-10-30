@@ -14,7 +14,7 @@
  */
 
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useDevicesStore } from './devices'
 import { card, snapshot, transferSnapshot } from './devices-test-helpers'
@@ -41,6 +41,36 @@ describe('recording a snapshot', () => {
     store.applySnapshot(snapshot([]))
     expect(store.identity?.displayName).toBe('This machine')
     expect(store.identity?.deviceId).toBe('dev_self')
+  })
+
+  it('does not replace a newer full snapshot with a delayed identity read', async () => {
+    const store = useDevicesStore()
+    const previous = snapshot([]).identity
+    let finish: ((value: unknown) => void) | undefined
+    const call = vi.fn(() => new Promise((resolve) => {
+      finish = resolve
+    }))
+    const reading = store.readIdentity({ call } as Parameters<typeof store.readIdentity>[0])
+    store.applySnapshot({ ...snapshot([]), identity: { ...previous, displayName: 'Current device' } })
+    finish!({ ok: true, value: previous })
+    await reading
+    expect(store.identity?.displayName).toBe('Current device')
+  })
+
+  it('only records the newest identity read', async () => {
+    const store = useDevicesStore()
+    const previous = snapshot([]).identity
+    let finish: ((value: unknown) => void) | undefined
+    const call = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = resolve
+      }))
+      .mockResolvedValueOnce({ ok: true, value: { ...previous, displayName: 'New name' } })
+    const reading = store.readIdentity({ call })
+    await store.readIdentity({ call })
+    finish!({ ok: true, value: previous })
+    await reading
+    expect(store.identity?.displayName).toBe('New name')
   })
 
   it('records a scan as the scan itself rather than as a flag', () => {

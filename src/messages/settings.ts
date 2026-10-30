@@ -8,6 +8,8 @@
 export const settings = {
   credentials: {
     title: 'Device identity',
+    attention: 'Device identity needs attention.',
+    review: 'Review',
     detail: 'Device keys and pairing status. Replacing a key requires pairing again.',
     refresh: 'Refresh identity',
     fingerprint: 'Public certificate fingerprint',
@@ -31,6 +33,28 @@ export const settings = {
     confirm: 'Revoke pairings and replace key'
   },
   title: 'Settings',
+  navigation: 'Settings category',
+  categories: {
+    general: 'General',
+    security: 'Device and security',
+    plugins: 'Plugins and sources',
+    diagnostics: 'Diagnostics',
+    about: 'About'
+  },
+  edit: {
+    saved: 'Saved',
+    unsaved: 'Unsaved changes',
+    conflict: 'The current value has changed elsewhere. Load it or explicitly overwrite it with this draft.',
+    overwrite: 'Overwrite current value',
+    loadCurrent: 'Load current value',
+    check: 'Check saved value',
+    checkDetail: 'The change was submitted. Check its current value before editing again.',
+    leaveTitle: 'Keep your changes?',
+    leaveDetail: 'You have unsaved changes or an operation awaiting confirmation.',
+    stay: 'Keep editing',
+    discard: 'Discard and leave',
+    saveAll: 'Save and leave'
+  },
   device: 'This device',
   field: {
     name: 'Name',
@@ -90,12 +114,15 @@ export const settings = {
   /** How long the durable audit trail is kept. The kernel sweeps the table when it starts. */
   audit: {
     title: 'Audit history',
-    detail: 'Days to keep plugin activity records.',
+    days: 'Retention days',
+    detail: 'Plugin activity records are cleaned up at the next application start.',
     save: 'Save'
   },
   /** What a user sends when something is wrong, and the two optional sections that need a decision. */
   diagnostics: {
     title: 'Diagnostics',
+    probesTitle: 'Environment checks',
+    crashesTitle: 'Crash reports',
     detail: 'Export a troubleshooting report. Extra logs are optional.',
     audit: 'Include the audit trail',
     auditDetail: 'It names the plugins you run.',
@@ -127,6 +154,8 @@ export const settings = {
   /** Where registry installs are fetched from; the list is tried in order, and empty means the feature is off. */
   registry: {
     title: 'Registry',
+    source: (index: number): string => `Source ${index}`,
+    removeSource: (index: number): string => `Remove source ${index}`,
     detail: 'Plugin sources, checked in order. Use static: for static catalogs; leave empty to disable registry installs.',
     placeholder: 'https://registry.example.com',
     add: 'Add mirror',
@@ -150,7 +179,10 @@ export const settings = {
    */
   metrics: {
     title: 'Performance',
-    detail: 'Local runtime metrics. Refreshes while advanced settings are open.',
+    detail: 'Local metrics refresh every five seconds while this section is visible.',
+    updated: (time: string): string => `Snapshot: ${time}`,
+    live: 'Auto refresh on',
+    paused: 'Refresh paused',
     refresh: 'Refresh',
     empty: 'No metric has been recorded yet.',
     /** The M4 cold-start budget, read from the one series that measures the whole shell start. */

@@ -1,24 +1,9 @@
 // @vitest-environment jsdom
-/**
- * The settings page, mounted.
- *
- * # What is asserted
- *
- * That mounting reads the two things it needs, and that a refusal on either is shown rather than swallowed. The page has
- * no store — configuration is written back a field at a time, and there is no event that carries it — so the assertions
- * stop at what the kernel answered.
- *
- * # The three things this pattern needs, learned the hard way on the other pages
- *
- * `matchMedia`, `ResizeObserver`, `IntersectionObserver` — jsdom gives the first a **placeholder that is not a
- *   function**, so a guard like `if (!('matchMedia' in window))` installs nothing and hides the failure;
- * answers **by command name**, because a blanket `{ ok: true, value: [] }` fails far from the call that was wrong;
- * assertions on fields the DTO **actually has** — `toContain(undefined)` passes on `undefined`.
- */
-
+import type { VueWrapper } from '@vue/test-utils'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { localePreference, setLocalePreference } from '../locale'
 
 const mocks = vi.hoisted(() => ({
@@ -79,11 +64,39 @@ const NO_METRICS = { values: [], overflowedTotal: 0, maxSeriesPerMetric: 1_000 }
  */
 function answer(byCommand: Record<string, unknown>) {
   const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, identity_credentials: { deviceId: IDENTITY.deviceId, enrollment: null, recovery: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }, ...byCommand }
-  mocks.call.mockImplementation(async (command: string) =>
-    command in answers
+  mocks.call.mockImplementation(async (command: string, args?: { patch?: { set?: Record<string, unknown>, unset?: string[] } }) => {
+    if (command === 'config_set' && command in answers) {
+      const snapshot = answers.config_get as { values: Record<string, unknown>, overridden: string[] } | undefined
+      if (snapshot) {
+        Object.assign(snapshot.values, args?.patch?.set)
+        for (const key of args?.patch?.unset ?? [])
+          delete snapshot.values[key]
+        snapshot.overridden = Object.keys(snapshot.values)
+      }
+    }
+    return command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
-  )
+  })
+}
+
+let testRouter: ReturnType<typeof createRouter>
+async function mountPage() {
+  testRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/settings', component: SettingsPage }, { path: '/', component: { template: '<p>Home</p>' } }] })
+  await testRouter.push('/settings')
+  await testRouter.isReady()
+  return mount(RouterView, { attachTo: document.body, global: { plugins: [testRouter] } })
+}
+async function openCategory(wrapper: VueWrapper, category: string): Promise<void> {
+  const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'settings-category')!
+  await select.vm.$emit('change', category)
+  await flushPromises()
+}
+async function openDiagnostic(wrapper: VueWrapper, title: string): Promise<void> {
+  await openCategory(wrapper, 'diagnostics')
+  const header = wrapper.findAll('[data-testid="settings-diagnostics"] .ant-collapse-header').find(value => value.text().includes(title))!
+  await header.trigger('click')
+  await flushPromises()
 }
 
 beforeEach(() => {
@@ -122,7 +135,7 @@ describe('the settings page', () => {
       }
       return fallback(command, args)
     })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     try {
       await flushPromises()
       const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'language-preference')!
@@ -131,6 +144,7 @@ describe('the settings page', () => {
       expect(mocks.call).toHaveBeenCalledWith('config_set', { patch: { set: { 'ui.locale': 'zh-CN' } } })
       expect(wrapper.get('h1').text()).toBe('设置')
       expect(select.props('value')).toBe('zh-CN')
+      await openCategory(wrapper, 'plugins')
       const policy = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'plugin-update-policy')!
       expect(policy.props('options')).toContainEqual({ value: 'never', label: '手动检查' })
     }
@@ -145,7 +159,7 @@ describe('the settings page', () => {
     mocks.call.mockImplementation((command: string, args?: unknown) => command === 'config_set'
       ? { ok: false, error: { code: 'unauthorized', message: 'error.unauthorized', retryable: false } }
       : fallback(command, args))
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     try {
       await flushPromises()
       const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'language-preference')!
@@ -163,7 +177,7 @@ describe('the settings page', () => {
   it('reads the configuration and this device when it is mounted', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('config_get')
@@ -192,14 +206,14 @@ describe('the settings page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     const rename = wrapper.findAll('button').find(button => button.text() === messages.settings.field.rename)
     expect(rename, 'the rename button is missing').toBeDefined()
     await rename?.trigger('click')
 
-    const input = wrapper.find('input')
+    const input = wrapper.find('input#device-name')
     expect(input.exists(), 'the name input did not open').toBe(true)
     await input.setValue('Kitchen tablet')
 
@@ -218,8 +232,9 @@ describe('the settings page', () => {
     // Reading the label returned `undefined`, so both controls showed "unset" no matter what was configured.
     answer({ config_get: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] }, identity_get: IDENTITY })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'about')
 
     expect(wrapper.text()).toContain(messages.settings.themeFixed)
     wrapper.unmount()
@@ -229,12 +244,12 @@ describe('the settings page', () => {
     // ★ Absent means "ask": the page shows the switch on, and turning it off stores the one value that changes the
     // behaviour. A page that treated absent as off would remove the question without anybody asking it to.
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
     expect(switches).toHaveLength(3)
-    const cancelSwitch = switches[0]
+    const cancelSwitch = switches.find(value => value.attributes('aria-label') === messages.settings.transfers.cancelAsk)
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)
     await flushPromises()
@@ -247,8 +262,9 @@ describe('the settings page', () => {
 
   it.each(['never', 'notify-only', 'auto-minor', 'auto-all'])('writes the selected %s update policy', async (policy) => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'plugins')
 
     const select = wrapper.findAllComponents({ name: 'ASelect' }).find(select => select.attributes('data-testid') === 'plugin-update-policy')!
     expect(select.props('value')).toBe('notify-only')
@@ -263,8 +279,9 @@ describe('the settings page', () => {
 
   it('shows the stored update policy and reacts to another window changing it', async () => {
     answer({ config_get: { values: { 'plugins.auto_update': 'auto-minor' }, overridden: ['plugins.auto_update'] }, identity_get: IDENTITY })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'plugins')
     const select = wrapper.findAllComponents({ name: 'ASelect' }).find(select => select.attributes('data-testid') === 'plugin-update-policy')!
     expect(select.props('value')).toBe('auto-minor')
     const { useSettingsStore } = await import('../stores/settings')
@@ -279,10 +296,10 @@ describe('the settings page', () => {
     // ★ Absent means on: the design wants a file that arrives while the window is elsewhere to be noticed, so a page that
     // treated absent as off would silence it without anybody asking.
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
-    const notifySwitch = wrapper.findAllComponents({ name: 'ASwitch' })[1]
+    const notifySwitch = wrapper.findAllComponents({ name: 'ASwitch' }).find(value => value.attributes('aria-label') === messages.settings.transfers.notify)
     expect(notifySwitch).toBeDefined()
     await notifySwitch?.vm.$emit('change', false)
     await flushPromises()
@@ -301,8 +318,9 @@ describe('the settings page', () => {
       identity_get: IDENTITY,
       config_set: null
     })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'plugins')
 
     const input = wrapper.find('input[placeholder="https://registry.example.com"]')
     expect((input.element as HTMLInputElement).value).toBe('https://r.example')
@@ -336,8 +354,9 @@ describe('the settings page', () => {
       identity_get: IDENTITY,
       config_set: null
     })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'plugins')
 
     expect(wrapper.findAll('input[placeholder="https://registry.example.com"]')).toHaveLength(2)
 
@@ -375,7 +394,7 @@ describe('the settings page', () => {
   it('shows this device\'s name, which is the one field the page can state without being told', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     expect(wrapper.text()).toContain(IDENTITY.displayName)
@@ -391,8 +410,9 @@ describe('the settings page', () => {
       identity_get: IDENTITY,
       config_set: null
     })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'security')
 
     expect(wrapper.text()).toContain('Ask again')
     const remove = wrapper.findAll('button').find(button => button.text().includes('Ask again'))
@@ -417,7 +437,7 @@ describe('the settings page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     // ★ Through the component, not its words: the notice renders a translated sentence, so looking for the code in the
@@ -448,9 +468,9 @@ describe('the settings page', () => {
       }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
-    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
+    await openDiagnostic(wrapper, messages.settings.metrics.title)
     await flushPromises()
 
     // ★ The rendered key is the kernel's own spelling (`name{label=value}`), not a page-invented one: a log line, a
@@ -461,16 +481,15 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
-  it('polls metrics only while advanced settings are open', async () => {
+  it('polls metrics only while the performance section is visible', async () => {
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
     vi.useFakeTimers()
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     try {
       await flushPromises()
       expect(mocks.call).not.toHaveBeenCalledWith('diag_metrics')
-      const header = wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header')
-      await header.trigger('click')
-      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.metrics.title)
+      const header = wrapper.findAll('[data-testid="settings-diagnostics"] .ant-collapse-header').find(value => value.text().includes(messages.settings.metrics.title))!
       expect(mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics')).toHaveLength(1)
       await vi.advanceTimersByTimeAsync(5_000)
       expect(mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics')).toHaveLength(2)
@@ -506,9 +525,9 @@ describe('the settings page', () => {
       }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
-    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
+    await openDiagnostic(wrapper, messages.settings.metrics.title)
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.settings.metrics.startup)
@@ -521,10 +540,10 @@ describe('the settings page', () => {
     // ★ The registration belongs to the platform. The page reads `isEnabled` on mount and calls `enable`/`disable`; it
     // does not keep a preference of its own, because a stored copy can disagree with what the OS actually does.
     answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
-    const launch = wrapper.findAllComponents({ name: 'ASwitch' })[2]
+    const launch = wrapper.findAllComponents({ name: 'ASwitch' }).find(value => value.attributes('aria-label') === messages.settings.startup.launchAtLogin)
     expect(launch).toBeDefined()
     await launch?.vm.$emit('change', true)
     await flushPromises()
@@ -546,9 +565,9 @@ describe('the settings page', () => {
       }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
-    await wrapper.get('[data-testid="advanced-settings"] .ant-collapse-header').trigger('click')
+    await openDiagnostic(wrapper, messages.settings.metrics.title)
     await flushPromises()
 
     expect(wrapper.text()).toContain(messages.settings.metrics.overflow(3, 2))
@@ -564,8 +583,9 @@ describe('the settings page', () => {
       config_set: null
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openCategory(wrapper, 'plugins')
 
     const number = wrapper.findComponent({ name: 'AInputNumber' })
     expect(number.exists(), 'the retention control is missing').toBe(true)
@@ -600,8 +620,9 @@ describe('the settings page', () => {
       }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.export)
 
     const boxes = wrapper.findAllComponents({ name: 'ACheckbox' })
     expect(boxes.length, 'the two optional sections are not drawn').toBeGreaterThanOrEqual(2)
@@ -630,14 +651,20 @@ describe('the settings page', () => {
       diag_crash_dismiss: null
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.crashesTitle)
 
     const button = wrapper
       .findAll('button')
       .find(candidate => candidate.text() === messages.settings.diagnostics.dismissCrashes)
     expect(button, 'the dismiss button is missing').toBeDefined()
     await button?.trigger('click')
+    await flushPromises()
+
+    expect(mocks.call).not.toHaveBeenCalledWith('diag_crash_dismiss')
+    const confirmation = wrapper.findAllComponents({ name: 'AModal' }).find(value => value.props('open'))!
+    await confirmation.vm.$emit('ok')
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('diag_crash_dismiss')
@@ -661,8 +688,9 @@ describe('the settings page', () => {
       ]
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.crashesTitle)
 
     const button = wrapper
       .findAll('button')
@@ -686,14 +714,11 @@ describe('the settings page', () => {
       diag_logs_tail: ['synra: started', 'synra: discovery bound']
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
 
     expect(mocks.call).not.toHaveBeenCalledWith('diag_logs_tail', expect.anything())
-    const log = wrapper.find('details')
-    expect(log.exists(), 'the log section is missing').toBe(true)
-    ;(log.element as HTMLDetailsElement).open = true
-    await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.logs)
 
     expect(mocks.call).toHaveBeenCalledWith('diag_logs_tail', { lines: 200 })
     expect(wrapper.text()).toContain('synra: discovery bound')
@@ -714,8 +739,9 @@ describe('the settings page', () => {
       }
     })
 
-    const wrapper = mount(SettingsPage)
+    const wrapper = await mountPage()
     await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.probesTitle)
 
     expect(mocks.call).not.toHaveBeenCalledWith('diag_probes')
     const button = wrapper.findAll('button').find(candidate => candidate.text() === messages.settings.diagnostics.probes)
@@ -724,7 +750,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('diag_probes')
-    expect(wrapper.text()).toContain('tcp_port_available')
+    expect(wrapper.text()).not.toContain('tcp_port_available')
     expect(wrapper.text()).toContain(messages.settings.diagnostics.probeStatus('warn'))
     expect(wrapper.text()).toContain('include this report')
 
@@ -733,10 +759,229 @@ describe('the settings page', () => {
     expect(wrapper.text()).toContain(messages.settings.diagnostics.probesSummary(1, 1, 0))
     const filter = wrapper.findAllComponents({ name: 'ACheckbox' }).at(-1)
     expect(filter, 'the only-problems filter is missing').toBeDefined()
-    await filter?.vm.$emit('update:checked', true)
+    await filter?.vm.$emit('update:checked', false)
     await flushPromises()
-    expect(wrapper.text()).not.toContain('tcp_port_available')
+    expect(wrapper.text()).toContain('tcp_port_available')
     expect(wrapper.text()).toContain('wasm_backend')
     wrapper.unmount()
+  })
+
+  it('keeps drafts across categories and exposes external changes without replacing them', async () => {
+    answer({ config_get: { values: { 'plugins.registry': 'https://a.example' }, overridden: ['plugins.registry'] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openCategory(wrapper, 'plugins')
+      await wrapper.get('#registry-0').setValue('https://draft.example')
+      await openCategory(wrapper, 'general')
+      expect(wrapper.get('[data-testid="settings-plugins"]').isVisible()).toBe(false)
+      const { useSettingsStore } = await import('../stores/settings')
+      useSettingsStore().applySnapshot({ values: { 'plugins.registry': 'https://external.example' }, overridden: ['plugins.registry'] })
+      await openCategory(wrapper, 'plugins')
+      expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
+      expect(wrapper.text()).toContain(messages.settings.edit.conflict)
+      expect(wrapper.get('[data-testid="save-registry"]').text()).toBe(messages.settings.edit.overwrite)
+      const current = wrapper.findAll('button').find(button => button.text() === messages.settings.edit.loadCurrent)!
+      await current.trigger('click')
+      expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://external.example')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('keeps a rejected draft in its own section and retries the same edit explicitly', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const fallback = mocks.call.getMockImplementation()!
+    let refused = true
+    mocks.call.mockImplementation((command: string, args?: unknown) => command === 'config_set' && refused
+      ? { ok: false, error: { code: 'invalidArgument', message: 'error.invalidArgument', retryable: false } }
+      : fallback(command, args))
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openCategory(wrapper, 'plugins')
+      await wrapper.get('#registry-0').setValue('https://draft.example')
+      await wrapper.get('[data-testid="save-registry"]').trigger('click')
+      await flushPromises()
+      expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
+      expect(wrapper.get('[data-testid="settings-plugins"]').findComponent(ErrorNotice).exists()).toBe(true)
+      expect(wrapper.get('[data-testid="settings-general"]').findComponent(ErrorNotice).exists()).toBe(false)
+      refused = false
+      await wrapper.get('[data-testid="save-registry"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-testid="settings-plugins"]').findComponent(ErrorNotice).exists()).toBe(false)
+      expect(wrapper.get('[data-testid="save-registry"]').attributes('disabled')).toBeDefined()
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('checks a submitted rename without writing it twice after a failed status read', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, identity_set_display_name: null })
+    const fallback = mocks.call.getMockImplementation()!
+    let reads = 0
+    mocks.call.mockImplementation((command: string, args?: unknown) => {
+      if (command === 'identity_get') {
+        reads++
+        if (reads === 2)
+          return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: true } }
+        return { ok: true, value: reads > 2 ? { ...IDENTITY, displayName: 'Desk' } : IDENTITY }
+      }
+      return fallback(command, args)
+    })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === messages.settings.field.rename)!.trigger('click')
+      await wrapper.get('#device-name').setValue('Desk')
+      await wrapper.findAll('button').find(button => button.text() === messages.settings.field.save)!.trigger('click')
+      await flushPromises()
+      expect((wrapper.get('#device-name').element as HTMLInputElement).value).toBe('Desk')
+      await wrapper.findAll('button').find(button => button.text() === messages.settings.edit.check)!.trigger('click')
+      await flushPromises()
+      expect(mocks.call.mock.calls.filter(([command]) => command === 'identity_set_display_name')).toHaveLength(1)
+      expect(wrapper.find('#device-name').exists()).toBe(false)
+      const { useDevicesStore } = await import('../stores/devices')
+      expect(useDevicesStore().identity?.displayName).toBe('Desk')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('keeps editing when navigation is cancelled and only discards after an explicit decision', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openCategory(wrapper, 'plugins')
+      await wrapper.get('#registry-0').setValue('https://draft.example')
+      const cancelled = testRouter.push('/')
+      await flushPromises()
+      const modal = wrapper.findAllComponents({ name: 'AModal' }).find(value => value.props('open'))!
+      expect(modal.exists()).toBe(true)
+      await modal.vm.$emit('cancel')
+      await cancelled
+      expect(testRouter.currentRoute.value.path).toBe('/settings')
+      expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
+      const leaving = testRouter.push('/')
+      await flushPromises()
+      const button = [...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')].find(value => value.textContent === messages.settings.edit.discard)!
+      button.click()
+      await leaving
+      expect(testRouter.currentRoute.value.path).toBe('/')
+      expect(mocks.call.mock.calls.some(([command]) => command === 'config_set')).toBe(false)
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('keeps the draft and route when saving before navigation fails', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openCategory(wrapper, 'plugins')
+      await wrapper.get('#registry-0').setValue('https://draft.example')
+      const leaving = testRouter.push('/')
+      await flushPromises()
+      const button = [...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')].find(value => value.textContent === messages.settings.edit.saveAll)!
+      button.click()
+      await leaving
+      await flushPromises()
+      expect(testRouter.currentRoute.value.path).toBe('/settings')
+      expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
+      expect(wrapper.get('[data-testid="settings-plugins"]').findComponent(ErrorNotice).exists()).toBe(true)
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('does not submit a registry draft while an input method is composing', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openCategory(wrapper, 'plugins')
+      await wrapper.get('#registry-0').setValue('https://draft.example')
+      await wrapper.get('#registry-0').trigger('keydown', { key: 'Enter', keyCode: 13, isComposing: true })
+      await flushPromises()
+      expect(mocks.call.mock.calls.some(([command]) => command === 'config_set')).toBe(false)
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('pauses metrics on hidden windows and category changes then resumes once', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    vi.useFakeTimers()
+    const wrapper = await mountPage()
+    const count = () => mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics').length
+    try {
+      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.metrics.title)
+      expect(count()).toBe(1)
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+      document.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(count()).toBe(1)
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+      document.dispatchEvent(new Event('visibilitychange'))
+      await flushPromises()
+      expect(count()).toBe(2)
+      await openCategory(wrapper, 'general')
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(count()).toBe(2)
+      await openCategory(wrapper, 'diagnostics')
+      expect(count()).toBe(3)
+    }
+    finally {
+      wrapper.unmount()
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+      vi.useRealTimers()
+    }
+  })
+
+  it('discards old metric responses and never overlaps pending requests when reopened', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const fallback = mocks.call.getMockImplementation()!
+    let finish: ((value: unknown) => void) | undefined
+    let requests = 0
+    mocks.call.mockImplementation((command: string, args?: unknown) => {
+      if (command !== 'diag_metrics')
+        return fallback(command, args)
+      requests++
+      if (requests === 1)
+        return new Promise((resolve) => { finish = resolve })
+      return { ok: true, value: NO_METRICS }
+    })
+    vi.useFakeTimers()
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.metrics.title)
+      await openCategory(wrapper, 'general')
+      await openCategory(wrapper, 'diagnostics')
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(requests).toBe(1)
+      finish!({ ok: true, value: { ...NO_METRICS, values: [{ key: { name: 'old_series', labels: [] }, value: { kind: 'counter', value: 10 } }] } })
+      await flushPromises()
+      expect(requests).toBe(2)
+      expect(wrapper.text()).not.toContain('old_series')
+      expect(wrapper.text()).toContain(messages.settings.metrics.empty)
+    }
+    finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps diagnostic errors independent when another tool succeeds', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, diag_logs_tail: ['recent log'] })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.diagnostics.probesTitle)
+      await wrapper.findAll('button').find(value => value.text() === messages.settings.diagnostics.probes)!.trigger('click')
+      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.diagnostics.logs)
+      expect(wrapper.text()).toContain('recent log')
+      expect(wrapper.findComponent(ErrorNotice).exists()).toBe(true)
+      expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('internal')
+    }
+    finally { wrapper.unmount() }
   })
 })

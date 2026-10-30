@@ -26,6 +26,7 @@ import type {
   ScanState,
   TransferSummary
 } from '@synra/protocol'
+import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -45,6 +46,8 @@ export interface DevicesState {
 }
 
 export const useDevicesStore = defineStore('devices', () => {
+  let identityRevision = 0
+  let identityRead = 0
   const cards = ref<readonly DeviceCard[]>([])
   /**
    * The scan in progress, or nothing.
@@ -68,11 +71,24 @@ export const useDevicesStore = defineStore('devices', () => {
 
   /** Records a whole snapshot, which is what the interface asks for after a gap. */
   function applySnapshot(snapshot: DevicesSnapshot): void {
+    identityRevision++
     // Replaced rather than merged: a snapshot is the kernel's complete answer, so a card the snapshot does not carry
     // is one that is gone. Merging would keep a device the user has removed until the interface restarted.
     cards.value = snapshot.devices
     scan.value = snapshot.scanning
     identity.value = snapshot.identity
+  }
+
+  /** Keep page and shell on the same identity; late reads cannot replace a newer snapshot or read. */
+  async function readIdentity(client: Pick<KernelClient, 'call'>): Promise<CallResult<IdentitySnapshot>> {
+    const ticket = ++identityRead
+    const revision = identityRevision
+    const answer = await client.call<IdentitySnapshot>('identity_get')
+    if (answer.ok && ticket === identityRead && revision === identityRevision) {
+      identityRevision++
+      identity.value = answer.value
+    }
+    return answer
   }
 
   /** Whether a scan is running, which is what the components ask. */
@@ -151,6 +167,7 @@ export const useDevicesStore = defineStore('devices', () => {
     scanning,
     scan,
     identity,
+    readIdentity,
     byId,
     paired,
     online,

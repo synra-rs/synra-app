@@ -1,6 +1,6 @@
 <template>
   <section class="stack gap-3" aria-labelledby="credential-title">
-    <ACollapse ghost v-bind="credentials.error || credentials.snapshot?.recovery || credentials.restartRequired ? { activeKey: ['identity'] } : {}">
+    <ACollapse ghost v-bind="expanded || credentials.error || credentials.snapshot?.recovery || credentials.restartRequired ? { activeKey: ['identity'] } : {}">
       <ACollapse.Panel key="identity" force-render>
         <template #header>
           <h2 id="credential-title" class="m-0 text-base font-medium">
@@ -68,6 +68,7 @@ import { useCredentialsStore } from '../stores/credentials'
 import ErrorNotice from './ErrorNotice.vue'
 import HelpText from './HelpText.vue'
 
+defineProps<{ expanded?: boolean }>()
 const credentials = useCredentialsStore()
 const confirming = ref<string | null>(null)
 const target = computed(() => credentials.snapshot?.enrollment ?? credentials.snapshot?.recovery)

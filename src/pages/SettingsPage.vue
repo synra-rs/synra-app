@@ -1,625 +1,316 @@
 <template>
-  <section class="stack gap-6 pb-4">
-    <PageHeader :title="messages.settings.title" />
+  <section class="min-w-0 stack gap-5 pb-4">
+    <PageHeader :title="messages.settings.title">
+      <span v-if="hasDrafts" class="text-xs text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
+    </PageHeader>
+    <div v-if="readError" class="stack gap-2">
+      <SettingsFeedback :error="readError" />
+      <AButton :loading="loading" @click="load">
+        {{ messages.actions.retry }}
+      </AButton>
+    </div>
+    <AAlert v-if="identityNeedsAttention && category !== 'security'" type="warning" show-icon :message="messages.settings.credentials.attention">
+      <template #action>
+        <AButton size="small" @click="category = 'security'">
+          {{ messages.settings.credentials.review }}
+        </AButton>
+      </template>
+    </AAlert>
+    <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-8">
+      <nav :aria-label="messages.settings.navigation" class="min-w-0">
+        <label for="settings-category" class="sr-only">{{ messages.settings.navigation }}</label>
+        <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
+        <AMenu class="hidden lg:block" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
+          <AMenu.Item v-for="item in categories" :key="item.value">
+            {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
+          </AMenu.Item>
+        </AMenu>
+      </nav>
+      <div class="max-w-3xl min-w-0 w-full stack gap-6">
+        <h2 ref="categoryHeading" tabindex="-1" class="m-0 text-base font-semibold outline-none">
+          {{ categories.find(item => item.value === category)?.label }}
+        </h2>
 
-    <ErrorNotice v-if="error" :code="error.code" :message="error.message" :actions="error.actions" @retry="reload" />
-
-    <section class="stack gap-3">
-      <h2 class="m-0 text-sm font-medium">
-        {{ messages.settings.device }}
-      </h2>
-
-      <!--
-        The device's own facts, as a labelled table rather than a two-column `<dl>` that only looks like one. The id
-        and the version are machine-issued strings, which is what monospace is for (R21).
-      -->
-      <ADescriptions v-if="identity" :column="{ xs: 1, sm: 2 }" size="small">
-        <ADescriptions.Item :label="messages.settings.field.name">
-          <div v-if="renaming" class="row flex-wrap gap-2">
-            <AInput v-model:value="nameDraft" class="max-w-xs" @press-enter="saveName" />
-            <AButton size="small" type="primary" :loading="savingName" @click="saveName">
-              {{ messages.settings.field.save }}
-            </AButton>
-            <AButton size="small" :disabled="savingName" @click="cancelRename">
-              {{ messages.settings.field.cancel }}
-            </AButton>
-          </div>
-          <div v-else class="stack gap-0.5">
-            <div class="row flex-wrap gap-2">
-              <span>{{ identity.displayName }}</span>
-              <AButton size="small" @click="startRename">
-                {{ messages.settings.field.rename }}
-              </AButton>
-            </div>
-            <!-- The hint is a line of its own, not a parenthetical after the name (R21 retires `WORD — fragment`). -->
-            <span v-if="identity.nameIsDefault" class="text-xs text-ink-dim">
-              {{ messages.settings.field.nameIsGenerated }}
-            </span>
-          </div>
-        </ADescriptions.Item>
-
-        <ADescriptions.Item :label="messages.settings.field.platform">
-          {{ identity.platform }}
-        </ADescriptions.Item>
-
-        <ADescriptions.Item :label="messages.settings.field.kernel">
-          <span class="font-mono">v{{ identity.kernelVersion }}</span>
-        </ADescriptions.Item>
-
-        <ADescriptions.Item :label="messages.settings.field.deviceId">
-          <span class="font-mono">{{ identity.deviceId }}</span>
-        </ADescriptions.Item>
-      </ADescriptions>
-    </section>
-
-    <CredentialPanel />
-
-    <section class="stack gap-3">
-      <h2 class="m-0 text-sm font-medium">
-        {{ messages.settings.preferences }}
-      </h2>
-
-      <!--
-        The reason a control does nothing appears where the control would be, not as a page-wide paragraph: the switch
-        writes, and the theme row says why there is no second choice.
-      -->
-      <div class="stack gap-3">
-        <div class="row-between gap-4">
-          <label for="interface-language" class="text-sm">{{ messages.settings.language.title }}</label>
-          <ASelect
-            id="interface-language"
-            data-testid="language-preference"
-            class="min-w-44"
-            :value="localePreference"
-            :options="languageOptions"
-            :loading="savingLanguage"
-            :disabled="savingLanguage"
-            @change="saveLanguage"
-          />
-        </div>
-        <div v-for="key in KEYS" :key="key" class="row-between gap-4">
-          <span class="min-w-0 row gap-2">
-            <span class="text-sm">{{ messages.settings.preference[key] }}</span>
-          </span>
-
-          <!--
-              ★ One theme, and the sentence says so. A select with no options looked like a control the page had failed
-              to fill; `ui.theme` is a record the kernel keeps and plugins read, not a preference this device can change
-              (28 §6 R22). The value itself is printed above.
-            -->
-          <span class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="stack gap-3">
-      <h2 class="m-0 text-sm font-medium">
-        {{ messages.settings.transfers.title }}
-      </h2>
-      <div class="row-between gap-4">
-        <div class="stack">
-          <span class="text-sm">{{ messages.settings.transfers.cancelAsk }}</span>
-          <span class="text-xs text-ink-dim">{{ messages.settings.transfers.cancelAskDetail }}</span>
-        </div>
-        <ASwitch
-          :checked="askCancel"
-          :aria-label="messages.settings.transfers.cancelAsk"
-          :loading="savingCancel"
-          @change="(checked) => saveCancel(checked === true)"
-        />
-      </div>
-
-      <div class="row-between gap-4">
-        <div class="stack">
-          <span class="text-sm">{{ messages.settings.transfers.notify }}</span>
-          <span class="text-xs text-ink-dim">{{ messages.settings.transfers.notifyDetail }}</span>
-        </div>
-        <ASwitch
-          :checked="notifyOnReceive"
-          :aria-label="messages.settings.transfers.notify"
-          :loading="savingNotify"
-          @change="(checked) => saveNotify(checked === true)"
-        />
-      </div>
-    </section>
-
-    <section class="stack gap-3">
-      <h2 class="m-0 text-sm font-medium">
-        {{ messages.settings.startup.title }}
-      </h2>
-      <div class="row-between gap-4">
-        <div class="stack">
-          <span class="text-sm">{{ messages.settings.startup.launchAtLogin }}</span>
-          <span class="text-xs text-ink-dim">{{ messages.settings.startup.launchAtLoginDetail }}</span>
-        </div>
-        <ASwitch
-          :checked="launchAtLogin"
-          :aria-label="messages.settings.startup.launchAtLogin"
-          :disabled="launchAtLoginUnavailable"
-          :loading="savingLaunchAtLogin"
-          @change="(checked) => saveLaunchAtLogin(checked === true)"
-        />
-      </div>
-      <p v-if="launchAtLoginUnavailable" class="m-0 text-xs text-ink-dim">
-        {{ messages.settings.startup.unavailable }}
-      </p>
-    </section>
-
-    <section class="stack gap-3">
-      <h2 class="m-0 text-sm font-medium">
-        {{ messages.settings.trusted.title }}
-      </h2>
-      <HelpText>
-        {{ messages.settings.trusted.detail }}
-      </HelpText>
-
-      <!--
-        The list is the configuration key the transfer prompt writes (`transfers.acceptFrom`), not a second store. Removing
-        a row writes the key back (or unsets it when the last row goes), so there is one answer to "may this device send
-        without asking".
-      -->
-      <AEmpty v-if="trusted.length === 0" :image="AEmpty.PRESENTED_IMAGE_SIMPLE" :description="messages.settings.trusted.empty" />
-      <AList v-else size="small">
-        <AList.Item v-for="device in trusted" :key="device.id" :style="{ paddingInline: 0 }">
-          <div class="row-between gap-3">
-            <span class="min-w-0 row gap-2">
-              <span class="truncate text-sm">{{ device.name }}</span>
-              <span v-if="device.name !== device.id" class="truncate text-xs text-ink-dim font-mono">{{ device.id }}</span>
-            </span>
-            <AButton
-              size="small"
-              :loading="forgetting === device.id"
-              @click="forgetTrusted(device.id)"
-            >
-              {{ messages.settings.trusted.remove }}
-            </AButton>
-          </div>
-        </AList.Item>
-      </AList>
-    </section>
-
-    <ACollapse data-testid="advanced-settings" ghost @change="(keys) => (showAdvanced = Array.isArray(keys) ? keys.length > 0 : Boolean(keys))">
-      <ACollapse.Panel key="advanced" :header="messages.settings.advanced" force-render>
-        <div class="stack gap-6">
-          <!--
-      The registry is a URL, not a preference among named values, so it gets its own input. Empty means "no registry":
-      the install path stays available from a directory, and the registry branch refuses by name instead of dialling a
-      default somebody else chose.
-    -->
-          <section class="stack gap-3">
-            <h2 class="m-0 text-sm font-medium">
-              {{ messages.settings.registry.title }}
-            </h2>
-            <HelpText>
-              {{ messages.settings.registry.detail }}
-            </HelpText>
-            <div v-for="(_, index) in registryUrls" :key="index" class="row gap-2">
-              <AInput
-                :value="registryUrls[index] ?? ''"
-                :placeholder="messages.settings.registry.placeholder"
-                allow-clear
-                @update:value="(value: string) => updateRegistry(index, value)"
-                @press-enter="saveRegistry"
-              />
-              <AButton
-                v-if="registryUrls.length > 1"
-                @click="removeRegistry(index)"
-              >
-                {{ messages.settings.registry.remove }}
-              </AButton>
-            </div>
-            <div class="row gap-2">
-              <AButton @click="addRegistry">
-                {{ messages.settings.registry.add }}
-              </AButton>
-              <AButton :loading="savingRegistry" @click="saveRegistry">
-                {{ messages.settings.registry.save }}
-              </AButton>
-            </div>
-          </section>
-
-          <!--
-      The background check is a courtesy, not a policy: it asks the registry once a day and tells the user, and never
-      installs. The design's automatic case needs trust and capability checks this build does not make yet, so the switch
-      is the whole of the setting.
-    -->
-          <section class="stack gap-3">
-            <h2 class="m-0 text-sm font-medium">
-              {{ messages.settings.updates.title }}
-            </h2>
-            <HelpText>
-              {{ messages.settings.updates.detail }}
-            </HelpText>
-            <div class="row-between gap-4">
-              <span class="text-sm">{{ messages.settings.updates.policy }}</span>
-              <ASelect
-                :value="updatePolicy"
-                :loading="savingCheckUpdates"
-                :options="updatePolicyOptions"
-                data-testid="plugin-update-policy"
-                :aria-label="messages.settings.updates.policy"
-                class="min-w-52"
-                @change="saveUpdatePolicy"
-              />
-            </div>
-          </section>
-
-          <!--
-      ★ `diag_metrics` had no caller before this panel, and 18 §4.2 names this panel as one of the three reasons the
-      recorder exists. Each row is the key **as the kernel renders it**, so it can be matched against a log line or a
-      diagnostic export rather than being a second naming scheme.
-    -->
-          <section class="stack gap-3">
-            <div class="row-between gap-4">
-              <h2 class="m-0 text-sm font-medium">
-                {{ messages.settings.metrics.title }}
-              </h2>
-              <AButton size="small" :loading="refreshing" @click="refreshMetrics">
-                {{ messages.settings.metrics.refresh }}
-              </AButton>
-            </div>
-            <HelpText>
-              {{ messages.settings.metrics.detail }}
-            </HelpText>
-            <!--
-        Read by "is there a snapshot" rather than "is it non-empty": the empty sentence is an answer, and drawing it before
-        the first read would claim the recorder has counted nothing when nobody has asked yet.
-      -->
-            <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-xs text-ink-dim">
-              {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
-            </p>
-            <div v-if="startup" class="row flex-wrap items-baseline gap-2 text-xs">
-              <span class="text-ink-dim">{{ messages.settings.metrics.startup }}</span>
-              <span class="font-mono">{{ startup.ms.toFixed(0) }} ms</span>
-              <span :class="startup.within ? 'text-ink-dim' : 'text-error'">
-                {{ startup.within ? messages.settings.metrics.startupWithin : messages.settings.metrics.startupOver }}
-              </span>
-            </div>
-            <AEmpty v-if="metrics && metrics.values.length === 0" :description="messages.settings.metrics.empty" />
-            <AList v-else-if="metrics" size="small">
-              <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)" :style="{ paddingInline: 0 }">
-                <div class="row-between gap-3">
-                  <span class="min-w-0 truncate text-xs font-mono">{{ seriesKey(series.key) }}</span>
-                  <span class="text-sm font-mono">{{ seriesValue(series.value) }}</span>
+        <div v-show="category === 'general'" class="min-w-0 stack gap-7" data-testid="settings-general">
+          <SettingsGroup :title="messages.settings.preferences">
+            <SettingsRow :label="messages.settings.field.name" for-id="device-name">
+              <template v-if="renaming">
+                <AInput id="device-name" v-model:value="nameDraft" :disabled="busy.name || needsRead.name" @press-enter="(event: KeyboardEvent) => { if (!event.isComposing) saveName() }" />
+                <div class="row flex-wrap gap-2">
+                  <AButton type="primary" :loading="busy.name" :disabled="needsRead.name || !nameDirty || !nameDraft.trim()" @click="saveName">
+                    {{ nameConflict ? messages.settings.edit.overwrite : messages.settings.field.save }}
+                  </AButton>
+                  <AButton :disabled="busy.name || needsRead.name" @click="cancelRename">
+                    {{ messages.settings.field.cancel }}
+                  </AButton>
                 </div>
-              </AList.Item>
-            </AList>
-          </section>
-
-          <!--
-      ★ Last, and that is deliberate: every other section here edits a preference the screen owns; this one edits a number
-      the kernel applies when it next starts, so it reads as housekeeping rather than as a control a user watches.
-    -->
-          <section class="stack gap-3">
-            <h2 class="m-0 text-sm font-medium">
-              {{ messages.settings.audit.title }}
-            </h2>
-            <HelpText>
-              {{ messages.settings.audit.detail }}
-            </HelpText>
-            <div class="row gap-2">
-              <AInputNumber
-                :value="retentionDays"
-                :min="1"
-                :max="3650"
-                :precision="0"
-                @update:value="(value) => (retentionDays = typeof value === 'number' ? value : 1)"
-              />
-              <AButton :loading="savingRetention" @click="saveRetention">
-                {{ messages.settings.audit.save }}
-              </AButton>
-            </div>
-          </section>
-
-          <!--
-      ★ The bundle is the one thing on this page whose result the user has to *read back*: a file path alone says nothing
-      about whether the audit trail went in. The two optional sections are checkboxes rather than defaults because both
-      name things the user might not have meant to share.
-    -->
-          <section class="stack gap-3">
-            <h2 class="m-0 text-sm font-medium">
-              {{ messages.settings.diagnostics.title }}
-            </h2>
-            <HelpText>
-              {{ messages.settings.diagnostics.detail }}
-            </HelpText>
-            <div class="stack gap-1">
-              <ACheckbox
-                :checked="exportAudit"
-                @update:checked="(checked) => (exportAudit = checked)"
-              >
-                {{ messages.settings.diagnostics.audit }}
-              </ACheckbox>
-              <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.auditDetail }}</span>
-            </div>
-            <div class="stack gap-1">
-              <ACheckbox
-                :checked="exportDebug"
-                @update:checked="(checked) => (exportDebug = checked)"
-              >
-                {{ messages.settings.diagnostics.debug }}
-              </ACheckbox>
-              <span class="text-xs text-ink-dim">{{ messages.settings.diagnostics.debugDetail }}</span>
-            </div>
-            <div v-if="exportDebug" class="row gap-2">
-              <span class="text-sm">{{ messages.settings.diagnostics.lines }}</span>
-              <AInputNumber
-                :value="exportLines"
-                :min="1"
-                :max="10000"
-                :precision="0"
-                @update:value="(value) => (exportLines = typeof value === 'number' ? value : 1)"
-              />
-            </div>
-            <div class="row gap-2">
-              <AButton :loading="exporting" @click="exportDiagnostics">
-                {{ messages.settings.diagnostics.export }}
-              </AButton>
-            </div>
-            <div v-if="exported" class="stack gap-1">
-              <span class="text-xs text-ink-dim font-mono">{{ exported.path }}</span>
-              <span class="text-xs">{{ messages.settings.diagnostics.included(exported.included.join(', ')) }}</span>
-              <span v-if="exported.excluded.length > 0" class="text-xs text-ink-dim">
-                {{ messages.settings.diagnostics.excluded(exported.excluded.join('; ')) }}
-              </span>
-            </div>
-
-            <!--
-        ★ The crash prompt's "ignore". Safe mode is decided from the reports on disk, so leaving them behind means the
-        next start asks again — this is the action that makes a fixed installation start normally.
-      -->
-            <div class="stack gap-2">
-              <p class="m-0 text-xs text-ink-dim">
-                {{ messages.settings.diagnostics.dismissDetail }}
-              </p>
-              <div class="row items-center gap-2">
-                <AButton danger :loading="dismissing" @click="dismissCrashes">
-                  {{ messages.settings.diagnostics.dismissCrashes }}
+                <span v-if="nameConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
+              </template>
+              <div v-else-if="identity" class="min-w-0 row flex-wrap justify-end gap-2">
+                <span class="min-w-0 break-all text-sm">{{ identity.displayName }}</span>
+                <AButton :disabled="busy.name" @click="startRename">
+                  {{ messages.settings.field.rename }}
                 </AButton>
-                <AButton :loading="loadingCrashes" @click="showCrashes">
-                  {{ messages.settings.diagnostics.showCrashes }}
-                </AButton>
-                <span v-if="crashesDismissed" class="text-xs text-ink-dim">
-                  {{ messages.settings.diagnostics.dismissed }}
-                </span>
               </div>
-              <ul v-if="crashes" class="m-0 stack gap-2 p-0">
-                <li v-if="crashes.length === 0" class="text-xs text-ink-dim">
-                  {{ messages.settings.diagnostics.crashesEmpty }}
-                </li>
-                <li
-                  v-for="report in crashes"
-                  :key="`${report.atMs}-${report.location ?? ''}`"
-                  class="stack gap-1 text-xs"
-                >
-                  <span class="text-ink-dim font-mono">
-                    {{ formatDateTime(report.atMs) }} · {{ report.version }}
-                  </span>
-                  <span>{{ report.message ?? messages.settings.diagnostics.crashNoMessage }}</span>
-                  <span v-if="report.location" class="text-ink-dim font-mono">{{ report.location }}</span>
-                </li>
-              </ul>
-            </div>
-
-            <!--
-        ★ Run on request, not on mount: the probes bind ports, write a file and read the clock, so running them on every
-        visit would make navigating to settings do work the user did not ask for. The section explains what it checks
-        because a user deciding whether to press it needs to know it is not a network test.
-      -->
-            <div class="stack gap-2">
-              <p class="m-0 text-xs text-ink-dim">
-                {{ messages.settings.diagnostics.probesDetail }}
-              </p>
-              <div class="row items-center gap-2">
-                <AButton :loading="probing" @click="runProbes">
-                  {{ messages.settings.diagnostics.probes }}
-                </AButton>
-                <span v-if="probeReport" class="text-xs text-ink-dim">{{ probesSummary }}</span>
-              </div>
-              <ACheckbox
-                v-if="probeReport"
-                :checked="onlyProblems"
-                @update:checked="(checked) => (onlyProblems = checked)"
-              >
-                {{ messages.settings.diagnostics.onlyProblems }}
-              </ACheckbox>
-              <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
-                <li v-for="result in visibleProbes" :key="result.name" class="stack gap-1">
-                  <div class="row items-center gap-2">
-                    <ATag :color="probeColor(result.status)">
-                      {{ messages.settings.diagnostics.probeStatus(result.status) }}
-                    </ATag>
-                    <span class="text-xs font-mono">{{ result.name }}</span>
-                  </div>
-                  <span class="text-xs text-ink-dim">{{ result.detail }}</span>
-                  <span v-if="result.suggestion" class="text-xs">{{ result.suggestion }}</span>
-                </li>
-              </ul>
-            </div>
-
-            <!--
-        ★ The log is read on demand, like the plugin audit: a page that read it on mount would hold a copy that goes stale
-        while the user is looking at it, and a log can be the largest thing this page ever asks for. Opening the section
-        is the request; closing it leaves what was read on screen, because the lines are still what the shell wrote.
-      -->
-            <details class="stack gap-2" @toggle="(event) => openLog(event)">
-              <summary class="cursor-pointer text-xs text-ink-dim">
-                {{ messages.settings.diagnostics.logs }}
-              </summary>
-              <pre v-if="logLines.length > 0" class="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs font-mono">{{ logLines.join('\n') }}</pre>
-              <p v-else-if="logAsked" class="m-0 text-xs text-ink-dim">
-                {{ messages.settings.diagnostics.logsEmpty }}
-              </p>
-            </details>
-          </section>
+              <template #feedback>
+                <SettingsFeedback :error="errors.name" :saved="saved.name" :check-required="needsRead.name" :busy="busy.name" @check="checkName" />
+              </template>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.language.title" for-id="interface-language">
+              <ASelect id="interface-language" data-testid="language-preference" class="w-full sm:w-52" :value="localePreference" :options="languageOptions" :loading="busy.language" :disabled="!configReady || busy.language || needsRead.language" @change="saveLanguage" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.language" :saved="saved.language" :check-required="needsRead.language" :busy="busy.language" @check="checkSetting('language')" />
+              </template>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.startup.launchAtLogin" :description="launchAtLoginUnavailable ? messages.settings.startup.unavailable : undefined">
+              <ASwitch :checked="launchAtLogin" :aria-label="messages.settings.startup.launchAtLogin" :disabled="launchAtLoginUnavailable || busy.startup" :loading="busy.startup" @change="(value) => saveLaunchAtLogin(value === true)" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.startup" :saved="saved.startup" />
+              </template>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup :title="messages.settings.transfers.title">
+            <SettingsRow :label="messages.settings.transfers.cancelAsk">
+              <ASwitch :checked="askCancel" :aria-label="messages.settings.transfers.cancelAsk" :disabled="!configReady || busy.cancel || needsRead.cancel" :loading="busy.cancel" @change="(value) => writeSetting('cancel', { set: { 'transfers.confirmCancel': value === true } })" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.cancel" :saved="saved.cancel" :check-required="needsRead.cancel" :busy="busy.cancel" @check="checkSetting('cancel')" />
+              </template>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.transfers.notify">
+              <ASwitch :checked="notifyOnReceive" :aria-label="messages.settings.transfers.notify" :disabled="!configReady || busy.notify || needsRead.notify" :loading="busy.notify" @change="(value) => writeSetting('notify', { set: { 'transfers.notifyOnReceive': value === true } })" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.notify" :saved="saved.notify" :check-required="needsRead.notify" :busy="busy.notify" @check="checkSetting('notify')" />
+              </template>
+            </SettingsRow>
+          </SettingsGroup>
         </div>
-      </ACollapse.Panel>
-    </ACollapse>
+
+        <div v-show="category === 'security'" class="min-w-0 stack gap-7" data-testid="settings-security">
+          <CredentialPanel :expanded="category === 'security' && identityNeedsAttention" />
+          <SettingsGroup :title="messages.settings.trusted.title">
+            <p class="m-0 pb-3 text-xs text-ink-dim">
+              {{ messages.settings.trusted.detail }}
+            </p>
+            <p v-if="!trusted.length" class="m-0 py-3 text-sm text-ink-dim">
+              {{ messages.settings.trusted.empty }}
+            </p>
+            <SettingsRow v-for="device in trusted" :key="device.id" :label="device.name">
+              <AButton :disabled="!configReady || busy.trusted || needsRead.trusted" :loading="busy.trusted && removingId === device.id" @click="forgetTrusted(device.id)">
+                {{ messages.settings.trusted.remove }}
+              </AButton>
+            </SettingsRow>
+            <SettingsFeedback :error="errors.trusted" :saved="saved.trusted" :check-required="needsRead.trusted" :busy="busy.trusted" @check="checkSetting('trusted')" />
+          </SettingsGroup>
+        </div>
+
+        <div v-show="category === 'plugins'" class="min-w-0 stack gap-7" data-testid="settings-plugins">
+          <SettingsGroup :title="messages.settings.registry.title">
+            <div class="min-w-0 stack gap-3 pb-4">
+              <div v-for="(url, index) in registryUrls" :key="index" class="min-w-0 row items-start gap-2">
+                <div class="min-w-0 flex-1">
+                  <label :for="`registry-${index}`" class="mb-1 block text-xs text-ink-dim">{{ messages.settings.registry.source(index + 1) }}</label>
+                  <AInput :id="`registry-${index}`" :value="url" :disabled="!configReady || busy.registry || needsRead.registry" :placeholder="messages.settings.registry.placeholder" allow-clear @update:value="(value: string) => updateRegistry(index, value)" @press-enter="(event: KeyboardEvent) => { if (!event.isComposing) saveRegistry() }" />
+                </div>
+                <AButton v-if="registryUrls.length > 1" class="mt-5" :disabled="busy.registry || needsRead.registry" :aria-label="messages.settings.registry.removeSource(index + 1)" @click="registryUrls = registryUrls.filter((_, at) => at !== index)">
+                  {{ messages.settings.registry.remove }}
+                </AButton>
+              </div>
+              <HelpText>{{ messages.settings.registry.detail }}</HelpText>
+              <span v-if="registryConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
+              <div class="row flex-wrap gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+                <AButton :disabled="!configReady || busy.registry || needsRead.registry" @click="registryUrls = [...registryUrls, '']">
+                  {{ messages.settings.registry.add }}
+                </AButton>
+                <AButton type="primary" data-testid="save-registry" :loading="busy.registry" :disabled="!configReady || !registryDirty || needsRead.registry" @click="saveRegistry">
+                  {{ registryConflict ? messages.settings.edit.overwrite : messages.settings.field.save }}
+                </AButton>
+                <AButton v-if="registryDirty" :disabled="busy.registry || needsRead.registry" @click="resetRegistry">
+                  {{ registryConflict ? messages.settings.edit.loadCurrent : messages.settings.field.cancel }}
+                </AButton>
+              </div>
+              <SettingsFeedback :error="errors.registry" :saved="saved.registry" :check-required="needsRead.registry" :busy="busy.registry" @check="checkSetting('registry')" />
+            </div>
+          </SettingsGroup>
+          <SettingsGroup :title="messages.settings.updates.title">
+            <SettingsRow :label="messages.settings.updates.policy" for-id="plugin-update-policy" :description="messages.settings.updates.detail">
+              <ASelect id="plugin-update-policy" data-testid="plugin-update-policy" class="w-full" :value="updatePolicy" :loading="busy.policy" :disabled="!configReady || busy.policy || needsRead.policy" :options="updatePolicyOptions" @change="saveUpdatePolicy" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.policy" :saved="saved.policy" :check-required="needsRead.policy" :busy="busy.policy" @check="checkSetting('policy')" />
+              </template>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup :title="messages.settings.audit.title">
+            <SettingsRow :label="messages.settings.audit.days" for-id="retention-days" :description="messages.settings.audit.detail">
+              <div class="row flex-wrap gap-2">
+                <AInputNumber id="retention-days" :value="retentionDays" :disabled="!configReady || busy.retention || needsRead.retention" :min="1" :max="3650" :precision="0" @update:value="(value) => retentionDays = typeof value === 'number' ? value : 1" />
+                <AButton :loading="busy.retention" :disabled="!configReady || !retentionDirty || needsRead.retention" @click="saveRetention">
+                  {{ retentionConflict ? messages.settings.edit.overwrite : messages.settings.field.save }}
+                </AButton>
+                <AButton v-if="retentionDirty" :disabled="busy.retention || needsRead.retention" @click="resetRetention">
+                  {{ retentionConflict ? messages.settings.edit.loadCurrent : messages.settings.field.cancel }}
+                </AButton>
+              </div>
+              <span v-if="retentionConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
+              <template #feedback>
+                <SettingsFeedback :error="errors.retention" :saved="saved.retention" :check-required="needsRead.retention" :busy="busy.retention" @check="checkSetting('retention')" />
+              </template>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+
+        <SettingsDiagnostics v-if="diagnosticsVisited" v-show="category === 'diagnostics'" :active="category === 'diagnostics'" />
+
+        <div v-show="category === 'about'" class="min-w-0 stack gap-7" data-testid="settings-about">
+          <SettingsGroup title="Synra">
+            <SettingsRow :label="messages.settings.field.platform">
+              <span class="text-sm">{{ identity?.platform }}</span>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.field.kernel">
+              <span v-if="identity" class="text-sm font-mono">v{{ identity.kernelVersion }}</span>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.field.deviceId">
+              <span class="max-w-full break-all text-xs text-ink-dim font-mono">{{ identity?.deviceId }}</span>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.preference.theme">
+              <span class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+      </div>
+    </div>
+    <AModal :open="leaveOpen" :title="messages.settings.edit.leaveTitle" :closable="!anyBusy" :mask-closable="!anyBusy" :keyboard="!anyBusy" @cancel="resolveLeave(false)">
+      <p>{{ messages.settings.edit.leaveDetail }}</p>
+      <template #footer>
+        <AButton :disabled="anyBusy" @click="resolveLeave(false)">
+          {{ messages.settings.edit.stay }}
+        </AButton>
+        <AButton :disabled="anyBusy" @click="resolveLeave(true)">
+          {{ messages.settings.edit.discard }}
+        </AButton>
+        <AButton type="primary" :loading="anyBusy" @click="saveAndLeave">
+          {{ messages.settings.edit.saveAll }}
+        </AButton>
+      </template>
+    </AModal>
   </section>
 </template>
 
 <script setup lang="ts">
-import type { CrashReport, DiagExportResult, IdentitySnapshot, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey, SuggestedAction } from '@synra/protocol'
-import {
-  Button as AButton,
-  Checkbox as ACheckbox,
-  Collapse as ACollapse,
-  Descriptions as ADescriptions,
-  Empty as AEmpty,
-  Input as AInput,
-  InputNumber as AInputNumber,
-  List as AList,
-  Select as ASelect,
-  Switch as ASwitch,
-  Tag as ATag
-} from 'ant-design-vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { ConfigPatch, IpcError } from '@synra/protocol'
+import { Alert as AAlert, Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import CredentialPanel from '../components/CredentialPanel.vue'
-import ErrorNotice from '../components/ErrorNotice.vue'
-/**
- * This device's own settings.
- *
- * # Why this page reads the kernel rather than `localStorage`
- *
- * A preference stored in the browser is a preference that does not follow the user to the other devices, does not appear
- * in a diagnostic bundle, and is not the thing `config_get` returns. The design document is explicit that configuration
- * is the kernel's, so this page round-trips a real command even though the value it changes is not written back yet.
- *
- * # What is written back, and what is not
- *
- * The update policy and registry URL both round-trip `config_set` and let the kernel's `ConfigUpdated`
- * event feed the store. The theme select does not: `@synra/theme` ships one palette, so a select that offered others would
- * be the fake control this page's doc comment refuses to draw.
- */
 import HelpText from '../components/HelpText.vue'
-
 import PageHeader from '../components/PageHeader.vue'
+import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
+import SettingsFeedback from '../components/settings/SettingsFeedback.vue'
+import SettingsGroup from '../components/settings/SettingsGroup.vue'
+import SettingsRow from '../components/settings/SettingsRow.vue'
+import { useSettingsDraft } from '../components/settings/use-settings-draft'
 import { kernel } from '../kernel'
 import { localePreference } from '../locale'
-import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
+import { useCredentialsStore } from '../stores/credentials'
 import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
-/** The keys this page knows about, in the order they are shown. */const KEYS = ['theme'] as const
+type Category = 'general' | 'security' | 'plugins' | 'diagnostics' | 'about'
+type Operation = 'name' | 'language' | 'startup' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'
+const category = ref<Category>('general')
+const categories = computed(() => (['general', 'security', 'plugins', 'diagnostics', 'about'] as const).map(value => ({ value, label: messages.settings.categories[value] })))
+const categoryHeading = ref<HTMLElement>()
+const diagnosticsVisited = ref(false)
+function selectCategory(value: unknown): void {
+  if (categories.value.some(item => item.value === value))
+    category.value = value as Category
+}
+watch(category, async (value) => {
+  if (value === 'diagnostics')
+    diagnosticsVisited.value = true
+  await nextTick()
+  categoryHeading.value?.focus({ preventScroll: true })
+})
 
-// ★ The store, not a copy of the answer. Two things this fixes: another window's change arrives as `configUpdated` and
-// lands here, and — the defect this line replaced — the command answers a **`ConfigSnapshot`** (`{ values, overridden }`),
-// not a bare map, so a page that stored the answer as the map read `config['theme']` as `undefined` forever.
 const settings = useSettingsStore()
-const identity = ref<IdentitySnapshot | undefined>(undefined)
-const showAdvanced = ref(false)
-const savingLanguage = ref(false)
+const devices = useDevicesStore()
+const credentials = useCredentialsStore()
+const identity = computed(() => devices.identity)
+const identityNeedsAttention = computed(() => Boolean(credentials.error || credentials.restartRequired || credentials.snapshot?.recovery
+  || (credentials.snapshot && (!credentials.snapshot.runtimeReady || !credentials.snapshot.enrollment?.ready || credentials.snapshot.retiredKeys > 0))))
+const errors = reactive<Partial<Record<Operation, IpcError | undefined>>>({})
+const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
+const busy = reactive(operationFlags())
+const saved = reactive(operationFlags())
+// A successful write followed by a failed read is not an invitation to send the write again.
+const needsRead = reactive(operationFlags())
+const anyBusy = computed(() => Object.values(busy).some(Boolean))
+const configReady = ref(false)
+const readError = ref<IpcError>()
+const loading = ref(false)
+let disposed = false
+
+const { value: nameDraft, dirty: nameDirty, conflict: nameConflict, reset: resetName } = useSettingsDraft(() => identity.value?.displayName ?? '')
+const renaming = ref(false)
+function startRename(): void {
+  resetName()
+  renaming.value = true
+  errors.name = undefined
+  saved.name = false
+  void nextTick(() => document.getElementById('device-name')?.focus())
+}
+function cancelRename(): void {
+  resetName()
+  renaming.value = false
+  errors.name = undefined
+}
+async function checkName(): Promise<boolean> {
+  const answer = await devices.readIdentity(kernel)
+  if (disposed)
+    return false
+  if (!answer.ok) {
+    errors.name = answer.error
+    return false
+  }
+  needsRead.name = false
+  errors.name = undefined
+  saved.name = true
+  resetName()
+  renaming.value = false
+  return true
+}
+async function saveName(): Promise<boolean> {
+  if (busy.name)
+    return false
+  busy.name = true
+  errors.name = undefined
+  try {
+    if (needsRead.name)
+      return await checkName()
+    if (!nameDirty.value || !nameDraft.value.trim())
+      return !nameDirty.value
+    const answer = await kernel.call<null>('identity_set_display_name', { name: nameDraft.value })
+    if (disposed)
+      return false
+    if (!answer.ok) {
+      errors.name = answer.error
+      return false
+    }
+    needsRead.name = true
+    return await checkName()
+  }
+  finally {
+    busy.name = false
+  }
+}
+
+const askCancel = computed(() => settings.value('transfers.confirmCancel') !== false)
+const notifyOnReceive = computed(() => settings.value('transfers.notifyOnReceive') !== false)
 const languageOptions = computed(() => [
   { value: 'system', label: messages.settings.language.system },
   { value: 'zh-CN', label: messages.settings.language.chinese },
   { value: 'en', label: messages.settings.language.english }
 ])
-
-/**
- * The kernel's key for one of this page's preferences.
- *
- * ★ The page's names (`theme`) are **labels**; the kernel addresses configuration by dotted path (`ui.theme`). Reading
- * `key` directly returned `undefined` for every preference — the second half of the bug that made both controls show
- * "unset", and the half a corrected DTO shape alone would not have fixed.
- */
-
-/** The refusal itself, not its sentence: the surface needs the `code`, the message **key** and the `actions` (R33). */
-const error = ref<{ code: string, message: string, actions?: readonly SuggestedAction[] | undefined } | undefined>(undefined)
-
-/**
- * The devices this one accepts files from without asking.
- *
- * The configuration holds identifiers; the devices store holds the names it knows. A device that is no longer in the
- * list is shown by its identifier rather than hidden — the preference is still real, and a row that vanished would be a
- * setting the user cannot see or remove.
- */
-const devices = useDevicesStore()
-
-/** Whether the name row is an input, and what the input holds while it is. */
-const renaming = ref(false)
-const nameDraft = ref('')
-const savingName = ref(false)
-
-function startRename(): void {
-  nameDraft.value = identity.value?.displayName ?? ''
-  renaming.value = true
-  error.value = undefined
-}
-
-function cancelRename(): void {
-  renaming.value = false
-}
-
-/**
- * Writes the name, then re-reads the identity twice over.
- *
- * # Why two reads
- *
- * The page's own row and the sidebar both show this name, and they come from different places: the page reads
- * `identity_get` into a local ref, the sidebar reads the devices store. Re-reading and writing both is what keeps them the
- * same sentence — a rename that updated only one would leave the app disagreeing with itself until a restart.
- */
-async function saveName(): Promise<void> {
-  savingName.value = true
-  error.value = undefined
-  const answer = await kernel.call<null>('identity_set_display_name', { name: nameDraft.value })
-  savingName.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  const refreshed = await kernel.call<IdentitySnapshot>('identity_get')
-  if (refreshed.ok) {
-    identity.value = refreshed.value
-    devices.identity = refreshed.value
-  }
-  renaming.value = false
-}
-
-const trusted = computed<readonly { id: string, name: string }[]>(() => {
-  const value = settings.value('transfers.acceptFrom')
-  if (!Array.isArray(value))
-    return []
-  return value
-    .filter((id): id is string => typeof id === 'string')
-    .map((id) => {
-      const card = devices.cards.find(entry => entry.deviceId === id)
-      return { id, name: card?.displayName ?? id }
-    })
-})
-
-/** Whether an in-flight transfer asks before it is abandoned; absent means yes, because the safe default is the question. */
-const askCancel = ref(true)
-
-/** Whether that preference is being written. */
-const savingCancel = ref(false)
-
-watch(
-  () => settings.value('transfers.confirmCancel'),
-  (value) => {
-    askCancel.value = value !== false
-  },
-  { immediate: true }
-)
-
-/** Writes the cancel-confirmation preference. */
-async function saveCancel(value: boolean): Promise<void> {
-  savingCancel.value = true
-  error.value = undefined
-  const answer = await kernel.call<null>('config_set', {
-    patch: { set: { 'transfers.confirmCancel': value } }
-  })
-  savingCancel.value = false
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/** Whether a system notification is shown when a file arrives. Absent means the design's default, on. */
-const notifyOnReceive = ref(true)
-const savingNotify = ref(false)
-
-/** Explicit installation policies; an absent setting only permits notices. */
 const updatePolicyOptions = computed(() => [
   { value: 'never', label: messages.settings.updates.never },
   { value: 'notify-only', label: messages.settings.updates.notifyOnly },
@@ -630,457 +321,205 @@ const updatePolicy = computed(() => {
   const value = settings.value('plugins.auto_update')
   return typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value) ? value : 'notify-only'
 })
-const savingCheckUpdates = ref(false)
-
-/** Writes the user's update policy; the configuration event feeds the shared store. */
+async function saveLanguage(value: unknown): Promise<void> {
+  if (value === 'system' || value === 'en' || value === 'zh-CN')
+    await writeSetting('language', { set: { 'ui.locale': value } })
+}
 async function saveUpdatePolicy(value: unknown): Promise<void> {
-  if (typeof value !== 'string' || !updatePolicyOptions.value.some(option => option.value === value))
-    return
-  savingCheckUpdates.value = true
-  error.value = undefined
-  const answer = await kernel.call<null>('config_set', {
-    patch: { set: { 'plugins.auto_update': value } }
-  })
-  savingCheckUpdates.value = false
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value))
+    await writeSetting('policy', { set: { 'plugins.auto_update': value } })
 }
 
-/** Whether the platform has Synra registered to start with the session. */
-const launchAtLogin = ref(false)
-const savingLaunchAtLogin = ref(false)
-/** True when this build or platform cannot register the application to start at login. */
-const launchAtLoginUnavailable = ref(false)
+function registrySource(): string[] {
+  const raw = settings.value('plugins.registry')
+  const urls = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []
+  return urls.length ? urls : ['']
+}
+const { value: registryUrls, dirty: registryDirty, conflict: registryConflict, reset: resetRegistry } = useSettingsDraft(registrySource)
+const { value: retentionDays, dirty: retentionDirty, conflict: retentionConflict, reset: resetRetention } = useSettingsDraft(() => {
+  const raw = settings.value('audit.retentionDays')
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 7
+})
+function updateRegistry(index: number, value: string): void {
+  registryUrls.value = registryUrls.value.map((url, at) => index === at ? value : url)
+  saved.registry = false
+}
+async function saveRegistry(): Promise<boolean> {
+  if (!registryDirty.value && !needsRead.registry)
+    return true
+  const urls = registryUrls.value.map(url => url.trim()).filter(Boolean)
+  return await writeSetting('registry', urls.length ? { set: { 'plugins.registry': urls.length === 1 ? urls[0]! : urls } } : { unset: ['plugins.registry'] })
+}
+async function saveRetention(): Promise<boolean> {
+  if (!retentionDirty.value && !needsRead.retention)
+    return true
+  return await writeSetting('retention', { set: { 'audit.retentionDays': Math.min(3650, Math.max(1, Math.trunc(retentionDays.value))) } })
+}
+const trusted = computed(() => {
+  const raw = settings.value('transfers.acceptFrom')
+  return (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []).map(id => ({ id, name: devices.get(id)?.displayName ?? id }))
+})
+const removingId = ref<string>()
+async function forgetTrusted(id: string): Promise<void> {
+  if (busy.trusted || needsRead.trusted)
+    return
+  removingId.value = id
+  const remaining = trusted.value.filter(device => device.id !== id).map(device => device.id)
+  await writeSetting('trusted', remaining.length ? { set: { 'transfers.acceptFrom': remaining } } : { unset: ['transfers.acceptFrom'] })
+}
 
-/** Reads the registration rather than a saved preference: the platform is the source of truth. */
+async function readSetting(operation: Operation): Promise<boolean> {
+  const answer = await settings.read(kernel)
+  if (disposed)
+    return false
+  if (!answer.ok) {
+    errors[operation] = answer.error
+    return false
+  }
+  configReady.value = true
+  needsRead[operation] = false
+  errors[operation] = undefined
+  saved[operation] = true
+  if (operation === 'registry')
+    resetRegistry()
+  if (operation === 'retention')
+    resetRetention()
+  return true
+}
+async function checkSetting(operation: Operation): Promise<boolean> {
+  if (busy[operation])
+    return false
+  busy[operation] = true
+  try {
+    return await readSetting(operation)
+  }
+  finally {
+    busy[operation] = false
+  }
+}
+async function writeSetting(operation: Operation, patch: ConfigPatch): Promise<boolean> {
+  if (busy[operation] || !configReady.value)
+    return false
+  busy[operation] = true
+  saved[operation] = false
+  errors[operation] = undefined
+  try {
+    if (needsRead[operation])
+      return await readSetting(operation)
+    const answer = await kernel.call<null>('config_set', { patch })
+    if (disposed)
+      return false
+    if (!answer.ok) {
+      errors[operation] = answer.error
+      return false
+    }
+    needsRead[operation] = true
+    return await readSetting(operation)
+  }
+  finally {
+    busy[operation] = false
+  }
+}
+
+const launchAtLogin = ref(false)
+const launchAtLoginUnavailable = ref(false)
 async function loadLaunchAtLogin(): Promise<void> {
   try {
     const { isEnabled } = await import('@tauri-apps/plugin-autostart')
     launchAtLogin.value = await isEnabled()
   }
   catch {
-    // A platform without an autostart mechanism is a missing convenience, not a page error: the switch says so and stays
-    // off, and the rest of the page is still usable.
     launchAtLoginUnavailable.value = true
   }
 }
-
-/** Asks the platform to register or unregister this application. */
 async function saveLaunchAtLogin(value: boolean): Promise<void> {
-  savingLaunchAtLogin.value = true
-  error.value = undefined
+  if (busy.startup || launchAtLoginUnavailable.value)
+    return
+  busy.startup = true
+  errors.startup = undefined
+  saved.startup = false
   try {
-    const { disable, enable } = await import('@tauri-apps/plugin-autostart')
+    const { enable, disable, isEnabled } = await import('@tauri-apps/plugin-autostart')
     if (value)
       await enable()
     else
       await disable()
-    launchAtLogin.value = value
+    launchAtLogin.value = await isEnabled()
+    saved.startup = true
   }
   catch {
-    error.value = { code: 'internal', message: 'error.internal' }
+    errors.startup = { code: 'internal', message: 'error.internal', retryable: false }
   }
   finally {
-    savingLaunchAtLogin.value = false
+    busy.startup = false
   }
 }
 
-watch(
-  () => settings.value('transfers.notifyOnReceive'),
-  (value) => {
-    notifyOnReceive.value = value !== false
-  },
-  { immediate: true }
-)
-
-/** Writes the receive-notification preference. */
-async function saveNotify(value: boolean): Promise<void> {
-  savingNotify.value = true
-  error.value = undefined
-  const answer = await kernel.call<null>('config_set', {
-    patch: { set: { 'transfers.notifyOnReceive': value } }
+const pluginDrafts = computed(() => registryDirty.value || retentionDirty.value || needsRead.registry || needsRead.retention)
+const hasDrafts = computed(() => (renaming.value && (nameDirty.value || needsRead.name)) || pluginDrafts.value)
+const leaveOpen = ref(false)
+let leaveResolve: ((leave: boolean) => void) | undefined
+function resolveLeave(leave: boolean): void {
+  leaveOpen.value = false
+  leaveResolve?.(leave)
+  leaveResolve = undefined
+}
+onBeforeRouteLeave(() => {
+  if (!hasDrafts.value && !anyBusy.value)
+    return true
+  if (leaveResolve)
+    return false
+  leaveOpen.value = true
+  return new Promise<boolean>((resolve) => {
+    leaveResolve = resolve
   })
-  savingNotify.value = false
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/**
- * How many days recorded plugin calls are kept.
- *
- * The kernel's key is `audit.retentionDays`; seven is the design's default, and the kernel clamps whatever is stored to a
- * sane window. This is a buffer over the store for the same reason the registry list is: `ConfigUpdated` overwrites it.
- */
-const retentionDays = ref(7)
-
-/** Whether that setting is being written. */
-const savingRetention = ref(false)
-
-watch(
-  () => settings.value('audit.retentionDays'),
-  (value) => {
-    retentionDays.value = typeof value === 'number' && Number.isFinite(value) ? value : 7
-  },
-  { immediate: true }
-)
-
-/** Writes the retention window, clamped here so the number in the box is the number that was sent. */
-async function saveRetention(): Promise<void> {
-  savingRetention.value = true
-  error.value = undefined
-  const days = Math.min(3_650, Math.max(1, Math.trunc(retentionDays.value)))
-  retentionDays.value = days
-  const answer = await kernel.call<null>('config_set', {
-    patch: { set: { 'audit.retentionDays': days } }
-  })
-  savingRetention.value = false
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/** Whether the bundle carries the audit trail; it names the plugins the user runs, so it is off until asked for. */
-const exportAudit = ref(false)
-
-/** Whether it carries debug lines; the section most likely to hold something the user did not mean to share. */
-const exportDebug = ref(false)
-
-/** How many log lines to include when debug lines are on. */
-const exportLines = ref(200)
-
-/** Whether a bundle is being written. */
-const exporting = ref(false)
-
-/** What the last bundle holds, so a user can check it did not include more than they agreed to. */
-const exported = ref<DiagExportResult | undefined>(undefined)
-
-/** Writes a diagnostic bundle, and shows the path and the section list it wrote. */
-async function exportDiagnostics(): Promise<void> {
-  exporting.value = true
-  error.value = undefined
-  const options = {
-    includeAudit: exportAudit.value,
-    includeDebugLogs: exportDebug.value,
-    ...(exportDebug.value ? { logLines: exportLines.value } : {})
-  }
-  const answer = await kernel.call<DiagExportResult>('diag_export', { options })
-  exporting.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  exported.value = answer.value
-}
-
-/** Whether the crash reports were dismissed in this visit. */
-const crashesDismissed = ref(false)
-/** The dismiss is in flight; a second click would be a second delete. */
-const dismissing = ref(false)
-/** The reports the user asked to see, or undefined before they asked. Read on request: the section is not a startup cost. */
-const crashes = ref<readonly CrashReport[] | undefined>(undefined)
-/** The report read is in flight. */
-const loadingCrashes = ref(false)
-
-/** Deletes the crash reports that make the next start enter safe mode. */
-async function dismissCrashes(): Promise<void> {
-  dismissing.value = true
-  error.value = undefined
-  const answer = await kernel.call<null>('diag_crash_dismiss')
-  dismissing.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  crashesDismissed.value = true
-  crashes.value = []
-}
-
-/** Reads the crash reports, newest first, and shows them. */
-async function showCrashes(): Promise<void> {
-  loadingCrashes.value = true
-  error.value = undefined
-  const answer = await kernel.call<readonly CrashReport[]>('diag_crashes')
-  loadingCrashes.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-    return
-  }
-  crashes.value = answer.value
-}
-
-/** The probes' last report, or undefined before the user has asked for one. */
-const probeReport = ref<ProbeReportDto | undefined>(undefined)
-
-/** Whether the probes are running. */
-const probing = ref(false)
-
-/** Whether the list hides the passes: a report is useful as one line until something fails. */
-const onlyProblems = ref(false)
-
-/** Counts by status, read from the report rather than stored beside it — one source for both. */
-const probesSummary = computed(() => {
-  const results = probeReport.value?.results ?? []
-  const count = (status: string): number => results.filter(result => result.status === status).length
-  return messages.settings.diagnostics.probesSummary(count('ok'), count('warn'), count('fail'))
 })
-
-/** The rows the list draws: the whole report, or only the non-passing ones. */
-const visibleProbes = computed(() => (probeReport.value?.results ?? [])
-  .filter(result => !onlyProblems.value || result.status !== 'ok'))
-
-/** A tag colour per status: the words are the same, the colour is what makes a failing report findable. */
-function probeColor(status: string): string {
-  return status === 'ok' ? 'green' : status === 'warn' ? 'orange' : 'red'
-}
-
-/** Runs the probes on request: they bind ports and touch the disk, so they are not part of loading the page. */
-async function runProbes(): Promise<void> {
-  probing.value = true
-  error.value = undefined
-  const answer = await kernel.call<ProbeReportDto>('diag_probes')
-  probing.value = false
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+async function saveAndLeave(): Promise<void> {
+  if (anyBusy.value)
+    return
+  if (nameConflict.value || registryConflict.value || retentionConflict.value) {
+    category.value = nameConflict.value ? 'general' : 'plugins'
+    resolveLeave(false)
     return
   }
-  probeReport.value = answer.value
-}
-
-/** The shell's recent log, once the section is opened. */
-const logLines = ref<readonly string[]>([])
-
-/** Whether the log has been asked for, so the empty sentence is not drawn before the first read. */
-const logAsked = ref(false)
-
-/** Reads the tail on every open: a log copied once goes stale while the user is looking at it. */
-async function openLog(event: Event): Promise<void> {
-  if (!(event.target as HTMLDetailsElement).open)
-    return
-  error.value = undefined
-  const answer = await kernel.call<string[]>('diag_logs_tail', { lines: 200 })
-  logAsked.value = true
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (renaming.value && !await saveName()) {
+    category.value = 'general'
+    resolveLeave(false)
     return
   }
-  logLines.value = [...answer.value]
-}
-
-/** The device being un-trusted, so its button can say so. */
-const forgetting = ref<string | undefined>(undefined)
-
-/** The registries being edited, in the order they will be tried; empty means the feature is off. */
-const registryUrls = ref<string[]>([''])
-
-/** Whether the registry list is being written, so the button can say so and cannot be pressed twice. */
-const savingRegistry = ref(false)
-
-// The store is the truth — another window's change lands here through `ConfigUpdated` — and the inputs are a buffer over
-// it rather than a second copy that would disagree the first time the kernel normalised the list.
-watch(
-  () => settings.value('plugins.registry'),
-  (value) => {
-    if (typeof value === 'string') {
-      registryUrls.value = [value]
-    }
-    else if (Array.isArray(value)) {
-      registryUrls.value = value.filter((entry): entry is string => typeof entry === 'string')
-    }
-    else {
-      registryUrls.value = ['']
-    }
-    if (registryUrls.value.length === 0)
-      registryUrls.value = ['']
-  },
-  { immediate: true }
-)
-
-/** Adds an empty row to fill in. */
-function addRegistry(): void {
-  registryUrls.value.push('')
-}
-
-/** Writes one row's value. A handler rather than `v-model` on `registryUrls[index]`: `noUncheckedIndexedAccess` makes
- * that expression `string | undefined`, and the input's `value` is not optional. */
-function updateRegistry(index: number, value: string): void {
-  registryUrls.value[index] = value
-}
-
-/** Removes one row; the last removal is a cleared field, which the save turns into an unset. */
-function removeRegistry(index: number): void {
-  registryUrls.value.splice(index, 1)
-}
-
-/** Writes the list: one URL as a string (the shape older configs hold), several as an array, none as an unset. */
-async function saveRegistry(): Promise<void> {
-  savingRegistry.value = true
-  error.value = undefined
-  const urls = registryUrls.value.map(url => url.trim()).filter(url => url !== '')
-  const patch = urls.length === 0
-    ? { unset: ['plugins.registry'] }
-    : { set: { 'plugins.registry': urls.length === 1 ? urls[0] : urls } }
-  const answer = await kernel.call<null>('config_set', { patch })
-  savingRegistry.value = false
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/**
- * Takes back "always accept" for one device.
- *
- * The last row unsets the key instead of storing an empty list: a settings screen should not have to interpret "none" as
- * a preference, and the kernel's own default is "ask" — which is the absence of a row.
- */
-async function forgetTrusted(deviceId: string): Promise<void> {
-  forgetting.value = deviceId
-  error.value = undefined
-  const remaining = trusted.value.filter(device => device.id !== deviceId).map(device => device.id)
-  const patch = remaining.length > 0
-    ? { set: { 'transfers.acceptFrom': remaining } }
-    : { unset: ['transfers.acceptFrom'] }
-  const answer = await kernel.call<null>('config_set', { patch })
-  forgetting.value = undefined
-  if (!answer.ok)
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-}
-
-/**
- * Writes one preference.
- *
- * # Why it does not touch the store
- *
- * Because the kernel announces the change (`ConfigUpdated`) and `src/events.ts` puts it in the store. Writing locally too
- * would be a second description of the same fact — and the two would disagree the first time the kernel normalised a value
- * or refused the write.
- */
-/** How often the recorder is re-read while this page is open. */
-const METRICS_POLL_MS = 5_000
-
-/** The last metric snapshot, if one has been read. `undefined` means "not asked yet", which is not "empty". */
-const metrics = ref<MetricsSnapshot | undefined>(undefined)
-
-/**
- * The whole-start observation, against the one budget M4 names.
- *
- * The panel still lists every series; this is the one reading whose **value** is a threshold, and a number nobody compares
- * is not a budget. A missing or unobserved series is `undefined`, not "0 ms and within budget".
- */
-const startup = computed(() => {
-  const series = metrics.value?.values.find(sample =>
-    sample.key.name === 'startup_duration_ms'
-    && sample.key.labels.some(([name, value]) => name === 'phase' && value === 'total')
-  )
-  if (!series || series.value.kind !== 'histogram' || series.value.value.count === 0)
-    return undefined
-  const mean = series.value.value.sum / series.value.value.count
-  return { within: mean <= 500, ms: mean }
-})
-
-/** Whether the Refresh button's read is in flight. Polling does not set it: the button is not what is happening. */
-const refreshing = ref(false)
-
-/**
- * Reads the recorder's snapshot.
- *
- * It does **not** clear `error` first: a poll is not a user action, and clearing the notice every few seconds would make
- * a refusal disappear while its cause is still there.
- */
-async function loadMetrics(): Promise<void> {
-  const answer = await kernel.call<MetricsSnapshot>('diag_metrics')
-  if (!answer.ok) {
-    error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
+  if (!await saveRegistry() || !await saveRetention()) {
+    category.value = 'plugins'
+    resolveLeave(false)
     return
   }
-  metrics.value = answer.value
+  resolveLeave(true)
 }
-
-/** Reads it now, for the button. */
-async function refreshMetrics(): Promise<void> {
-  refreshing.value = true
-  await loadMetrics()
-  refreshing.value = false
-}
-
-/**
- * The key as the kernel renders it (`SeriesKey::render`).
- *
- * ★ The same spelling as a log line or a diagnostic export, rather than a prettier one: two spellings for one series is how
- * "the metric in the report" and "the metric in the panel" become two different things to look up.
- */
-function seriesKey(key: SeriesKey): string {
-  if (key.labels.length === 0)
-    return key.name
-  return `${key.name}{${key.labels.map(([name, value]) => `${name}=${value}`).join(',')}}`
-}
-
-/** One value as a short string; a histogram says how many observations and what they averaged. */
-function seriesValue(value: MetricValue): string {
-  if (value.kind !== 'histogram')
-    return String(value.value)
-  // ★ No observations is not a mean of zero: 0/0 written as "0" would make a histogram that never ran look like 0 ms.
-  const mean = value.value.count === 0 ? '—' : (value.value.sum / value.value.count).toFixed(2)
-  return messages.settings.metrics.histogram(value.value.count, mean)
-}
-
-let metricsTimer: ReturnType<typeof setInterval> | undefined
-
-watch(showAdvanced, (open) => {
-  if (metricsTimer !== undefined) {
-    clearInterval(metricsTimer)
-    metricsTimer = undefined
-  }
-  if (open) {
-    void loadMetrics()
-    metricsTimer = setInterval(() => {
-      void loadMetrics()
-    }, METRICS_POLL_MS)
-  }
-})
-
-onUnmounted(() => {
-  if (metricsTimer !== undefined)
-    clearInterval(metricsTimer)
-})
-
-async function saveLanguage(value: unknown): Promise<void> {
-  if (value !== 'system' && value !== 'en' && value !== 'zh-CN')
-    return
-  savingLanguage.value = true
-  error.value = undefined
-  try {
-    const saved = await kernel.call<null>('config_set', { patch: { set: { 'ui.locale': value } } })
-    const answer = saved.ok ? await settings.read(kernel) : saved
-    if (!answer.ok)
-      error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
-  }
-  finally {
-    savingLanguage.value = false
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (hasDrafts.value || anyBusy.value) {
+    event.preventDefault()
+    event.returnValue = ''
   }
 }
-
-onMounted(load)
-onMounted(loadLaunchAtLogin)
-
-/** The notice's Retry: everything this page read, not only the two answers the first mount asked for. */
-async function reload(): Promise<void> {
-  await Promise.all([load(), ...(showAdvanced.value ? [loadMetrics()] : [])])
-}
-
-/** Reads what this device is and what it is set to. Both answers arrive together, because one screen shows both. */
 async function load(): Promise<void> {
-  error.value = undefined
-
-  const [configAnswer, identityAnswer] = await Promise.all([
-    settings.read(kernel),
-    kernel.call<IdentitySnapshot>('identity_get')
-  ])
-
-  if (identityAnswer.ok)
-    identity.value = identityAnswer.value
-
-  // Both refusals are reported rather than swallowed: a panel that renders "no value" when the kernel could not be
-  // asked is worse than an empty one, because the empty value is an answer.
-  const refusal = [configAnswer, identityAnswer].find(answer => !answer.ok)
-  if (refusal && !refusal.ok)
-    error.value = { code: refusal.error.code, message: refusal.error.message, actions: refusal.error.actions }
+  if (loading.value)
+    return
+  loading.value = true
+  const [config, name] = await Promise.all([settings.read(kernel), devices.readIdentity(kernel)])
+  if (!disposed) {
+    if (config.ok)
+      configReady.value = true
+    readError.value = !config.ok ? config.error : !name.ok ? name.error : undefined
+  }
+  loading.value = false
 }
+onMounted(() => {
+  void load()
+  void loadLaunchAtLogin()
+  window.addEventListener('beforeunload', beforeUnload)
+})
+onUnmounted(() => {
+  disposed = true
+  resolveLeave(false)
+  window.removeEventListener('beforeunload', beforeUnload)
+})
 </script>
