@@ -216,16 +216,16 @@ describe('the plugins page', () => {
     const wrapper = mountPlugins()
     try {
       await flushPromises()
-      expect(wrapper.get('input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installPath)
-      await wrapper.findComponent({ name: 'ASegmented' }).vm.$emit('update:value', 'registry')
+      expect(wrapper.get('#plugin-install input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installPath)
+      await wrapper.get('[data-testid="install-mode"]').findComponent({ name: 'ASegmented' }).vm.$emit('update:value', 'registry')
       await flushPromises()
-      const input = wrapper.get('input[aria-label]')
+      const input = wrapper.get('#plugin-install input[aria-label]')
       expect(input.attributes('aria-label')).toBe(messages.plugins.installName)
       await input.setValue('@acme/hello')
       setLocalePreference('zh-CN')
       await flushPromises()
-      expect(wrapper.get('input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installName)
-      expect((wrapper.get('input[aria-label]').element as HTMLInputElement).value).toBe('@acme/hello')
+      expect(wrapper.get('#plugin-install input[aria-label]').attributes('aria-label')).toBe(messages.plugins.installName)
+      expect((wrapper.get('#plugin-install input[aria-label]').element as HTMLInputElement).value).toBe('@acme/hello')
     }
     finally {
       wrapper.unmount()
@@ -965,7 +965,7 @@ describe('the plugins page', () => {
     try {
       await flushPromises()
       await wrapper.get('[data-testid="install-toggle"]').trigger('click')
-      const mode = wrapper.findComponent({ name: 'ASegmented' })
+      const mode = wrapper.get('[data-testid="install-mode"]').findComponent({ name: 'ASegmented' })
       await mode.vm.$emit('update:value', 'registry')
       await wrapper.get('#plugin-install input[aria-label]').setValue('@acme/first')
       await wrapper.get('[data-testid="install-submit"]').trigger('click')
@@ -1095,7 +1095,7 @@ describe('the plugins page', () => {
     const wrapper = mountPlugins()
     await flushPromises()
 
-    const mode = wrapper.findComponent({ name: 'ASegmented' })
+    const mode = wrapper.get('[data-testid="install-mode"]').findComponent({ name: 'ASegmented' })
     await mode.vm.$emit('update:value', 'registry')
     await flushPromises()
     await wrapper.find('input[placeholder="Plugin id, e.g. @acme/hello"]').setValue('@acme/hello')

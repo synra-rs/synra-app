@@ -3,6 +3,8 @@ import type { LocaleEntries } from '../types'
 export const plugins = {
   'plugins.title': '插件',
   'plugins.installHeading': '安装插件',
+  'plugins.categories.installed': '已安装',
+  'plugins.categories.discover': '发现',
   'plugins.manage': '权限与管理',
   'plugins.reviewPermissions': '检查权限',
   'plugins.showAll': '全部插件',
@@ -76,6 +78,7 @@ export const plugins = {
   'plugins.catalog.placeholder': '搜索插件注册表',
   'plugins.catalog.title': '查找插件',
   'plugins.catalog.action': '搜索',
+  'plugins.catalog.idle': '按名称或插件 ID 搜索注册表。本机已有的插件仍可通过上方按钮安装。',
   'plugins.catalog.empty': '没有匹配的插件。',
   'plugins.catalog.preview': '预览',
   'plugins.catalog.sort': '排序',

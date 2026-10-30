@@ -6,6 +6,14 @@
 export const plugins = {
   title: 'Plugins',
   installHeading: 'Install plugin',
+  /**
+   * The page answers two different questions — "can my plugins run" and "what could I install" — so they are two views
+   * rather than one list with a search box wedged above it ([07 §1](../../design-docs/ui-design/07-plugins.md)).
+   */
+  categories: {
+    installed: 'Installed',
+    discover: 'Find more'
+  },
   manage: 'Permissions and management',
   reviewPermissions: 'Review permissions',
   showAll: 'All plugins',
@@ -102,6 +110,12 @@ export const plugins = {
     title: 'Find plugins',
     placeholder: 'Search the registry',
     action: 'Search',
+    /**
+     * Before the first search this view is one row of controls over empty ground. The sentence says what the box
+     * searches and that local installation still works, so the page reads as ready rather than as a template awaiting
+     * data ([00](../../design-docs/ui-design/00-product-quality-bar.md)).
+     */
+    idle: 'Search the registry by name or plugin id. A plugin kept on this device still installs from the button above.',
     empty: 'Nothing matched.',
     preview: 'Preview',
     sort: 'Order',
