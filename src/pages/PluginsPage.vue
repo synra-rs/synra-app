@@ -384,6 +384,18 @@
               </div>
 
               <!--
+                ★ Beside the card, not on the page: a switch that refuses does not move, and the page-level notice is
+                above a list the card may be many screens down. No `@retry`: `ErrorNotice` renders its buttons only when
+                the refusal carries `actions`, and a switch refusal carries none — a handler here would never run.
+              -->
+              <ErrorNotice
+                v-if="cardErrors[plugin.pluginId]"
+                :code="cardErrors[plugin.pluginId]!.code"
+                :message="cardErrors[plugin.pluginId]!.message"
+                :actions="cardErrors[plugin.pluginId]!.actions"
+              />
+
+              <!--
               ★ The rung, when it is not `good`. A plugin that is over its limits is still `enabled` and may even be
               `running`; the state tag does not tell that story. Render one localized explanation of the reported rung;
               the quota's fixed English explanation repeats it. Detailed limits and fault reasons remain below.
@@ -915,6 +927,15 @@ async function consent(plugin: PluginSnapshot, granted: readonly string[]): Prom
 }
 
 /**
+ * A refusal from an action taken **on one card**, kept beside that card.
+ *
+ * The page-level `error` sits above the list, and a card can be many screens below it — a switch that does not move
+ * plus a sentence nobody can see reads as "the click did nothing". Keyed by plugin id so two cards failing at once
+ * stay two facts, and so a second attempt on the same card clears only its own sentence.
+ */
+const cardErrors = reactive<Record<string, Failure | undefined>>({})
+
+/**
  * Turns a plugin on or off.
  *
  * The list is **not** re-read here: the command publishes `PluginUpdated` and the page's own subscription reloads on
@@ -922,12 +943,12 @@ async function consent(plugin: PluginSnapshot, granted: readonly string[]): Prom
  * the first time the kernel answered something other than what the click assumed.
  */
 async function toggle(plugin: PluginSnapshot, enabled: boolean): Promise<void> {
-  error.value = undefined
+  delete cardErrors[plugin.pluginId]
   const outcome = await operations.run(plugin.pluginId, 'toggle', () => setEnabled(kernel, plugin.pluginId, enabled))
   if (!outcome)
     return
   if (!outcome.ok)
-    error.value = outcome.failure
+    cardErrors[plugin.pluginId] = outcome.failure
 }
 
 /**

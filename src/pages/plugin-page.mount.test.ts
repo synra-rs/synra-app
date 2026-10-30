@@ -164,6 +164,53 @@ describe('the plugins page', () => {
     }
   })
 
+  it('keeps a refused switch on its own card, not on the page', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active', enabled: false })], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'capability_denied', message: 'error.capabilityDenied', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[aria-label="Enable Hello"]').trigger('click')
+      await flushPromises()
+      // One notice, and it is inside the list item rather than above it: a card can be many screens down.
+      const notices = wrapper.findAllComponents(ErrorNotice)
+      expect(notices).toHaveLength(1)
+      expect(wrapper.get('li').element.contains(notices[0]!.element)).toBe(true)
+      expect(notices[0]!.props('code')).toBe('capability_denied')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('clears a card sentence when the same switch succeeds on the next try', async () => {
+    const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active', enabled: false })], plugins_publishers: [] }
+    let refuse = true
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : command === 'plugins_enable' && !refuse
+        ? { ok: true, value: null }
+        : { ok: false, error: { code: 'capability_denied', message: 'error.capabilityDenied', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      await wrapper.get('[aria-label="Enable Hello"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.findAllComponents(ErrorNotice)).toHaveLength(1)
+      refuse = false
+      // Re-clicking the switch is the retry: the refusal carried no actions, so `ErrorNotice` draws no button.
+      await wrapper.get('[aria-label="Enable Hello"]').trigger('click')
+      await flushPromises()
+      expect(mocks.call).toHaveBeenLastCalledWith('plugins_enable', { pluginId: '@acme/hello' })
+      expect(wrapper.findAllComponents(ErrorNotice)).toHaveLength(0)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('opens installation on demand and preserves its draft without background reads', async () => {
     const answers: Record<string, unknown> = { plugins_list: [card({ state: 'active' })], plugins_publishers: [] }
     mocks.call.mockImplementation(async (command: string) => command in answers
