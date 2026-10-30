@@ -30,21 +30,6 @@ import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-/**
- * What the kernel last said about the device list.
- *
- * Spelled as the kernel spells it, so a reader comparing the two files sees the same three fields rather than a
- * translation.
- */
-export interface DevicesState {
-  /** Every device, paired ones first. */
-  readonly devices: readonly DeviceCard[]
-  /** The scan in progress, or nothing. */
-  readonly scanning: ScanState | undefined
-  /** This device. */
-  readonly identity: IdentitySnapshot | undefined
-}
-
 export const useDevicesStore = defineStore('devices', () => {
   let identityRevision = 0
   let identityRead = 0
