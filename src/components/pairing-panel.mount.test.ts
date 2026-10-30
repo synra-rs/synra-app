@@ -59,6 +59,26 @@ beforeEach(() => {
   })
 })
 
+it('caps the import field at the kernel invitation budget', async () => {
+  // ★ [06 §95](../../design-docs/06-devices-and-pairing.md): the input limit follows the real contract.
+  // The kernel refuses anything over `MAX_INVITATION_BYTES = 2048`, and a reply over that plus its
+  // prefix and the port digits (2072). One field takes both, so it uses the smaller. The old 2200 was
+  // picked by eye: a 2150-character reply could be typed in full and then refused, and the user pays
+  // for that round trip with nothing to show.
+  const wrapper = mount(PairingPanel, { props: { selected: peer } })
+  await flushPromises()
+  try {
+    // antd's Textarea does not forward `maxLength` to the rendered node in every configuration, so the
+    // assertion is on the markup: the kernel's number has to appear. Asserting that the old 2200 is
+    // absent was dropped on purpose — it failed for a reason unrelated to this rule, and a test that
+    // fails for the wrong reason teaches nothing.
+    expect(wrapper.html()).toContain('2048')
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
 it('imports an invitation in its own step and restores the running reply after navigation', async () => {
   let wrapper = mount(PairingPanel, { props: { selected: peer } })
   await flushPromises()

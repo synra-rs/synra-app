@@ -121,7 +121,14 @@
           <HelpText>{{ messages.devices.pairingTrustHelp }}</HelpText>
           <label class="stack gap-2 text-sm">
             {{ step === 'accept' ? messages.devices.pairingInviteInput : messages.devices.pairingReplyInput }}
-            <ATextarea v-model:value="imported" :maxlength="2200" :rows="3" :disabled="locked" />
+            <!--
+              ★ The cap is the kernel's, not a round number. `synra-net`'s `MAX_INVITATION_BYTES = 2048`
+              applies to the whole invitation string, and a reply is that budget plus its own prefix
+              (2048 + 18 + 6 = 2072). One field takes both, so it uses the smaller: a reply inside 2048
+              is still valid, while a 2200 cap let a 2150-character reply be typed in full and then
+              refused by the kernel — the user pays for the round trip with nothing to show for it.
+            -->
+            <ATextarea v-model:value="imported" :maxlength="pairingInputLimit" :rows="3" :disabled="locked" />
           </label>
           <div>
             <AButton type="primary" :loading="pairing.busy" :disabled="cannotStart" @click="submit">
@@ -159,6 +166,15 @@ const invitationControl = ref<{ focus: () => void }>()
 const taskStatus = ref<HTMLElement>()
 let disposed = false
 const step = ref<'create' | 'accept' | 'reply'>(props.selected ? 'accept' : 'create')
+
+/**
+ * How much text the import field accepts.
+ *
+ * Mirrors `synra_net::authentication::pairing::MAX_INVITATION_BYTES`, the kernel's own ceiling on the
+ * whole invitation string. A reply is that budget plus `REPLY_PREFIX` and the port digits, so 2048 is
+ * the smaller of the two and the safe cap for a field that takes either.
+ */
+const pairingInputLimit = 2048
 const drafts = ref({ accept: '', reply: '' })
 const imported = computed({
   get: () => step.value === 'reply' ? drafts.value.reply : drafts.value.accept,
