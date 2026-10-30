@@ -1,5 +1,12 @@
 <template>
-  <section class="pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+  <!--
+    A workspace page, but a narrow one: paired and nearby devices are two short lists whose rows carry a name, a
+    platform and a couple of actions. At the shell's full 1200px those actions drifted ~700px from the name they belong
+    to, which is the "controls pulled apart across a wide window" [03 §3](../../design-docs/ui-design/03-shell-and-navigation.md)
+    warns against. The workspace width is therefore capped at 896px — wider than the reading measure, because the rows
+    hold a name and an action set on one line, and narrower than a full workspace, because nothing here fills it.
+  -->
+  <section class="mx-auto max-w-4xl min-w-0 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="narrow-workspace">
     <div class="stack gap-6">
       <PageHeader :title="messages.devices.title">
         <AButton v-if="scanState" :loading="cancellingScan" :disabled="cancellingScan" @click="cancelScan">

@@ -1,5 +1,14 @@
 <template>
-  <section class="min-w-0 stack gap-5 pb-4">
+  <!--
+    A form page, not a workspace. [03 §3](../../design-docs/ui-design/03-shell-and-navigation.md) gives forms 640–768px
+    and warns against stretching controls across a wide window: declaring the workspace width here pushed each row's
+    switch ~1000px away from its label.
+
+    The width is the rail plus the reading column plus the grid gap, not the reading measure alone: the rail is
+    `max-content` so the English labels ("Device and security") are not truncated, and a page narrower than
+    rail + gap + 768 would squeeze that column and reintroduce the truncation this page was just fixed for.
+  -->
+  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4" data-page-width="form">
     <PageHeader :title="messages.settings.title">
       <span v-if="hasDrafts" class="text-xs text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
     </PageHeader>

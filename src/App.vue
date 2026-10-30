@@ -78,7 +78,21 @@
       </aside>
 
       <main ref="contentPane" tabindex="0" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-sm focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
-        <div class="mx-auto max-w-5xl min-w-0 w-full">
+        <!--
+          ★ The shell centres the content region but does not decide how wide a page should be.
+
+          It used to carry `max-w-5xl`, which meant every page was capped at 1024px no matter what it was doing. On a
+          1904px window that left roughly 400px of empty ground on each side of a plugin list — the "content marooned
+          in the middle of a wide screen" the quality bar names as a demo-feeling source — and it silently overrode the
+          width each page actually needs. [03 §3](../../design-docs/ui-design/03-shell-and-navigation.md) says the
+          opposite: a page declares whether it is a *reading/form* width or a *workspace* width, and the shell does not
+          guess from page DOM.
+
+          So the shell keeps only a guard rail (`max-w-[1200px]`, the workspace upper bound that section gives) and each
+          page narrows itself. A page that wants the old single-column reading measure asks for it; one that wants a
+          workspace gets the room back.
+        -->
+        <div class="mx-auto max-w-[1200px] min-w-0 w-full">
           <!--
             ★ The one global fact that changes what every page can do. A device row can say "not reachable", but that is
             about one peer; this is about the machine, and every sharing path needs it.
