@@ -976,6 +976,13 @@ describe('the plugins page', () => {
     // found the buttons inside a collapsed panel and the test would have passed while nobody could reach them.
     await wrapper.get('[data-testid="publishers-toggle"]').trigger('click')
     expect(wrapper.text()).toContain(fingerprint)
+    // ★ [07 §104](../../design-docs/07-plugins.md) rejects "不可核对的前后几个字符": a clipped fingerprint cannot be
+    // compared with the one a person was given, which is the only reason the row shows it. The class list is what
+    // matters — `text()` returns the whole string whether or not CSS puts an ellipsis in it.
+    const shown = wrapper.findAll('span').find(span => span.text() === fingerprint)
+    expect(shown, 'the fingerprint is not rendered').toBeDefined()
+    expect(shown!.classes()).not.toContain('truncate')
+    expect(shown!.attributes('title')).toBe(fingerprint)
     await wrapper.findAll('button').find(button => button.text() === messages.plugins.publishers.trust)?.trigger('click')
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: '@acme', fingerprint, trust: 'trusted' })

@@ -46,8 +46,13 @@
         <AList.Item v-for="publisher in publishers" :key="publisher.publisherId" :style="{ paddingInline: 0 }">
           <div class="row-between gap-3">
             <span class="min-w-0 stack gap-0.5">
-              <span class="truncate text-sm">{{ publisher.publisherId }}</span>
-              <span class="truncate text-xs text-ink-dim font-mono">{{ publisher.fingerprint }}</span>
+              <span class="truncate text-sm" :title="publisher.publisherId">{{ publisher.publisherId }}</span>
+              <!--
+                ★ Not truncated: [07 §104](../design-docs/07-plugins.md) says the fingerprint must be checkable — 换行 or
+                copy — and explicitly rejects showing "不可核对的前后几个字符". A clipped fingerprint cannot be compared
+                with the one a person was given elsewhere, which is the only thing a fingerprint is for.
+              -->
+              <span class="min-w-0 select-text break-all text-xs text-ink-dim font-mono" :title="publisher.fingerprint">{{ publisher.fingerprint }}</span>
             </span>
             <span class="row gap-2">
               <ATag class="m-0">
