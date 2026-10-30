@@ -67,7 +67,10 @@ export const plugins = {
     none: 'It asks for no permissions.',
     headless: 'Runs without an interface',
     ui: 'Adds pages to the interface',
-    size: 'About {size} MiB, as published'
+    // ★ `{size}` arrives already formatted (`formatBytes`), so this template carries no unit. It said "MiB" and
+    // divided by 1 MiB inline, which rendered this repository's own 87 KB starter package as "About 0.1 MiB" —
+    // below a megabyte the number loses its meaning, and a template that names its own unit cannot say KiB.
+    size: 'About {size}, as published'
   },
   audit: {
     title: 'Recent calls',

@@ -208,7 +208,7 @@
           {{ preview.headless ? messages.plugins.preview.headless : messages.plugins.preview.ui }}
         </HelpText>
         <p v-if="preview.sizeBytes" class="m-0 text-sm text-ink-dim">
-          {{ messages.plugins.preview.size.replace('{size}', (preview.sizeBytes / 1_048_576).toFixed(1)) }}
+          {{ messages.plugins.preview.size.replace('{size}', formatBytes(preview.sizeBytes)) }}
         </p>
       </div>
     </AModal>

@@ -45,7 +45,7 @@ export const plugins = {
   'plugins.preview.none': '无需权限。',
   'plugins.preview.headless': '在后台运行，无独立界面',
   'plugins.preview.ui': '提供插件界面',
-  'plugins.preview.size': '发布大小约 {size} MiB',
+  'plugins.preview.size': '发布大小约 {size}',
   'plugins.audit.title': '最近调用',
   'plugins.audit.loading': '正在读取调用记录…',
   'plugins.audit.details': '详情',
