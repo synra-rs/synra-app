@@ -342,22 +342,28 @@
       an update — so each one is a list item with several lines rather than a card (R26). The lines are labelled
       separately instead of joined by separators, which is the shape R21 retires.
     -->
-      <AList v-else-if="visible.length > 0" :data-source="visible" row-key="pluginId">
+      <!--
+        ★ No rule between rows. `AList` draws one by default, and it split two plugins that belong to the same group —
+          `09 §44` keeps a separator for a real group boundary, and a plugin is not a group. The row's own hover fill
+          already says where one ends and the next begins, which is the shape that needs no line.
+      -->
+      <AList v-else-if="visible.length > 0" :data-source="visible" row-key="pluginId" class="[&_.ant-list-item]:border-b-0">
         <template #renderItem="{ item: plugin }">
-          <AList.Item :style="{ paddingInline: 0 }">
+          <!--
+            ★ Still a list, now with a row that answers the pointer. `R26` keeps a plugin as a list item rather than a
+              card, and `09 §44` warns that a container on every item competes for attention — so there is no border
+              and no fill at rest. What was missing is the middle ground: padding to give the row a body, a radius so
+              the hover fill has a shape, and a fill faint enough to read as "this row" rather than "this is a card".
+
+            ★ The negative inline margin keeps the text on the page's left edge at rest while letting the hover fill
+              bleed past it; without it, the padding would indent every plugin relative to the title above them.
+          -->
+          <AList.Item class="-mx-3 rounded-surface px-3 py-3 transition-colors @hover:bg-raised">
             <div class="min-w-0 w-full stack gap-3">
-              <div class="min-w-0 row flex-wrap gap-3">
-                <span class="min-w-0 w-full truncate text-base font-medium sm:w-auto sm:flex-1" :title="plugin.title">{{ plugin.title }}</span>
+              <div class="min-w-0 row flex-wrap items-center gap-3">
+                <span class="min-w-0 w-full truncate text-base font-semibold sm:w-auto sm:flex-1" :title="plugin.title">{{ plugin.title }}</span>
 
                 <!-- R23: the state is the word in the tag; the colour is the redundancy that survives a greyscale shot. -->
-                <!-- The switch is the user's decision about whether it runs; should_run is this **and** the consent. -->
-                <ASwitch
-                  :aria-label="messages.plugins.enableLabel(plugin.title)"
-                  :checked="plugin.enabled"
-                  :loading="operations.busy.get(plugin.pluginId) === 'toggle'"
-                  :disabled="operations.busy.has(plugin.pluginId)"
-                  @change="(checked) => toggle(plugin, checked as boolean)"
-                />
                 <ATag :color="stateColour(plugin.state)" class="shrink-0">
                   {{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}
                 </ATag>
@@ -388,6 +394,23 @@
                 <AButton v-if="plugin.hasUi" :aria-label="messages.plugins.openLabel(plugin.title)" :loading="operations.busy.get(plugin.pluginId) === 'open'" :disabled="operations.busy.has(plugin.pluginId)" @click="open(plugin)">
                   {{ messages.plugins.openAction }}
                 </AButton>
+                <!--
+                  ★ The switch closes the row, in its own column. It sat between the name and the state before, which
+                    made the reader step over the control to reach the word that says what the plugin is doing — and
+                    put the one control that is the same on every row in a different place on each one, depending on
+                    whether "Review permissions" or "Retry" happened to be showing.
+
+                  ★ Last is also the reading order the meaning wants: what it is, what it is doing, what I can do
+                    about it, and only then whether I want it running.
+                -->
+                <ASwitch
+                  class="ms-auto shrink-0"
+                  :aria-label="messages.plugins.enableLabel(plugin.title)"
+                  :checked="plugin.enabled"
+                  :loading="operations.busy.get(plugin.pluginId) === 'toggle'"
+                  :disabled="operations.busy.has(plugin.pluginId)"
+                  @change="(checked) => toggle(plugin, checked as boolean)"
+                />
               </div>
 
               <!--
