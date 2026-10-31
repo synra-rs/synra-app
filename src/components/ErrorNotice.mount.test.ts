@@ -63,6 +63,20 @@ describe('error notice actions', () => {
     wrapper.unmount()
   })
 
+  it('keeps the settings section when sending the reader to settings', async () => {
+    // ★ `SettingsPage` opens the column for `?category=` and ignores a value it does not know. Dropping the section sent
+    // every "open settings" to the first column, even when the kernel named a different one.
+    const { wrapper, instance } = await mountNotice([{ kind: 'openSettings', section: 'security' }])
+    const button = wrapper.findAll('button').find(candidate => candidate.text() === 'Open settings')
+    expect(button, 'the settings button is missing').toBeDefined()
+
+    await button!.trigger('click')
+    await flushPromises()
+    expect(instance.currentRoute.value.path).toBe('/settings')
+    expect(instance.currentRoute.value.query.category).toBe('security')
+    wrapper.unmount()
+  })
+
   it('renders a capability request as a direction, not a button', async () => {
     // There is no screen for "grant this capability", so the notice must not offer a control that does nothing.
     const { wrapper } = await mountNotice([{ kind: 'requestCapability', capability: 'network:fetch:api.example.com' }])

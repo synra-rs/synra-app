@@ -68,13 +68,17 @@ const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
 /**
  * Where an action points, when the interface has a screen for it.
  *
- * ★ Both of these carry the object the kernel named, and both pages now read it: `PluginsPage` opens the row for
- * `?plugin=`, `DevicesPage` opens the pairing panel for `?device=`. Dropping the id landed the reader on the top of a
- * list and left them to find the plugin or device the error had already named.
+ * ★ All three carry the object the kernel named, and all three pages read it: `PluginsPage` opens the row for
+ * `?plugin=`, `DevicesPage` opens the pairing panel for `?device=`, `SettingsPage` opens the column for `?category=`.
+ * Dropping the id landed the reader on the top of a list, or on the first settings column, and left them to find what
+ * the error had already named.
+ *
+ * `section` is the kernel's own key and is passed through unvalidated: an unknown one falls back to the first column,
+ * which is what dropping it did every time.
  */
 function to(action: SuggestedAction): string | undefined {
   switch (action.kind) {
-    case 'openSettings': return '/settings'
+    case 'openSettings': return `/settings?category=${encodeURIComponent(action.section)}`
     case 'connectDevice': return `/devices?device=${encodeURIComponent(action.deviceId)}`
     case 'installPlugin': return `/plugins?plugin=${encodeURIComponent(action.pluginId)}`
     default: return undefined
