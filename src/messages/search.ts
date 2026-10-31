@@ -8,7 +8,12 @@
 export const search = {
   /** The icon's accessible name, and the dialog's title once it opens. */
   title: 'Search',
-  placeholder: 'Search plugins, settings and devices',
+  /**
+   * ★ Short on purpose. This is drawn on a ~208px sidebar button beside a `/` key, so the four-word version
+   *   ("Search plugins, settings and devices") never fit and always rendered as "Search plugins, sett…". What it
+   *   searches is stated once inside the palette (`scope`); the button only has to say "this is a search".
+   */
+  placeholder: 'Search',
   /** The hint on the entry, because the shortcut is only useful if it can be found. */
   shortcut: '/',
   /**

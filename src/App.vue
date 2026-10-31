@@ -44,15 +44,27 @@
           -->
           <button
             type="button"
-            class="ms-auto min-h-11 row shrink-0 items-center gap-1 rounded-control px-1.5 py-1 text-ink-dim focusable md:min-h-8 @hover:bg-raised @hover:text-ink"
-            :class="{ 'ms-0': rail }"
+            class="group ms-auto min-h-11 row w-full min-w-0 shrink items-center gap-2 rounded-control border border-line bg-raised px-2.5 py-1 text-ink-dim focusable transition-colors @hover:border-ink-dim/40 @hover:bg-surface @hover:text-ink md:min-h-8"
+            :class="{ 'ms-0 w-auto justify-center px-1.5': rail }"
             :aria-label="messages.search.title"
             :title="messages.search.title"
             data-testid="search-entry"
             @click="searchPalette?.show()"
           >
-            <span class="i-carbon-search text-base" aria-hidden="true" />
-            <kbd v-if="!rail" class="border border-line rounded px-1 text-xs font-mono">{{ messages.search.shortcut }}</kbd>
+            <span class="i-carbon-search shrink-0 text-base transition-colors group-hover:text-primary" aria-hidden="true" />
+            <!--
+              ★ One line, and only what fits. The placeholder says what the field searches; the `kbd` says the shortcut
+                exists. At the sidebar's width both cannot fit, and a truncated word reads worse than no word — so the
+                text truncates and the key stays, because the key is the part a person cannot guess.
+
+              ★ `aria-label` carries the name in both forms: once `rail` collapses the span away, the visible text is
+                gone and the icon is all that is left.
+            -->
+            <span v-if="!rail" class="min-w-0 flex-1 truncate text-start text-sm">{{ messages.search.placeholder }}</span>
+            <kbd
+              v-if="!rail"
+              class="shrink-0 rounded border border-line bg-surface px-1.5 font-mono text-xs leading-5 text-ink-dim transition-colors group-hover:text-ink"
+            >{{ messages.search.shortcut }}</kbd>
           </button>
         </div>
 
