@@ -650,7 +650,12 @@
       </AButton>
     </template>
     <div class="stack gap-3">
-      <ErrorNotice v-if="removalError" :code="removalError.code" :actions="removalError.actions" @retry="remove" />
+      <!--
+        ★ No Retry action in here. This dialog already carries its own "Remove" in the footer (`@ok`), and a removal that
+        failed is retried by pressing it again — a second Retry beside the first would be the same command under two
+        names. The two `withoutRet` call sites above do the same for the same reason.
+      -->
+      <ErrorNotice v-if="removalError" :code="removalError.code" :actions="removalError.actions?.filter(action => action.kind !== 'retry')" @retry="remove" />
       <p class="m-0 text-sm">
         {{ messages.plugins.removeDetail(removing?.title ?? '') }}
       </p>

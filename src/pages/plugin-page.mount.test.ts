@@ -753,6 +753,10 @@ describe('the plugins page', () => {
       expect(modal.findComponent(ErrorNotice).props('code')).toBe('unavailable')
       expect(modal.props('open')).toBe(true)
       expect(checkbox.props('checked')).toBe(true)
+      // ★ The failure carried `{ kind: 'retry' }`, and this dialog must not show one: its footer already has Remove, and
+      // pressing it again is the retry. Two buttons running the same command is a choice the reader has to make for no
+      // reason. The assertion is scoped to the dialog so a Retry elsewhere on the page would not hide the mistake.
+      expect(modal.findAll('button').map(button => button.text())).not.toContain(messages.actions.retry)
       await modal.vm.$emit('cancel')
       await flushPromises()
       await remove.trigger('click')
