@@ -30,6 +30,13 @@
         </ul>
 
         <span v-if="bundlePath" class="text-xs text-ink-dim font-mono">{{ bundlePath }}</span>
+        <!-- What the file holds, next to where it went: a bundle that silently left a section out reads as complete. -->
+        <template v-if="bundleSections">
+          <span class="text-xs text-ink-dim">{{ messages.crash.bundleIncluded(bundleSections.included.join('; ')) }}</span>
+          <span v-if="bundleSections.excluded.length > 0" class="text-xs text-ink-dim">
+            {{ messages.crash.bundleExcluded(bundleSections.excluded.join('; ')) }}
+          </span>
+        </template>
         <span v-if="failure" class="text-error text-xs">{{ failure }}</span>
 
         <div class="row flex-wrap gap-2">
@@ -80,6 +87,8 @@ const details = ref(false)
 const dismissing = ref(false)
 const exporting = ref(false)
 const bundlePath = ref<string | undefined>(undefined)
+/** What the written file holds and what it left out. `diag_export` answers both; only the path used to be shown. */
+const bundleSections = ref<{ included: readonly string[], excluded: readonly string[] } | undefined>(undefined)
 const failure = ref<string | undefined>(undefined)
 
 /** Keeps the reports that are about the run that just ended, newest first as the command returns them. */
@@ -123,5 +132,6 @@ async function exportBundle(): Promise<void> {
     return
   }
   bundlePath.value = answer.value.path
+  bundleSections.value = { included: answer.value.included, excluded: answer.value.excluded }
 }
 </script>

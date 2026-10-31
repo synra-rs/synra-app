@@ -105,4 +105,43 @@ describe('the crash notice', () => {
     expect(wrapper.text()).toContain('C:/data/synra-diagnostics.json')
     wrapper.unmount()
   })
+
+  it('says what the bundle holds and what it left out', async () => {
+    // ★ `diag_export` answers `included`/`excluded`, and this banner used to ignore both — a bundle written without the
+    // audit log looked like a complete one. The path alone does not tell the person receiving it what is missing.
+    mocks.call
+      .mockResolvedValueOnce(report([RECENT]))
+      .mockResolvedValueOnce(report({
+        path: 'C:/data/synra-diagnostics.json',
+        included: ['system', 'logs'],
+        excluded: ['audit']
+      }))
+
+    const wrapper = mount(CrashNotice)
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === messages.crash.exportBundle)?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.crash.bundleIncluded('system; logs'))
+    expect(wrapper.text()).toContain(messages.crash.bundleExcluded('audit'))
+    wrapper.unmount()
+  })
+
+  it('does not claim anything was left out when nothing was', async () => {
+    // The other direction: an empty `excluded` must not draw a "Left out:" line with nothing after it.
+    mocks.call
+      .mockResolvedValueOnce(report([RECENT]))
+      .mockResolvedValueOnce(report({ path: 'C:/data/synra-diagnostics.json', included: ['system'], excluded: [] }))
+
+    const wrapper = mount(CrashNotice)
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === messages.crash.exportBundle)?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.crash.bundleIncluded('system'))
+    expect(wrapper.text()).not.toContain(messages.crash.bundleExcluded(''))
+    wrapper.unmount()
+  })
 })

@@ -13,6 +13,12 @@ export const crash = {
   showDetails: 'Show details',
   hideDetails: 'Hide details',
   exportBundle: 'Export diagnostics',
+  /**
+   * ★ What the bundle holds, said because the file is written for someone else to read. `diag_export` already answers
+   * `included`/`excluded`; the crash banner used to show only the path, so a bundle missing a section looked complete.
+   */
+  bundleIncluded: (sections: string): string => `Includes: ${sections}`,
+  bundleExcluded: (sections: string): string => `Left out: ${sections}`,
   ignore: 'Ignore',
   noMessage: 'the panic carried no message'
 } as const

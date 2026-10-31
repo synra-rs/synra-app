@@ -24,6 +24,8 @@ export const common = {
   'crash.showDetails': '显示详情',
   'crash.hideDetails': '收起详情',
   'crash.exportBundle': '导出诊断报告',
+  'crash.bundleIncluded': sections => `已包含：${sections}`,
+  'crash.bundleExcluded': sections => `未包含：${sections}`,
   'crash.ignore': '忽略',
   'crash.noMessage': '未记录崩溃信息',
   'transfers.prompt.title': '有设备请求发送文件',
