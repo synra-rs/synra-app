@@ -1390,6 +1390,38 @@ mod tests {
         assert_eq!(super::life_state(&row, true, false, true, false), "active");
     }
 
+    /// Every word `life_state` can return, and nothing else.
+    ///
+    /// ★ The interface has to name each of these: `messages.plugins.states` is keyed by the word, and a word without
+    ///   an entry falls through to itself — a Chinese card reading `awaiting_consent`. The front end pins the same six
+    ///   in `messages-plugins.test.ts`'s `it.each`, but a list that only names six can only prove those six exist.
+    ///   Nothing on this side said which words there are, so a seventh `return` above used to reach the screen as an
+    ///   English identifier with no test going red.
+    ///
+    ///   This test is the inventory. Its six must equal the six `return`s — that is the one check that can fail when
+    ///   somebody adds a state and forgets the front end.
+    #[test]
+    fn life_state_returns_exactly_these_words() {
+        let plugin = synra_store::PluginRow {
+            plugin_id: ID.to_owned(),
+            enabled: true,
+            trusted: true,
+            health: "ok".to_owned(),
+            installed_at_ms: 0,
+            updated_at_ms: 0,
+        };
+        let off = synra_store::PluginRow { enabled: false, ..plugin.clone() };
+        let untrusted = synra_store::PluginRow { trusted: false, ..plugin.clone() };
+
+        // Arguments after the row: loaded, faulted, manifest readable, load refused.
+        assert_eq!(super::life_state(&off, true, false, true, false), "disabled");
+        assert_eq!(super::life_state(&untrusted, true, false, true, false), "awaiting_consent");
+        assert_eq!(super::life_state(&plugin, true, false, false, false), "unreadable");
+        assert_eq!(super::life_state(&plugin, true, true, true, false), "faulted");
+        assert_eq!(super::life_state(&plugin, true, false, true, false), "active");
+        assert_eq!(super::life_state(&plugin, false, false, true, false), "unavailable");
+    }
+
     /// A state with a scripted engine, because installing needs one and the fixture builds a shell without.
     ///
     /// The backend answers from a table rather than compiling Wasm: what is being tested is the shell's command — the
