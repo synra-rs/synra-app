@@ -487,7 +487,7 @@
                        `<details>` rather than a popover: it is the same disclosure with no portal to position, and a test can
                        read the content whether it is open or not. -->
                     <details v-if="quotaRows(plugin.health).length" class="text-xs">
-                      <summary class="cursor-pointer text-ink-dim">
+                      <summary class="min-h-11 cursor-pointer text-ink-dim">
                         {{ messages.plugins.allLimits }}
                       </summary>
                       <dl class="m-0 mt-1 flex flex-wrap gap-x-4 gap-y-1">

@@ -32,7 +32,7 @@
       <span class="line-clamp-2 break-all text-sm">{{ prompt.fileName }}</span>
     </div>
     <details class="text-xs text-ink-dim">
-      <summary class="cursor-pointer">
+      <summary class="min-h-11 cursor-pointer">
         {{ messages.transfers.prompt.details }}
       </summary>
       <dl class="m-0 stack gap-1 pt-2">
