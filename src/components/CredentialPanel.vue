@@ -1,6 +1,9 @@
 <template>
   <section class="stack gap-3" aria-labelledby="credential-title">
     <ACollapse ghost v-bind="expanded || credentials.error || credentials.snapshot?.recovery || credentials.restartRequired ? { activeKey: ['identity'] } : {}">
+      <template #expandIcon="panel">
+        <CollapseArrow :panel="panel" />
+      </template>
       <ACollapse.Panel key="identity" force-render>
         <template #header>
           <h2 id="credential-title" class="m-0 text-base font-medium">
@@ -65,6 +68,7 @@ import { computed, onMounted, ref } from 'vue'
 import { messages } from '../messages'
 
 import { useCredentialsStore } from '../stores/credentials'
+import CollapseArrow from './CollapseArrow.vue'
 import ErrorNotice from './ErrorNotice.vue'
 import HelpText from './HelpText.vue'
 

@@ -448,18 +448,11 @@
                   `renderExpandIcon` from `props.expandIcon ?? slots.expandIcon` and passes it down, so a panel-level
                   slot is never read.
 
-                  Our own chevron instead of antd's. The library's arrow is
-                  `<span role="img" aria-label="right">…<svg aria-hidden="true">` (measured with `bsk_inspect`'s `html`):
-                  the inner svg is hidden, but the wrapper announces the icon's name, so this header read as
-                  "right 权限与管理" — an English direction word in front of a Chinese title. The arrow is decoration:
-                  `aria-expanded` on the header already reports the state, so `aria-hidden` here loses nothing.
+                  `CollapseArrow` is our own chevron instead of antd's, which announces its icon name — see that
+                  component for what the library renders and why it read as "right 权限与管理".
                 -->
                 <template #expandIcon="panel">
-                  <span
-                    :class="(panel as { isActive?: boolean }).isActive ? 'i-carbon-chevron-down' : 'i-carbon-chevron-right'"
-                    aria-hidden="true"
-                    class="shrink-0 text-ink-dim"
-                  />
+                  <CollapseArrow :panel="panel" />
                 </template>
                 <ACollapse.Panel :key="plugin.pluginId" force-render>
                   <template #header>
@@ -700,6 +693,7 @@ import { Alert as AAlert, Button as AButton, Checkbox as ACheckbox, CheckboxGrou
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import CollapseArrow from '../components/CollapseArrow.vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 /**
  * What is installed, and what each one has been allowed to do.

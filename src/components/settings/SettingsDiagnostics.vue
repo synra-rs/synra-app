@@ -1,6 +1,12 @@
 <template>
   <div class="min-w-0 stack gap-5" data-testid="settings-diagnostics">
+    <!-- ★ `#expandIcon` on the collapse, not on the panels: `Collapse.js` builds the arrow once in
+         `renderExpandIcon` from `props.expandIcon ?? slots.expandIcon` and passes it down, so a panel-level slot is
+         never read. `CollapseArrow` is our own arrow because antd's announces its icon name — see the component. -->
     <ACollapse v-model:active-key="openPanels" ghost>
+      <template #expandIcon="panel">
+        <CollapseArrow :panel="panel" />
+      </template>
       <ACollapse.Panel key="metrics" :header="messages.settings.metrics.title">
         <div class="min-w-0 stack gap-3">
           <div class="row-between flex-wrap gap-2">
@@ -177,6 +183,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { kernel } from '../../kernel'
 import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
+import CollapseArrow from '../CollapseArrow.vue'
 import SettingsFeedback from './SettingsFeedback.vue'
 
 const props = defineProps<{ active: boolean }>()

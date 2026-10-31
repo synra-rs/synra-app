@@ -92,6 +92,30 @@ async function openCategory(wrapper: VueWrapper, category: string): Promise<void
   await select.vm.$emit('change', category)
   await flushPromises()
 }
+it('names every diagnostics panel without the library arrow word', async () => {
+  // ★ antd's `ACollapse` draws its arrow as `<span role="img" aria-label="right">`, and a `role="img"` label replaces
+  //   its content in the name computation — so each header read as "right 性能" in the accessibility tree. Measured
+  //   with `bsk_inspect`'s `observe` on the real page, not guessed.
+  //
+  //   Asserted on `role="img"` inside the header, not on the header's text: the word lives in an attribute, so
+  //   `header.text()` cannot see it — a first version of this test passed with the fix removed. Ours is
+  //   `aria-hidden` and carries no role, so any `role="img"` here is the library's arrow.
+  answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+  const wrapper = await mountPage('/settings?category=diagnostics')
+  try {
+    await flushPromises()
+    const headers = wrapper.findAll('[data-testid="settings-diagnostics"] .ant-collapse-header')
+    expect(headers.length).toBeGreaterThan(0)
+    for (const header of headers) {
+      for (const image of header.findAll('[role="img"]'))
+        expect(image.attributes('aria-label')).toBeUndefined()
+    }
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
 async function openDiagnostic(wrapper: VueWrapper, title: string): Promise<void> {
   await openCategory(wrapper, 'diagnostics')
   const header = wrapper.findAll('[data-testid="settings-diagnostics"] .ant-collapse-header').find(value => value.text().includes(title))!
