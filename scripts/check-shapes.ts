@@ -879,6 +879,40 @@ async function checkDialogNames(): Promise<void> {
   notes.push(`dialog-names: ${counted.toString()} dialog(s) are named`)
 }
 
+/**
+ * Every `ASelect` is named, and every `AModal` is named.
+ *
+ * ★ `ASelect` renders a combobox with no name unless the template gives it one, and where the attribute has to go
+ *   depends on how it is named: `aria-label` and `:id` both reach the `<input role="combobox">` for a bare select,
+ *   while a select inside a `<label>` is named by containment and needs neither. `plugins.catalog.sort` had all three
+ *   ways missing — no label, no `aria-label` — and announced itself as an unnamed combobox.
+ *
+ *   The check accepts any of the three rather than demanding one: the device page's step select is inside a `<label>`
+ *   and is correctly named without an attribute, and asking it for one would be a false failure.
+ */
+async function checkSelectNames(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    for (const match of text.matchAll(/<ASelect\b[^>]*>/g)) {
+      counted += 1
+      if (!/aria-label|:id=|id=|:aria-labelledby/.test(match[0])) {
+        const line = text.slice(0, match.index).split('\n').length
+        failures.push({
+          check: 'select-names',
+          detail: `${relative(here, file)}:${line.toString()} draws an \`ASelect\` with no \`aria-label\`, no \`id\` and no enclosing label`
+        })
+      }
+    }
+  }
+
+  notes.push(`select-names: ${counted.toString()} select(s) are named`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -888,6 +922,7 @@ await checkFakeIsQuarantined()
 await checkFacadeIsFresh()
 await checkPageButtons()
 await checkDialogNames()
+await checkSelectNames()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
