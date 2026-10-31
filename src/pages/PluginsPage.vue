@@ -361,7 +361,14 @@
           <AList.Item class="-mx-3 rounded-surface px-3 py-3 transition-colors @hover:bg-raised">
             <div class="min-w-0 w-full stack gap-3">
               <div class="min-w-0 row flex-wrap items-center gap-3">
-                <span class="min-w-0 w-full truncate text-base font-semibold sm:w-auto sm:flex-1" :title="plugin.title">{{ plugin.title }}</span>
+                <!--
+                  ★ `flex-1` at every width, not `w-full sm:w-auto`. With `w-full` the name took the whole row below
+                    `sm`, pushing the state tag and the switch onto a second line — and `ms-auto` then parked the
+                    switch at the far edge of that line with a gap of dead space between it and the tag. Three short
+                    items always fit one row on a 390px phone; letting the name shrink to fit is what keeps them
+                    together, and `truncate` already handles a name that is too long.
+                -->
+                <span class="min-w-0 flex-1 truncate text-base font-semibold" :title="plugin.title">{{ plugin.title }}</span>
 
                 <!-- R23: the state is the word in the tag; the colour is the redundancy that survives a greyscale shot. -->
                 <ATag :color="stateColour(plugin.state)" class="shrink-0">
