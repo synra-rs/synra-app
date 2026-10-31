@@ -924,6 +924,44 @@ async function checkControlNames(): Promise<void> {
   notes.push(`control-names: ${counts.join(', ')} are named`)
 }
 
+/**
+ * The two places that raise controls with a scoped media query agree on where "narrow" ends.
+ *
+ * ★ This was a real inconsistency: `PairingPanel` used `max-width: 767px` and `TransferPrompt` `max-width: 639px`.
+ *   `03 §3`'s table puts the narrow layout at `<640`, and the utility-class route (`min-h-11 md:min-h-8`) drops back
+ *   to 32px at `md` — so between 640 and 767 the pairing panel alone kept 44px buttons while every other surface on
+ *   the same screen had 32px ones.
+ *
+ *   The utility-class sites are not checked here: their breakpoint lives in the class name, which is one shape.
+ */
+async function checkTouchBreakpoints(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  const expected = 'max-width: 639px'
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    for (const match of text.matchAll(/@media \(max-width: (\d+)px\), \(pointer: coarse\)/g)) {
+      counted += 1
+      if (match[0] !== `@media (${expected}), (pointer: coarse)`) {
+        const line = text.slice(0, match.index).split('\n').length
+        failures.push({
+          check: 'touch-breakpoints',
+          detail: `${relative(here, file)}:${line.toString()} raises touch targets from ${match[1] ?? ''}px — every scoped touch query ends at 639px`
+        })
+      }
+    }
+  }
+
+  notes.push(
+    counted === 1
+      ? 'touch-breakpoints: the one scoped touch query ends at 639px'
+      : `touch-breakpoints: ${counted.toString()} scoped touch queries end at 639px`
+  )
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -934,6 +972,7 @@ await checkFacadeIsFresh()
 await checkPageButtons()
 await checkDialogNames()
 await checkControlNames()
+await checkTouchBreakpoints()
 
 for (const note of notes) {
   console.log(`  · ${note}`)

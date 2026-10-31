@@ -1,5 +1,5 @@
 <style scoped>
-@media (max-width: 767px), (pointer: coarse) {
+@media (max-width: 639px), (pointer: coarse) {
   .pairing-panel :deep(.ant-btn) {
     min-height: 44px;
   }
