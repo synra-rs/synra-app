@@ -237,6 +237,12 @@ describe('the home page', () => {
     ['succeeded', 'success'],
     ['noHandler', 'warning'],
     ['failed', 'error'],
+    // ★ The other two that mean "it will not run". Both share `error` with `failed` in `intentStateColor`, and this
+    //   list used to stop at `failed` — a change that dropped either into grey would have gone unnoticed.
+    //   Every state in `messages.home.received.states` belongs here; that is what makes it an inventory rather than
+    //   a sample.
+    ['timedOut', 'error'],
+    ['refused', 'error'],
     // The only grey one: nothing is going to happen, and nobody is waiting.
     ['cancelled', 'default']
   ])('colours a %s intent %s', async (state, colour) => {
