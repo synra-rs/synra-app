@@ -56,7 +56,14 @@
           and this column are the two halves of one page and now share a treatment.
       -->
       <div class="max-w-3xl min-w-0 w-full stack gap-6 rounded-surface border border-line bg-surface p-5">
-        <h2 ref="categoryHeading" tabindex="-1" class="m-0 text-base font-semibold outline-none">
+        <!--
+          ★ `sr-only` below `lg`, visible at `lg`. In the narrow layout the select directly above already shows the
+            current category, so this heading repeated it — two "通用" lines a few pixels apart, which read as a
+            rendering mistake rather than a title. `sr-only` rather than `hidden`: this is where focus lands after a
+            category change (`watch(category) → categoryHeading.focus()`), and a `display:none` element cannot take
+            focus, so hiding it visually would drop keyboard readers at the top of the document with no announcement.
+        -->
+        <h2 ref="categoryHeading" tabindex="-1" class="m-0 text-base font-semibold outline-none sr-only lg:not-sr-only">
           {{ categories.find(item => item.value === category)?.label }}
         </h2>
 
