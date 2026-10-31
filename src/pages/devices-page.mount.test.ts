@@ -18,6 +18,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import { setLocalePreference } from '../locale'
 
@@ -30,6 +31,25 @@ vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subsc
 
 const DevicesPage = (await import('./DevicesPage.vue')).default
 const { useDevicesStore } = await import('../stores/devices')
+
+/**
+ * Mounts the page with a router.
+ *
+ * ★ The page reads `?device=` to open the pairing panel for a device a notice named, so it needs a route to exist. Every
+ * case here starts at `/devices` with no query, which is the same state as arriving from the nav.
+ */
+async function mountDevices(options: { attachTo?: HTMLElement, query?: Record<string, string> } = {}) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/devices', component: { template: '<div />' } }]
+  })
+  // Awaited: memory history resolves the first location asynchronously; without this the page still reads `/`.
+  await router.push({ path: '/devices', query: options.query ?? {} })
+  const global = { plugins: [router] }
+  return options.attachTo
+    ? mount(DevicesPage, { attachTo: options.attachTo, global })
+    : mount(DevicesPage, { global })
+}
 const { DEVICES, IDENTITY } = await import('../ipc/fake-kernel-fixtures')
 const { messages } = await import('../messages')
 
@@ -76,7 +96,7 @@ describe('the devices page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    const wrapper = await mountDevices({ attachTo: document.body })
     try {
       await flushPromises()
       expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
@@ -98,6 +118,46 @@ describe('the devices page', () => {
     }
   })
 
+  it('opens pairing for the device a notice named', async () => {
+    // ★ `ErrorNotice` links here as `/devices?device=<id>`. Without reading it the button dropped the reader at the top
+    // of the list and left them to find the device the error had already named.
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_status: { state: 'idle' }
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    // `DEVICES[0]` is already paired, so the named device is one the list offers to pair.
+    const wrapper = await mountDevices({ query: { device: DEVICES[1]!.deviceId } })
+    try {
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('stays shut when the named device is not in the snapshot', async () => {
+    // An id the list does not carry would select a peer nothing can resolve, and the panel would open empty.
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: [], scanning: undefined },
+      pairing_status: { state: 'idle' }
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = await mountDevices({ query: { device: 'not-in-the-list' } })
+    try {
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('reveals a pairing task restored from the shared service', async () => {
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES },
@@ -106,7 +166,7 @@ describe('the devices page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    const wrapper = await mountDevices({ attachTo: document.body })
     try {
       await flushPromises()
       expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
@@ -127,7 +187,7 @@ describe('the devices page', () => {
     mocks.call.mockImplementation(async (command: string) => command in answers
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       const labels = wrapper.findAll('button').map(button => button.text())
@@ -147,7 +207,7 @@ describe('the devices page', () => {
   it('asks for the snapshot when it is mounted', async () => {
     mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } })
 
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
 
     expect(mocks.call).toHaveBeenCalledWith('devices_snapshot')
@@ -158,7 +218,7 @@ describe('the devices page', () => {
     // ★ The point of the store: an event arrives, `events.ts` writes it, and the screen follows. The page never re-reads
     // after the one read at mount, so a card in the store is the only path to this line of text.
     mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
 
     useDevicesStore().upsert(DEVICES[0]!)
@@ -175,7 +235,7 @@ describe('the devices page', () => {
     // carries `lastSeenMs: 0`, so this branch has always been drawn — it was just never asserted. Without the guard the
     // page would print 1970 for a device it has never had a session with, which reads as a real timestamp.
     mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: [DEVICES[0]!], scanning: undefined } })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
 
     const details = wrapper.findAll('button').find(button => button.text() === messages.devices.details)
@@ -205,7 +265,7 @@ describe('the devices page', () => {
       return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
     })
 
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
 
     const scan = wrapper.findAll('button').find(button => button.text() === messages.devices.scan)
@@ -231,7 +291,7 @@ describe('the devices page', () => {
       value: command === 'devices_snapshot' ? { identity: IDENTITY, devices: DEVICES } : null
     }))
 
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
 
     await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
@@ -248,7 +308,7 @@ describe('the devices page', () => {
 
   it('groups device relationships and reveals technical facts only in details', async () => {
     mocks.call.mockImplementation(async (command: string) => ({ ok: true, value: command === 'devices_snapshot' ? { identity: IDENTITY, devices: DEVICES } : null }))
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
     const paired = wrapper.get(`section[aria-label="${messages.devices.paired}"]`)
     const nearby = wrapper.get(`section[aria-label="${messages.devices.nearby}"]`)
@@ -280,7 +340,7 @@ describe('the devices page', () => {
       }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage, { attachTo: document.body })
+    const wrapper = await mountDevices({ attachTo: document.body })
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
@@ -323,7 +383,7 @@ describe('the devices page', () => {
         removed = true
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
     await wrapper.findAll('button').find(button => button.attributes('aria-label') === messages.devices.detailsFor(DEVICES[0]!.displayName))!.trigger('click')
     await wrapper.findAll('button').find(button => button.text() === messages.devices.forget)!.trigger('click')
@@ -347,7 +407,7 @@ describe('the devices page', () => {
         running = false
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
     await flushPromises()
@@ -368,7 +428,7 @@ describe('the devices page', () => {
       }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
     await flushPromises()
@@ -388,7 +448,7 @@ describe('the devices page', () => {
       }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
@@ -419,7 +479,7 @@ describe('the devices page', () => {
       }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
@@ -446,7 +506,7 @@ describe('the devices page', () => {
       }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === messages.devices.scan)!.trigger('click')
@@ -475,7 +535,7 @@ describe('the devices page', () => {
         return { ok: true, value: { identity: IDENTITY, devices: DEVICES, scanning: scanId ? { scanId, found: 0, elapsedMs: 0, totalMs: 1000 } : undefined } }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
@@ -507,7 +567,7 @@ describe('the devices page', () => {
         return new Promise((resolve) => { finish = resolve })
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
@@ -539,7 +599,7 @@ describe('the devices page', () => {
         return { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
       return { ok: true, value: null }
     })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     try {
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text() === messages.devices.cancelScan)!.trigger('click')
@@ -566,7 +626,7 @@ describe('the devices page', () => {
     mocks.call.mockImplementation(async (command: string) => command === 'devices_snapshot'
       ? new Promise((resolve) => { finish = resolve })
       : { ok: true, value: null })
-    const wrapper = mount(DevicesPage)
+    const wrapper = await mountDevices()
     await flushPromises()
     wrapper.unmount()
     finish({ ok: true, value: { identity: IDENTITY, devices: DEVICES } })

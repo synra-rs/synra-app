@@ -126,6 +126,7 @@
 import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PairingPanel from '../components/PairingPanel.vue'
@@ -137,6 +138,7 @@ import DeviceRow from './devices/DeviceRow.vue'
 
 const devices = useDevicesStore()
 const pairing = usePairingStore()
+const route = useRoute()
 const selectedDeviceId = ref<string>()
 const selectedPeer = computed(() => selectedDeviceId.value ? devices.get(selectedDeviceId.value) : undefined)
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
@@ -151,6 +153,20 @@ function pair(deviceId: string): void {
   selectedDeviceId.value = deviceId
   showPairing.value = true
 }
+
+/**
+ * ★ A notice that says "connect this device" links here with `?device=`. Without this the button landed on the top of
+ * the list and the reader had to find the device again — the same gap `installPlugin` had, on the other page.
+ *
+ * The id is applied through `pair()`, so the pairing panel opens exactly as it would from the row's own button. An id
+ * the snapshot does not carry is ignored rather than selected: `pair()` would set a peer that `devices.get` cannot
+ * resolve, and the panel would open empty.
+ */
+const requestedDeviceId = computed(() => typeof route.query.device === 'string' ? route.query.device.trim() : '')
+watch([requestedDeviceId, () => devices.cards], ([deviceId]) => {
+  if (deviceId && devices.get(deviceId))
+    pair(deviceId)
+}, { immediate: true })
 
 let disposed = false
 let readRevision = 0

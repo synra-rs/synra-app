@@ -68,17 +68,14 @@ const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
 /**
  * Where an action points, when the interface has a screen for it.
  *
- * ★ `installPlugin` carries the plugin it wants installed, and `PluginsPage` already reads `?plugin=` to open that row
- * (`targetPluginId`). Dropping the id landed the user on the top of the list instead of the plugin the error named — so
- * the kernel's "install this one" turned into "here are your plugins, find it yourself".
- *
- * `connectDevice` still goes to `/devices` without the id: that page has no `?device=` to receive it. Adding one here
- * alone would be a link that changes nothing.
+ * ★ Both of these carry the object the kernel named, and both pages now read it: `PluginsPage` opens the row for
+ * `?plugin=`, `DevicesPage` opens the pairing panel for `?device=`. Dropping the id landed the reader on the top of a
+ * list and left them to find the plugin or device the error had already named.
  */
 function to(action: SuggestedAction): string | undefined {
   switch (action.kind) {
     case 'openSettings': return '/settings'
-    case 'connectDevice': return '/devices'
+    case 'connectDevice': return `/devices?device=${encodeURIComponent(action.deviceId)}`
     case 'installPlugin': return `/plugins?plugin=${encodeURIComponent(action.pluginId)}`
     default: return undefined
   }
