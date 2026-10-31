@@ -328,7 +328,9 @@ const probesSummary = computed(() => {
 })
 const visibleProbes = computed(() => (probeReport.value?.results ?? []).filter(result => !onlyProblems.value || result.status !== 'ok'))
 function probeColor(status: string): string {
-  return status === 'ok' ? 'green' : status === 'warn' ? 'orange' : 'red'
+  // Same reasoning as `messages.settings.diagnostics.probeStatus`: an answer this build does not know is not a red
+  // one. A neutral tag lets the "Unrecognised" label carry the fact instead of a colour claiming a failure.
+  return status === 'ok' ? 'green' : status === 'warn' ? 'orange' : status === 'fail' ? 'red' : 'default'
 }
 async function runProbes(): Promise<void> {
   if (probing.value)

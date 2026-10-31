@@ -135,7 +135,16 @@ export const settings = {
     /** The startup probes: what this device would need in order to start. */
     probes: 'Run checks',
     probesDetail: 'Check the local environment.',
-    probeStatus: (status: string): string => status === 'ok' ? 'OK' : status === 'warn' ? 'Warning' : 'Failed',
+    // ★ `ProbeStatus` is `#[non_exhaustive]` (synra-observe/src/doctor/result.rs), so a fourth answer arrives as a
+    // string this version has never seen. The chain used to end in "Failed": an unknown probe result is not a failure,
+    // and saying it is sends someone to fix something no probe reported.
+    probeStatus: (status: string): string => status === 'ok'
+      ? 'OK'
+      : status === 'warn'
+        ? 'Warning'
+        : status === 'fail'
+          ? 'Failed'
+          : 'Unrecognised',
     /** Counts by status, so a report of twelve results is one line before it is twelve. */
     probesSummary: (ok: number, warn: number, fail: number): string =>
       `${ok} OK \u00B7 ${warn} warning${warn === 1 ? '' : 's'} \u00B7 ${fail} failed`,

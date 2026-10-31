@@ -47,4 +47,16 @@ describe.each(['en', 'zh-CN'] as const)('plugin health labels (%s)', (language) 
     const sentences = HEALTH_RUNGS.map(rung => messages.plugins.healthLabel(rung))
     expect(new Set(sentences).size).toBe(HEALTH_RUNGS.length)
   })
+
+  // ★ `ProbeStatus` is `#[non_exhaustive]` too (synra-observe/src/doctor/result.rs), and the diagnostics row had the
+  // same shape: everything unknown fell through to "Failed". A probe answer nobody recognises is not a red one.
+  it.each(['ok', 'warn', 'fail'])('names the probe status %s', (status) => {
+    expect(messages.settings.diagnostics.probeStatus(status).length).toBeGreaterThan(0)
+  })
+
+  it('does not call an unknown probe status a failure', () => {
+    const unknown = messages.settings.diagnostics.probeStatus('skipped')
+    expect(unknown).not.toBe(messages.settings.diagnostics.probeStatus('fail'))
+    expect(unknown).not.toBe(messages.settings.diagnostics.probeStatus('ok'))
+  })
 })

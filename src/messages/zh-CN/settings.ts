@@ -92,7 +92,7 @@ export const settings = {
   'settings.diagnostics.excluded': sections => `未包含：${sections}`,
   'settings.diagnostics.probes': '运行检查',
   'settings.diagnostics.probesDetail': '检查本机运行环境。',
-  'settings.diagnostics.probeStatus': status => status === 'ok' ? '正常' : status === 'warn' ? '警告' : '失败',
+  'settings.diagnostics.probeStatus': status => status === 'ok' ? '正常' : status === 'warn' ? '警告' : status === 'fail' ? '失败' : '无法识别',
   'settings.diagnostics.probesSummary': (ok, warn, fail) => `${ok} 项正常 · ${warn} 项警告 · ${fail} 项失败`,
   'settings.diagnostics.onlyProblems': '仅显示问题',
   'settings.diagnostics.logs': '最近日志',
