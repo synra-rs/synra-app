@@ -803,6 +803,42 @@ async function checkFacadeIsFresh(): Promise<void> {
   }
 }
 
+/**
+ * Every page's body raises the buttons inside it to the touch floor.
+ *
+ * # Why this is a script and not a habit
+ *
+ * `AButton` is always `size="small"` — 24px. The floor comes from one utility on an ancestor, and until 16.97 three of
+ * the four pages simply did not have it: their body buttons were 24px while the devices page's were 44. Nothing caught
+ * it, because no test reads computed style, and a missing parent utility looks exactly like a page that has none.
+ *
+ * The check is on the page root, not on every file: `SettingsRow`, `PageHeader` and the row components raise their own
+ * buttons and are nested inside a page, so requiring the utility on each of them would demand it twice.
+ */
+async function checkPageButtons(): Promise<void> {
+  const floor = '[&_.ant-btn]:min-h-11'
+  const pages = await sources(join(here, 'src', 'pages'))
+  let counted = 0
+
+  for (const file of pages) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    // A page is a file whose template opens with a `<section>`; the row components start with theirs.
+    if (!/<section\b/.test(text) || !text.includes('<AButton'))
+      continue
+    counted += 1
+    if (!text.includes(floor)) {
+      failures.push({
+        check: 'page-buttons',
+        detail: `${relative(here, file)} draws buttons but its section does not carry \`${floor}\``
+      })
+    }
+  }
+
+  notes.push(`page-buttons: ${counted.toString()} page(s) raise their body buttons`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -810,6 +846,7 @@ const called = await checkCommandNames()
 await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 await checkFacadeIsFresh()
+await checkPageButtons()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
