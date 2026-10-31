@@ -11,12 +11,22 @@
     keeps this from needing a new command, and F's boundary says not to add one
     ([10](../../../design-docs/ui-design/10-delivery-and-acceptance.md) §2).
   -->
+  <!--
+    ★ `:wrap-props` names the dialog. `vc-dialog`'s `Dialog.js` sets
+      `"aria-labelledby": title ? ariaIdRef.value : null` on the `role="dialog"` element, and this palette has no
+      `title` — a title bar above a search box is one line of nothing between the user and the field. So the dialog
+      announced itself as "dialog" with no name, and the one control inside it was the only way to tell what opened.
+
+    `wrapProps` is spread onto that same element after `role`, which is where an `aria-label` has to be: the label
+    must belong to the role it names.
+  -->
   <AModal
     :open="open"
     :footer="null"
     :closable="false"
     :width="560"
     :destroy-on-close="false"
+    :wrap-props="{ 'aria-label': messages.search.title }"
     wrap-class-name="search-modal"
     @cancel="close"
   >

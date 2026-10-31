@@ -265,4 +265,22 @@ describe('the search box', () => {
     expect(text()).not.toContain(messages.search.scope)
     expect(text()).toContain(messages.search.empty)
   })
+
+  it('names the dialog it opens', async () => {
+    // ★ `vc-dialog` sets `"aria-labelledby": title ? ariaIdRef.value : null` and nothing else, so a palette with no
+    //   `title` — this one has none, because a title bar above a search field is a line of nothing between the user and
+    //   the box — announced itself as an unnamed dialog. `wrapProps` is spread onto that same `role="dialog"` element.
+    //
+    //   Asserted on the rendered attribute rather than the component prop: what a screen reader reads is the node.
+    const { wrapper } = mountPalette()
+    try {
+      await open(wrapper)
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog, 'the palette dialog is missing').not.toBeNull()
+      expect(dialog?.getAttribute('aria-label')).toBe(messages.search.title)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
 })
