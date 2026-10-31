@@ -288,7 +288,9 @@ describe('the home page', () => {
       peerName: 'Study PC',
       direction: 'receive',
       kind: 'file',
-      state: 'receiving',
+      // ★ The kernel only ever writes `active` or `offered` (`transfers.rs`); this fixture said `receiving`, which no
+      // transfer carries. A fixture with an invented state cannot notice that the row prints states untranslated.
+      state: 'active',
       fileName: 'notes.txt',
       receivedBytes: 5,
       totalBytes: 10,
@@ -306,6 +308,36 @@ describe('the home page', () => {
     expect(wrapper.text()).toContain('notes.txt')
     expect(wrapper.text()).toContain(messages.home.inFlight.receiving)
     expect(wrapper.text()).toContain('50%')
+    // The row's tag is a word, not the wire name it is built from.
+    expect(wrapper.text()).toContain(messages.home.inFlight.states.active)
+    const tag = wrapper.findAllComponents({ name: 'ATag' }).find(candidate => candidate.text() === messages.home.inFlight.states.active)
+    expect(tag, 'the state tag is not translated').toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('keeps a transfer state it does not know rather than naming it something else', async () => {
+    // A newer kernel may add a state. Printing the wire name is honest; borrowing "in progress" would be a guess.
+    const transfer: TransferSnapshot = {
+      transferId: '55555555-5555-4555-8555-555555555555',
+      peerDevice: '11111111-1111-4111-8111-111111111111',
+      peerName: 'Study PC',
+      direction: 'send',
+      kind: 'file',
+      state: 'paused',
+      fileName: 'notes.txt',
+      receivedBytes: 1,
+      totalBytes: 10,
+      blocksDone: 0,
+      blocksTotal: 1,
+      startedAtMs: 1
+    }
+    answer({ intent_list: [], transfer_list: [transfer] })
+
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('paused')
+    expect(wrapper.text()).not.toContain(messages.home.inFlight.states.active)
     wrapper.unmount()
   })
 
@@ -378,7 +410,7 @@ describe('the home page', () => {
       peerName: 'Study PC',
       direction: 'receive',
       kind: 'file',
-      state: 'receiving',
+      state: 'active',
       fileName: 'notes.txt',
       receivedBytes: 5,
       totalBytes: 10,
@@ -426,7 +458,7 @@ describe('the home page', () => {
       peerName: 'Study PC',
       direction: 'send',
       kind: 'file',
-      state: 'sending',
+      state: 'active',
       fileName: 'notes.txt',
       receivedBytes: 0,
       totalBytes: 10,

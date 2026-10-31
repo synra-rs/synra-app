@@ -62,7 +62,7 @@
                   {{ directionOf(transfer) }}
                 </ATag>
                 <ATag class="m-0">
-                  {{ transfer.state }}
+                  {{ stateLabel(transfer) }}
                 </ATag>
                 <!--
                   The same command for both directions: an outgoing transfer stops its worker, an incoming one leaves the
@@ -359,6 +359,16 @@ function progressLabel(transfer: TransferSnapshot): string {
 /** The direction as a word, because it decides which side of the link the cancel command reaches. */
 function directionOf(transfer: TransferSnapshot): string {
   return transfer.direction === 'receive' ? messages.home.inFlight.receiving : messages.home.inFlight.sending
+}
+
+/**
+ * ★ `state` is a wire name (`active`, `offered`), not a word. The row used to print it raw, so a Chinese screen showed
+ * "active" — and a reader who did not know the protocol could not tell a moving transfer from one waiting to be accepted.
+ * An unrecognised state keeps its own name rather than borrowing a nearby one.
+ */
+function stateLabel(transfer: TransferSnapshot): string {
+  const known: Record<string, string> = messages.home.inFlight.states
+  return known[transfer.state] ?? transfer.state
 }
 
 /** Asks the kernel to abandon a transfer, whichever direction it is moving. */

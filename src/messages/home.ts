@@ -33,7 +33,15 @@ export const home = {
     confirm: 'Abandon this transfer?',
     abandon: 'Abandon',
     keep: 'Continue transfer',
-    progress: '{done} of {total}'
+    progress: '{done} of {total}',
+    /**
+     * ★ The row used to print `transfer.state` raw, so a Chinese screen said "active" and "offered". Those are wire names,
+     * not words: `active` is a transfer with bytes moving, `offered` is a question the receiver has not answered yet.
+     */
+    states: {
+      active: 'In progress',
+      offered: 'Waiting for the other device'
+    } satisfies Record<string, string>
   },
 
   received: {

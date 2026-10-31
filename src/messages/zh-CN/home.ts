@@ -22,6 +22,8 @@ export const home = {
   'home.inFlight.abandon': '取消传输',
   'home.inFlight.keep': '继续传输',
   'home.inFlight.progress': '{done} / {total}',
+  'home.inFlight.states.active': '传输中',
+  'home.inFlight.states.offered': '等待对方确认',
   'home.received.title': '任务',
   'home.received.empty': '暂无任务。',
   'home.received.accept': '接受',
