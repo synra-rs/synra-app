@@ -49,3 +49,29 @@ it('restores language before visiting settings and updates navigation, document 
     wrapper.unmount()
   }
 })
+
+it('gives the search entry a full-size target', async () => {
+  // ★ `09 §3` sets 44px as the floor. This button had only `py-1`, so its height came entirely from its contents and
+  // an icon size change would have moved the target. Asserted on the class: jsdom has no layout.
+  window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  call.mockImplementation(async (command: string) => {
+    if (command === 'config_get')
+      return { ok: true, value: { values: {}, overridden: [] } }
+    if (command === 'devices_snapshot')
+      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    throw new Error(`Unexpected command: ${command}`)
+  })
+  const pinia = createPinia()
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  await router.push('/')
+  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, RouterView: true } } })
+  try {
+    await flushPromises()
+    const entry = wrapper.get('[data-testid="search-entry"]')
+    expect(entry.classes()).toContain('min-h-11')
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
