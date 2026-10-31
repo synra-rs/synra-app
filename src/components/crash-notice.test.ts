@@ -54,6 +54,20 @@ describe('the crash notice', () => {
     wrapper.unmount()
   })
 
+  it('keeps a report whose clock is ahead of ours rather than hiding it', async () => {
+    // ★ The cut is `atMs >= now - window`, with no upper bound. A report stamped in the future means the clock moved
+    //   backwards between the write and this read — the kernel makes the same choice in `CrashReport::is_recent`. An
+    //   upper bound would hide exactly the crash someone is looking for. The list above tests the old side only.
+    mocks.call.mockResolvedValueOnce(report([{ ...RECENT, atMs: Date.now() + 60 * 60 * 1000 }]))
+
+    const wrapper = mount(CrashNotice)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.crash.title)
+    expect(wrapper.text()).toContain(messages.crash.detail(1))
+    wrapper.unmount()
+  })
+
   it('stays silent when every report is older than the prompt window', async () => {
     mocks.call.mockResolvedValueOnce(report([OLD]))
 
