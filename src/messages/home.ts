@@ -15,8 +15,14 @@ export const home = {
   wire: {
     label: 'This device and the others',
     states: {
-      transferring: { headline: 'Transferring', detail: 'A transfer is in progress.' },
-      connected: { headline: 'Connected', detail: 'The device is available.' },
+      /**
+       * ★ `detail` only where it is shown. `HomePage` renders it under `wire.state === 'none' || 'offline'` — the two
+       * states where the headline alone leaves a question ("no device" begs "so how do I get one?"). `connected` and
+       * `transferring` used to carry one too, and neither was ever rendered: `09 §6` had already decided the pair
+       * "connected + device ready" collapses to "connected", so the detail was the half it deleted.
+       */
+      transferring: { headline: 'Transferring' },
+      connected: { headline: 'Connected' },
       offline: { headline: 'Not reachable', detail: 'Paired, but it is not answering right now.' },
       none: { headline: 'No device yet', detail: 'Pair a device to connect.' }
     },

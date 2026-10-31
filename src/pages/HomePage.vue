@@ -30,7 +30,12 @@
           {{ wirePeerName ?? messages.home.wire.action }}
         </span>
       </div>
-      <p v-if="wire.state === 'none' || wire.state === 'offline'" class="m-0 text-xs text-ink-dim">
+      <!--
+        ★ `'detail' in state`, not `wire.state === 'none' || 'offline'`: only those two states define a detail, and
+        asking for the property is the check TypeScript can actually narrow on. Writing the state names again here
+        was a second copy of the same fact — it just disagreed with the message file whenever one changed.
+      -->
+      <p v-if="'detail' in state" class="m-0 text-xs text-ink-dim">
         {{ state.detail }}
       </p>
     </section>
