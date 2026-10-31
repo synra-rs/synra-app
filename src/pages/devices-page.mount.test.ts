@@ -170,6 +170,24 @@ describe('the devices page', () => {
     wrapper.unmount()
   })
 
+  it('says the last-seen time is unknown instead of showing the epoch', async () => {
+    // ★ `DeviceRow` prints `lastSeenMs` when it is above zero and `unknownTime` otherwise. The fixture's first card
+    // carries `lastSeenMs: 0`, so this branch has always been drawn — it was just never asserted. Without the guard the
+    // page would print 1970 for a device it has never had a session with, which reads as a real timestamp.
+    mocks.call.mockResolvedValue({ ok: true, value: { identity: IDENTITY, devices: [DEVICES[0]!], scanning: undefined } })
+    const wrapper = mount(DevicesPage)
+    await flushPromises()
+
+    const details = wrapper.findAll('button').find(button => button.text() === messages.devices.details)
+    expect(details, 'the details toggle is missing').toBeDefined()
+    await details!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(messages.devices.unknownTime)
+    expect(wrapper.text()).not.toContain('1970')
+    wrapper.unmount()
+  })
+
   it('cancels a running scan by the id in the authoritative snapshot', async () => {
     let snapshots = 0
     mocks.call.mockImplementation(async (command: string) => {
