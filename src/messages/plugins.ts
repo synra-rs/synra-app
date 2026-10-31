@@ -137,6 +137,16 @@ export const plugins = {
     trust: 'Trust key',
     revoke: 'Revoke key',
     /**
+     * ★ The row's tag used to print `publisher.trust` raw, so a Chinese list said `seen` / `trusted` / `revoked`. Those
+     * are the three values `synra-core`'s `decide` accepts (`TRUST_SEEN`/`TRUST_TRUSTED`/`TRUST_REVOKED`), and they are
+     * decisions rather than states: `seen` means nobody has looked at the key yet, `revoked` means someone rejected it.
+     */
+    trustStates: {
+      seen: 'Not reviewed',
+      trusted: 'Trusted',
+      revoked: 'Revoked'
+    },
+    /**
      * The mark on a card whose publisher needs attention — the same two rungs the entry's counter counts.
      *
      * Worded as "not trusted" rather than "undecided", because it also covers `revoked`: that key was decided against

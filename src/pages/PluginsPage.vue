@@ -56,7 +56,7 @@
             </span>
             <span class="row gap-2">
               <ATag class="m-0">
-                {{ publisher.trust }}
+                {{ messages.plugins.publishers.trustStates[publisher.trust as keyof typeof messages.plugins.publishers.trustStates] ?? publisher.trust }}
               </ATag>
               <AButton
                 v-if="publisher.trust !== 'trusted'"

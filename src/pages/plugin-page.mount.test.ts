@@ -1099,6 +1099,17 @@ describe('the plugins page', () => {
       expect(wrapper.get('#plugin-publishers').attributes('style')).toContain('display: none')
       await wrapper.get('[data-testid="publishers-toggle"]').trigger('click')
       expect(wrapper.get('#plugin-publishers').attributes('style') ?? '').not.toContain('display: none')
+      // ★ The three decisions are shown as words. The row used to print `publisher.trust` raw, so this Chinese list said
+      // `seen` / `revoked` / `trusted` — the very values `decide` accepts, not anything a reader was meant to see.
+      const manager = wrapper.get('#plugin-publishers')
+      for (const trust of ['seen', 'trusted', 'revoked'] as const) {
+        expect(manager.text()).toContain(messages.plugins.publishers.trustStates[trust])
+      }
+      // And no tag carries the wire name. Scoped to the tags: the publisher ids in this fixture are `@seen` and
+      // `@revoked` too, so a whole-panel text search would fail on the ids rather than on the labels.
+      const tags = manager.findAllComponents({ name: 'ATag' }).map((tag: { text: () => string }) => tag.text())
+      for (const wire of ['seen', 'trusted', 'revoked'])
+        expect(tags).not.toContain(wire)
     }
     finally {
       wrapper.unmount()
