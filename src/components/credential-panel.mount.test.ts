@@ -116,6 +116,30 @@ it('explains the trusted backup requirement when no registration or recovery rec
   wrapper.unmount()
 })
 
+it('recovers from a read failure through the refresh button', async () => {
+  // The notice carries `@retry`, but a read refusal has no actions, so the way back is the separate refresh button
+  // that is always on the panel. This pins that route rather than a button the kernel may or may not ask for.
+  let failing = true
+  call.mockImplementation(async (command: string) => {
+    if (command === 'identity_credentials')
+      return failing
+        ? { ok: false, error: { code: 'internal', message: 'error.internal' } }
+        : { ok: true, value: backend }
+    if (command === 'devices_snapshot')
+      return { ok: true, value: { identity: IDENTITY, devices: [] } }
+    throw new Error(command)
+  })
+  const wrapper = mount(CredentialPanel)
+  await flushPromises()
+  expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('internal')
+  failing = false
+  await wrapper.findAll('button').find(node => node.text() === messages.settings.credentials.refresh)!.trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent(ErrorNotice).exists()).toBe(false)
+  expect(wrapper.text()).toContain(backend.enrollment!.fingerprint)
+  wrapper.unmount()
+})
+
 it('keeps a failed cleanup visible instead of leaving only the repair note', async () => {
   // The cleanup is the destructive half of a repair: it revokes the retired keys. A refusal there must not leave the
   // screen saying only "repaired" while the keys are still usable.
