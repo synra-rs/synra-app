@@ -401,6 +401,35 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('offers both ways out of a name conflict, not just overwrite', async () => {
+    // ★ The conflict sentence promises two moves — "load the current value, or overwrite with this draft" — and the
+    // other two fields that can conflict (registry, audit retention) both offer `loadCurrent`. The name field offered
+    // only overwrite, so a name changed in another window could be lost with no way to take the other value instead.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      const rename = wrapper.findAll('button').find(button => button.text() === messages.settings.field.rename)
+      expect(rename, 'the rename button is missing').toBeDefined()
+      await rename!.trigger('click')
+      await wrapper.get('#device-name').setValue('Draft name')
+
+      // Another window renames the device while this one is typing.
+      const { useDevicesStore } = await import('../stores/devices')
+      useDevicesStore().applySnapshot({ identity: { ...IDENTITY, displayName: 'External name' }, devices: [] })
+      await flushPromises()
+
+      expect(wrapper.text()).toContain(messages.settings.edit.conflict)
+      const load = wrapper.findAll('button').find(button => button.text() === messages.settings.edit.loadCurrent)
+      expect(load, 'no way to take the other value').toBeDefined()
+      await load!.trigger('click')
+      expect((wrapper.get('#device-name').element as HTMLInputElement).value).toBe('External name')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('lists a trusted sender and takes the trust back by unsetting the last key', async () => {
     // ★ The list is the configuration key, not a second store: removing the only sender unsets the key rather than
     // writing an empty array, because "no preference" and "a preference for nobody" are the same thing to the kernel.

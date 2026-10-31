@@ -54,6 +54,15 @@
                   <AButton type="primary" :loading="busy.name" :disabled="needsRead.name || !nameDirty || !nameDraft.trim()" @click="saveName">
                     {{ nameConflict ? messages.settings.edit.overwrite : messages.settings.field.save }}
                   </AButton>
+                  <!--
+                    ★ The conflict sentence below offers two ways out — "load the current value, or overwrite with this
+                    draft" — but this row only had the second. The other two fields that can conflict (registry, audit
+                    retention) both swap their button to `loadCurrent`; a name conflict left overwriting as the only move,
+                    which loses whatever the other window wrote.
+                  -->
+                  <AButton v-if="nameConflict" :disabled="busy.name" @click="resetName">
+                    {{ messages.settings.edit.loadCurrent }}
+                  </AButton>
                   <AButton :disabled="busy.name || needsRead.name" @click="cancelRename">
                     {{ messages.settings.field.cancel }}
                   </AButton>
