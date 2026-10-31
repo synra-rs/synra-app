@@ -766,6 +766,31 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('shows a probe answer it does not recognise without calling it a failure', async () => {
+    // ★ `ProbeStatus` is `#[non_exhaustive]`; a newer kernel can answer with a name this build has never seen. The row
+    // used to fall through to "Failed" and a red tag — telling someone to fix a probe that reported no problem.
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_probes: { results: [{ name: 'skipped_by_policy', status: 'skipped', detail: 'policy' }] }
+    })
+
+    const wrapper = await mountPage()
+    await flushPromises()
+    await openDiagnostic(wrapper, messages.settings.diagnostics.probesTitle)
+    await wrapper.findAll('button').find(candidate => candidate.text() === messages.settings.diagnostics.probes)?.trigger('click')
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain(messages.settings.diagnostics.probeStatus('skipped'))
+    expect(text).not.toContain(messages.settings.diagnostics.probeStatus('fail'))
+    // The tag is neutral, so the colour does not contradict the word next to it.
+    const tag = wrapper.findAllComponents({ name: 'ATag' }).find(candidate => candidate.text() === messages.settings.diagnostics.probeStatus('skipped'))
+    expect(tag, 'the unknown-status tag is missing').toBeDefined()
+    expect(tag?.props('color')).toBe('default')
+    wrapper.unmount()
+  })
+
   it('keeps drafts across categories and exposes external changes without replacing them', async () => {
     answer({ config_get: { values: { 'plugins.registry': 'https://a.example' }, overridden: ['plugins.registry'] }, identity_get: IDENTITY, config_set: null })
     const wrapper = await mountPage()
