@@ -20,8 +20,9 @@
  */
 .screen {
   background-image:
-    radial-gradient(60rem 40rem at 12% -10%, color-mix(in oklab, var(--synra-primary) 16%, transparent), transparent),
-    radial-gradient(50rem 36rem at 100% 100%, color-mix(in oklab, var(--synra-primary) 10%, transparent), transparent);
+    radial-gradient(58rem 40rem at 24% -32%, color-mix(in oklab, var(--synra-primary) 22%, transparent), transparent),
+    radial-gradient(48rem 34rem at 98% -22%, color-mix(in oklab, var(--synra-primary) 11%, transparent), transparent),
+    radial-gradient(60rem 44rem at 66% 122%, color-mix(in oklab, var(--synra-primary) 13%, transparent), transparent);
   background-attachment: fixed;
 }
 </style>

@@ -25,7 +25,13 @@
       and "what could I install". The install button stays in the header because installing is a page-level action, not
       a property of either list.
     -->
-    <ASegmented v-model:value="pluginCategory" :options="pluginCategoryOptions" data-testid="plugin-category" />
+    <!--
+      ★ `self-start` is load-bearing. `ASegmented` has no width of its own, so inside a `stack` (which is
+        `flex-col items-stretch`) it stretched to the full content width — and its own background only covers the
+        options, so the control read as a short dark pill with a long empty band beside it, brighter than the page
+        wash behind it. Two categories deserve the width of two categories, not of the page.
+    -->
+    <ASegmented v-model:value="pluginCategory" class="self-start" :options="pluginCategoryOptions" data-testid="plugin-category" />
 
     <!--
       Trust management, opened from its own header button rather than sitting under whichever list was last scrolled to
