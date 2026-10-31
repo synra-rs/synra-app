@@ -52,7 +52,7 @@ export const common = {
   'errors.rate_limited': '请求过于频繁，请稍后再试。',
   'errors.timeout': '操作等待超时，已停止。',
   'errors.unsupported': '此版本暂不支持这项操作。',
-  'errors.unknown': '操作未成功。',
+  'errors.unknown': '操作没有完成。请再试一次；若反复出现，请在设置里导出诊断报告。',
   'actions.openSettings': '打开设置',
   'actions.requestCapability': '申请权限',
   'actions.installPlugin': '打开插件',

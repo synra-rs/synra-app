@@ -38,7 +38,11 @@ export const errors = {
   timeout: 'That took too long and was stopped.',
   // The code half of the key above, for a refusal whose message key this table has not met.
   unsupported: 'This version cannot do that yet.',
-  unknown: 'That did not work.'
+  // ★ The one sentence here that cannot name a cause, so it names the next step instead. `09 §6` gives
+  // "That did not work." as the example to retire, and the comment above already said it tells the reader nothing.
+  // The fallback stays neutral on purpose — inventing advice for a sandbox trap would be worse — so it offers what is
+  // true of every failure: trying again, and where the diagnostics are if that does not help.
+  unknown: 'That did not finish. Try again; if it keeps happening, export diagnostics from Settings.'
 } as const
 
 /** The labels for the kernel's suggested actions, when it sends one with an error. */

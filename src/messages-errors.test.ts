@@ -46,6 +46,14 @@ describe('error sentences', () => {
       expect(errors[code as keyof typeof errors]).not.toBe(errors.unknown)
     }
   })
+
+  it('gives the fallback a next step, since it cannot give a cause', () => {
+    // ★ `09 §6` names "That did not work." as the sentence to retire: it reports a mood, not a cause or a step. The
+    // fallback is the one entry that cannot know the cause (the sandbox codes deliberately have no sentence), so it
+    // has to offer what is true of every failure — retry, then where the diagnostics are.
+    expect(errors.unknown).not.toBe('That did not work.')
+    expect(errors.unknown.length).toBeGreaterThan('That did not work.'.length)
+  })
 })
 
 /**
