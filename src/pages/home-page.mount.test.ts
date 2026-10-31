@@ -258,8 +258,11 @@ describe('the home page', () => {
 
   it('gives the details toggle a full-size target', async () => {
     // ★ `09 §3` sets 44px as the floor for anything a thumb has to hit. The trace row's toggle was `min-h-8` (32px) —
-    // the only clickable element in the app under the floor. Read from the classes rather than measured: jsdom has no
-    // layout, and every other control on this page carries `min-h-11`.
+    // under the floor at every width. Read from the classes rather than measured: jsdom has no layout.
+    //
+    // ★ And `md:min-h-8`, which is what every other control in this app pairs with it (`DeviceRow`, `SettingsRow`): the
+    // floor is for a thumb, and a desktop pointer does not need it. Setting only `min-h-11` would have made this row
+    // 44px tall on a desktop while its neighbours stayed 32 — the fix would have been a new inconsistency.
     answer({
       intent_list: [{ intentId: 'i1', traceId: 't1', state: 'succeeded', candidates: [], startedAtMs: 1 }]
     })
@@ -269,6 +272,8 @@ describe('the home page', () => {
       const toggle = wrapper.findAll('button').find(button => button.attributes('aria-expanded') !== undefined)
       expect(toggle, 'the details toggle is missing').toBeDefined()
       expect(toggle!.classes()).toContain('min-h-11')
+      // The desktop drop exists, or the row is taller than the ones beside it.
+      expect(wrapper.html()).toContain('md:min-h-8')
     }
     finally {
       wrapper.unmount()

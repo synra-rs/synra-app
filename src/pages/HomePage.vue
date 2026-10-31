@@ -191,7 +191,7 @@
               -->
               <button
                 type="button"
-                class="min-h-11 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable hover:text-ink"
+                class="min-h-11 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable md:min-h-8 hover:text-ink"
                 :aria-expanded="expanded === intent.intentId"
                 @click="toggleExpanded(intent.intentId)"
               >

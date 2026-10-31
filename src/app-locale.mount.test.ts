@@ -53,6 +53,8 @@ it('restores language before visiting settings and updates navigation, document 
 it('gives the search entry a full-size target', async () => {
   // ★ `09 §3` sets 44px as the floor. This button had only `py-1`, so its height came entirely from its contents and
   // an icon size change would have moved the target. Asserted on the class: jsdom has no layout.
+  //
+  // ★ `md:min-h-8` as well, matching `DeviceRow` and `SettingsRow`: the floor is for a thumb, not a desktop pointer.
   window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   call.mockImplementation(async (command: string) => {
@@ -70,6 +72,8 @@ it('gives the search entry a full-size target', async () => {
     await flushPromises()
     const entry = wrapper.get('[data-testid="search-entry"]')
     expect(entry.classes()).toContain('min-h-11')
+    // The desktop drop, so this entry is not taller than the nav items beside it.
+    expect(wrapper.html()).toContain('md:min-h-8')
   }
   finally {
     wrapper.unmount()

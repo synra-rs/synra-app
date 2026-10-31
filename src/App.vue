@@ -44,7 +44,7 @@
           -->
           <button
             type="button"
-            class="ms-auto min-h-11 row shrink-0 items-center gap-1 rounded-control px-1.5 py-1 text-ink-dim focusable @hover:bg-raised @hover:text-ink"
+            class="ms-auto min-h-11 row shrink-0 items-center gap-1 rounded-control px-1.5 py-1 text-ink-dim focusable md:min-h-8 @hover:bg-raised @hover:text-ink"
             :class="{ 'ms-0': rail }"
             :aria-label="messages.search.title"
             :title="messages.search.title"
