@@ -164,6 +164,9 @@ describe('the search box', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/devices')
+    // ★ The result named one device, and the page opens pairing for `?device=`. Asserting only the path let the id be
+    // dropped: picking a device by name and landing on the list is the same as not having searched for it.
+    expect(router.currentRoute.value.query.device).toBe('peer-1')
   })
 
   it('moves through results with the arrow keys and takes one with Enter', async () => {

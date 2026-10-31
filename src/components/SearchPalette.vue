@@ -140,7 +140,9 @@ const items = computed<readonly Item[]>(() => [
     detail: card.platform,
     icon: 'i-carbon-devices',
     group: 'devices' as const,
-    to: '/devices'
+    // ★ The result names one device, and `DevicesPage` opens pairing for `?device=`. Without it, picking a device by
+    // name and landing on the list leaves the reader to find the same device again — the gap 16.91 closed for notices.
+    to: `/devices?device=${encodeURIComponent(card.deviceId)}`
   })),
   ...PAGES.map(page => ({
     id: `page:${page.path}`,
