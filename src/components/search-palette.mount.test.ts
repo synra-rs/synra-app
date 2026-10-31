@@ -315,4 +315,23 @@ describe('the search box', () => {
       wrapper.unmount()
     }
   })
+
+  it('points at nothing once the last result is gone', async () => {
+    // ★ A combobox that keeps naming a row which no longer exists is a dangling id reference — ARIA forbids it, and
+    //   the reader is told about an option the user cannot see. This is the state after typing past the last match,
+    //   which is the ordinary way to empty the list.
+    const { wrapper } = mountPalette()
+    try {
+      await open(wrapper)
+      await type('i')
+      expect(field().getAttribute('aria-activedescendant'), 'nothing was selected to begin with').toBeTruthy()
+
+      await type('zzzz-nothing')
+      expect(options().length, 'the list did not empty, so this is not the state under test').toBe(0)
+      expect(field().getAttribute('aria-activedescendant'), 'the combobox still names a row that is gone').toBeFalsy()
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
 })
