@@ -13,11 +13,16 @@
           </ATag>
         </div>
       </div>
-      <div class="row flex-wrap gap-2">
+      <!--
+        ★ `row-between` already puts this block at the row's right edge, so `ms-auto` here would do nothing. What does
+          not line up is the block's own right edge: it is as wide as its contents, and a paired device has no Pair
+          button, so the two rows' Details buttons settled at different x while both were "right aligned".
+      -->
+      <div class="row flex-wrap items-center gap-2">
         <AButton v-if="!card.paired" :disabled="pairingBusy" @click="emit('pair', card.deviceId)">
           {{ messages.devices.pair }}
         </AButton>
-        <AButton type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
+        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />
         </AButton>

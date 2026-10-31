@@ -86,14 +86,14 @@
         </AButton>
       </AEmpty>
 
-      <section v-if="devices.paired.length" :aria-label="messages.devices.paired">
-        <h2 ref="pairedHeading" class="m-0 text-base font-medium" tabindex="-1">
+      <section v-if="devices.paired.length" :aria-label="messages.devices.paired" class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
+        <h2 ref="pairedHeading" class="m-0 text-sm font-medium" tabindex="-1">
           {{ messages.devices.paired }}
         </h2>
         <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @forget="askForget" />
       </section>
-      <section v-if="nearby.length" :aria-label="messages.devices.nearby">
-        <h2 class="m-0 text-base font-medium">
+      <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
+        <h2 class="m-0 text-sm font-medium">
           {{ messages.devices.nearby }}
         </h2>
         <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @pair="pair" />
