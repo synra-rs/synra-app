@@ -129,10 +129,37 @@ describe('the devices page', () => {
       ? { ok: true, value: answers[command] }
       : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
     // `DEVICES[0]` is already paired, so the named device is one the list offers to pair.
-    const wrapper = await mountDevices({ query: { device: DEVICES[1]!.deviceId } })
+    const wrapper = await mountDevices({ attachTo: document.body, query: { device: DEVICES[1]!.deviceId } })
     try {
       await flushPromises()
       expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('drops the device from the URL when pairing is closed', async () => {
+    // ★ `PluginsPage` drops `?plugin=` when the reader leaves the row (`leaveTarget`). Without the same here, closing
+    // the panel left the id in the address bar, so navigating away and back re-opened a panel already dismissed.
+    const answers: Record<string, unknown> = {
+      devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_status: { state: 'idle' }
+    }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = await mountDevices({ attachTo: document.body, query: { device: DEVICES[1]!.deviceId } })
+    try {
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      await wrapper.get('[aria-controls="device-pairing"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      const router = (wrapper.vm as unknown as {
+        $router: { currentRoute: { value: { query: Record<string, unknown> } } }
+      }).$router
+      expect(router.currentRoute.value.query.device).toBeUndefined()
     }
     finally {
       wrapper.unmount()

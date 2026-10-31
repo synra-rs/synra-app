@@ -15,7 +15,7 @@
         <AButton v-else :loading="startingScan" :disabled="scanning" @click="scan">
           {{ startingScan ? messages.devices.scanning : messages.devices.scan }}
         </AButton>
-        <AButton ref="pairTrigger" type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="showPairing = !showPairing">
+        <AButton ref="pairTrigger" type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="togglePairing">
           {{ pairing.active ? messages.devices.pairingResume : messages.devices.pairingTitle }}
         </AButton>
       </PageHeader>
@@ -126,7 +126,7 @@
 import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PairingPanel from '../components/PairingPanel.vue'
@@ -139,6 +139,7 @@ import DeviceRow from './devices/DeviceRow.vue'
 const devices = useDevicesStore()
 const pairing = usePairingStore()
 const route = useRoute()
+const router = useRouter()
 const selectedDeviceId = ref<string>()
 const selectedPeer = computed(() => selectedDeviceId.value ? devices.get(selectedDeviceId.value) : undefined)
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
@@ -151,6 +152,21 @@ function pair(deviceId: string): void {
   if (pairing.active || pairing.busy)
     return
   selectedDeviceId.value = deviceId
+  showPairing.value = true
+}
+
+/**
+ * ★ Closing drops `?device=` as well as the panel. `PluginsPage` does the same with `?plugin=` (`leaveTarget`): with the
+ * id still in the URL, leaving the page and coming back re-opens a panel the reader has already dismissed, and the
+ * address bar goes on claiming a device is selected.
+ */
+async function togglePairing(): Promise<void> {
+  if (showPairing.value) {
+    const { device: _device, ...query } = route.query
+    await router.replace({ path: route.path, query, hash: route.hash })
+    showPairing.value = false
+    return
+  }
   showPairing.value = true
 }
 
