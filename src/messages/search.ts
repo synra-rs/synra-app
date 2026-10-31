@@ -9,6 +9,11 @@ export const search = {
   /** The icon's accessible name, and the dialog's title once it opens. */
   title: 'Search',
   /**
+   * ★ The `code` chip after this carries the key itself, so this half has to end where a key would start — "Shortcut"
+   *   reads "Shortcut /", and the chip is what makes the slash look pressable rather than grammatical.
+   */
+  shortcutHint: 'Shortcut',
+  /**
    * ★ Short on purpose. This is drawn on a ~208px sidebar button beside a `/` key, so the four-word version
    *   ("Search plugins, settings and devices") never fit and always rendered as "Search plugins, sett…". What it
    *   searches is stated once inside the palette (`scope`); the button only has to say "this is a search".

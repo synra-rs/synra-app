@@ -42,35 +42,44 @@
             ★ The `/` is shown, not described. A shortcut nobody can see is a shortcut only its author uses, and it
               costs one character here.
           -->
-          <button
-            type="button"
-            class="group ms-auto min-h-11 row w-full min-w-0 shrink items-center gap-2 rounded-control border border-line bg-raised px-2.5 py-1 text-ink-dim focusable transition-colors @hover:border-ink-dim/40 @hover:bg-surface @hover:text-ink md:min-h-8"
-            :class="{ 'ms-0 w-auto justify-center px-1.5': rail }"
-            :aria-label="messages.search.title"
-            :title="messages.search.title"
-            data-testid="search-entry"
-            @click="searchPalette?.show()"
-          >
-            <span class="i-carbon-search shrink-0 text-base transition-colors group-hover:text-primary" aria-hidden="true" />
-            <!--
-              ★ One line, and only what fits. The placeholder says what the field searches; the `kbd` says the shortcut
-                exists. At the sidebar's width both cannot fit, and a truncated word reads worse than no word — so the
-                text truncates and the key stays, because the key is the part a person cannot guess.
+          <!--
+            ★ A ghost icon, not a bordered field. The earlier version drew a border, a fill and a placeholder so it
+              would "look like a search box" — and a border plus a fill around one glyph is what makes a control look
+              raised. There is no text to type into here; it opens one, so it should look like a button, and the
+              lightest button in the system is an icon with nothing behind it until the pointer arrives.
 
-              ★ `aria-label` carries the name in both forms: once `rail` collapses the span away, the visible text is
-                gone and the icon is all that is left.
-            -->
-            <span v-if="!rail" class="min-w-0 flex-1 truncate text-start text-sm">{{ messages.search.placeholder }}</span>
+            ★ The shortcut is a tooltip, not a label. `/` beside the glyph made the glyph read as "search slash"; in a
+              tooltip it answers the question a person actually has on hover — "how do I get here faster".
+          -->
+          <ATooltip placement="right">
+            <template #title>
+              {{ messages.search.shortcutHint }}<code class="rounded-control bg-raised px-1 py-0.5 font-mono">{{ messages.search.shortcut }}</code>
+            </template>
             <!--
-              ★ `rounded-control`, not bare `rounded`. The ladder is 8 / 12 / pill and nothing else (`09`), and the bare
-                utility is 4px — a corner next to the 8px one around the field, visibly squarer. A keycap inside a
-                control is still a control-sized corner.
+              ★ No `focusable` here, and that is the fix this control needed twice. `focusable` is the theme's
+                always-on ring — right for a menu item, wrong for an icon: it drew a border and a fill around a single
+                glyph, which is exactly the "embossed button" this kept looking like. A ghost icon wants the ring only
+                on focus, which `focus-visible` provides.
+
+              ★ `bg-transparent` is not redundant with "no background class". The element is a `<button>`, and the
+                user-agent sheet gives it `background-color: buttonface` plus `border: 1px solid buttonborder` — the
+                grey tile that survived three attempts at restyling. `border-0` and `bg-transparent` are what actually
+                turn it into a ghost; without them nothing the class list says can win.
+
+              ★ 44px tall (`09 §3`), only as wide as the glyph plus padding, and `rounded-pill`: a 44 × 44 tile with
+                near-flat corners is what reads as raised at this size, whatever is painted behind it.
             -->
-            <kbd
-              v-if="!rail"
-              class="shrink-0 rounded-control border border-line bg-surface px-1.5 font-mono text-xs leading-5 text-ink-dim transition-colors group-hover:text-ink"
-            >{{ messages.search.shortcut }}</kbd>
-          </button>
+            <button
+              type="button"
+              class="ms-auto grid min-h-11 shrink-0 place-items-center rounded-pill border-0 bg-transparent px-2.5 text-ink-dim transition-colors hover:bg-raised hover:text-ink focus-visible:ring-1 focus-visible:ring-primary md:min-h-8"
+              :class="{ 'ms-0': rail }"
+              :aria-label="messages.search.title"
+              data-testid="search-entry"
+              @click="searchPalette?.show()"
+            >
+              <span class="i-carbon-search text-base" aria-hidden="true" />
+            </button>
+          </ATooltip>
         </div>
 
         <!--
@@ -223,7 +232,7 @@
  */
 import type { DevicesSnapshot } from '@synra/protocol'
 import { synraAntdTheme } from '@synra/theme/antd'
-import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, ConfigProvider } from 'ant-design-vue'
+import { Avatar as AAvatar, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, Tooltip as ATooltip, ConfigProvider } from 'ant-design-vue'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
