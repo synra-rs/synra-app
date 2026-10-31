@@ -1797,4 +1797,33 @@ describe('the plugins page', () => {
     expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_audit')).toHaveLength(1)
     wrapper.unmount()
   })
+
+  it('names the search order control', async () => {
+    // ★ `ASelect` renders a combobox with no accessible name unless it is given one, and this one has no visible
+    //   label beside it — a screen reader announced it as an unnamed combobox between the search box and the button.
+    //   `messages.plugins.catalog.sort` existed for exactly this and had no reader.
+    mocks.call.mockImplementation(async (command: string) => {
+      if (command === 'plugins_list')
+        return { ok: true, value: PLUGINS }
+      if (command === 'plugins_publishers')
+        return { ok: true, value: [] }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+    const wrapper = mountPlugins()
+    try {
+      await flushPromises()
+      // The catalog half is `v-show`-hidden until "discover" is chosen, and a hidden element renders nothing inside —
+      // the first version of this test asserted against an empty `<section>` and got `undefined`.
+      await wrapper.findAllComponents({ name: 'ASegmented' })[0]!.vm.$emit('update:value', 'discover')
+      await flushPromises()
+      // Asserted on the rendered markup, not through a component prop or `[role=combobox]`: what matters is the
+      // attribute that reaches the accessibility tree, and jsdom reports the search box — not this select — as the
+      // panel's only `role=combobox`, so a role query read the wrong element.
+      const panelHtml = wrapper.get('[data-testid="catalog-panel"]').html()
+      expect(panelHtml).toContain(`aria-label="${messages.plugins.catalog.sort}"`)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
 })

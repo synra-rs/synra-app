@@ -140,7 +140,7 @@
           allow-clear
           @press-enter="submitSearch"
         />
-        <ASelect v-model:value="searchSort" :options="sortOptions" class="w-fit" />
+        <ASelect v-model:value="searchSort" :options="sortOptions" :aria-label="messages.plugins.catalog.sort" class="w-fit" />
         <AButton :loading="searching" :disabled="searchText.trim() === '' || catalogBusy" @click="search">
           {{ messages.plugins.catalog.action }}
         </AButton>
