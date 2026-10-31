@@ -65,12 +65,21 @@ const router = useRouter()
 const headline = computed(() => errorSentence(props.code))
 const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
 
-/** Where an action points, when the interface has a screen for it. */
+/**
+ * Where an action points, when the interface has a screen for it.
+ *
+ * ★ `installPlugin` carries the plugin it wants installed, and `PluginsPage` already reads `?plugin=` to open that row
+ * (`targetPluginId`). Dropping the id landed the user on the top of the list instead of the plugin the error named — so
+ * the kernel's "install this one" turned into "here are your plugins, find it yourself".
+ *
+ * `connectDevice` still goes to `/devices` without the id: that page has no `?device=` to receive it. Adding one here
+ * alone would be a link that changes nothing.
+ */
 function to(action: SuggestedAction): string | undefined {
   switch (action.kind) {
     case 'openSettings': return '/settings'
     case 'connectDevice': return '/devices'
-    case 'installPlugin': return '/plugins'
+    case 'installPlugin': return `/plugins?plugin=${encodeURIComponent(action.pluginId)}`
     default: return undefined
   }
 }
