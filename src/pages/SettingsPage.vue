@@ -38,13 +38,24 @@
              `bsk_inspect`'s tree as `button "设置分类"` next to `navigation "设置分类"`. -->
         <label for="settings-category" class="sr-only lg:hidden">{{ messages.settings.navigation }}</label>
         <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
-        <AMenu class="hidden lg:block" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
+        <!--
+          ★ The left rail gets a container like every other grouped surface on the page. It was a bare `AMenu` floating
+            on the background while the warning above it had a border and the right column had nothing — three panel
+            treatments on one screen. `[&_.ant-menu]:bg-transparent` because `AMenu` paints its own fill, and a second
+            fill inside the container's fill is one layer too many.
+        -->
+        <AMenu class="hidden overflow-hidden rounded-surface border border-line [&_.ant-menu]:bg-transparent lg:block" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
           <AMenu.Item v-for="item in categories" :key="item.value">
             {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
           </AMenu.Item>
         </AMenu>
       </nav>
-      <div class="max-w-3xl min-w-0 w-full stack gap-6">
+      <!--
+        ★ The content column is a surface too. Left as a bare column it floated on the background while the warning
+          above had a border — the page read as one bordered thing and one unbordered thing, in that order. The rail
+          and this column are the two halves of one page and now share a treatment.
+      -->
+      <div class="max-w-3xl min-w-0 w-full stack gap-6 rounded-surface border border-line bg-surface p-5">
         <h2 ref="categoryHeading" tabindex="-1" class="m-0 text-base font-semibold outline-none">
           {{ categories.find(item => item.value === category)?.label }}
         </h2>
