@@ -8,7 +8,7 @@
     `max-content` so the English labels ("Device and security") are not truncated, and a page narrower than
     rail + gap + 768 would squeeze that column and reintroduce the truncation this page was just fixed for.
   -->
-  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4" data-page-width="form">
+  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="form">
     <PageHeader :title="messages.settings.title">
       <span v-if="hasDrafts" class="text-xs text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
     </PageHeader>

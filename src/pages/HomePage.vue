@@ -4,7 +4,7 @@
     gives single-column reading/form pages 640–768px; `max-w-3xl` is the 768px end, and the shell's 1200px guard rail
     would otherwise let these short rows stretch across a wide window with nothing to fill the middle.
   -->
-  <section class="mx-auto max-w-3xl min-w-0 stack gap-6 pb-4" data-page-width="reading">
+  <section class="mx-auto max-w-3xl min-w-0 stack gap-6 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="reading">
     <PageHeader :title="messages.home.title">
       <AButton @click="router.push('/devices')">
         {{ wire.state === 'none' ? messages.home.wire.action : messages.home.inFlight.action }}

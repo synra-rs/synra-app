@@ -4,7 +4,7 @@
     below them. It takes the shell's full workspace width ([03 §3](../../design-docs/ui-design/03-shell-and-navigation.md)
     puts long-list workspaces at about 1200px) rather than the 768px reading measure the shell used to impose on it.
   -->
-  <section class="mx-auto max-w-[1200px] min-w-0 stack gap-6 pb-4" data-page-width="workspace">
+  <section class="mx-auto max-w-[1200px] min-w-0 stack gap-6 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="workspace">
     <PageHeader :title="messages.plugins.title">
       <!--
         Trust management has its own entry ([07 §1](../../design-docs/ui-design/07-plugins.md)): it used to be a panel
