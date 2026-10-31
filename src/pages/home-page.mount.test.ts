@@ -229,6 +229,33 @@ describe('the home page', () => {
     wrapper.unmount()
   })
 
+  it.each([
+    ['matching', 'processing'],
+    ['choosing', 'processing'],
+    ['confirming', 'processing'],
+    ['dispatching', 'processing'],
+    ['succeeded', 'success'],
+    ['noHandler', 'warning'],
+    ['failed', 'error'],
+    // The only grey one: nothing is going to happen, and nobody is waiting.
+    ['cancelled', 'default']
+  ])('colours a %s intent %s', async (state, colour) => {
+    // ★ Only `dispatching` used to be `processing`, so `matching`, `choosing` and `confirming` — the three states where
+    // the reader is most obviously waiting — wore the same grey as `cancelled`.
+    answer({ intent_list: [{ intentId: 'i1', traceId: 't1', state, candidates: [], startedAtMs: 1 }] })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    try {
+      await flushPromises()
+      const label = (messages.home.received.states as Record<string, string>)[state]
+      const tag = wrapper.findAllComponents({ name: 'ATag' }).find(candidate => candidate.text() === label)
+      expect(tag, `no tag for ${state}`).toBeDefined()
+      expect(tag?.props('color')).toBe(colour)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('says how many times a dispatch has been retried, and when it gave up', async () => {
     // ★ The kernel retries a dispatch nobody answers; without this line the card said "Running" through all of it, and
     // then went on saying it after the retry bound was reached.

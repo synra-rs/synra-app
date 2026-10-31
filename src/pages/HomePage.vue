@@ -558,7 +558,10 @@ function intentStateColor(state: string): string {
     return 'error'
   if (state === 'noHandler')
     return 'warning'
-  if (state === 'dispatching')
+  // ★ Every state between "a share arrived" and "something ran" is progress the reader is waiting on. Only
+  // `dispatching` had a colour, so `matching`, `choosing` and `confirming` wore the same grey as `cancelled` — the
+  // one state here that means nothing is going to happen.
+  if (state === 'matching' || state === 'choosing' || state === 'confirming' || state === 'dispatching')
     return 'processing'
   return 'default'
 }
