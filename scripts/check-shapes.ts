@@ -1000,6 +1000,46 @@ async function checkCornerLadder(): Promise<void> {
   notes.push(`corner-ladder: ${counted === 0 ? 'no bare `rounded`' : `${counted.toString()} bare \`rounded\``}`)
 }
 
+/**
+ * A native `<button>` clears the user agent's own look.
+ *
+ * ★ This is the defect that took four attempts to find. The user agent sheet gives every `<button>`
+ *   `background-color: buttonface` and `1px solid buttonborder`, so a class list that says nothing about background
+ *   still gets a grey tile with a frame — and no utility class can win until those are reset. The search entry looked
+ *   "embossed" across three restylings for exactly this reason, and every option in the search results was a grey
+ *   block because the same reset was missing there.
+ *
+ * ★ `border-0` + `bg-transparent` are the pair. One without the other leaves half the default look, which is how a
+ *   ghost button ends up with a frame and no fill. Comments are stripped first: several of these buttons now carry a
+ *   note that names both classes, and a note is not the class.
+ */
+async function checkNativeButtons(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    const code = text.replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '))
+    for (const match of code.matchAll(/<button\b[\s\S]{0,800}?>/g)) {
+      counted += 1
+      const noBorder = /border-0|border-none/.test(match[0])
+      const noFill = /bg-transparent/.test(match[0])
+      if (!noBorder || !noFill) {
+        const line = code.slice(0, match.index).split('\n').length
+        const missing = [!noBorder && '`border-0`', !noFill && '`bg-transparent`'].filter(Boolean).join(' and ')
+        failures.push({
+          check: 'native-buttons',
+          detail: `${relative(here, file)}:${line.toString()} draws a native \`<button>\` without ${missing} — the user agent's tile and frame show through`
+        })
+      }
+    }
+  }
+
+  notes.push(`native-buttons: ${counted.toString()} native \`<button>\`${counted === 1 ? '' : 's'} clear the user agent look`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -1012,6 +1052,7 @@ await checkDialogNames()
 await checkControlNames()
 await checkTouchBreakpoints()
 await checkCornerLadder()
+await checkNativeButtons()
 
 for (const note of notes) {
   console.log(`  · ${note}`)

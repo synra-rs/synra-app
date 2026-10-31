@@ -61,13 +61,19 @@
             while the arrow keys moved the selection to another painted two rows identically — and the reader could not
             tell which one Enter would run (`09 §4`).
           -->
+          <!--
+            ★ `border-0 bg-transparent` are load-bearing, not tidying. This is a `<button>` used as a list option, so
+              left alone it carries the user-agent's `background-color: buttonface` and `1px solid buttonborder` — every
+              row in the results list came out as a grey tile. The classes that paint the row (`hover:bg-surface`,
+              `bg-raised` when active) sit on top and only win once the default is cleared.
+          -->
           <button
             v-for="item in group.items"
             :key="item.id"
             type="button"
             role="option"
             :aria-selected="item.id === activeId"
-            class="min-h-11 w-full row items-center gap-2 rounded-control px-2 text-start text-sm hover:bg-surface"
+            class="min-h-11 w-full row items-center gap-2 rounded-control border-0 bg-transparent px-2 text-start text-sm hover:bg-surface"
             :class="{ 'bg-raised': item.id === activeId }"
             @click="choose(item)"
             @mouseenter="activeId = item.id"
