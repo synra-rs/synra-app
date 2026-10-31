@@ -222,7 +222,7 @@
 import type { ConfigPatch, IpcError } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import CredentialPanel from '../components/CredentialPanel.vue'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -263,6 +263,7 @@ function categoryFromQuery(): Category | undefined {
 }
 const categoryHeading = ref<HTMLElement>()
 const diagnosticsVisited = ref(false)
+const router = useRouter()
 // ★ Declared after both refs it writes: with `immediate: true` the callback runs during setup, and a watcher placed
 //   above `diagnosticsVisited` would read it in its temporal dead zone.
 watch(() => route.query.category, () => {
@@ -273,9 +274,22 @@ watch(() => route.query.category, () => {
   if (asked === 'diagnostics')
     diagnosticsVisited.value = true
 }, { immediate: true })
+/**
+ * ★ Choosing a column by hand drops `?category=`. `DevicesPage` and `PluginsPage` do the same for their ids: with the
+ * query still there, leaving and coming back would jump to the column the notice asked for, overriding the choice the
+ * reader just made.
+ *
+ * The replace is fired and forgotten on purpose — the column has already changed, and the URL catching up is a side
+ * effect; awaiting it here would make every click wait on the router.
+ */
 function selectCategory(value: unknown): void {
-  if (categories.value.some(item => item.value === value))
-    category.value = value as Category
+  if (!categories.value.some(item => item.value === value))
+    return
+  category.value = value as Category
+  if (route.query.category !== undefined) {
+    const { category: _category, ...query } = route.query
+    void router.replace({ path: route.path, query, hash: route.hash })
+  }
 }
 watch(category, async (value) => {
   if (value === 'diagnostics')

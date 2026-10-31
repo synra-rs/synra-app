@@ -820,6 +820,25 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
 
+  it('drops the section from the url once a column is chosen by hand', async () => {
+    // ★ A notice links here with `?category=`. Keeping it after the reader picks another column means leaving and coming
+    // back restores the notice's choice over theirs. `DevicesPage` drops `?device=` and `PluginsPage` drops `?plugin=`
+    // for the same reason.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage('/settings?category=security')
+    try {
+      await flushPromises()
+      expect(testRouter.currentRoute.value.query.category).toBe('security')
+
+      await openCategory(wrapper, 'general')
+
+      expect(testRouter.currentRoute.value.query.category).toBeUndefined()
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('keeps drafts across categories and exposes external changes without replacing them', async () => {
     answer({ config_get: { values: { 'plugins.registry': 'https://a.example' }, overridden: ['plugins.registry'] }, identity_get: IDENTITY, config_set: null })
     const wrapper = await mountPage()
