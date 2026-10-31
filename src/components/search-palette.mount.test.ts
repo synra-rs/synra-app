@@ -187,6 +187,24 @@ describe('the search box', () => {
     expect(router.currentRoute.value.path).not.toBe('/')
   })
 
+  it('paints hover and selection with different colours', async () => {
+    // ★ A pointer resting on one row while the arrow keys move the selection to another used to paint both with
+    // `bg-raised`, so the reader could not tell which one Enter would run (`09 §4`: hover, selected and focus must not
+    // collapse into one highlight). The classes are read here rather than computed: this tree is not styled in jsdom.
+    const { wrapper } = mountPalette()
+    await open(wrapper)
+    await type('i')
+
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    expect(options.length).toBeGreaterThan(1)
+    const selectedRow = options.find(row => row.getAttribute('aria-selected') === 'true')
+    expect(selectedRow, 'nothing is selected on arrival').toBeDefined()
+    expect(selectedRow!.className).toContain('bg-raised')
+    // The hover token is on the base class of every row, and it is not `raised`.
+    for (const row of options)
+      expect(row.className).toContain('hover:bg-surface')
+  })
+
   it('does not take a slash typed into a field', async () => {
     mountPalette()
     await flushPromises()
