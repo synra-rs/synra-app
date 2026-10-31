@@ -37,11 +37,13 @@ export const home = {
     /**
      * ★ The row used to print `transfer.state` raw, so a Chinese screen said "active" and "offered". Those are wire names,
      * not words: `active` is a transfer with bytes moving, `offered` is a question the receiver has not answered yet.
+     * No `satisfies Record<string, string>` here: it would widen the keys to `string` and the caller's `keyof` lookup
+     * would stop being checked against these two names.
      */
     states: {
       active: 'In progress',
       offered: 'Waiting for the other device'
-    } satisfies Record<string, string>
+    }
   },
 
   received: {

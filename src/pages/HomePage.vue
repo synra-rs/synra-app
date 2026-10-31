@@ -364,11 +364,11 @@ function directionOf(transfer: TransferSnapshot): string {
 /**
  * ★ `state` is a wire name (`active`, `offered`), not a word. The row used to print it raw, so a Chinese screen showed
  * "active" — and a reader who did not know the protocol could not tell a moving transfer from one waiting to be accepted.
- * An unrecognised state keeps its own name rather than borrowing a nearby one.
+ * An unrecognised state keeps its own name rather than borrowing a nearby one. The `keyof` cast and the `??` fallback are
+ * the same pair `PluginsPage` uses for `plugin.state`, so both screens answer "unknown" the same way.
  */
 function stateLabel(transfer: TransferSnapshot): string {
-  const known: Record<string, string> = messages.home.inFlight.states
-  return known[transfer.state] ?? transfer.state
+  return messages.home.inFlight.states[transfer.state as keyof typeof messages.home.inFlight.states] ?? transfer.state
 }
 
 /** Asks the kernel to abandon a transfer, whichever direction it is moving. */
