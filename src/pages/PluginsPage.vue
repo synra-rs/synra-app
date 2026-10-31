@@ -669,12 +669,20 @@
         names. The two `withoutRet` call sites above do the same for the same reason.
       -->
       <ErrorNotice v-if="removalError" :code="removalError.code" :actions="removalError.actions?.filter(action => action.kind !== 'retry')" @retry="remove" />
-      <p class="m-0 text-sm">
-        {{ messages.plugins.removeDetail(removing?.title ?? '') }}
-      </p>
-      <span class="break-all text-xs text-ink-dim font-mono">
-        {{ messages.plugins.removeDataPath(removing?.dataPath ?? '') }}
-      </span>
+      <!--
+        ★ Guarded on `removing`, not on the call: `AModal` keeps its body mounted while closed (it only sets
+        `display: none`), so `removing?.title ?? ''` wrote an empty string into the document on every render — the
+        measured markup read "将删除  的插件文件。" with no plugin name, and a "数据目录：" with no path. The dialog is
+        only ever opened with a plugin in hand, so the empty branch is not a state worth drawing.
+      -->
+      <template v-if="removing">
+        <p class="m-0 text-sm">
+          {{ messages.plugins.removeDetail(removing.title) }}
+        </p>
+        <span class="break-all text-xs text-ink-dim font-mono">
+          {{ messages.plugins.removeDataPath(removing.dataPath) }}
+        </span>
+      </template>
       <ACheckbox
         :checked="removeData"
         :disabled="removalBusy"
