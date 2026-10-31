@@ -201,6 +201,28 @@ describe('the search box', () => {
     expect(text()).not.toContain(messages.search.scope)
   })
 
+  it('stays shut while another modal is open', async () => {
+    mountPalette()
+    await flushPromises()
+
+    // ★ A visible antd modal owns the keyboard. The guard reads the DOM for `.ant-modal-root`/`.ant-modal-wrap` that
+    // are not hidden by inline style — a modal drawn with a class or the `hidden` attribute would slip past it, so the
+    // shape asserted here is the one the guard actually recognises.
+    const root = document.createElement('div')
+    root.className = 'ant-modal-root'
+    const wrap = document.createElement('div')
+    wrap.className = 'ant-modal-wrap'
+    root.append(wrap)
+    document.body.append(root)
+
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }))
+    await flushPromises()
+
+    expect(document.querySelector('input[role="combobox"]')).toBeNull()
+    expect(text()).not.toContain(messages.search.scope)
+    root.remove()
+  })
+
   it('opens on a slash pressed outside any field', async () => {
     mountPalette()
     await flushPromises()
