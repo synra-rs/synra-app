@@ -100,11 +100,21 @@
             <!--
               ★ The bytes, not a spinner: "transferring" with no number is a state a user cannot judge, and a bar with no
               figure is one they cannot quote in a bug report.
+
+              ★ The attributes on the bar itself. `ant-design-vue`'s `progress.js` puts `role="progressbar"` on its root
+              and nothing else — no `aria-valuenow` — and spreads `restAttrs` onto that same node after the role, which
+              is where the value has to go. Without them the bar announced only that it was progress, and the figure
+              beside it was a separate node; the sentence the sighted reader gets in one glance took three.
             -->
             <div class="row gap-3">
               <AProgress
                 class="flex-1"
                 :percent="percentOf(transfer)"
+                role="progressbar"
+                :aria-valuenow="percentOf(transfer)"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuetext="progressLabel(transfer)"
                 size="small"
               />
               <span class="text-xs text-ink-dim">{{ progressLabel(transfer) }}</span>

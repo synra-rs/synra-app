@@ -540,6 +540,15 @@ describe('the home page', () => {
     // count is what a user can quote when the number is wrong.
     expect(wrapper.text()).toContain('50%')
     expect(wrapper.text()).toContain('5 B of 10 B')
+    // ★ The sentence above said the bar announces "50%", but until this round it did not: `progress.js` puts
+    //   `role="progressbar"` on its root and no `aria-valuenow`, so the bar announced only that it was progress and the
+    //   figure beside it was a separate node. Asserted on the rendered element — `restAttrs` is spread there, and that
+    //   is the node a screen reader reads.
+    const bar = wrapper.get('[role="progressbar"]')
+    expect(bar.attributes('aria-valuenow')).toBe('50')
+    expect(bar.attributes('aria-valuemin')).toBe('0')
+    expect(bar.attributes('aria-valuemax')).toBe('100')
+    expect(bar.attributes('aria-valuetext')).toContain('5 B of 10 B')
     const cancel = wrapper.findAll('button').find(button => button.text() === 'Cancel')
     expect(cancel).toBeDefined()
     await cancel?.trigger('click')
