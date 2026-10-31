@@ -184,9 +184,14 @@
               someone is actually chasing one action.
             -->
             <div v-if="intent.traceId || intent.startedAtMs !== undefined" class="min-w-0 stack gap-1">
+              <!--
+                ★ `min-h-11`, not `min-h-8`: `09 §3` sets 44px as the floor for anything a pointer or a thumb has to hit,
+                and this is the only toggle on the page that was under it. It sits inside a row whose height it no longer
+                matches, so it stays `self-start`.
+              -->
               <button
                 type="button"
-                class="min-h-8 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable [&:hover]:text-ink"
+                class="min-h-11 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable hover:text-ink"
                 :aria-expanded="expanded === intent.intentId"
                 @click="toggleExpanded(intent.intentId)"
               >

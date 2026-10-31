@@ -256,6 +256,25 @@ describe('the home page', () => {
     }
   })
 
+  it('gives the details toggle a full-size target', async () => {
+    // ★ `09 §3` sets 44px as the floor for anything a thumb has to hit. The trace row's toggle was `min-h-8` (32px) —
+    // the only clickable element in the app under the floor. Read from the classes rather than measured: jsdom has no
+    // layout, and every other control on this page carries `min-h-11`.
+    answer({
+      intent_list: [{ intentId: 'i1', traceId: 't1', state: 'succeeded', candidates: [], startedAtMs: 1 }]
+    })
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    try {
+      await flushPromises()
+      const toggle = wrapper.findAll('button').find(button => button.attributes('aria-expanded') !== undefined)
+      expect(toggle, 'the details toggle is missing').toBeDefined()
+      expect(toggle!.classes()).toContain('min-h-11')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('says how many times a dispatch has been retried, and when it gave up', async () => {
     // ★ The kernel retries a dispatch nobody answers; without this line the card said "Running" through all of it, and
     // then went on saying it after the retry bound was reached.
