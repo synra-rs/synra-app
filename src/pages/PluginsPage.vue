@@ -32,7 +32,7 @@
       ([07 §1](../../design-docs/ui-design/07-plugins.md)). `v-show` keeps a pending decision open across a category
       switch, and the button's label carries the count so a collapsed manager cannot be the reason nobody noticed.
     -->
-    <section v-show="publishersExpanded" id="plugin-publishers" class="stack gap-3 border border-line rounded-surface bg-surface p-4" :aria-label="messages.plugins.publishers.title">
+    <section v-show="publishersExpanded" id="plugin-publishers" class="stack gap-3 border border-line rounded-surface bg-glass p-4" :aria-label="messages.plugins.publishers.title">
       <HelpText>
         {{ messages.plugins.publishers.detail }}
       </HelpText>
@@ -93,7 +93,7 @@
       `@acme/hello` and `C:\plugins\hello` are both "a string with a slash" and a page that guessed would eventually guess
       wrong.
     -->
-    <section v-show="installExpanded" id="plugin-install" class="stack gap-4 border border-line rounded-surface bg-surface p-4" :aria-label="messages.plugins.installHeading">
+    <section v-show="installExpanded" id="plugin-install" class="stack gap-4 border border-line rounded-surface bg-glass p-4" :aria-label="messages.plugins.installHeading">
       <ASegmented v-model:value="installMode" :options="installOptions" :disabled="installing" data-testid="install-mode" />
       <div class="row flex-wrap gap-2">
         <AInput

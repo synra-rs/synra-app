@@ -55,7 +55,7 @@
           above had a border — the page read as one bordered thing and one unbordered thing, in that order. The rail
           and this column are the two halves of one page and now share a treatment.
       -->
-      <div class="max-w-3xl min-w-0 w-full stack gap-6 rounded-surface border border-line bg-surface p-5">
+      <div class="max-w-3xl min-w-0 w-full stack gap-6 rounded-surface border border-line bg-glass p-5">
         <!--
           ★ `sr-only` below `lg`, visible at `lg`. In the narrow layout the select directly above already shows the
             current category, so this heading repeated it — two "通用" lines a few pixels apart, which read as a

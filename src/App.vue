@@ -1,3 +1,31 @@
+<style>
+/*
+ * ★ The page wash. This is the one place it can live.
+ *
+ * Three routes were tried and all three failed silently — no build error, no visible change:
+ *   1. `bg-[radial-gradient(a,b),radial-gradient(c,d)]` in the `screen` shortcut — UnoCSS drops the arbitrary value
+ *      because of its commas and parentheses.
+ *   2. `bg-[image:var(--x)]` in the same place — the form does not generate at all.
+ *   3. A hand-written `.page-glow` class **named inside the shortcut** — UnoCSS reports
+ *      `unmatched utility "page-glow" in shortcut "screen"` and discards it, because every entry in a shortcut is
+ *      resolved as a utility. A hand-written class can never be listed there.
+ *
+ * `resetCss()` in `@synra/theme/css` does carry this, but that function is exported and never imported by this app —
+ * `main.ts` pulls `uno.css` only — so editing it changes nothing on screen either.
+ *
+ * The rule targets `.screen`, the shortcut the shell root already uses, so no template change is needed.
+ *
+ * Both stops are mixed from `--synra-primary`, not white: a white lift greys the dark surface out, and every contrast
+ * pair in `convention.ts` is measured against `--synra-screen`. `fixed` keeps the light anchored while a page scrolls.
+ */
+.screen {
+  background-image:
+    radial-gradient(60rem 40rem at 12% -10%, color-mix(in oklab, var(--synra-primary) 16%, transparent), transparent),
+    radial-gradient(50rem 36rem at 100% 100%, color-mix(in oklab, var(--synra-primary) 10%, transparent), transparent);
+  background-attachment: fixed;
+}
+</style>
+
 <template>
   <!--
     ★ The one place where the tokens meet the component library (R51).
@@ -30,7 +58,7 @@
         adapter maps to `line`, so what is beside the shell's own `border-line` edge is a token-coloured hairline, not a
         foreign colour. Two hairlines is a cosmetic debt worth naming, not worth a second theme object (R51).
       -->
-      <aside class="hidden min-h-0 min-w-0 flex-col overflow-hidden border-e border-line bg-surface px-2 py-3 md:flex">
+      <aside class="hidden min-h-0 min-w-0 flex-col overflow-hidden border-e border-line bg-glass px-2 py-3 md:flex">
         <div class="row shrink-0 gap-2 px-2 pb-3" :class="{ 'justify-center': rail }">
           <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
           <span v-if="!rail" class="text-lg font-semibold">Synra</span>
@@ -182,7 +210,7 @@
         44px touch target, and the padding is the safe-area inset that `viewport-fit=cover` in `index.html` makes
         non-zero on a phone with a gesture bar.
       -->
-      <nav class="flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+      <nav class="flex border-t border-line bg-glass pb-[env(safe-area-inset-bottom)] md:hidden">
         <RouterLink
           v-for="page in PAGES"
           :key="page.path"

@@ -14,7 +14,7 @@
     <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="load" />
 
     <!-- A compact connection surface; glass is reserved for actual overlays. -->
-    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4" :aria-label="messages.home.wire.label">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4" :aria-label="messages.home.wire.label">
       <div class="row-between flex-wrap gap-2">
         <span class="text-xs text-ink-dim">{{ messages.home.wire.label }}</span>
         <span class="text-sm font-medium">{{ state.headline }}</span>
@@ -40,7 +40,7 @@
       </p>
     </section>
 
-    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.inFlight.title }}
       </h2>
@@ -124,7 +124,7 @@
       </AList>
     </section>
 
-    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.received.title }}
       </h2>
@@ -246,7 +246,7 @@
       ★ The history the in-flight list cannot be. A transfer's row is removed when it finishes, and the file stays in the
       inbox; this is where a person finds what arrived earlier without being told to open a directory by hand.
     -->
-    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.receivedFiles.title }}
       </h2>
