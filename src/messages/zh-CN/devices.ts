@@ -14,7 +14,7 @@ export const devices = {
   'devices.paired': '已配对',
   'devices.nearby': '附近设备',
   'devices.details': '详情',
-  'devices.detailsFor': name => `${name}的详情`,
+  'devices.detailsFor': name => `展开${name}的详情`,
   'devices.name': '名称',
   'devices.deviceId': '设备标识',
   'devices.address': '地址',

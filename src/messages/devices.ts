@@ -23,7 +23,7 @@ export const devices = {
   paired: 'Paired',
   nearby: 'Nearby devices',
   details: 'Details',
-  detailsFor: (name: string): string => `Details for ${name}`,
+  detailsFor: (name: string): string => `Show details for ${name}`,
   name: 'Name',
   deviceId: 'Device ID',
   address: 'Address',
