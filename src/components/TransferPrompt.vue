@@ -6,6 +6,14 @@
   max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 
+/*
+ * ★ 44px is `09 §3`'s floor for a thumb — the number `min-h-11` carries (11 × 4px spacing). These rules are here
+ *   rather than on the utility because a checkbox wrapper and a `<summary>` are not buttons, and the utility only
+ *   reaches `.ant-btn`.
+ *
+ * ★ 639 matches `03 §3`'s narrow layout (`<640`) and `PairingPanel`'s own query, so both components switch at the same
+ *   width. `check-shapes.ts`'s `touch-breakpoints` holds it.
+ */
 @media (pointer: coarse), (max-width: 639px) {
   .transfer-prompt :deep(.ant-btn),
   .transfer-prompt :deep(.ant-checkbox-wrapper) {

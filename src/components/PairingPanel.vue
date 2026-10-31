@@ -1,4 +1,13 @@
 <style scoped>
+/*
+ * ★ `09 §3` sets 44px as the floor for a thumb — the same number `min-h-11` carries (11 × 4px spacing) and the one
+ *   `App.vue`'s bottom bar restates. Three places, one number, no constant shared between them: the utility has it
+ *   baked in, and these two rules exist because a `<select>` height and a `<summary>` are not buttons.
+ *
+ * ★ 639 rather than 767: `03 §3`'s narrow layout is `<640`, and the utility route drops back to 32px at `md` (768).
+ *   Ending here keeps every surface on one screen agreeing about which layout it is in —
+ *   `check-shapes.ts`'s `touch-breakpoints` holds the number.
+ */
 @media (max-width: 639px), (pointer: coarse) {
   .pairing-panel :deep(.ant-btn) {
     min-height: 44px;
