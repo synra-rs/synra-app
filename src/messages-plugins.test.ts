@@ -59,4 +59,15 @@ describe.each(['en', 'zh-CN'] as const)('plugin health labels (%s)', (language) 
     expect(unknown).not.toBe(messages.settings.diagnostics.probeStatus('fail'))
     expect(unknown).not.toBe(messages.settings.diagnostics.probeStatus('ok'))
   })
+
+  // ★ Exactly what `life_state` in `src-tauri/src/commands/plugins.rs` can return. `unavailable` had no entry, so a
+  // plugin the shell could not start showed the wire name; the other five in the old table never arrived at all.
+  it.each(['active', 'disabled', 'awaiting_consent', 'unreadable', 'faulted', 'unavailable'] as const)(
+    'names the plugin state %s',
+    (state) => {
+      const label = messages.plugins.states[state]
+      expect(label, `no label for ${state}`).toBeTypeOf('string')
+      expect(label).not.toBe(state)
+    }
+  )
 })

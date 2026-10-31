@@ -21,16 +21,21 @@ export const plugins = {
   enableLabel: (name: string) => `Enable ${name}`,
   openLabel: (name: string) => `Open ${name}`,
   states: {
-    installed: 'Installed',
-    validated: 'Validated',
-    granted: 'Permissions granted',
+    // ★ These six are exactly what `life_state` in `src-tauri/src/commands/plugins.rs` can return, and nothing else.
+    // The table used to also carry `installed`, `validated`, `granted`, `deactivated` and `parked` — those are the
+    // kernel's lifecycle names, never the word the card is handed, so five entries were unreachable.
     active: 'Active',
     disabled: 'Disabled',
     awaiting_consent: 'Needs permission review',
     unreadable: 'Plugin files cannot be read',
-    deactivated: 'Disabled',
     faulted: 'Stopped after an error',
-    parked: 'Stopped'
+    /**
+     * ★ "Enabled, trusted, readable, not loaded, and nothing to blame the plugin for" — a shell with no engine, for
+     * instance. It had no sentence here, so the tag fell through to the wire name and a Chinese list read
+     * `unavailable`. Deliberately not "Broken": `life_state` says the shell may simply have no engine, which is a
+     * property of this build rather than of the plugin.
+     */
+    unavailable: 'Cannot start on this build'
   },
   empty: 'No plugin is installed.',
   /** The filter above the installed list; it matches the id, the title and the description. */
