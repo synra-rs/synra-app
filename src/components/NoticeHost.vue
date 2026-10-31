@@ -10,7 +10,7 @@
     closable
     :message="headline"
     :description="detail"
-    class="mb-4"
+    class="mb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
     @close="notices.dismiss()"
   >
     <template v-if="showAction" #action>

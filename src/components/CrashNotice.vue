@@ -9,7 +9,7 @@
     type="warning"
     show-icon
     :message="messages.crash.title"
-    class="mb-4"
+    class="mb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
   >
     <template #description>
       <div class="stack gap-2">
