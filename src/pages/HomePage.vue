@@ -40,12 +40,12 @@
       </p>
     </section>
 
-    <section class="stack gap-3">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.inFlight.title }}
       </h2>
 
-      <p v-if="transfers.length === 0" class="m-0 border-b border-line py-4 text-sm text-ink-dim">
+      <p v-if="transfers.length === 0" class="m-0 py-2 text-sm text-ink-dim">
         {{ messages.home.inFlight.empty }}
       </p>
 
@@ -124,12 +124,12 @@
       </AList>
     </section>
 
-    <section class="stack gap-3">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.received.title }}
       </h2>
 
-      <p v-if="intents.length === 0" class="m-0 border-b border-line py-4 text-sm text-ink-dim">
+      <p v-if="intents.length === 0" class="m-0 py-2 text-sm text-ink-dim">
         {{ messages.home.received.empty }}
       </p>
 
@@ -246,7 +246,7 @@
       ★ The history the in-flight list cannot be. A transfer's row is removed when it finishes, and the file stays in the
       inbox; this is where a person finds what arrived earlier without being told to open a directory by hand.
     -->
-    <section class="stack gap-3">
+    <section class="min-w-0 stack gap-3 border border-line rounded-surface bg-surface p-4">
       <h2 class="m-0 text-sm font-medium">
         {{ messages.home.receivedFiles.title }}
       </h2>
