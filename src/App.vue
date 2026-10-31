@@ -111,7 +111,12 @@
         </div>
       </aside>
 
-      <main ref="contentPane" tabindex="0" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-sm focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
+      <!--
+        ★ `aria-label` because the region is focusable. A focusable region with no name is announced by its entire
+        contents: `bsk_inspect.observe` rendered this element as `main "首页 设备连接 已连接 This device Pixel 8 …"`,
+        so the label a screen reader gives the scroll container was the first dozen words of whatever page was open.
+      -->
+      <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-sm focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
         <!--
           ★ The shell centres the content region but does not decide how wide a page should be.
 
