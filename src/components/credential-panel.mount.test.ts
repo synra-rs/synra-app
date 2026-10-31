@@ -121,10 +121,11 @@ it('recovers from a read failure through the refresh button', async () => {
   // that is always on the panel. This pins that route rather than a button the kernel may or may not ask for.
   let failing = true
   call.mockImplementation(async (command: string) => {
-    if (command === 'identity_credentials')
+    if (command === 'identity_credentials') {
       return failing
         ? { ok: false, error: { code: 'internal', message: 'error.internal' } }
         : { ok: true, value: backend }
+    }
     if (command === 'devices_snapshot')
       return { ok: true, value: { identity: IDENTITY, devices: [] } }
     throw new Error(command)
