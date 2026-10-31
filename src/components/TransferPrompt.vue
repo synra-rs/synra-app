@@ -30,7 +30,7 @@
 </style>
 
 <template>
-  <section v-if="prompt" ref="panel" class="transfer-prompt ring-warning fixed z-50 min-w-0 stack gap-3 overflow-y-auto overscroll-contain rounded bg-surface p-4 shadow-lg ring-1" aria-labelledby="transfer-prompt-title" tabindex="-1">
+  <section v-if="prompt" ref="panel" class="transfer-prompt ring-warning fixed z-50 min-w-0 stack gap-3 overflow-y-auto overscroll-contain rounded-surface bg-surface p-4 shadow-lg ring-1" aria-labelledby="transfer-prompt-title" tabindex="-1">
     <div class="stack gap-1" role="status" aria-live="polite" aria-atomic="true">
       <h2 id="transfer-prompt-title" class="m-0 text-sm font-medium">
         {{ messages.transfers.prompt.title }}

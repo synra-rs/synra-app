@@ -205,9 +205,14 @@
                 and this is the only toggle on the page that was under it. It sits inside a row whose height it no longer
                 matches, so it stays `self-start`.
               -->
+              <!--
+                ★ No `rounded` on the button below: it is a bare text button — `border-0`, `bg-transparent`, `px-0` —
+                  so a corner radius has nothing to clip. Keeping one would be a class that cannot change a pixel, and a
+                  4px value outside the 8 / 12 / pill ladder that `09` allows.
+              -->
               <button
                 type="button"
-                class="min-h-11 self-start border-0 rounded bg-transparent px-0 text-xs text-ink-dim focusable md:min-h-8 hover:text-ink"
+                class="min-h-11 self-start border-0 bg-transparent px-0 text-xs text-ink-dim focusable md:min-h-8 hover:text-ink"
                 :aria-expanded="expanded === intent.intentId"
                 @click="toggleExpanded(intent.intentId)"
               >

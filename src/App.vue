@@ -61,9 +61,14 @@
                 gone and the icon is all that is left.
             -->
             <span v-if="!rail" class="min-w-0 flex-1 truncate text-start text-sm">{{ messages.search.placeholder }}</span>
+            <!--
+              ★ `rounded-control`, not bare `rounded`. The ladder is 8 / 12 / pill and nothing else (`09`), and the bare
+                utility is 4px — a corner next to the 8px one around the field, visibly squarer. A keycap inside a
+                control is still a control-sized corner.
+            -->
             <kbd
               v-if="!rail"
-              class="shrink-0 rounded border border-line bg-surface px-1.5 font-mono text-xs leading-5 text-ink-dim transition-colors group-hover:text-ink"
+              class="shrink-0 rounded-control border border-line bg-surface px-1.5 font-mono text-xs leading-5 text-ink-dim transition-colors group-hover:text-ink"
             >{{ messages.search.shortcut }}</kbd>
           </button>
         </div>

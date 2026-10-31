@@ -20,7 +20,7 @@
 </style>
 
 <template>
-  <section class="pairing-panel stack gap-4 border border-line rounded border-solid p-4" aria-labelledby="pairing-title">
+  <section class="pairing-panel stack gap-4 border border-line rounded-surface border-solid p-4" aria-labelledby="pairing-title">
     <h2 id="pairing-title" class="m-0 text-base font-medium">
       {{ messages.devices.pairingTitle }}
     </h2>

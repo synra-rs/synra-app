@@ -962,6 +962,44 @@ async function checkTouchBreakpoints(): Promise<void> {
   )
 }
 
+/**
+ * Corners come from the ladder — `rounded-control` (8), `rounded-surface` (12), `rounded-pill` — never bare `rounded`.
+ *
+ * ★ `rounded` is 4px: a value the ladder does not contain. Three real cases had drifted onto it — the pairing panel
+ *   and the transfer prompt (both surfaces, both should have been 12) and the search entry's `kbd` next to its own
+ *   8px field, where the keycap was visibly squarer than the box around it.
+ *
+ * ★ One legitimate use is not a radius at all: a bare text button (`border-0`, `bg-transparent`, `px-0`) has nothing
+ *   for a corner to clip, so the class is dead weight there and was removed rather than given a value. A scan cannot
+ *   tell the two apart, so the check names the file and line and lets the author decide which it is.
+ */
+async function checkCornerLadder(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    // ★ Comments are stripped first: this rule is about the class the browser gets, and a note that says "not bare
+    //   `rounded`" is the opposite of a violation. The strip keeps newlines so positions still map to the file.
+    const code = text
+      .replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '))
+      .replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '))
+      .replace(/\/\/[^\n]*/g, comment => comment.replace(/[^\n]/g, ' '))
+    for (const match of code.matchAll(/\brounded(?![-:\w])/g)) {
+      counted += 1
+      const line = code.slice(0, match.index).split('\n').length
+      failures.push({
+        check: 'corner-ladder',
+        detail: `${relative(here, file)}:${line.toString()} uses bare \`rounded\` (4px) — the ladder is rounded-control, rounded-surface or rounded-pill`
+      })
+    }
+  }
+
+  notes.push(`corner-ladder: ${counted === 0 ? 'no bare `rounded`' : `${counted.toString()} bare \`rounded\``}`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -973,6 +1011,7 @@ await checkPageButtons()
 await checkDialogNames()
 await checkControlNames()
 await checkTouchBreakpoints()
+await checkCornerLadder()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
