@@ -146,11 +146,18 @@
           </div>
           <div v-if="exportDebug" class="row gap-2">
             <span class="text-sm">{{ messages.settings.diagnostics.lines }}</span>
+            <!--
+              ★ `aria-label` alongside the visible span rather than `for`/`aria-labelledby`: the label is a plain span,
+              and `AInputNumber` renders an `<input>` that only inherits a name from an attribute. Without one the box
+              was an unnamed spin button next to the word "Lines" — visually paired, two unrelated nodes to a screen
+              reader. The same key names both, so they cannot drift.
+            -->
             <AInputNumber
               :value="exportLines"
               :min="1"
               :max="10000"
               :precision="0"
+              :aria-label="messages.settings.diagnostics.lines"
               @update:value="(value) => (exportLines = typeof value === 'number' ? value : 1)"
             />
           </div>

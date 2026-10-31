@@ -1129,4 +1129,31 @@ describe('the settings page', () => {
     }
     finally { wrapper.unmount() }
   })
+
+  it('names the log line count box', async () => {
+    // ★ `AInputNumber` renders a bare `<input type="text" role="spinbutton">`; a name has to come from an attribute.
+    //   The word "Lines" beside it is a plain `<span>`, so the two were unrelated nodes to a screen reader even though
+    //   they read as one sentence on screen. Same message key both sides.
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      await openDiagnostic(wrapper, messages.settings.diagnostics.export)
+      // The box only exists once "include debug logs" is ticked — it is the number of lines that section exports.
+      const debug = wrapper.findAllComponents({ name: 'ACheckbox' })
+        .find(candidate => candidate.text() === messages.settings.diagnostics.debug)
+      expect(debug, 'the debug-log checkbox is missing').toBeDefined()
+      await debug?.vm.$emit('update:checked', true)
+      await flushPromises()
+
+      // Asserted on the rendered markup, not on the component: `AInputNumber` keeps the attribute off its own root, so
+      // a component-level read reports `undefined` whether or not the fix is there. The markup is what a screen reader
+      // walks, and it is the only place this attribute can be checked.
+      const markup = wrapper.get('[data-testid="settings-diagnostics"]').html()
+      expect(markup).toContain(`aria-label="${messages.settings.diagnostics.lines}"`)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
 })
