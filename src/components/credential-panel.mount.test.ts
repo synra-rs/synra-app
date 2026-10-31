@@ -115,3 +115,28 @@ it('explains the trusted backup requirement when no registration or recovery rec
   expect(call.mock.calls.some(([command]) => command === 'identity_repair')).toBe(false)
   wrapper.unmount()
 })
+
+it('keeps a failed cleanup visible instead of leaving only the repair note', async () => {
+  // The cleanup is the destructive half of a repair: it revokes the retired keys. A refusal there must not leave the
+  // screen saying only "repaired" while the keys are still usable.
+  backend = { ...backend, retiredKeys: 1, restartRequired: true, runtimeReady: false }
+  const base = call.getMockImplementation()!
+  call.mockImplementation(async (command: string, args?: { expectedFingerprint?: string }) => {
+    if (command === 'identity_cleanup')
+      return { ok: false, error: { code: 'internal', message: 'error.internal' } }
+    if (command === 'identity_repair')
+      return { ok: true, value: { deviceId: IDENTITY.deviceId, fingerprint: 'replacement', restartRequired: true, cleanup: { remaining: 1, errorCode: null, detail: null } } }
+    return base(command, args)
+  })
+  const wrapper = mount(CredentialPanel)
+  await flushPromises()
+  await wrapper.findAll('button').find(node => node.text() === messages.settings.credentials.repair)!.trigger('click')
+  wrapper.findComponent(Modal).vm.$emit('ok')
+  await flushPromises()
+  await wrapper.findAll('button').find(node => node.text() === messages.settings.credentials.cleanup)!.trigger('click')
+  await flushPromises()
+  expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('internal')
+  // And the warning about what is still there has to survive alongside it, or the two halves disagree.
+  expect(wrapper.text()).toContain(messages.settings.credentials.remaining(1))
+  wrapper.unmount()
+})
