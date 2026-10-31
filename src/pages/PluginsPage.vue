@@ -443,8 +443,28 @@
               </AAlert>
 
               <ACollapse :active-key="managementOpen[plugin.pluginId] ?? []" ghost data-plugin-management @change="keys => setManagement(plugin.pluginId, keys)">
-                <ACollapse.Panel :key="plugin.pluginId" :header="messages.plugins.manage" force-render>
-                  <div class="min-w-0 stack gap-4">
+                <!--
+                  ★ The slot lives on `ACollapse`, not on each panel: `Collapse.js` builds the arrow once in
+                  `renderExpandIcon` from `props.expandIcon ?? slots.expandIcon` and passes it down, so a panel-level
+                  slot is never read.
+
+                  Our own chevron instead of antd's. The library's arrow is
+                  `<span role="img" aria-label="right">…<svg aria-hidden="true">` (measured with `bsk_inspect`'s `html`):
+                  the inner svg is hidden, but the wrapper announces the icon's name, so this header read as
+                  "right 权限与管理" — an English direction word in front of a Chinese title. The arrow is decoration:
+                  `aria-expanded` on the header already reports the state, so `aria-hidden` here loses nothing.
+                -->
+                <template #expandIcon="panel">
+                  <span
+                    :class="(panel as { isActive?: boolean }).isActive ? 'i-carbon-chevron-down' : 'i-carbon-chevron-right'"
+                    aria-hidden="true"
+                    class="shrink-0 text-ink-dim"
+                  />
+                </template>
+                <ACollapse.Panel :key="plugin.pluginId" force-render>
+                  <template #header>
+                    {{ messages.plugins.manage }}
+                  </template>                  <div class="min-w-0 stack gap-4">
                     <dl class="m-0 row flex-wrap gap-4 text-xs">
                       <div class="row gap-1">
                         <dt class="m-0 text-ink-dim">
