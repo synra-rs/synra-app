@@ -209,13 +209,18 @@ export const plugins = {
    * `good` is not drawn — a card that announced "running normally" on every plugin would be a card whose warnings stopped
    * standing out — but the label exists so the three drawn rungs are named in one place rather than in the template.
    */
-  healthLabel: (health: string): string => health === 'overreaching'
-    ? 'Asking more often than its limits allow'
-    : health === 'degraded'
-      ? 'Running at a reduced quota'
-      : health === 'faulted'
-        ? 'Disabled after repeated refusals'
-        : 'Running normally',
+  healthLabel: (health: string): string => health === 'good'
+    ? 'Running normally'
+    : health === 'overreaching'
+      ? 'Asking more often than its limits allow'
+      : health === 'degraded'
+        ? 'Running at a reduced quota'
+        : health === 'faulted'
+          ? 'Disabled after repeated refusals'
+          // ★ Not `good`, and not a rung this build knows. `synra-plugin-host`'s `Health` is `#[non_exhaustive]`, so a
+          // fifth rung reaches the wire as a new string; the old chain ended in "Running normally" and would have
+          // reported an unknown state as the healthiest one.
+          : 'Reporting a state this version does not recognise',
   /** The directory the checkbox would delete, so the user can see it before agreeing. */
   removeDataPath: (path: string): string => `Data folder: ${path}`,
   removedKept: (title: string, freed: string): string => `${title} was removed; ${freed} freed, and its data was kept.`,

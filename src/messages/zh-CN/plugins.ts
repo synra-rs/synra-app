@@ -116,7 +116,7 @@ export const plugins = {
   'plugins.removeTitle': '移除此插件？',
   'plugins.removeDetail': title => `将删除 ${title} 的插件文件。除非选择同时删除数据，其设置、索引等数据会继续保留。`,
   'plugins.removeDeleteData': '同时删除插件数据',
-  'plugins.healthLabel': health => health === 'overreaching' ? '请求频率超出限制' : health === 'degraded' ? '正在以较低配额运行' : health === 'faulted' ? '多次请求被拒绝后已停用' : '运行正常',
+  'plugins.healthLabel': health => health === 'good' ? '运行正常' : health === 'overreaching' ? '请求频率超出限制' : health === 'degraded' ? '正在以较低配额运行' : health === 'faulted' ? '多次请求被拒绝后已停用' : '报告了一个此版本不认识的状态',
   'plugins.removeDataPath': path => `数据目录：${path}`,
   'plugins.removedKept': (title, freed) => `已移除 ${title}，释放 ${freed}，插件数据已保留。`,
   'plugins.removedDeleted': (title, freed) => `已移除 ${title}，释放 ${freed}，插件数据已删除。`,
