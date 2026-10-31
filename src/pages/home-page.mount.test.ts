@@ -13,7 +13,7 @@
  * assertion runs. A memory router with no routes is enough: nothing here navigates.
  */
 
-import type { TransferSnapshot } from '@synra/protocol'
+import type { DeviceCard, TransferSnapshot } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import { createPinia, setActivePinia } from 'pinia'
@@ -260,6 +260,56 @@ describe('the home page', () => {
     finally {
       wrapper.unmount()
     }
+  })
+
+  /**
+   * The four wire states differ in shape, not only in colour.
+   *
+   * ★ `R23` puts it as "a greyscale screenshot still tells them apart": nothing paired is a short stub, a paired but
+   *   silent device is the full line at low opacity, and a live one glows. `wireWidth` and `wireLive` are the two
+   *   decisions behind that, and until now neither had a test — folding `offline` into plain `w-full` would have made
+   *   "paired but not answering" and "connected" the same picture, which is exactly what the rule forbids.
+   *
+   * ★ The devices come from the store, not from `devices_snapshot`: this page's `load()` asks the kernel for intents,
+   *   transfers and received files only, and the device list arrives through the store. Seeding the command left the
+   *   wire in `none` — a first version of this test asserted `w-full` and got `w-1/12`.
+   *
+   *   The bar is `aria-hidden` decoration, so it is found by class rather than by role.
+   */
+  /** Reads the wire bar's width classes and whether it glows, for one device list. */
+  async function drawWire(devices: readonly DeviceCard[]): Promise<{ widths: string[], glows: boolean }> {
+    useDevicesStore().applySnapshot({ identity: IDENTITY, devices })
+    answer({})
+    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    try {
+      await flushPromises()
+      const bar = wrapper.get('.bg-primary')
+      return { widths: bar.classes(), glows: bar.classes().includes('shadow-glow') }
+    }
+    finally {
+      wrapper.unmount()
+    }
+  }
+
+  it('draws a connected wire as the full, lit line', async () => {
+    const wire = await drawWire([DEVICES[0]!])
+    expect(wire.widths).toContain('w-full')
+    expect(wire.glows).toBe(true)
+  })
+
+  it('draws an offline wire dimmer than a connected one', async () => {
+    // ★ The two must not be the same picture in greyscale (R23). Folded into plain `w-full`, "paired but not
+    //   answering" and "connected" would look identical apart from colour — which a greyscale screenshot loses.
+    const wire = await drawWire([{ ...DEVICES[0]!, online: false }])
+    expect(wire.widths).toContain('w-full')
+    expect(wire.widths).toContain('opacity-40')
+    expect(wire.glows).toBe(false)
+  })
+
+  it('draws nothing paired as a short stub', async () => {
+    const wire = await drawWire([])
+    expect(wire.widths).toContain('w-1/12')
+    expect(wire.glows).toBe(false)
   })
 
   it('gives the details toggle a full-size target', async () => {
