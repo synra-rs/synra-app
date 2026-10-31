@@ -839,6 +839,46 @@ async function checkPageButtons(): Promise<void> {
   notes.push(`page-buttons: ${counted.toString()} page(s) raise their body buttons`)
 }
 
+/**
+ * Every dialog has to be named, or a screen reader announces an unnamed "dialog".
+ *
+ * `vc-dialog`'s `Dialog.js` sets exactly one name source on the `role="dialog"` element —
+ * `"aria-labelledby": title ? ariaIdRef.value : null` — so `:title` names it. A dialog that deliberately has no title
+ * bar names itself through `:wrap-props`, which is spread onto that same element after `role`.
+ *
+ * ★ This was a real defect once: `SearchPalette` has no title (a bar above a search field is a line between the user
+ *   and the box) and no `wrap-props` either, so it announced itself as "dialog" and nothing else.
+ *
+ * ★ Read the whole opening tag, not a fixed number of lines. The first draft of this check looked four lines past
+ *   `<AModal` and reported four false failures — the attributes run six or more lines on most of them.
+ */
+async function checkDialogNames(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    let index = text.indexOf('<AModal')
+    while (index !== -1) {
+      const close = text.indexOf('>', index)
+      const tag = text.slice(index, close === -1 ? undefined : close)
+      counted += 1
+      if (!/:title=|:wrap-props=/.test(tag)) {
+        const line = text.slice(0, index).split('\n').length
+        failures.push({
+          check: 'dialog-names',
+          detail: `${relative(here, file)}:${line.toString()} opens a dialog with neither \`:title\` nor \`:wrap-props=\``
+        })
+      }
+      index = text.indexOf('<AModal', index + 1)
+    }
+  }
+
+  notes.push(`dialog-names: ${counted.toString()} dialog(s) are named`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -847,6 +887,7 @@ await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 await checkFacadeIsFresh()
 await checkPageButtons()
+await checkDialogNames()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
