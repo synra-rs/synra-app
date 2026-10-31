@@ -47,7 +47,7 @@
               </AButton>
             </div>
           </template>
-          <AModal :open="confirming !== null" :title="messages.settings.credentials.confirmTitle" :ok-text="messages.settings.credentials.confirm" :cancel-text="messages.settings.field.cancel" :confirm-loading="credentials.busy" :closable="!credentials.busy" :mask-closable="!credentials.busy" :keyboard="!credentials.busy" @ok="repair" @cancel="close">
+          <AModal :open="confirming !== null" :title="messages.settings.credentials.confirmTitle" :ok-text="messages.settings.credentials.confirm" :cancel-text="messages.settings.field.cancel" :confirm-loading="credentials.busy" :closable="!credentials.busy" :mask-closable="!credentials.busy" :keyboard="!credentials.busy" wrap-class-name="[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" @ok="repair" @cancel="close">
             <p>{{ messages.settings.credentials.confirmDetail }}</p>
             <p class="break-all font-mono">
               {{ confirming }}

@@ -163,7 +163,7 @@
         </div>
       </ACollapse.Panel>
     </ACollapse>
-    <AModal :open="confirmDismiss" :title="messages.settings.diagnostics.dismissCrashes" :ok-text="messages.settings.diagnostics.dismissCrashes" :cancel-text="messages.settings.field.cancel" :confirm-loading="dismissing" :closable="!dismissing" :mask-closable="!dismissing" :keyboard="!dismissing" @ok="dismissCrashes" @cancel="confirmDismiss = false">
+    <AModal :open="confirmDismiss" :title="messages.settings.diagnostics.dismissCrashes" :ok-text="messages.settings.diagnostics.dismissCrashes" :cancel-text="messages.settings.field.cancel" :confirm-loading="dismissing" :closable="!dismissing" :mask-closable="!dismissing" :keyboard="!dismissing" wrap-class-name="[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" @ok="dismissCrashes" @cancel="confirmDismiss = false">
       <p>{{ messages.settings.diagnostics.dismissDetail }}</p>
       <SettingsFeedback :error="errors.crashes" />
     </AModal>

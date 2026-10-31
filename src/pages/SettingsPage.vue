@@ -201,7 +201,12 @@
         </div>
       </div>
     </div>
-    <AModal :open="leaveOpen" :title="messages.settings.edit.leaveTitle" :closable="!anyBusy" :mask-closable="!anyBusy" :keyboard="!anyBusy" @cancel="resolveLeave(false)">
+    <!--
+      ★ `wrap-class-name` because this dialog teleports to `body`, outside the page's `<section>`: the section raises
+      the body's buttons to 44px, and a teleported dialog is not in the body's tree. The wrap layer is the ancestor the
+      footer buttons actually sit under, so the utility has to live there.
+    -->
+    <AModal :open="leaveOpen" :title="messages.settings.edit.leaveTitle" :closable="!anyBusy" :mask-closable="!anyBusy" :keyboard="!anyBusy" wrap-class-name="[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" @cancel="resolveLeave(false)">
       <p>{{ messages.settings.edit.leaveDetail }}</p>
       <template #footer>
         <AButton :disabled="anyBusy" @click="resolveLeave(false)">
