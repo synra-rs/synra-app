@@ -75,6 +75,7 @@
                   :title="messages.home.inFlight.confirm"
                   :ok-text="messages.home.inFlight.abandon"
                   :cancel-text="messages.home.inFlight.keep"
+                  overlay-class-name="[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
                   @confirm="cancelTransfer(transfer)"
                 >
                   <AButton size="small" :loading="cancelling === transfer.transferId">
