@@ -43,6 +43,7 @@
           role="combobox"
           aria-controls="search-results"
           :aria-expanded="results.length > 0"
+          :aria-activedescendant="activeId ? optionDomId(activeId) : undefined"
           @keydown="onKeydown"
         >
       </div>
@@ -70,6 +71,7 @@
           <button
             v-for="item in group.items"
             :key="item.id"
+            :id="optionDomId(item.id)"
             type="button"
             role="option"
             :aria-selected="item.id === activeId"
@@ -133,6 +135,18 @@ const activeId = ref<string>()
 
 /** The settings sections, by the routes they are reachable at. */
 const SETTINGS_SECTIONS = ['general', 'security', 'plugins', 'diagnostics', 'about'] as const
+
+/**
+ * The DOM id of a result row, for `aria-activedescendant` to point at.
+ *
+ * ★ **`item.id` cannot be used as-is.** It is built from a route (`page:/settings`, `device:<uuid>`), so it holds `:`
+ *   and possibly `/` — legal in an attribute but not in the id selectors anyone will reach for while debugging, and
+ *   the kind of value a future `querySelector` breaks on silently. `encodeURIComponent` keeps it reversible and
+ *   distinct per row without inventing a second numbering that would drift from `activeId`.
+ */
+function optionDomId(id: string): string {
+  return `search-option-${encodeURIComponent(id)}`
+}
 
 const items = computed<readonly Item[]>(() => [
   ...plugins.plugins.map(plugin => ({

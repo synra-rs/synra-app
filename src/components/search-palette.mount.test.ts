@@ -283,4 +283,36 @@ describe('the search box', () => {
       wrapper.unmount()
     }
   })
+
+  it('tells the reader which row the arrow keys moved to', async () => {
+    // ★ Focus never leaves the input — that is what makes the palette quick. Which means the only channel a screen
+    //   reader has for "the selection moved" is `aria-activedescendant` on the combobox, pointing at an `id` on the
+    //   active option. Neither existed: the arrow keys changed `aria-selected` on rows the reader has no focus in, so
+    //   ↑/↓ moved the highlight in silence.
+    //
+    //   Asserted through the rendered DOM, and followed to its target: a dangling id would satisfy a laxer check.
+    const { wrapper } = mountPalette()
+    try {
+      await open(wrapper)
+      await type('i')
+
+      const first = field().getAttribute('aria-activedescendant')
+      expect(first, 'the combobox names no active option').toBeTruthy()
+      const firstRow = document.getElementById(first!)
+      expect(firstRow, 'aria-activedescendant points at nothing').not.toBeNull()
+      expect(firstRow!.getAttribute('aria-selected')).toBe('true')
+
+      field().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+      await flushPromises()
+
+      const second = field().getAttribute('aria-activedescendant')
+      expect(second, 'the arrow key did not move the active option').not.toBe(first)
+      const secondRow = document.getElementById(second!)
+      expect(secondRow, 'aria-activedescendant points at nothing').not.toBeNull()
+      expect(secondRow!.getAttribute('aria-selected')).toBe('true')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
 })
