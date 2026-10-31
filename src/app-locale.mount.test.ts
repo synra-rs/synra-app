@@ -7,6 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { IDENTITY } from './ipc/fake-kernel-fixtures'
 import { setLocalePreference } from './locale'
+import { messages } from './messages'
 import { useSettingsStore } from './stores/settings'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
@@ -74,6 +75,35 @@ it('gives the search entry a full-size target', async () => {
     expect(entry.classes()).toContain('min-h-11')
     // The desktop drop, so this entry is not taller than the nav items beside it.
     expect(wrapper.html()).toContain('md:min-h-8')
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
+it('names the page menu, so its four links are not offered from nowhere', async () => {
+  // ★ `AMenu` renders `<ul role="menu">` with no accessible name of its own. Without one a screen reader offers
+  //   "Home", "Devices", "Plugins", "Settings" as four links with nothing saying they are this window's pages —
+  //   `bsk_inspect`'s tree showed a bare `menu` above them. The name is `messages.app.navigation`, the same object the
+  //   four labels come from, so a page rename cannot leave the name behind.
+  window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  call.mockImplementation(async (command: string) => {
+    if (command === 'config_get')
+      return { ok: true, value: { values: {}, overridden: [] } }
+    if (command === 'devices_snapshot')
+      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    throw new Error(`Unexpected command: ${command}`)
+  })
+  const pinia = createPinia()
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  await router.push('/')
+  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, RouterView: true } } })
+  try {
+    await flushPromises()
+    const menu = wrapper.findAll('[role="menu"]').find(candidate => candidate.find('[role="menuitem"]').exists())
+    expect(menu, 'the page menu is missing').toBeDefined()
+    expect(menu?.attributes('aria-label')).toBe(messages.app.navigation)
   }
   finally {
     wrapper.unmount()

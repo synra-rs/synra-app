@@ -5,6 +5,7 @@ export const common = {
   'app.offline': '网络不可用。',
   'app.offlineDetail': '网络恢复前，设备通信可能受限。',
   'app.content': '页面内容',
+  'app.navigation': '页面导航',
   'nav.home.label': '首页',
   'nav.devices.label': '设备',
   'nav.plugins.label': '插件',

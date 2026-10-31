@@ -23,7 +23,15 @@ export const englishMessages = {
      * without one a screen reader announces the whole page text as the region's label, which is what
      * `bsk_inspect.observe` showed: `main "首页 设备连接 已连接 This device Pixel 8 正在传输 …"`.
      */
-    content: 'Page content'
+    content: 'Page content',
+    /**
+     * Names the shell's own page menu.
+     *
+     * ★ `AMenu` renders a `<ul role="menu">` with no name of its own, and the four items beside it are links to four
+     *   destinations — a screen reader offers "Home", "Devices" out of nowhere without a name saying these are the
+     *   pages of this window. Same reason `content` exists one line up.
+     */
+    navigation: 'Pages'
   },
 
   nav,

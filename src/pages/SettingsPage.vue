@@ -32,9 +32,13 @@
     -->
     <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[max-content_minmax(0,1fr)] lg:gap-8">
       <nav :aria-label="messages.settings.navigation" class="min-w-0">
-        <label for="settings-category" class="sr-only">{{ messages.settings.navigation }}</label>
+        <!-- ★ `lg:hidden` on the label as well as the select: the pair only exists in the narrow layout. Left visible
+             at the wide width, the label had nothing to name (its select is hidden) and became a bare clickable
+             element announced as "Settings category" beside a menu that had no name of its own — seen in
+             `bsk_inspect`'s tree as `button "设置分类"` next to `navigation "设置分类"`. -->
+        <label for="settings-category" class="sr-only lg:hidden">{{ messages.settings.navigation }}</label>
         <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
-        <AMenu class="hidden lg:block" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
+        <AMenu class="hidden lg:block" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
           <AMenu.Item v-for="item in categories" :key="item.value">
             {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
           </AMenu.Item>
