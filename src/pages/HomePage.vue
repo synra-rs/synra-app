@@ -251,7 +251,7 @@
         {{ messages.home.receivedFiles.title }}
       </h2>
 
-      <p v-if="received.length === 0" class="m-0 py-4 text-sm text-ink-dim">
+      <p v-if="received.length === 0" class="m-0 py-2 text-sm text-ink-dim">
         {{ messages.home.receivedFiles.empty }}
       </p>
 
