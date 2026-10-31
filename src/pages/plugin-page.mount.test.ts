@@ -145,6 +145,34 @@ describe('the plugins page', () => {
     }
   })
 
+  it.each([
+    ['active', 'success'],
+    ['faulted', 'error'],
+    ['unreadable', 'error'],
+    ['awaiting_consent', 'warning'],
+    ['unavailable', 'warning'],
+    ['disabled', 'default']
+  ])('colours the %s tag %s', async (state, colour) => {
+    // ★ Grey is the "nothing to do" colour. `awaiting_consent` (switched on but not trusted) and `unavailable`
+    // (enabled and trusted, but this build could not start it) both need the user, and used to share that grey with
+    // `disabled`. `unreadable` is a failure like `faulted`, not a neutral word.
+    const answers: Record<string, unknown> = { plugins_list: [card({ state })], plugins_publishers: [] }
+    mocks.call.mockImplementation(async (command: string) => command in answers
+      ? { ok: true, value: answers[command] }
+      : { ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
+    const wrapper = mountPlugins({ attachTo: document.body })
+    try {
+      await flushPromises()
+      const label = (messages.plugins.states as Record<string, string>)[state]
+      const tag = wrapper.findAllComponents({ name: 'ATag' }).find(candidate => candidate.text() === label)
+      expect(tag, `no tag for ${state}`).toBeDefined()
+      expect(tag?.props('color')).toBe(colour)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('does not mark a card when the publisher list has no matching key', async () => {
     // The first load reads plugins and publishers separately; an absent key must not read as a warning.
     const answers: Record<string, unknown> = {

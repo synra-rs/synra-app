@@ -813,10 +813,18 @@ const loading = ref(false)
  * kernel invents later stays neutral, which is the honest default — the tag always carries the word (R23), so the
  * colour is redundancy rather than the state itself.
  */
-function stateColour(state: string): 'success' | 'error' | 'default' {
+function stateColour(state: string): 'success' | 'error' | 'warning' | 'default' {
   switch (state) {
     case 'active': return 'success'
-    case 'faulted': return 'error'
+    // ★ `faulted` is the plugin's own failure; `unreadable` is a manifest this build could not read, which is also a
+    // fault the user cannot ignore. Both red.
+    case 'faulted':
+    case 'unreadable': return 'error'
+    // ★ Warning, not default: both need the user to do something. `awaiting_consent` is switched on but not trusted —
+    // the card looks running and is not — and `unavailable` is enabled and trusted but the shell could not start it.
+    // Grey would put them beside `disabled`, which needs nothing.
+    case 'awaiting_consent':
+    case 'unavailable': return 'warning'
     default: return 'default'
   }
 }
