@@ -317,6 +317,10 @@ describe('the plugins page', () => {
       await flushPromises()
       expect(wrapper.get('#plugin-install').isVisible()).toBe(false)
       expect(document.activeElement).toBe(wrapper.get('[data-testid="install-toggle"]').element)
+      // ★ The success alert announces itself. Focus goes back to the toggle on the line above, so without `role`
+      // "status" a screen reader says nothing at all about the install having finished — and the same page's own
+      // failure path goes through `ErrorNotice`, which is an alert. Only the success side was silent.
+      expect(wrapper.get('[role="status"]').text()).toContain(messages.plugins.installedSwitchedOff)
     }
     finally {
       wrapper.unmount()

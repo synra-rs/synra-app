@@ -222,7 +222,7 @@
 
     <!-- Installing is not approving: the sentence says the plugin is off, because a user told only "installed" would
          look for a fault in a plugin that is behaving exactly as designed. -->
-    <AAlert v-if="note" type="success" :message="note" closable @close="note = undefined" />
+    <AAlert v-if="note" type="success" :message="note" role="status" closable @close="note = undefined" />
 
     <!--
       The question a signed package asks next, shown right after the install that produced it. It is deliberately not a
