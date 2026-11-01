@@ -146,12 +146,30 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
         IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"reason": error.to_string()}))
     })?;
-    let (address, credentials, profile, local) = {
-        let host = state.host.lock();
-        let address = host.locate(peer).ok_or_else(|| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"reason": "the device is not nearby"}))
+    /*
+     * ★ The address comes from the row the list was built from, not from the kernel's discovery table.
+     *
+     * Discovery already writes every announcement's origin into `devices_seen.source`, which is what the devices screen
+     * reads — so the address used here is the address of the row the person pressed. Reaching into the kernel's table
+     * instead would be a second source that could be empty while the list is full, and the press would be refused for a
+     * device the screen is showing.
+     */
+    let address = {
+        let db = state.db.lock();
+        let seen = db.seen_devices().map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"reason": error.to_string()}))
         })?;
+        seen.iter()
+            .find(|row| row.device_id == peer.to_string())
+            .and_then(|row| row.source.parse::<std::net::SocketAddr>().ok())
+            .ok_or_else(|| {
+                IpcError::unknown(ErrorCode::InvalidArgument)
+                    .with_params(serde_json::json!({"reason": "the device has no address to dial"}))
+            })?
+    };
+    let (credentials, profile, local) = {
+        let host = state.host.lock();
         let credentials = host.pairing_credentials().map_err(|error| {
             IpcError::unknown(ErrorCode::Internal)
                 .with_params(serde_json::json!({"reason": error.to_string()}))
@@ -166,7 +184,7 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
             },
             app_version: env!("CARGO_PKG_VERSION").to_owned(),
         };
-        (address, credentials, profile, identity.device_id)
+        (credentials, profile, identity.device_id)
     };
     let display_name = profile.display_name.clone();
     // A second binding for the thread: the record it may write needs the name, and a `move` closure would take the one
@@ -228,15 +246,6 @@ fn service(state: &AppState) -> Result<Arc<PairingService>, IpcError> {
         IpcError::unknown(ErrorCode::NotPaired)
             .with_params(serde_json::json!({"detail": error.to_string()}))
     })
-}
-
-fn device(value: &str) -> Result<DeviceId, IpcError> {
-    value
-        .parse()
-        .map_err(|error: synra_protocol::ids::IdError| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"reason": error.to_string()}))
-        })
 }
 
 fn refusal(error: &PairingServiceError) -> IpcError {
