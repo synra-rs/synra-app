@@ -91,6 +91,7 @@ describe('the devices page', () => {
   it('opens pairing on demand and keeps the selected invitation draft when hidden', async () => {
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES },
+      pairing_request: { deviceId: 'nearby', displayName: 'Nearby', verificationCode: '123456', expiresInMs: 90000 },
       pairing_status: null
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -113,7 +114,7 @@ describe('the devices page', () => {
       await toggle.trigger('click')
       await flushPromises()
       expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
-      expect([...new Set(mocks.call.mock.calls.map(([command]) => command))].sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_status'])
+      expect([...new Set(mocks.call.mock.calls.map(([command]) => command))].sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_request', 'pairing_status'])
     }
     finally {
       wrapper.unmount()
@@ -125,6 +126,7 @@ describe('the devices page', () => {
     // of the list and left them to find the device the error had already named.
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_request: { deviceId: 'nearby', displayName: 'Nearby', verificationCode: '123456', expiresInMs: 90000 },
       pairing_status: { state: 'idle' }
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -146,6 +148,7 @@ describe('the devices page', () => {
     // the panel left the id in the address bar, so navigating away and back re-opened a panel already dismissed.
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_request: { deviceId: 'nearby', displayName: 'Nearby', verificationCode: '123456', expiresInMs: 90000 },
       pairing_status: { state: 'idle' }
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -172,6 +175,7 @@ describe('the devices page', () => {
     // An id the list does not carry would select a peer nothing can resolve, and the panel would open empty.
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: [], scanning: undefined },
+      pairing_request: { deviceId: 'nearby', displayName: 'Nearby', verificationCode: '123456', expiresInMs: 90000 },
       pairing_status: { state: 'idle' }
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -212,6 +216,7 @@ describe('the devices page', () => {
     setLocalePreference(language)
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES, scanning: undefined },
+      pairing_request: { deviceId: 'nearby', displayName: 'Nearby', verificationCode: '123456', expiresInMs: 90000 },
       pairing_status: null
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -227,7 +232,7 @@ describe('the devices page', () => {
       for (const retired of ['Send text', 'Send file', '发送文字', '发送文件'])
         expect(labels).not.toContain(retired)
       expect(wrapper.findComponent({ name: 'AModal' }).exists()).toBe(false)
-      expect(mocks.call.mock.calls.every(([command]) => ['devices_snapshot', 'pairing_status', 'pairing_pending'].includes(command))).toBe(true)
+      expect(mocks.call.mock.calls.every(([command]) => ['devices_snapshot', 'pairing_status', 'pairing_pending', 'pairing_request'].includes(command))).toBe(true)
     }
     finally {
       wrapper.unmount()

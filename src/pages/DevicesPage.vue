@@ -161,6 +161,9 @@ function pair(deviceId: string): void {
     return
   selectedDeviceId.value = deviceId
   showPairing.value = true
+  // ★ The request goes out here, not from the panel: the row is what names the device, and a person who pressed that
+  // button should see the code even if they close the dialog a moment later.
+  void pairing.request(deviceId)
 }
 
 /**

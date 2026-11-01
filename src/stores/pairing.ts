@@ -16,6 +16,15 @@ export interface PendingRequest {
   readonly expiresInMs: number
 }
 
+/** A pairing this device has asked for and is waiting on. */
+export interface OutgoingRequest {
+  readonly deviceId: string
+  readonly displayName: string
+  /** The digits to compare against the other screen. */
+  readonly verificationCode: string
+  readonly expiresInMs: number
+}
+
 /** Runtime progress is read from the shared service, independent of page lifetime and event delivery. */
 export const usePairingStore = defineStore('pairing', () => {
   const snapshot = ref<PairingSnapshot | null>(null)
@@ -26,6 +35,8 @@ export const usePairingStore = defineStore('pairing', () => {
   /** What other devices are waiting on this person to decide about. */
   const pending = ref<PendingRequest[]>([])
   const pendingError = ref<IpcError>()
+  /** The pairing this device asked for, while the other screen decides. */
+  const outgoing = ref<OutgoingRequest | null>(null)
   /** The request currently being answered, so one choice does not disable another prompt's buttons. */
   const answering = ref<string | null>(null)
   const error = computed(() => commandError.value ?? statusError.value)
@@ -131,6 +142,30 @@ export const usePairingStore = defineStore('pairing', () => {
     }
   }
 
+  /**
+   * Asks one nearby device to pair, and keeps the code to compare while it decides.
+   *
+   * ★ The answer is not awaited here, and cannot be: a person on the other machine has to read six digits and answer. The
+   * command reports what is already known — who was asked and the code — and the record appears when that person accepts,
+   * which `devices_snapshot` then shows. Nothing polls for it on this side, because there is nothing to poll: a device that
+   * agreed shows up paired, one that declined simply never does.
+   */
+  async function request(deviceId: string): Promise<boolean> {
+    commandError.value = undefined
+    const result = await kernel.call<OutgoingRequest>('pairing_request', { deviceId })
+    if (!result.ok) {
+      commandError.value = result.error
+      return false
+    }
+    outgoing.value = result.value
+    return true
+  }
+
+  /** Stops showing the code. The request itself is still live on the other screen until it expires. */
+  function dismissOutgoing(): void {
+    outgoing.value = null
+  }
+
   async function cancel(): Promise<boolean> {
     const current = snapshot.value
     if (current === null || !active.value)
@@ -138,5 +173,5 @@ export const usePairingStore = defineStore('pairing', () => {
     return run(() => kernel.call<null>('pairing_cancel', { requestId: current.requestId }))
   }
 
-  return { snapshot, busy, refreshing, commandError, statusError, error, active, pending, pendingError, answering, refresh, refreshPending, answer, cancel }
+  return { snapshot, busy, refreshing, commandError, statusError, error, active, pending, pendingError, answering, outgoing, request, dismissOutgoing, refresh, refreshPending, answer, cancel }
 })

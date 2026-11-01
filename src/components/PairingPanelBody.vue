@@ -20,6 +20,33 @@
 <template>
   <div class="stack gap-4" data-testid="pairing-body">
     <!--
+      ★ The pairing this device asked for, while the other screen decides.
+
+        Same six digits, same size, same reason: the person holds two screens side by side. This side asked, so there is
+        nothing to accept or decline here — the answer comes from the other machine, and the only thing to do is read the
+        code aloud and wait.
+    -->
+    <div v-if="pairing.outgoing" class="stack gap-2" data-testid="pairing-outgoing">
+      <h3 class="m-0 text-sm font-medium">
+        {{ messages.devices.pairingOutgoingTitle }}
+      </h3>
+      <p class="m-0 break-words text-sm">
+        {{ messages.devices.pairingOutgoingWants(pairing.outgoing.displayName) }}
+      </p>
+      <p class="m-0 text-center text-2xl font-mono" data-testid="pairing-outgoing-code">
+        {{ pairing.outgoing.verificationCode }}
+      </p>
+      <p class="m-0 text-center text-xs text-ink-dim">
+        {{ messages.devices.pairingRequestCompare(pairing.outgoing.verificationCode) }}
+      </p>
+      <div class="flex justify-center">
+        <AButton size="small" data-testid="pairing-outgoing-dismiss" @click="pairing.dismissOutgoing()">
+          {{ messages.devices.pairingOutgoingStop }}
+        </AButton>
+      </div>
+    </div>
+
+    <!--
       ★ The requests other devices are waiting on this person to decide about.
 
         A device asks; the kernel files the request on the desk and parks that connection until someone answers. Nothing
@@ -52,7 +79,7 @@
           {{ prompt.verificationCode }}
         </p>
         <p class="m-0 text-center text-xs text-ink-dim">
-          {{ messages.devices.pairingRequestCompare }}
+          {{ messages.devices.pairingRequestCompare(prompt.verificationCode) }}
         </p>
         <p class="m-0 break-all font-mono text-xs text-ink-dim">
           {{ prompt.deviceId }}

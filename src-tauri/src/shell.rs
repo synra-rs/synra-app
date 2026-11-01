@@ -760,6 +760,7 @@ mod wrappers {
             pairing_status,
             pairing_cancel,
             pairing_pending,
+            pairing_request,
             pairing_answer,
             plugins_list,
             plugins_enable,
