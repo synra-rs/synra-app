@@ -592,7 +592,14 @@
                     is what the manifest declares, so the boxes are what the *plugin* asks for rather than what it was given.
                   -->
                     <div v-if="plugin.requested?.length" class="stack gap-2">
-                      <span class="text-xs text-ink-dim">{{ messages.plugins.requested }}</span>
+                      <!--
+                        ★ The span carries an `id` so the group below can name itself from it. `ACheckboxGroup` renders
+                          `role="group"`, and a group with no name is announced as "group" and nothing else — a reader
+                          arriving at the list of capabilities a plugin asks for heard the boxes and their individual
+                          labels but never what the set was for. The label was already on screen; it just was not
+                          attached to anything.
+                      -->
+                      <span :id="requestedLabelId(plugin.pluginId)" class="text-xs text-ink-dim">{{ messages.plugins.requested }}</span>
 
                       <!--
                       `:value` + `@update:value` rather than `v-model`: the map may not have an entry yet on the first render,
@@ -601,6 +608,7 @@
                       <ACheckboxGroup
                         :value="selection[plugin.pluginId] ?? plugin.granted"
                         :disabled="operations.busy.has(plugin.pluginId)"
+                        :aria-labelledby="requestedLabelId(plugin.pluginId)"
                         class="stack"
                         :style="{ alignSelf: 'flex-start' }"
                         @update:value="(picked) => (selection[plugin.pluginId] = picked as string[])"
@@ -877,6 +885,17 @@ const loading = ref(false)
  * kernel invents later stays neutral, which is the honest default — the tag always carries the word (R23), so the
  * colour is redundancy rather than the state itself.
  */
+/**
+ * The `id` of the "required permissions" label for one plugin's permission group.
+ *
+ * ★ Derived from the plugin id, not a fixed string: every plugin row on the page renders its own group, and two groups
+ *   sharing one `id` would point their `aria-labelledby` at whichever came first — every row after that would be named
+ *   by another plugin's heading.
+ */
+function requestedLabelId(pluginId: string): string {
+  return `plugin-required-${pluginId.replace(/[^\w-]/g, '-')}`
+}
+
 function stateColour(state: string): 'success' | 'error' | 'warning' | 'default' {
   switch (state) {
     case 'active': return 'success'
