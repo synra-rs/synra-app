@@ -4,7 +4,6 @@ use super::Transfers;
 use synra_ipc::dto::TransferSnapshot;
 use synra_protocol::ids::{DeviceId, TransferId};
 
-mod authenticated;
 mod consent;
 
 /// A snapshot a worker might report, with every field named.

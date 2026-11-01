@@ -135,13 +135,6 @@ pub struct AppState {
     /// Set before with_discovery_or_report, because the announcement has to carry the port peers should **dial** — the
     /// listener's — and a device that announced the discovery port would be one whose pairing always dialled the wrong service.
     pub listener: Option<(Arc<Mutex<synra_core::Host>>, u16)>,
-    /// The pairing desk: the requests waiting for a person, and the answers going back.
-    ///
-    /// ★ Held **here** rather than inside the listener, and that is what makes pairing work at all: a request arrives on a
-    /// socket thread, the user answers from a command, and those are different threads with no connection between them. The
-    /// desk is the shared thing they agree on — the daemon learnt this first, where the answer comes from a person who is not
-    /// on the connection that asked.
-    pub pairing: Arc<synra_core::pairing::PairingDesk>,
     /// The transfer desk: incoming transfers waiting for this device's answer.
     ///
     /// ★ Beside the pairing desk and for the same reason: the question is asked on a connection thread and answered by a
@@ -385,10 +378,6 @@ impl AppState {
             scans_started: AtomicU64::new(0),
             bundles_written: AtomicU64::new(0),
             listener: None,
-            pairing: Arc::new(synra_core::pairing::PairingDesk::new(
-                local_id,
-                synra_protocol::session::SessionTimeouts::default().pairing,
-            )),
             transfer_desk: Arc::new(crate::transfer_desk::TransferDesk::new()),
             uploads: crate::commands::plugin_ui::Uploads::new(),
             started_at_ms: now_ms,

@@ -123,7 +123,6 @@ pub fn deliver_decided(
 
 #[cfg(test)]
 mod tests {
-    mod authenticated;
     use std::sync::Arc;
 
     use synra_core::intent::remote::{self, Invoke, InvokeResult};

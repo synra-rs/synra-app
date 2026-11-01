@@ -85,36 +85,8 @@ mod wrappers {
         commands::identity::identity_set_display_name(&state, &name)
     }
 
-    /// Public enrollment facts, independently of runtime credential readiness.
-    #[tauri::command]
-    pub async fn identity_credentials(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-    ) -> Result<synra_protocol::credentials::CredentialSnapshot, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::credentials::identity_credentials(&state)).await
-    }
 
-    /// Explicit replacement after confirmation of the displayed fingerprint.
-    #[tauri::command]
-    pub async fn identity_repair(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        expected_fingerprint: String,
-    ) -> Result<synra_protocol::credentials::CredentialRepairReport, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || {
-            commands::credentials::identity_repair(&state, &expected_fingerprint)
-        })
-        .await
-    }
 
-    /// Old-secret cleanup never changes current grants.
-    #[tauri::command]
-    pub async fn identity_cleanup(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-    ) -> Result<synra_protocol::credentials::CredentialCleanupReport, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::credentials::identity_cleanup(&state)).await
-    }
 
     #[tauri::command]
     pub fn devices_snapshot(
@@ -154,57 +126,10 @@ mod wrappers {
         commands::devices::devices_forget(&state, &device_id)
     }
 
-    /// Reads the shared runtime task, including its last terminal result.
-    #[tauri::command]
-    pub fn pairing_status(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-    ) -> Result<Option<synra_protocol::pairing::PairingSnapshot>, IpcError> {
-        commands::pairing::pairing_status(&state)
-    }
 
-    /// Cancels the matching generation before its durable authorization commits.
-    #[tauri::command]
-    pub async fn pairing_cancel(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        request_id: String,
-    ) -> Result<(), IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_cancel(&state, &request_id)).await
-    }
 
-    /// What this device is being asked to decide about — the question nothing used to ask.
-    #[tauri::command]
-    pub fn pairing_pending(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-    ) -> Result<Vec<commands::pairing::PendingPairingDto>, IpcError> {
-        commands::pairing::pairing_pending(&state)
-    }
 
-    /// Asks a nearby device to pair, and reports the code to compare while it decides.
-    ///
-    /// Off the UI thread for the opposite reason to [`Self::pairing_answer`]: opening the socket must not hold the window.
-    /// It returns as soon as the request is sent. The answer arrives on its own thread, and a success becomes a row in the
-    /// device list rather than a value this call could have returned.
-    #[tauri::command]
-    pub async fn pairing_request(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        device_id: String,
-    ) -> Result<commands::pairing::OutgoingPairingDto, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_request(&state, &device_id)).await
-    }
 
-    /// Accepts or declines one waiting request. Runs off the UI thread: an acceptance writes the database first, and
-    /// the desk blocks the connection until it has.
-    #[tauri::command]
-    pub async fn pairing_answer(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        request_id: String,
-        accept: bool,
-    ) -> Result<(), IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::answer_pairing(&state, &request_id, accept)).await
-    }
 
     #[tauri::command]
     pub fn plugins_list(
@@ -750,18 +675,10 @@ mod wrappers {
         let dispatch: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
             identity_get,
             identity_set_display_name,
-            identity_credentials,
-            identity_repair,
-            identity_cleanup,
             devices_snapshot,
             devices_scan_start,
             devices_scan_cancel,
             devices_forget,
-            pairing_status,
-            pairing_cancel,
-            pairing_pending,
-            pairing_request,
-            pairing_answer,
             plugins_list,
             plugins_enable,
             plugins_disable,
@@ -1029,9 +946,6 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     eprintln!("synra: the plugin update check could not start: {error}");
                 }
             }
-            // ★ Starts the thread that turns a request on the desk into an event the interface can draw. Without it a peer
-            // could ask to pair and the window would look at it and never say so.
-            crate::commands::pairing::watch(app.handle().clone(), &pairing_cancel);
             // ★ The tray, and it is reported rather than fatal: the window is the application, and a desktop without an
             // indicator host (some Linux setups) must still get one. What it buys is the second way back to a window and
             // a **deliberate** way out — see `run_window`, where closing the window hides it instead of ending the process.

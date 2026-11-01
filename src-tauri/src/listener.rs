@@ -146,21 +146,10 @@ pub fn bind(mut state: AppState) -> AppState {
     // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
     // loaded, and the only sign was a white screen with discovery's log above it.
     let identity = state.identity.lock().clone();
-    let network = synra_core::device_credentials::initialize_native_network(
-        Arc::clone(&state.db),
-        local_of(&identity),
-        synra_core::reading_millis(synra_store::sqlite::now_ms()) / 1000,
-    )
-    .map_err(|error| error.to_string());
-    if let Err(why) = &network {
-        eprintln!("synra: authenticated networking is unavailable: {why}");
-    }
-    state.host.lock().configure_network(network.clone());
     // ★ The second host this process builds, and it needs the recorder for the same reason the state's host does: an
     // accepted connection is a link, and its frames are the only evidence the listener ever handled anything.
     let mut listener_host = synra_core::Host::new(identity.clone(), local_of(&identity))
         .with_metrics(Arc::clone(&state.metrics));
-    listener_host.configure_network(network);
     let host = Arc::new(Mutex::new(listener_host));
 
     let bound = {
@@ -213,7 +202,6 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
     // ★ The desk comes **from the state**, not from here. A request arrives on a socket thread and the user answers from a
     // command; if the listener made its own desk, the command's answer would land on a different one and the connection would
     // wait out its window for a decision already made.
-    let desk = Arc::clone(&state.pairing);
     // ★ The router the kernel's listener wants is a thin pair of the Arcs this shell already holds — not the daemon's 660-line
     // orchestration. It needs a plugin set, and `PluginSet::new` refuses to exist without a host to route effects through, so a
     // window with no plugin host does not listen at all: one that accepted a share and could route it nowhere would be a link
@@ -443,14 +431,14 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
             let kernel_state = Arc::clone(&db_state);
             let plugin_events = kernel_state.plugins.as_ref().and_then(|plugins| plugins.lock().event_service());
             let on_kernel_events: Arc<synra_core::listener::KernelEventCallback> =
-                Arc::new(move |envelope: &synra_protocol::envelope::Envelope, authority: &synra_core::peer::authenticated::RequestAuthority| {
+                Arc::new(move |envelope: &synra_protocol::envelope::Envelope, peer: &synra_protocol::ids::DeviceId| {
                     use synra_core::listener::KernelEventOutcome;
                     use synra_protocol::event::events;
                     let board = Arc::clone(&kernel_state.board);
                     let now = synra_store::sqlite::now_ms();
                     let local = kernel_state.identity.lock().device_id;
                     if envelope.event.is_plugin() {
-                        return match synra_core::plugin_events::answer_remote_event(plugin_events.as_ref(), envelope, authority, now) {
+                        return match synra_core::plugin_events::answer_remote_event(plugin_events.as_ref(), envelope, peer, local, now) {
                             Ok(receipt) => KernelEventOutcome::Receipt(Box::new(receipt)),
                             Err(error) => KernelEventOutcome::Refused(error.to_string()),
                         };
@@ -516,7 +504,6 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                 &host,
                 &thread_cancel,
                 &data_dir,
-                &desk,
                 &router,
                 &finished,
                 &progress,
