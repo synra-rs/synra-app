@@ -606,6 +606,11 @@ pub fn send_over_with(
             ));
         }
     };
+    // ★ The handshake is the only moment this side learns who the peer is, so it is where the pairing is written.
+    // Nothing else records one: the identity layer that used to do it is gone (ADR-025), and a device list where
+    // nothing is ever paired would offer "Forget" for rows that cannot exist.
+    record_pairing(state, &dialled, address);
+
     let mut link = dialled
         .into_link()
         // ★ The byte counters live on the link; without this the shell would own a recorder nothing on its dials wrote to.
@@ -1452,3 +1457,39 @@ pub fn transfer_send_text(
 
 #[cfg(test)]
 mod tests;
+
+/// Writes down who answered a dial, so the device list can show it as paired.
+///
+/// # Why a failed write is not an error
+///
+/// The link is already open and the transfer is about to start; failing the send because a bookkeeping row could not be
+/// written would throw away a working connection. The cost of a miss is that the device shows up as unpaired, which is
+/// what it looked like before the dial anyway.
+fn record_pairing(
+    state: &crate::state::AppState,
+    dialled: &synra_core::host::Dialled,
+    address: std::net::SocketAddr,
+) {
+    use synra_protocol::session::PlatformKind;
+
+    let negotiated = dialled.negotiated();
+    let platform = match negotiated.platform {
+        PlatformKind::Desktop => "desktop",
+        PlatformKind::Android => "android",
+        PlatformKind::Ios => "ios",
+        _ => "unknown",
+    };
+    let record = synra_store::Paired {
+        device_id: negotiated.device_id.to_string(),
+        display_name: negotiated.display_name.clone(),
+        platform: platform.to_owned(),
+        features: serde_json::to_string(
+            &negotiated.agreed.common.iter().map(|feature| feature.as_str()).collect::<Vec<_>>(),
+        )
+        .unwrap_or_else(|_| "[]".to_owned()),
+        link_token: String::new(),
+        address: Some(address.to_string()),
+        paired_at_ms: i64::try_from(unix_millis()).unwrap_or(0),
+    };
+    let _ = state.db().pair_device(&record);
+}
