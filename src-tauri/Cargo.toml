@@ -90,11 +90,8 @@ tauri-shell = [
   "dep:tauri",
   "dep:tauri-build",
   "dep:tauri-plugin-dialog",
-  "dep:tauri-plugin-global-shortcut",
-  "dep:tauri-plugin-autostart",
   "dep:tauri-plugin-deep-link"
 ]
-
 [dependencies]
 synra-core = { path = "../../synra-rust-core/crates/synra-core" }
 # The HTTP client `network-fetch` needs. A host-side crate on purpose: putting it in the kernel would drag a TLS stack into
@@ -145,9 +142,22 @@ tauri = { version = "2", optional = true, features = [ "tray-icon", "unstable" ]
 # token that expires in minutes; the type is a u128 either way.
 uuid = { version = "1", features = [ "v4" ] }
 tauri-plugin-dialog = { version = "2", optional = true }
-tauri-plugin-global-shortcut = { version = "2", optional = true }
-tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
+
+# ★ The three that only a desktop has.
+#
+# A tray, a global shortcut and "start with the session" are all answers to "the window is not on screen" — a phone is
+# never in that state, and none of the three has an Android implementation, so leaving them *in the source* fails the
+# Android build with `cannot find GlobalShortcutExt` / `cannot find MacosLauncher` / `cannot find tray`.
+#
+# The condition is on the code (`#[cfg(desktop)]`), not on the dependency: Tauri's build script collects a plugin's
+# permissions from the crates that are actually compiled in, and a `[target.'cfg(..)'.dependencies]` entry makes the
+# plugin invisible to that collection on the host — the desktop build then fails with `Permission autostart:default not
+# found`, which is a confusing way to say "the crate is not in the graph". Keeping the crate compiled and gating only
+# the calls keeps one rule for both platforms: the plugin exists, the code that uses it does not.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+tauri-plugin-global-shortcut = { version = "2" }
+tauri-plugin-autostart = { version = "2" }
 
 [build-dependencies]
 synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }

@@ -14,7 +14,7 @@
           <HelpText>
             {{ messages.settings.credentials.detail }}
           </HelpText>
-          <ErrorNotice v-if="credentials.error" :code="credentials.error.code" :actions="credentials.error.actions" @retry="credentials.reload()" />
+          <ErrorNotice v-if="credentials.error" :code="credentials.error.code" :params="credentials.error.params" :actions="credentials.error.actions" @retry="credentials.reload()" />
           <AButton :disabled="credentials.busy" @click="credentials.reload()">
             {{ messages.settings.credentials.refresh }}
           </AButton>

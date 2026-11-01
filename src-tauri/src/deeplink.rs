@@ -98,7 +98,13 @@ pub fn receive(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
         }
     }
     // ★ After the dispatch: the card the user is about to see is the one the share created.
+    //
+    // Desktop only: on Android the activity is already in front — there is no hidden window to bring back, and
+    // `window::show_main` is not compiled there.
+    #[cfg(desktop)]
     crate::window::show_main(app);
+    #[cfg(not(desktop))]
+    let _ = app;
 }
 
 #[cfg(test)]

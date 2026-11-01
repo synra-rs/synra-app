@@ -1,0 +1,41 @@
+    Checking windows-sys v0.61.2
+    Checking windows_x86_64_msvc v0.52.6
+    Checking windows-targets v0.52.6
+   Compiling tauri-plugin-global-shortcut v2.4.1
+   Compiling tauri-plugin-autostart v2.7.0
+    Checking windows-sys v0.59.0
+    Checking keyboard-types v0.7.0
+    Checking global-hotkey v0.8.0
+   Compiling synra-app v0.1.0 (D:\Projects\synra-rust\synra-rust-app\src-tauri)
+    Checking winapi-util v0.1.11
+    Checking same-file v1.0.6
+    Checking walkdir v2.5.0
+    Checking tauri-utils v2.10.2
+    Checking termcolor v1.4.1
+    Checking dirs-sys v0.5.0
+    Checking muda v0.20.0
+    Checking softbuffer v0.4.8
+    Checking nu-ansi-term v0.50.3
+    Checking tracing-subscriber v0.3.23
+    Checking tray-icon v0.25.1
+    Checking dirs v7.0.0
+    Checking wasmprinter v0.239.0
+    Checking tauri-runtime v2.12.2
+    Checking window-vibrancy v0.8.1
+    Checking wasmtime-environ v38.0.4
+    Checking tauri-runtime-wry v2.12.2
+    Checking tauri v2.12.4
+    Checking synra-observe v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-observe)
+    Checking wasmtime-internal-cranelift v38.0.4
+    Checking synra-net v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-net)
+    Checking os_info v3.15.0
+    Checking auto-launch v0.6.0
+    Checking tauri-plugin-fs v2.7.1
+    Checking tauri-plugin-dialog v2.8.3
+    Checking wasmtime v38.0.4
+    Checking tauri-plugin-deep-link v2.6.2
+    Checking synra-ipc v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-ipc)
+    Checking synra-plugin-host v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-plugin-host)
+    Checking synra-core v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-core)
+    Checking synra-fetch v0.1.0 (D:\Projects\synra-rust\synra-rust-core\crates\synra-fetch)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 38.68s

@@ -82,10 +82,16 @@ pub mod deeplink;
 pub mod launch;
 
 // ★ The tray needs an event loop, so it is behind the same gate as the window; [`tray_menu`] holds the part that does not.
-#[cfg(feature = "tauri-shell")]
+//
+// And behind a second gate: `tauri::tray` / `tauri::menu` do not exist on Android at all, so this is not a feature
+// question but a platform one — a phone has no tray to put an icon in.
+#[cfg(all(feature = "tauri-shell", not(target_os = "android")))]
 pub mod tray;
 /// The one window, shown by the tray and by a second launch.
-#[cfg(feature = "tauri-shell")]
+///
+/// Desktop only for the same reason as [`tray`]: both of the two things that ask for it are desktop concepts, and
+/// `unminimize` has no Android implementation.
+#[cfg(all(feature = "tauri-shell", not(target_os = "android")))]
 pub mod window;
 
 #[cfg(test)]

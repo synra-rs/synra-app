@@ -17,12 +17,24 @@
 import type { AuditEntryDto, CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
+import { detailOf } from '../../messages/failure-detail'
 
-/** A refusal as the interface needs it: the code, the message **key** and the actions (R33). */
+/**
+ * A refusal as the interface needs it: the code, the message **key**, the actions, and whatever the kernel put in
+ * `params` (R33).
+ *
+ * ★ `params.detail` is why this carries more than three fields. A refusal of `invalid_argument` used to reach the
+ * reader as the one sentence that code's key stands for — "Something in the request was not valid." — while the
+ * kernel had already said *which* argument: `pairing_connect` writes `{"reason": "the selected device has no discovery
+ * route"}`, the device-id parser writes what would not parse, a service failure writes its own text. None of it was
+ * rendered, so every different cause looked like the same generic refusal and there was nothing to act on.
+ */
 export interface Failure {
   readonly code: string
   readonly message: string
   readonly actions?: readonly SuggestedAction[] | undefined
+  /** The kernel's own parameters, rendered as the notice's description when `detail` or `reason` is among them. */
+  readonly detail?: string | undefined
 }
 
 /** What a call came to. */
@@ -31,8 +43,18 @@ export type Outcome<T>
     | { readonly ok: false, readonly failure: Failure }
 
 /** Turns a failed `CallResult` into the shape the notice renders. */
-function failureOf(error: { code: string, message: string, actions?: readonly SuggestedAction[] | undefined }): Failure {
-  return { code: error.code, message: error.message, actions: error.actions }
+function failureOf(error: {
+  code: string
+  message: string
+  actions?: readonly SuggestedAction[] | undefined
+  params?: unknown
+}): Failure {
+  return {
+    code: error.code,
+    message: error.message,
+    actions: error.actions,
+    detail: detailOf(error.params)
+  }
 }
 
 /**

@@ -103,8 +103,11 @@ pub fn watch(app: tauri::AppHandle, request: PathBuf) {
                 // Removed before the show, so a request that arrives while the window is coming forward is a new one
                 // rather than the same one seen twice.
                 let _ = std::fs::remove_file(&request);
+                // Desktop only: `window::show_main` is not compiled on Android, where a second launch is not a thing.
+                #[cfg(desktop)]
                 crate::window::show_main(&app);
-            }
+                #[cfg(not(desktop))]
+                let _ = &app;            }
             std::thread::sleep(std::time::Duration::from_millis(500));
         });
     if let Err(error) = spawned {

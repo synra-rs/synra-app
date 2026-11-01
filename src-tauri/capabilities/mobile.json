@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Main window permissions on a phone: the same set without the desktop-only autostart plugin, which is not in the dependency graph there.",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": ["core:default", "dialog:default", "host-commands"]
+}

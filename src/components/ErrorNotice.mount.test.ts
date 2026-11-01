@@ -106,3 +106,81 @@ describe('error notice actions', () => {
     wrapper.unmount()
   })
 })
+describe('the kernel explanation', () => {
+  /**
+   * ★ `invalid_argument` is one code and every kind of refusal wears it. Before this, the reader got the code's one
+   * sentence — "Something in the request was not valid." — whether the device id would not parse or the service was
+   * missing, and had nothing to act on. The kernel had already said which; the interface dropped it.
+   */
+  async function mountWith(params: unknown, detail?: string) {
+    const instance = router()
+    await instance.push('/')
+    const wrapper = mount(ErrorNotice, {
+      props: { code: 'invalid_argument', params, detail },
+      global: { plugins: [instance] }
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('shows what `params.detail` said', async () => {
+    const wrapper = await mountWith({ detail: 'the selected device has no discovery route' })
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').text()).toBe('the selected device has no discovery route')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('accepts `reason` too, because the pairing commands write that key', async () => {
+    const wrapper = await mountWith({ reason: 'the device id did not parse' })
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').text()).toBe('the device id did not parse')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('prefers `detail` over `reason` when the kernel wrote both', async () => {
+    const wrapper = await mountWith({ reason: 'the short version', detail: 'the full version' })
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').text()).toBe('the full version')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('stays silent for parameters that are data, not prose', async () => {
+    // A command name is diagnostics (R34), not a sentence to put in front of a reader.
+    const wrapper = await mountWith({ command: 'devices_scan_start' })
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').exists(), 'a command name was rendered as an explanation').toBe(false)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('stays silent for an empty value, rather than drawing an empty line', async () => {
+    const wrapper = await mountWith({ detail: '   ' })
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').exists()).toBe(false)
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('shows an already-extracted detail from a Failure', async () => {
+    const wrapper = await mountWith(undefined, 'already extracted')
+    try {
+      expect(wrapper.find('[data-testid="error-detail"]').text()).toBe('already extracted')
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+})

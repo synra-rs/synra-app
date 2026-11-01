@@ -1,18 +1,38 @@
 <template>
   <AAlert type="error" show-icon :message="headline">
-    <!--
-      The kernel's suggested actions, rendered rather than dropped (R33) — and rendered with antd's own buttons,
-      because a control is the component library's job (R51). The ones the interface cannot carry out yet are shown as
-      a direction rather than as a button that would do nothing.
-    -->
-    <template v-if="actions.length > 0" #description>
+    <template #description>
+      <!--
+        ★ The kernel's own explanation, when it wrote one.
+
+        A refusal carries a `code`, and that code's key names a *class* of failure — `invalid_argument` renders as
+        "Something in the request was not valid." — while the same code covers every different reason the kernel can
+        have for it. The reason itself is in `params.detail`/`params.reason`, and until this block existed the
+        interface dropped it: pairing wrote "the selected device has no discovery route" and the reader got the generic
+        sentence, with no way to tell one cause from another and nothing to act on.
+
+        Above the actions, because it explains them — "check the invitation" reads differently once you know it was
+        the device id that did not parse.
+      -->
+      <p v-if="detail" data-testid="error-detail" class="m-0 text-xs break-words">
+        {{ detail }}
+      </p>
+      <!--
+        The kernel's suggested actions, rendered rather than dropped (R33) — and rendered with antd's own buttons,
+        because a control is the component library's job (R51). The ones the interface cannot carry out yet are shown
+        as a direction rather than as a button that would do nothing.
+      -->
       <!--
         ★ `[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8` is the same floor every other surface states
           ([09 §3]): 44px where a finger is the pointer, antd's own 32px from `md` up. `size="small"` is 24px, so
           these were the only controls in the interface a thumb could miss — on the one notice that appears when
           something has already gone wrong.
       -->
-      <div data-testid="error-actions" class="row flex-wrap gap-2 pt-1 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+      <div
+        v-if="actions.length > 0"
+        data-testid="error-actions"
+        class="row flex-wrap gap-2 pt-1 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
+        :class="{ 'pt-2': detail }"
+      >
         <template v-for="(action, index) in actions" :key="index">
           <AButton v-if="to(action)" size="small" @click="router.push(to(action)!)">
             {{ messages.actions[action.kind] }}
@@ -56,10 +76,20 @@ import { useRouter } from 'vue-router'
 
 import { messages } from '../messages'
 import { errorSentence } from '../messages/errors'
+import { detailOf } from '../messages/failure-detail'
 
 const props = defineProps<{
   readonly code: string
   readonly actions?: readonly SuggestedAction[] | undefined
+  /**
+   * The kernel's own parameters for the refusal.
+   *
+   * Passed through rather than pre-rendered so every call site does not have to know which key the kernel used: see
+   * `detailOf`. A caller that already holds a `Failure` (`pages/plugins/actions.ts`) can pass `:detail` instead.
+   */
+  readonly params?: unknown
+  /** A `Failure`'s already-extracted explanation, when the caller has one. */
+  readonly detail?: string | undefined
 }>()
 
 const emit = defineEmits<{
@@ -70,6 +100,7 @@ const router = useRouter()
 
 const headline = computed(() => errorSentence(props.code))
 const actions = computed<readonly SuggestedAction[]>(() => props.actions ?? [])
+const detail = computed(() => props.detail ?? detailOf(props.params))
 
 /**
  * Where an action points, when the interface has a screen for it.

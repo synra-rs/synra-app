@@ -109,6 +109,8 @@ pub fn spawn(
                                     .get("ui.locale")
                                     .and_then(serde_json::Value::as_str),
                             );
+                            // Desktop only: the tray is what carries the language, and there is no tray on Android.
+                            #[cfg(desktop)]
                             if tray_language != Some(language) {
                                 match crate::tray::refresh_language(&app, language) {
                                     Ok(()) => tray_language = Some(language),
@@ -117,6 +119,10 @@ pub fn spawn(
                                     ),
                                 }
                             }
+                            // Android has no tray to keep in step, but the variable is still declared above for
+                            // symmetry — silence the unused warning rather than cfg-ing the declaration too.
+                            #[cfg(not(desktop))]
+                            let _ = (&mut tray_language, language);
                         }
                         if app.emit(CHANNEL, &envelope).is_err() {
                             // The window is gone. Nothing else can be delivered and the bus would only queue for a

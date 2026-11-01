@@ -27,11 +27,11 @@
     <ErrorNotice
       v-if="pairing.commandError"
       :code="pairing.commandError.code"
-
+      :params="pairing.commandError.params"
       :actions="pairing.commandError.actions?.filter(action => action.kind !== 'retry')"
     />
     <div v-if="pairing.statusError" class="stack gap-2">
-      <ErrorNotice :code="pairing.statusError.code" />
+      <ErrorNotice :code="pairing.statusError.code" :params="pairing.statusError.params" />
       <AButton :loading="pairing.refreshing" :disabled="pairing.refreshing || pairing.busy" @click="pairing.refresh()">
         {{ messages.devices.pairingRefresh }}
       </AButton>
