@@ -19,7 +19,6 @@
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
       <div class="row flex-wrap items-center gap-2">
-        </AButton>
         <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />

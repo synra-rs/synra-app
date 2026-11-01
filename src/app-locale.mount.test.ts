@@ -113,7 +113,7 @@ it('still names the device when the sidebar is a rail', async () => {
   // ★ The rail hides `displayName`, `platform` and the version. That leaves an `AAvatar` holding one
   //   `aria-hidden` laptop glyph — an unnamed square, to a screen reader and to the eye. The name moves onto
   //   the avatar instead of disappearing with the text beside it.
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener() {}, removeEventListener() {} })
+  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   call.mockImplementation(async (command: string) => {
     if (command === 'config_get')

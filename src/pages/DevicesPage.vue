@@ -270,7 +270,6 @@ const forgetError = ref<IpcError>()
 const forgetting = ref(false)
 const notice = ref('')
 const keepButton = ref<InstanceType<typeof AButton>>()
-const pairTrigger = ref<InstanceType<typeof AButton>>()
 const pairedHeading = ref<HTMLElement>()
 let forgetTrigger: HTMLElement | null = null
 async function askForget(card: DeviceCard): Promise<void> {
@@ -292,8 +291,6 @@ async function closeForget(): Promise<void> {
   if (!disposed) {
     if (forgetTrigger?.isConnected)
       forgetTrigger.focus()
-    else
-      pairTrigger.value?.$el.focus()
   }
 }
 async function forget(): Promise<void> {
@@ -317,7 +314,7 @@ async function forget(): Promise<void> {
     await refresh()
     await nextTick()
     if (!disposed)
-      (pairedHeading.value ?? pairTrigger.value?.$el)?.focus()
+      pairedHeading.value?.focus()
   }
   finally {
     forgetting.value = false
@@ -329,4 +326,5 @@ onScopeDispose(() => {
   readRevision += 1
 })
 </script>
+
 
