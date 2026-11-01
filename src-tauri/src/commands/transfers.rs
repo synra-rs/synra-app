@@ -1487,7 +1487,6 @@ fn record_pairing(
             &negotiated.agreed.common.iter().map(|feature| feature.as_str()).collect::<Vec<_>>(),
         )
         .unwrap_or_else(|_| "[]".to_owned()),
-        link_token: String::new(),
         address: Some(address.to_string()),
         paired_at_ms: i64::try_from(unix_millis()).unwrap_or(0),
     };

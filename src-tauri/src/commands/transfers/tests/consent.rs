@@ -21,7 +21,6 @@ pub(super) fn pair(state: &AppState, peer: &str) {
             platform: "test".to_owned(),
             features: "[]".to_owned(),
             paired_at_ms: 1,
-            link_token: "test-token".to_owned(),
             address: None,
         })
         .unwrap();

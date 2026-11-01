@@ -387,7 +387,6 @@ fn a_paired_device_appears_in_the_bundle_by_id() {
             display_name: "Study PC".to_owned(),
             platform: "linux".to_owned(),
             features: "[]".to_owned(),
-            link_token: "secret-token-value".to_owned(),
             address: None,
             paired_at_ms: 1,
         })
@@ -403,30 +402,6 @@ fn a_paired_device_appears_in_the_bundle_by_id() {
     );
 }
 
-#[test]
-fn a_link_token_does_not_reach_the_bundle() {
-    // ★ The test that matters most in this file.
-    //
-    // A `Paired` row carries a link token, which is the credential that lets anyone act as this device. A bundle is the
-    // artefact most likely to be posted in a public issue tracker.
-    let root = testing::Root::fresh("diag-token");
-    let state = testing::state_in(&root);
-    state
-        .db()
-        .pair_device(&synra_store::Paired {
-            device_id: "44444444-4444-4444-8444-444444444444".to_owned(),
-            display_name: "Study PC".to_owned(),
-            platform: "linux".to_owned(),
-            features: "[]".to_owned(),
-            link_token: "secret-token-value".to_owned(),
-            address: Some("192.168.1.4:5000".to_owned()),
-            paired_at_ms: 1,
-        })
-        .expect("pairs");
-
-    let text = std::fs::read_to_string(diag_export(&state, &options()).expect("exports").path).expect("written");
-    assert!(!text.contains("secret-token-value"), "the token is nowhere in the file");
-}
 
 #[test]
 fn two_exports_in_one_session_are_two_files_and_not_one_overwritten() {

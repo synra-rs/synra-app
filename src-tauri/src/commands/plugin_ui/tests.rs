@@ -591,7 +591,6 @@ fn device_list_answers_the_four_fields_a_plugin_may_see() {
             display_name: "Laptop".to_owned(),
             platform: "linux".to_owned(),
             features: "[]".to_owned(),
-            link_token: String::new(),
             // No address and no session: the card is offline, which is a field the plugin sees rather than a reason the
             // device is hidden.
             address: None,
@@ -645,7 +644,6 @@ fn device_list_refuses_an_oversized_reply_instead_of_silently_dropping_targets()
                 display_name: format!("PC {index}"),
                 platform: "windows".to_owned(),
                 features: "[]".to_owned(),
-                link_token: String::new(),
                 address: None,
                 paired_at_ms: crate::testing::FIXED_NOW_MS,
             })
@@ -1447,7 +1445,6 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
             display_name: "Study PC".to_owned(),
             platform: "windows".to_owned(),
             features: "[]".to_owned(),
-            link_token: "unused-here".to_owned(),
             address: Some("127.0.0.1:1".to_owned()),
             paired_at_ms: 1_000,
         })

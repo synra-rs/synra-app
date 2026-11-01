@@ -472,7 +472,6 @@ fn a_send_to_a_paired_device_with_a_dead_address_fails_and_leaves_no_row() {
             display_name: "Study PC".to_owned(),
             platform: "windows".to_owned(),
             features: "[]".to_owned(),
-            link_token: "unused-here".to_owned(),
             // Nothing listens on port 1, so the dial is refused rather than hanging.
             address: Some("127.0.0.1:1".to_owned()),
             paired_at_ms: 1_000,

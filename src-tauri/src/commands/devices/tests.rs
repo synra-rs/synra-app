@@ -35,7 +35,6 @@ fn with_paired_device() -> AppState {
             platform: "linux".to_owned(),
             features: "[]".to_owned(),
             paired_at_ms: 1_000,
-            link_token: "token-for-tests".to_owned(),
             address: Some("192.168.1.4:5000".to_owned()),
         })
         .expect("pairs a device");
@@ -55,7 +54,6 @@ fn forgetting_a_device_tells_the_interface() {
             platform: "android".to_owned(),
             features: "[]".to_owned(),
             paired_at_ms: 1_000,
-            link_token: "token-for-tests".to_owned(),
             address: None,
         })
         .expect("pairs a device");
@@ -189,7 +187,6 @@ fn devices_are_listed_by_name_when_the_names_differ() {
             display_name: "Aardvark phone".to_owned(),
             platform: "android".to_owned(),
             features: "[]".to_owned(),
-            link_token: "token-for-tests".to_owned(),
             address: None,
             paired_at_ms: 1_000,
         })
@@ -218,7 +215,6 @@ fn devices_with_the_same_name_still_come_out_in_one_order() {
             display_name: "Study PC".to_owned(),
             platform: "android".to_owned(),
             features: "[]".to_owned(),
-            link_token: "token-for-tests".to_owned(),
             address: None,
             paired_at_ms: 1_000,
         })
@@ -767,7 +763,6 @@ fn forgetting_survives_a_restart() {
             platform: "linux".to_owned(),
             features: "[]".to_owned(),
             paired_at_ms: 1_000,
-            link_token: "token-for-tests".to_owned(),
             address: None,
         })
         .expect("pairs");
