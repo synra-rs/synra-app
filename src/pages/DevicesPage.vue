@@ -35,9 +35,7 @@
         {{ notice }}
       </p>
 
-      <div v-show="showPairing" id="device-pairing">
-        <PairingPanel :selected="selectedPeer" :visible="showPairing" @select="selectedDeviceId = $event" />
-      </div>
+      <PairingPanel :selected="selectedPeer" :visible="showPairing" @close="showPairing = false" />
 
       <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
         <div v-if="scanError" class="stack gap-2">
@@ -143,11 +141,21 @@ const router = useRouter()
 const selectedDeviceId = ref<string>()
 const selectedPeer = computed(() => selectedDeviceId.value ? devices.get(selectedDeviceId.value) : undefined)
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
-const showPairing = ref(false)
-watch(() => [pairing.active, pairing.error], ([active, failure]) => {
-  if (active || failure)
-    showPairing.value = true
-}, { immediate: true })
+const opened = ref(false)
+/**
+ * Whether the pairing dialog is on screen.
+ *
+ * ★ Derived rather than a second `ref` kept in step by a `watch`. Two answers to one question drift: the panel could be
+ * showing while the flag said otherwise, and the toggle would then do the opposite of what it looked like. A running
+ * task or a refusal opens it whether or not anyone pressed the button — `pairing.active` is the kernel's answer to
+ * "is something happening", not a copy of it that has to be refreshed in the right order.
+ */
+const showPairing = computed({
+  get: () => opened.value || pairing.active || pairing.error !== undefined,
+  set: (value: boolean) => {
+    opened.value = value
+  }
+})
 function pair(deviceId: string): void {
   if (pairing.active || pairing.busy)
     return
@@ -386,5 +394,14 @@ onScopeDispose(() => {
 })
 onMounted(() => {
   void refresh()
+  /*
+   * ★ Read the pairing task here, not only inside the panel.
+   *
+   * A pairing that was already running when this page opened — a device asked on another screen, or the page was
+   * reloaded mid-task — lives only in the kernel's shared snapshot. The panel used to be the only reader, and the panel
+   * is not mounted until someone opens it: `pairing.active` stayed false, so nothing ever told them one was running and
+   * the resume entry never appeared. Reading it on mount makes `active` the kernel's answer rather than this page's guess.
+   */
+  void pairing.refresh()
 })
 </script>

@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.synra.app",
   "build": {
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "pnpm build",
+    "beforeDevCommand": "pnpm dev",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
   },
   "app": {
     "windows": [

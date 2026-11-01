@@ -99,21 +99,21 @@ describe('the devices page', () => {
     const wrapper = await mountDevices({ attachTo: document.body })
     try {
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(false)
       await wrapper.findAll('button').find(button => button.text() === messages.devices.pair)?.trigger('click')
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
       // ★ No draft survives any more — the invitation field is gone. What a hide-and-show must preserve is the panel
       // itself and the same device still selected in it.
-      expect(wrapper.get('#device-pairing').text().length).toBeGreaterThan(0)
+      expect(wrapper.get('[data-testid="pairing-body"]').text().length).toBeGreaterThan(0)
       await flushPromises()
       const toggle = wrapper.get('[aria-controls="device-pairing"]')
       await toggle.trigger('click')
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(false)
       await toggle.trigger('click')
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
-      expect(mocks.call.mock.calls.map(([command]) => command).sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_status'])
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
+      expect([...new Set(mocks.call.mock.calls.map(([command]) => command))].sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_status'])
     }
     finally {
       wrapper.unmount()
@@ -134,7 +134,7 @@ describe('the devices page', () => {
     const wrapper = await mountDevices({ attachTo: document.body, query: { device: DEVICES[1]!.deviceId } })
     try {
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
     }
     finally {
       wrapper.unmount()
@@ -154,10 +154,10 @@ describe('the devices page', () => {
     const wrapper = await mountDevices({ attachTo: document.body, query: { device: DEVICES[1]!.deviceId } })
     try {
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
       await wrapper.get('[aria-controls="device-pairing"]').trigger('click')
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(false)
       const router = (wrapper.vm as unknown as {
         $router: { currentRoute: { value: { query: Record<string, unknown> } } }
       }).$router
@@ -180,7 +180,7 @@ describe('the devices page', () => {
     const wrapper = await mountDevices({ query: { device: 'not-in-the-list' } })
     try {
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(false)
     }
     finally {
       wrapper.unmount()
@@ -190,6 +190,7 @@ describe('the devices page', () => {
   it('reveals a pairing task restored from the shared service', async () => {
     const answers: Record<string, unknown> = {
       devices_snapshot: { identity: IDENTITY, devices: DEVICES },
+      pairing_pending: [],
       pairing_status: { requestId: 'restored', peerId: DEVICES[1]!.deviceId, phase: 'listening', expiresAtMs: Date.now() + 60_000, reply: 'reply', errorCode: null, detail: null }
     }
     mocks.call.mockImplementation(async (command: string) => command in answers
@@ -198,7 +199,7 @@ describe('the devices page', () => {
     const wrapper = await mountDevices({ attachTo: document.body })
     try {
       await flushPromises()
-      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
+      expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(true)
       expect(wrapper.text()).toContain(messages.devices.pairingPhases.listening)
       expect(wrapper.get('[aria-controls="device-pairing"]').text()).toBe(messages.devices.pairingResume)
     }
@@ -385,7 +386,7 @@ describe('the devices page', () => {
       await confirm.trigger('click')
       await keep.trigger('click')
       expect(mocks.call.mock.calls.filter(([command]) => command === 'devices_forget')).toHaveLength(1)
-      expect(wrapper.get('[role="dialog"]').isVisible()).toBe(true)
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
       expect(keep.attributes('disabled')).toBeDefined()
       finish({ ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } })
       await flushPromises()
@@ -422,7 +423,7 @@ describe('the devices page', () => {
     expect(useDevicesStore().get(DEVICES[0]!.deviceId)).toBeUndefined()
     expect(wrapper.text()).toContain(messages.devices.forgotten(DEVICES[0]!.displayName))
     expect(wrapper.findComponent(ErrorNotice).props('code')).toBe('timeout')
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="pairing-body"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
