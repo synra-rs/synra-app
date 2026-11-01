@@ -208,7 +208,7 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
             }
         };
         let request = synra_protocol::session::PairRequest { profile, user_hint: None };
-        let answer = synra_core::pairing::transport::ask(socket, &credentials, peer, &request);
+        let answer = synra_core::pairing::transport::ask(socket, &credentials, peer, &request, &db, synra_store::sqlite::now_ms());
         let Ok(answer) = answer else {
             eprintln!("synra: the pairing request was not answered");
             return;
