@@ -180,6 +180,20 @@ mod wrappers {
         commands::pairing::pairing_pending(&state)
     }
 
+    /// Asks a nearby device to pair, and reports the code to compare while it decides.
+    ///
+    /// Off the UI thread for the opposite reason to [`Self::pairing_answer`]: opening the socket must not hold the window.
+    /// It returns as soon as the request is sent. The answer arrives on its own thread, and a success becomes a row in the
+    /// device list rather than a value this call could have returned.
+    #[tauri::command]
+    pub async fn pairing_request(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        device_id: String,
+    ) -> Result<commands::pairing::OutgoingPairingDto, IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::pairing::pairing_request(&state, &device_id)).await
+    }
+
     /// Accepts or declines one waiting request. Runs off the UI thread: an acceptance writes the database first, and
     /// the desk blocks the connection until it has.
     #[tauri::command]

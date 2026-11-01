@@ -111,6 +111,108 @@ pub fn answer_pairing(state: &AppState, request_id: &str, accept: bool) -> Resul
     }
 }
 
+/// What the person who pressed "pair" sees while the other device decides.
+///
+/// # Why the code is returned rather than looked up later
+///
+/// The six digits are derived from both device ids, so this side can show them the moment it starts — it does not have to
+/// wait to be told. That is what makes the comparison possible at all: two screens, one number, checked by a person.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutgoingPairingDto {
+    pub device_id: String,
+    pub display_name: String,
+    /// The code this device is showing, for a person to compare against the other screen.
+    pub verification_code: String,
+    /// How long the answer is worth waiting for.
+    pub expires_in_ms: i64,
+}
+
+/// Asks a device to pair, and reports the code to compare while it decides.
+///
+/// # Why this returns before the answer arrives
+///
+/// The request waits for a person on the other machine — up to [`synra_core::pairing::PATIENCE`]. An IPC command that
+/// blocked for that long would freeze the window it was called from, so the dial runs on its own thread and this reports
+/// only what is already known: who was asked, the code, and how long it is good for. A record is written when, and only
+/// when, the other device accepts.
+///
+/// # Errors
+///
+/// [`ErrorCode::InvalidArgument`] when discovery has no current address for that device — a machine that has moved, or one that
+/// was heard a while ago. [`ErrorCode::Internal`] when this device has no enrolled identity to present.
+pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPairingDto, IpcError> {
+    let peer = device_id.parse::<DeviceId>().map_err(|error| {
+        IpcError::unknown(ErrorCode::InvalidArgument)
+            .with_params(serde_json::json!({"reason": error.to_string()}))
+    })?;
+    let (address, credentials, profile, local) = {
+        let host = state.host.lock();
+        let address = host.locate(peer).ok_or_else(|| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"reason": "the device is not nearby"}))
+        })?;
+        let credentials = host.pairing_credentials().map_err(|error| {
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"reason": error.to_string()}))
+        })?;
+        let identity = state.identity.lock();
+        let profile = synra_protocol::session::PeerProfile {
+            device_id: identity.device_id,
+            display_name: identity.display_name.clone(),
+            platform: match identity.platform.as_str() {
+                "android" => synra_protocol::session::PlatformKind::Android,
+                _ => synra_protocol::session::PlatformKind::Desktop,
+            },
+            app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        };
+        (address, credentials, profile, identity.device_id)
+    };
+    let display_name = profile.display_name.clone();
+    // A second binding for the thread: the record it may write needs the name, and a `move` closure would take the one
+    // this function still has to return.
+    let recorded_name = display_name.clone();
+    let code = synra_core::pairing::verification_code(local, peer);
+    let db = Arc::clone(&state.db);
+    std::thread::spawn(move || {
+        let socket = match std::net::TcpStream::connect(address) {
+            Ok(socket) => socket,
+            Err(error) => {
+                eprintln!("synra: the pairing request could not be sent: {error}");
+                return;
+            }
+        };
+        let request = synra_protocol::session::PairRequest { profile, user_hint: None };
+        let answer = synra_core::pairing::transport::ask(socket, &credentials, peer, &request);
+        let Ok(answer) = answer else {
+            eprintln!("synra: the pairing request was not answered");
+            return;
+        };
+        // A refusal is an answer, not a fault: the other person said no, and nothing is recorded.
+        if !answer.accepted {
+            return;
+        }
+        let Some(token) = answer.link_token.clone() else {
+            return;
+        };
+        let _ = db.lock().pair_device(&synra_store::sqlite::Paired {
+            device_id: peer.to_string(),
+            display_name: recorded_name,
+            platform: String::new(),
+            features: "[]".to_owned(),
+            link_token: token.to_owned(),
+            address: Some(address.to_string()),
+            paired_at_ms: synra_store::sqlite::now_ms(),
+        });
+    });
+    Ok(OutgoingPairingDto {
+        device_id: peer.to_string(),
+        display_name,
+        verification_code: code,
+        expires_in_ms: i64::try_from(synra_core::pairing::PATIENCE.as_millis()).unwrap_or(i64::MAX),
+    })
+}
+
 /// Cancels exactly one local generation before it commits its durable authorization.
 pub fn pairing_cancel(state: &AppState, request_id: &str) -> Result<(), IpcError> {
     let id = request_id.parse::<RequestId>().map_err(|error| {
