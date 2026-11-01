@@ -1006,17 +1006,21 @@ async function checkCornerLadder(): Promise<void> {
       .replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '))
       .replace(/\/\*[\s\S]*?\*\//g, comment => comment.replace(/[^\n]/g, ' '))
       .replace(/\/\/[^\n]*/g, comment => comment.replace(/[^\n]/g, ' '))
-    for (const match of code.matchAll(/\brounded(?![-:\w])/g)) {
+    for (const match of code.matchAll(/\brounded(?![-:\w])|\brounded-(?:sm|md|lg|xl|2xl|3xl|none)\b/g)) {
       counted += 1
       const line = code.slice(0, match.index).split('\n').length
       failures.push({
         check: 'corner-ladder',
-        detail: `${relative(here, file)}:${line.toString()} uses bare \`rounded\` (4px) — the ladder is rounded-control, rounded-surface or rounded-pill`
+        detail: `${relative(here, file)}:${line.toString()} uses \`${match[0]}\`, which is not on the ladder — use rounded-control, rounded-surface or rounded-pill`
       })
     }
   }
 
-  notes.push(`corner-ladder: ${counted === 0 ? 'no bare `rounded`' : `${counted.toString()} bare \`rounded\``}`)
+  notes.push(
+    counted === 0
+      ? 'corner-ladder: every corner comes from the ladder'
+      : `corner-ladder: ${counted.toString()} corner(s) off the ladder`
+  )
 }
 
 /**

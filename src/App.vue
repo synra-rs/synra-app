@@ -195,7 +195,7 @@
           <div
             v-if="!online"
             role="alert"
-            class="mb-4 border border-line rounded-lg bg-raised px-4 py-3 text-sm"
+            class="mb-4 border border-line rounded-surface bg-raised px-4 py-3 text-sm"
           >
             <span class="font-medium">{{ messages.app.offline }}</span>
             <span class="text-ink-dim"> {{ messages.app.offlineDetail }}</span>
