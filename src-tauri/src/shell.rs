@@ -154,38 +154,6 @@ mod wrappers {
         commands::devices::devices_forget(&state, &device_id)
     }
 
-    /// Exports this device's public certificate invitation.
-    #[tauri::command]
-    pub fn pairing_invite(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-    ) -> Result<String, IpcError> {
-        commands::pairing::pairing_invite(&state)
-    }
-
-    /// Explicitly imports the intended peer's invitation and returns a restricted listener task.
-    #[tauri::command]
-    pub async fn pairing_listen(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        device_id: String,
-        invitation: String,
-    ) -> Result<synra_protocol::pairing::PairingSnapshot, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_listen(&state, &device_id, &invitation))
-            .await
-    }
-
-    /// Explicitly imports a responder's certificate and starts the bounded connection task.
-    #[tauri::command]
-    pub async fn pairing_connect(
-        state: tauri::State<'_, std::sync::Arc<AppState>>,
-        device_id: String,
-        reply: String,
-    ) -> Result<synra_protocol::pairing::PairingSnapshot, IpcError> {
-        let state = std::sync::Arc::clone(&state);
-        super::blocking(move || commands::pairing::pairing_connect(&state, &device_id, &reply))
-            .await
-    }
-
     /// Reads the shared runtime task, including its last terminal result.
     #[tauri::command]
     pub fn pairing_status(
@@ -775,9 +743,6 @@ mod wrappers {
             devices_scan_start,
             devices_scan_cancel,
             devices_forget,
-            pairing_invite,
-            pairing_listen,
-            pairing_connect,
             pairing_status,
             pairing_cancel,
             pairing_pending,

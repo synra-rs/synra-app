@@ -64,8 +64,6 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   identity_repair: ['expectedFingerprint'],
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
-  pairing_listen: ['deviceId', 'invitation'],
-  pairing_connect: ['deviceId', 'reply'],
   pairing_cancel: ['requestId'],
   intent_dispatch: ['source'],
   intent_decide: ['intentId', 'decision'],
@@ -163,9 +161,6 @@ export class FakeKernel implements Bridge {
           throw Object.assign(new Error('error.invalid_argument'), { code: 'invalid_argument', retryable: false, params: { scanId: args?.scanId, running: this.#scan?.scanId }, actions: [] })
         this.#scanCancelled = true
         return null
-      case 'pairing_invite':
-      case 'pairing_listen':
-      case 'pairing_connect':
         // The preview has no enrolled identity or TLS; it cannot manufacture a usable certificate or grant.
         throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', retryable: false, params: {}, actions: [] })
       case 'pairing_status':

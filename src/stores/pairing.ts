@@ -19,7 +19,6 @@ export interface PendingRequest {
 /** Runtime progress is read from the shared service, independent of page lifetime and event delivery. */
 export const usePairingStore = defineStore('pairing', () => {
   const snapshot = ref<PairingSnapshot | null>(null)
-  const invitation = ref('')
   const busy = ref(false)
   const refreshing = ref(false)
   const commandError = ref<IpcError>()
@@ -83,39 +82,6 @@ export const usePairingStore = defineStore('pairing', () => {
     }
   }
 
-  async function exportInvitation(): Promise<void> {
-    if (active.value)
-      return
-    await run(async () => {
-      const answer = await kernel.call<string>('pairing_invite')
-      if (answer.ok)
-        invitation.value = answer.value
-      return answer
-    })
-  }
-
-  async function listen(deviceId: string, imported: string): Promise<boolean> {
-    if (active.value)
-      return false
-    return start(() => kernel.call<PairingSnapshot>('pairing_listen', { deviceId, invitation: imported.trim() }))
-  }
-
-  async function connect(deviceId: string, reply: string): Promise<boolean> {
-    if (active.value)
-      return false
-    return start(() => kernel.call<PairingSnapshot>('pairing_connect', { deviceId, reply: reply.trim() }))
-  }
-
-  async function start(operation: () => Promise<CallResult<PairingSnapshot>>): Promise<boolean> {
-    return run(async () => {
-      const answer = await operation()
-      // A successful command already proves that a task exists, even if the following read fails.
-      if (answer.ok)
-        snapshot.value = answer.value
-      return answer
-    })
-  }
-
   /**
    * The requests other devices are waiting on this person to decide about.
    *
@@ -165,13 +131,6 @@ export const usePairingStore = defineStore('pairing', () => {
     }
   }
 
-  function resetDraft(): void {
-    if (active.value || busy.value)
-      return
-    invitation.value = ''
-    commandError.value = undefined
-  }
-
   async function cancel(): Promise<boolean> {
     const current = snapshot.value
     if (current === null || !active.value)
@@ -179,5 +138,5 @@ export const usePairingStore = defineStore('pairing', () => {
     return run(() => kernel.call<null>('pairing_cancel', { requestId: current.requestId }))
   }
 
-  return { snapshot, invitation, busy, refreshing, commandError, statusError, error, active, pending, pendingError, answering, refresh, refreshPending, answer, resetDraft, exportInvitation, listen, connect, cancel }
+  return { snapshot, busy, refreshing, commandError, statusError, error, active, pending, pendingError, answering, refresh, refreshPending, answer, cancel }
 })

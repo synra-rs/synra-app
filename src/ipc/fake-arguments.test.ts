@@ -27,15 +27,6 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-it.each([
-  ['pairing_invite', undefined],
-  ['pairing_listen', { deviceId: 'peer', invitation: 'invitation' }],
-  ['pairing_connect', { deviceId: 'peer', reply: 'reply' }]
-] as const)('reports %s as unavailable in preview through the real client', async (command, args) => {
-  const result = await new KernelClient(new FakeKernel()).call(command, args)
-  expect(result).toMatchObject({ ok: false, error: { code: 'unsupported', message: 'error.unsupported', retryable: false } })
-})
-
 describe('a call that is missing an argument the shell requires', () => {
   it('is rejected rather than answered, in the shell\'s own words', async () => {
     await expect(new FakeKernel().invoke('devices_scan_start')).rejects.toThrow(

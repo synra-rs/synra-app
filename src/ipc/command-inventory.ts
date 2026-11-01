@@ -24,9 +24,6 @@ export const REGISTERED = [
   'devices_scan_cancel',
   'devices_forget',
   // Pairing uses the shared restricted service with explicit certificate imports and a readable task snapshot.
-  'pairing_invite',
-  'pairing_listen',
-  'pairing_connect',
   'pairing_status',
   'pairing_cancel',
   'pairing_pending',

@@ -38,7 +38,7 @@ it('updates existing computed captions and keeps external names untouched', () =
   expect(caption.value).toBe('Settings')
   setLocalePreference('zh-CN')
   expect(caption.value).toBe('设置')
-  expect(messages.devices.pairingSelected('My laptop', 'device-1')).toContain('My laptop')
+  expect(messages.devices.pairingRequestPeer('My laptop')).toContain('My laptop')
   expect(messages.notices.updated('@acme/hello', '1.2.3')).toContain('@acme/hello')
   expect(messages.nav.settings.icon).toBe(englishMessages.nav.settings.icon)
 })

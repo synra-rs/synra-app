@@ -35,21 +35,20 @@ it('discards an old status read after a command and coalesces invalidations', as
       }
       return { ok: true, value: { ...task, phase: 'paired' } }
     }
-    if (command === 'pairing_connect')
-      return { ok: true, value: { ...task, phase: 'connecting' } }
+    if (command === 'pairing_cancel')
+      return { ok: true, value: null }
     throw new Error(command)
   })
   const store = usePairingStore()
   const first = store.refresh()
   const invalidation = store.refresh()
-  const connected = store.connect('peer', ' imported reply ')
+  const command = store.cancel()
   await Promise.resolve()
   resolveOld({ ok: true, value: task })
-  await Promise.all([first, invalidation, connected])
+  await Promise.all([first, invalidation, command])
   expect(store.snapshot?.phase).toBe('paired')
   expect(store.active).toBe(false)
   expect(reads).toBe(2)
-  expect(call).toHaveBeenCalledWith('pairing_connect', { deviceId: 'peer', reply: 'imported reply' })
 })
 
 it('cancels the backend generation and retains its terminal result across store consumers', async () => {
@@ -81,48 +80,6 @@ it('exposes refusals and allows a successful refresh to clear them', async () =>
   expect(store.error).toBeUndefined()
 })
 
-it('keeps an import refusal when a previously started status read succeeds', async () => {
-  let finish!: (value: unknown) => void
-  call.mockImplementation(async (command: string) => {
-    if (command === 'pairing_status') {
-      return new Promise((resolve) => {
-        finish = resolve
-      })
-    }
-    if (command === 'pairing_listen')
-      return { ok: false, error: { code: 'not_paired', message: 'error.not_paired' } }
-    throw new Error(command)
-  })
-  const store = usePairingStore()
-  const reading = store.refresh()
-  expect(await store.listen('peer', 'invalid certificate')).toBe(false)
-  finish({ ok: true, value: null })
-  await reading
-  expect(store.error?.code).toBe('not_paired')
-})
-
-it('retains an accepted task if its status refresh fails and blocks a second start', async () => {
-  call.mockImplementation(async (command: string) => {
-    if (command === 'pairing_listen')
-      return { ok: true, value: task }
-    if (command === 'pairing_status')
-      return { ok: false, error: { code: 'timeout', message: 'error.timeout' } }
-    throw new Error(command)
-  })
-  const store = usePairingStore()
-  expect(await store.listen('peer', 'invitation')).toBe(false)
-  expect(store.snapshot).toEqual(task)
-  expect(store.active).toBe(true)
-  expect(store.statusError?.code).toBe('timeout')
-  expect(store.commandError).toBeUndefined()
-  expect(await store.connect('peer', 'reply')).toBe(false)
-  await store.exportInvitation()
-  expect(call.mock.calls.map(([command]) => command)).toEqual(['pairing_listen', 'pairing_status'])
-  call.mockResolvedValue({ ok: true, value: task })
-  expect(await store.refresh()).toBe(true)
-  expect(store.statusError).toBeUndefined()
-})
-
 it('serializes cancellation until the backend has answered', async () => {
   let finish!: (answer: unknown) => void
   call.mockImplementation(async (command: string) => {
@@ -139,7 +96,6 @@ it('serializes cancellation until the backend has answered', async () => {
   await store.refresh()
   const first = store.cancel()
   expect(await store.cancel()).toBe(false)
-  store.resetDraft()
   expect(store.active).toBe(true)
   expect(call.mock.calls.filter(([command]) => command === 'pairing_cancel')).toHaveLength(1)
   call.mockResolvedValue({ ok: true, value: { ...task, phase: 'cancelled' } })

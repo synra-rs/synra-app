@@ -59,30 +59,19 @@ export const devices = {
   pairingRequestAccept: 'Accept',
   pairingRequestDecline: 'Decline',
   pairingRequestGone: 'That request is no longer waiting. Refresh to see the current list.',
+  /*
+   * ★ Said plainly, because the alternative is a button that looks pressable and refuses.
+   *
+   * The protocol has the server side of `synra/pairing/1` — a device can receive and answer a request — but nothing on
+   * this side can open one. That is a missing client, not a setting: no amount of retrying makes it work.
+   */
+  pairingRequestPeer: (name: string): string => `${name} is selected.`,
+  pairingRequestUnavailable: 'Starting a pairing from this device is not available yet: it can answer a request from another device, but cannot send one.',
   pairingResume: 'Continue pairing',
-  pairingRole: 'Pairing step',
-  pairingCreate: 'Create an invitation',
-  pairingAccept: 'Import an invitation',
-  pairingReplyStep: 'Import a reply',
-  pairingCreateHelp: 'Send this invitation to the other device through a trusted channel. Then import its reply here.',
-  pairingTrustHelp: 'Only import content received directly from the intended device through a trusted channel. Network discovery cannot verify its identity.',
-  pairingTarget: 'Other device',
   pairingChooseTarget: 'Select a nearby device',
-  pairingNoTarget: 'Scan for the other device before importing its invitation or reply.',
-  pairingInviteInput: 'Invitation from the selected device',
-  pairingReplyInput: 'Reply from the selected device',
-  pairingCopy: 'Copy',
-  pairingCopied: 'Copied',
-  pairingCopyFailed: 'Could not copy. Select the text above and copy it manually.',
   pairingRefresh: 'Check pairing status',
   pairingRestart: 'Start a new pairing',
   pairingCloseHelp: 'Closing this panel keeps pairing in progress. Use Cancel pairing to stop it.',
-  pairingExport: 'Export this device invitation',
-  pairingInvitation: 'Invitation to send to the intended device',
-  pairingSelected: (name: string, id: string): string => `Selected device: ${name} (${id})`,
-  pairingListen: 'Approve invitation and create reply',
-  pairingConnect: 'Approve reply and connect',
-  pairingReply: 'Return this reply to the first device before the deadline',
   pairingPeer: (id: string): string => `Pairing with device: ${id}`,
   pairingExpires: 'Deadline:',
   pairingCancel: 'Cancel pairing',

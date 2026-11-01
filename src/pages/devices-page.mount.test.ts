@@ -102,7 +102,9 @@ describe('the devices page', () => {
       expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
       await wrapper.findAll('button').find(button => button.text() === messages.devices.pair)?.trigger('click')
       expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
-      await wrapper.get('#device-pairing textarea').setValue('invitation-draft')
+      // ★ No draft survives any more — the invitation field is gone. What a hide-and-show must preserve is the panel
+      // itself and the same device still selected in it.
+      expect(wrapper.get('#device-pairing').text().length).toBeGreaterThan(0)
       await flushPromises()
       const toggle = wrapper.get('[aria-controls="device-pairing"]')
       await toggle.trigger('click')
@@ -110,7 +112,7 @@ describe('the devices page', () => {
       expect(wrapper.get('#device-pairing').isVisible()).toBe(false)
       await toggle.trigger('click')
       await flushPromises()
-      expect((wrapper.get('#device-pairing textarea').element as HTMLTextAreaElement).value).toBe('invitation-draft')
+      expect(wrapper.get('#device-pairing').isVisible()).toBe(true)
       expect(mocks.call.mock.calls.map(([command]) => command).sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_status'])
     }
     finally {
