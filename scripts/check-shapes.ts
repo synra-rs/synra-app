@@ -874,7 +874,13 @@ async function checkDialogNames(): Promise<void> {
     const text = await readFile(file, 'utf8')
     let index = text.indexOf('<AModal')
     while (index !== -1) {
-      const close = text.indexOf('>', index)
+      // ★ The opening tag ends at the first `>` that is not inside a quoted value. `indexOf('>')` was the first
+      //   version, and it is wrong: `DevicesPage` writes `:get-container="() => document.body"`, so its arrow put a
+      //   `>` two attributes before `:title`. It happened to survive because `:title` came first there — the next
+      //   dialog to put an arrow ahead of its title would have been reported as unnamed while being named.
+      const after = text.slice(index)
+      const end = /^(?:"[^"]*"|'[^']*'|[^>"'])*>/.exec(after)
+      const close = end ? index + end[0].length - 1 : -1
       const tag = text.slice(index, close === -1 ? undefined : close)
       counted += 1
       if (!/:title=|:wrap-props=/.test(tag)) {
