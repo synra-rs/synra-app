@@ -1068,7 +1068,11 @@ async function checkNativeButtons(): Promise<void> {
       continue
     const text = await readFile(file, 'utf8')
     const code = text.replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '))
-    for (const match of code.matchAll(/<button\b[\s\S]{0,800}?>/g)) {
+    // ★ No character cap and no `?>`: the tag ends at the first `>` outside a quoted value. The first version was
+    //   `/[\s\S]{0,800}?>/`, which cuts at 800 characters — the longest tag in the tree is 505, so it holds today and
+    //   would fail silently tomorrow — and stops at a `>` inside an attribute, the same mistake `dialog-names` and
+    //   `control-names` each had (16.155, 16.156).
+    for (const match of code.matchAll(/<button\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g)) {
       counted += 1
       const noBorder = /border-0|border-none/.test(match[0])
       const noFill = /bg-transparent/.test(match[0])
