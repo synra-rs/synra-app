@@ -154,19 +154,26 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
      * instead would be a second source that could be empty while the list is full, and the press would be refused for a
      * device the screen is showing.
      */
-    let address = {
+    let (address, peer_name, peer_platform) = {
         let db = state.db.lock();
         let seen = db.seen_devices().map_err(|error| {
             IpcError::unknown(ErrorCode::Internal)
                 .with_params(serde_json::json!({"reason": error.to_string()}))
         })?;
-        seen.iter()
+        let row = seen
+            .iter()
             .find(|row| row.device_id == peer.to_string())
-            .and_then(|row| row.source.parse::<std::net::SocketAddr>().ok())
             .ok_or_else(|| {
                 IpcError::unknown(ErrorCode::InvalidArgument)
-                    .with_params(serde_json::json!({"reason": "the device has no address to dial"}))
-            })?
+                    .with_params(serde_json::json!({"reason": "the device is not nearby"}))
+            })?;
+        let address = row.source.parse::<std::net::SocketAddr>().map_err(|_| {
+            IpcError::unknown(ErrorCode::Internal)
+                .with_params(serde_json::json!({"reason": "the device has no address to dial"}))
+        })?;
+        // ★ The peer's name, not this device's. It is what the row says, and the row is what the person pressed — using
+        // the local profile here would file this device under its own name in the paired list.
+        (address, row.display_name.clone(), row.platform.clone())
     };
     let (credentials, profile, local) = {
         let host = state.host.lock();
@@ -186,10 +193,10 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
         };
         (credentials, profile, identity.device_id)
     };
-    let display_name = profile.display_name.clone();
-    // A second binding for the thread: the record it may write needs the name, and a `move` closure would take the one
-    // this function still has to return.
-    let recorded_name = display_name.clone();
+    // A second binding for the thread: the record needs the name and platform, and a `move` closure would take the ones this
+    // function still has to return.
+    let recorded_name = peer_name.clone();
+    let recorded_platform = peer_platform.clone();
     let code = synra_core::pairing::verification_code(local, peer);
     let db = Arc::clone(&state.db);
     std::thread::spawn(move || {
@@ -216,7 +223,7 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
         let _ = db.lock().pair_device(&synra_store::sqlite::Paired {
             device_id: peer.to_string(),
             display_name: recorded_name,
-            platform: String::new(),
+            platform: recorded_platform,
             features: "[]".to_owned(),
             link_token: token.to_owned(),
             address: Some(address.to_string()),
@@ -225,7 +232,7 @@ pub fn pairing_request(state: &AppState, device_id: &str) -> Result<OutgoingPair
     });
     Ok(OutgoingPairingDto {
         device_id: peer.to_string(),
-        display_name,
+        display_name: peer_name,
         verification_code: code,
         expires_in_ms: i64::try_from(synra_core::pairing::PATIENCE.as_millis()).unwrap_or(i64::MAX),
     })
