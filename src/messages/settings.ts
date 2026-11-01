@@ -96,7 +96,6 @@ export const settings = {
     empty: 'No device is trusted to send without asking.',
     remove: 'Ask again'
   },
-  /** What a transfer asks before it is abandoned; the friction is a preference, not a fixed rule. */
   /** Whether Synra starts with the user's session. The platform owns the registration; the switch only asks. */
   startup: {
     title: 'Startup',
@@ -104,6 +103,7 @@ export const settings = {
     launchAtLoginDetail: 'Keep Synra available after you sign in.',
     unavailable: 'This build cannot register itself to start at login.'
   },
+  /** What a transfer asks before it is abandoned; the friction is a preference, not a fixed rule. */
   transfers: {
     title: 'Transfers',
     cancelAsk: 'Ask before cancelling',
