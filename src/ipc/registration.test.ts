@@ -128,7 +128,7 @@ describe('the commands the shell registers', () => {
 
     // Stated as a number as well, so a parser that started missing entries shows up as a count change rather than as a
     // set that happens to still be consistent.
-    expect(declared.length).toBe(52)
+    expect(declared.length).toBe(50)
   })
 
   it('gives every unregistered command a reason', () => {
@@ -137,15 +137,4 @@ describe('the commands the shell registers', () => {
     }
   })
 
-  it('names the ones that are deliberately absent apart from the ones that are unbuilt', () => {
-    // `devices_connect` and `devices_disconnect` are not waiting on work; they are a decision. Keeping the two kinds
-    // in one list would make "we chose not to" read as "we have not got to it", and the next person would implement
-    // them.
-    const deliberate = Object.entries(NOT_YET_REGISTERED)
-      .filter(([, reason]) => reason.startsWith('deliberately absent'))
-      .map(([name]) => name)
-      .sort()
-
-    expect(deliberate).toEqual(['devices_connect', 'devices_disconnect'])
-  })
 })

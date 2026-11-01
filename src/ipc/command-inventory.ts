@@ -109,26 +109,13 @@ export const REGISTERED = [
  * the wait is different in each group and a reader deserves to know which.
  */
 export const NOT_YET_REGISTERED: Readonly<Record<string, string>> = {
-  // ★ The network half this comment used to name is here now — the shell listens (`listener.rs`), dials for pairing and for  // transfers, and asks peers what they hold for a sync plan. What is still missing is not a transport but the code that
-  // acts on a plan: no runner sends a plugin bundle, and the contract's name for that is `plugins_sync_run`.
+  // ★ Empty, and that is the state to keep it in. Every name the contract declares is registered here now:
+  // pairing and credentials left the contract entirely (ADR-025), and `devices_connect`/`devices_disconnect`
+  // were deleted because nothing was ever going to implement them — the kernel dials when it has something
+  // to send, and a "connect" button would only be a dial with no payload.
   //
-  // Pairing and transfers delegate to shared production workflows; host wrappers own no authorization rules.
-  //
-  // What remains is per command below, and each reason says which layer is missing rather than pointing at a whole half.
-  // ★ The four intent commands are registered now, and the reason is worth keeping: they used to carry "needs the
-  // intent board behind AppState", which was false — the board was already in the state. What was missing was the
-  // orchestration, which lived in `synra-daemon/src/runtime/intent.rs` **inside a binary**. It is in
-  // `synra_core::dispatch::orchestrate` now, and the shell's commands are the thin layer that turns DTOs into calls.
-  // Transfers are implemented in the kernel but this shell has nothing to send them over.
-  // Connecting and disconnecting are deliberately absent — the kernel dials, the UI does not.
-  //
-  // ★ "The kernel dials" is still true of the daemon and not of this shell, which never dials anything. The reason stands
-  // as an intent — the UI is not where a dial belongs — but it is not a claim that dialling happens here.
-  devices_connect: 'deliberately absent: the kernel dials, the UI does not',
-  devices_disconnect: 'deliberately absent: the kernel dials, the UI does not'
-  // The plugin lifecycle beyond enable/disable/install is not built. `plugins_install` moved out of this list when the
-  // pipeline became reachable from the shell: `synra_core::install` is the daemon's pipeline too, so the order of the
-  // checks has one implementation and this shell supplies only what it can do (a desktop can open a window).
+  // The guard in `registration.test.ts` still reads this map, so a future command that is declared before it
+  // is implemented has one place to wait with its reason attached.
 }
 
 /**

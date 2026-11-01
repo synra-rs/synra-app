@@ -40,7 +40,7 @@ describe('calling a command', () => {
       listen: () => Promise.resolve(() => undefined)
     }
 
-    await new KernelClient(seam).call('devices_connect', { deviceId: 'dev_a' })
+    await new KernelClient(seam).call('devices_snapshot', { deviceId: 'dev_a' })
     expect(seen).toEqual([{ deviceId: 'dev_a' }])
   })
 
@@ -50,7 +50,7 @@ describe('calling a command', () => {
     const { bridge: seam } = bridge(ipcError('device_offline', true))
     const client = new KernelClient(seam)
 
-    const result = await client.call('devices_connect')
+    const result = await client.call('devices_snapshot')
     expect(result.ok).toBe(false)
     if (result.ok)
       throw new Error('expected a failure')

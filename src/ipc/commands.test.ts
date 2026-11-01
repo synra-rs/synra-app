@@ -174,7 +174,7 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
 const MAYBE_COMMAND = 'plugins_check_update'
 
 /** The number of commands `command.rs` declares, which `registration.test.ts` pins from the other side. */
-const DECLARED_COMMANDS = 52
+const DECLARED_COMMANDS = 50
 
 describe('every answer the fake gives, against the arity the kernel declares', () => {
   const arities = declaredArities()

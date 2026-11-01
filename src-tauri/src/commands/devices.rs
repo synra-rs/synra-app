@@ -9,10 +9,9 @@
 //!
 //! # What is not here, and why
 //!
-//! `devices_connect` and `devices_disconnect` are absent from this stage. They are link-layer operations, the kernel has
-//! no API for opening a session to a named device, and the only way to fake one — returning `Ok(())` without connecting —
-//! is exactly the failure this module's own header forbids: an answer that says something happened when nothing did. They
-//! arrive with the session commands, against a real [`Host`] API.
+//! `devices_connect` and `devices_disconnect` do not exist, here or in the contract. A link is opened when there is
+//! something to carry over it — a transfer dials, announces itself and is recorded. A bare "connect" would be a dial
+//! with no payload: a session that exists only so a screen can say it exists.
 
 use std::time::{Duration, Instant};
 
