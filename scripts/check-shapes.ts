@@ -948,20 +948,27 @@ async function checkControlNames(): Promise<void> {
  */
 async function checkTouchBreakpoints(): Promise<void> {
   const files = await sources(join(here, 'src'))
-  const expected = 'max-width: 639px'
   let counted = 0
 
   for (const file of files) {
     if (!file.endsWith('.vue'))
       continue
     const text = await readFile(file, 'utf8')
-    for (const match of text.matchAll(/@media \(max-width: (\d+)px\), \(pointer: coarse\)/g)) {
+    // ★ Read the media query by its two conditions, not by the order they are written in. The first version matched
+    //   the literal `(max-width: …), (pointer: coarse)`, which silently skipped `TransferPrompt` — it writes
+    //   `(pointer: coarse), (max-width: 639px)`. The check reported "the one scoped touch query", and there were two
+    //   (16.153). Both orders are the same query; a guard that only understands one of them stops being a guard.
+    for (const match of text.matchAll(/@media[^{}]*(?:max-width:\s*(\d+)px|pointer:\s*coarse)[^{}]*\{/g)) {
+      const query = match[0]
+      if (!query.includes('pointer: coarse') || !query.includes('max-width'))
+        continue
       counted += 1
-      if (match[0] !== `@media (${expected}), (pointer: coarse)`) {
+      const width = /max-width:\s*(\d+)px/.exec(query)?.[1]
+      if (width !== '639') {
         const line = text.slice(0, match.index).split('\n').length
         failures.push({
           check: 'touch-breakpoints',
-          detail: `${relative(here, file)}:${line.toString()} raises touch targets from ${match[1] ?? ''}px — every scoped touch query ends at 639px`
+          detail: `${relative(here, file)}:${line.toString()} raises touch targets from ${width ?? '?'}px — every scoped touch query ends at 639px`
         })
       }
     }
