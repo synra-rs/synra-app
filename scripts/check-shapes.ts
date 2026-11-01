@@ -804,7 +804,7 @@ async function checkFacadeIsFresh(): Promise<void> {
 }
 
 /**
- * Every page's body raises the buttons inside it to the touch floor.
+ * Every file that draws an `AButton` carries the touch floor itself.
  *
  * # Why this is a script and not a habit
  *
@@ -812,31 +812,43 @@ async function checkFacadeIsFresh(): Promise<void> {
  * the four pages simply did not have it: their body buttons were 24px while the devices page's were 44. Nothing caught
  * it, because no test reads computed style, and a missing parent utility looks exactly like a page that has none.
  *
- * The check is on the page root, not on every file: `SettingsRow`, `PageHeader` and the row components raise their own
- * buttons and are nested inside a page, so requiring the utility on each of them would demand it twice.
+ * # Why it now reads every file, not just the pages
+ *
+ * The first version checked only `src/pages`, on the reasoning that components are nested inside a page that already
+ * raises everything. `ErrorNotice` is the counter-example that reasoning missed: it is drawn inside an `AAlert`, which
+ * sits in `SettingsFeedback` — neither carries the floor — and it is used from twenty places, most of them outside
+ * settings. Its two buttons were 24px, and this script reported nothing because it never opened them (16.151).
+ *
+ * The rule is therefore on the drawing file: **whichever file renders an `AButton` must be able to show the floor**,
+ * either as the utility on an ancestor in that same file, or as `min-height: 44px` in its own scoped CSS. A component
+ * that merely *relies* on an ancestor elsewhere cannot satisfy this, and that is the point — a dependency nobody wrote
+ * down is the one that goes missing.
  */
 async function checkPageButtons(): Promise<void> {
   const floor = '[&_.ant-btn]:min-h-11'
-  const pages = await sources(join(here, 'src', 'pages'))
+  // `PairingPanel` and `TransferPrompt` state the same 44px in scoped CSS, because their button colour lives there and
+  // a utility cannot reach into `:deep()`. Both forms are the floor; neither is "the right one".
+  const scopedFloor = /min-height:\s*44px/
+  const files = await sources(join(here, 'src'))
   let counted = 0
 
-  for (const file of pages) {
+  for (const file of files) {
     if (!file.endsWith('.vue'))
       continue
-    const text = await readFile(file, 'utf8')
-    // A page is a file whose template opens with a `<section>`; the row components start with theirs.
-    if (!/<section\b/.test(text) || !text.includes('<AButton'))
+    // Comments mention `<AButton` while explaining it; strip them before deciding what the file draws.
+    const text = (await readFile(file, 'utf8')).replace(/<!--[\s\S]*?-->/g, match => '\n'.repeat(match.split('\n').length))
+    if (!text.includes('<AButton'))
       continue
     counted += 1
-    if (!text.includes(floor)) {
+    if (!text.includes(floor) && !scopedFloor.test(text)) {
       failures.push({
         check: 'page-buttons',
-        detail: `${relative(here, file)} draws buttons but its section does not carry \`${floor}\``
+        detail: `${relative(here, file)} draws buttons but shows no touch floor (neither \`${floor}\` nor \`min-height: 44px\`)`
       })
     }
   }
 
-  notes.push(`page-buttons: ${counted.toString()} page(s) raise their body buttons`)
+  notes.push(`page-buttons: ${counted.toString()} file(s) raise their own body buttons`)
 }
 
 /**
