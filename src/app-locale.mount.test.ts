@@ -109,3 +109,33 @@ it('names the page menu, so its four links are not offered from nowhere', async 
     wrapper.unmount()
   }
 })
+it('still names the device when the sidebar is a rail', async () => {
+  // ★ The rail hides `displayName`, `platform` and the version. That leaves an `AAvatar` holding one
+  //   `aria-hidden` laptop glyph — an unnamed square, to a screen reader and to the eye. The name moves onto
+  //   the avatar instead of disappearing with the text beside it.
+  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener() {}, removeEventListener() {} })
+  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  call.mockImplementation(async (command: string) => {
+    if (command === 'config_get')
+      return { ok: true, value: { values: {}, overridden: [] } }
+    if (command === 'devices_snapshot')
+      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    throw new Error(`Unexpected command: ${command}`)
+  })
+  const pinia = createPinia()
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  await router.push('/')
+  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true } } })
+  try {
+    await flushPromises()
+    // The rail is the state where the name is gone from the text.
+    expect(wrapper.text()).not.toContain(IDENTITY.displayName)
+    const avatar = wrapper.find('.ant-avatar')
+    expect(avatar.exists(), 'the device avatar is missing').toBe(true)
+    expect(avatar.attributes('aria-label'), 'the rail avatar names nothing').toBe(IDENTITY.displayName)
+    expect(avatar.attributes('title'), 'no hover name either').toBe(IDENTITY.displayName)
+  }
+  finally {
+    wrapper.unmount()
+  }
+})

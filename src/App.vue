@@ -148,7 +148,19 @@
         <div class="mt-auto min-w-0 flex shrink-0 flex-col gap-2 border-t border-line pt-3" :class="rail ? 'items-center' : 'px-2'">
           <template v-if="devices.identity">
             <div class="row gap-2">
-              <AAvatar :size="28" class="shrink-0 bg-raised text-primary">
+              <!--
+                ★ The avatar keeps the name in the rail. Every other piece of this block is `v-if="!rail"`, so in the
+                  rail the bottom of the sidebar was one `<AAvatar>` holding an `aria-hidden` laptop glyph: an
+                  unnamed square, both to a screen reader and to the eye (measured at 984px — `16.158`). The name
+                  moves onto the avatar rather than disappearing with the text beside it, and `title` answers the
+                  same question on hover.
+              -->
+              <AAvatar
+                :size="28"
+                class="shrink-0 bg-raised text-primary"
+                :aria-label="devices.identity.displayName"
+                :title="devices.identity.displayName"
+              >
                 <span class="i-carbon-laptop" aria-hidden="true" />
               </AAvatar>
               <span v-if="!rail" class="min-w-0 flex flex-col">
