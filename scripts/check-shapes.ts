@@ -1090,6 +1090,63 @@ async function checkNativeButtons(): Promise<void> {
   notes.push(`native-buttons: ${counted.toString()} native \`<button>\`${counted === 1 ? '' : 's'} clear the user agent look`)
 }
 
+/**
+ * A region that takes focus says what it is.
+ *
+ * # Why this is separate from `control-names`
+ *
+ * `control-names` asks about widgets — a combobox, a spin button — that render no text of their own. This asks about
+ * the *container* case: `App.vue`'s `<main tabindex="0">` and `TransferPrompt`'s `<section tabindex="-1">` are both
+ * focusable, and a focusable element with no name is announced by its entire contents. `App.vue` records the
+ * measurement: the region came out as `main "首页 设备连接 已连接 This device Pixel 8 …"` — a screen reader greeting
+ * the user with the first dozen words of whatever page was open.
+ *
+ * # What the rule is, and what it is not
+ *
+ * Only `tabindex="0"` and positive values make something part of the tab order, so only those are required to be
+ * named. `tabindex="-1"` is a *target*: a heading or paragraph that a script focuses after navigating, and those are
+ * named by their own text — demanding an attribute on them would be a false failure, and all four in the tree are
+ * correct as they stand.
+ *
+ * The element also has to be able to be a region at all: `section`, `main`, `aside`, `nav`, or anything carrying a
+ * `role`. A focusable `<span>` that is just a scroll container is named by its content, exactly like the headings.
+ */
+async function checkFocusableNames(): Promise<void> {
+  const files = await sources(join(here, 'src'))
+  const regionTags = new Set(['section', 'main', 'aside', 'nav'])
+  let counted = 0
+
+  for (const file of files) {
+    if (!file.endsWith('.vue'))
+      continue
+    const text = await readFile(file, 'utf8')
+    // Quotes first, then the tag end — an attribute value may hold `>`.
+    for (const match of text.matchAll(/<(section|main|aside|nav|div|span)\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g)) {
+      const tag = match[0]
+      const index = /tabindex="(\d+)"/.exec(tag)
+      if (!index)
+        continue
+      // `-1` is a script target, not a tab stop; its own text is its name.
+      if (Number(index[1]) < 0)
+        continue
+      const isRegion = regionTags.has(match[1]!) || /:?role=/.test(tag)
+      if (!isRegion)
+        continue
+      counted += 1
+      // `aria-label` also covers `aria-labelledby`: the shorter pattern is a prefix of the longer one.
+      if (!/aria-label/.test(tag)) {
+        const line = text.slice(0, match.index).split('\n').length
+        failures.push({
+          check: 'focusable-names',
+          detail: `${relative(here, file)}:${line.toString()} makes a region focusable with no \`aria-label\` or \`aria-labelledby\` — a screen reader announces its entire contents`
+        })
+      }
+    }
+  }
+
+  notes.push(`focusable-names: ${counted.toString()} focusable region(s) are named`)
+}
+
 await checkInjection()
 await checkSingleDeclarations()
 await checkTypeOnlyImports()
@@ -1103,6 +1160,7 @@ await checkControlNames()
 await checkTouchBreakpoints()
 await checkCornerLadder()
 await checkNativeButtons()
+await checkFocusableNames()
 
 for (const note of notes) {
   console.log(`  · ${note}`)
