@@ -44,6 +44,21 @@ export const devices = {
   unpaired: 'Not paired',
   pair: 'Pair',
   pairingTitle: 'Pair devices',
+  /*
+   * The other half of pairing: a device that asked, and is waiting on this person.
+   *
+   * ★ The words say what discovery can and cannot prove. "Found on your network" is a fact this side observed; it is not
+   * the device having proved who it is. The code is what closes that gap, so it is described as something to compare
+   * rather than as an identifier.
+   */
+  pairingRequests: 'Pairing requests',
+  pairingRequestWants: (name: string): string => `${name} wants to pair with this device.`,
+  pairingRequestCompare: (code: string): string => `Check that the other device shows ${code}.`,
+  pairingRequestAddress: (address: string): string => `Reached at ${address}.`,
+  pairingRequestExpires: (seconds: number): string => `Expires in ${seconds}s.`,
+  pairingRequestAccept: 'Accept',
+  pairingRequestDecline: 'Decline',
+  pairingRequestGone: 'That request is no longer waiting. Refresh to see the current list.',
   pairingResume: 'Continue pairing',
   pairingRole: 'Pairing step',
   pairingCreate: 'Create an invitation',

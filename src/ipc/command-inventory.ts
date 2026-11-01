@@ -29,6 +29,8 @@ export const REGISTERED = [
   'pairing_connect',
   'pairing_status',
   'pairing_cancel',
+  'pairing_pending',
+  'pairing_answer',
   'plugins_list',
   'plugins_preview',
   'plugins_catalog_search',

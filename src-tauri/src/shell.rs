@@ -204,6 +204,26 @@ mod wrappers {
         super::blocking(move || commands::pairing::pairing_cancel(&state, &request_id)).await
     }
 
+    /// What this device is being asked to decide about — the question nothing used to ask.
+    #[tauri::command]
+    pub fn pairing_pending(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<Vec<commands::pairing::PendingPairingDto>, IpcError> {
+        commands::pairing::pairing_pending(&state)
+    }
+
+    /// Accepts or declines one waiting request. Runs off the UI thread: an acceptance writes the database first, and
+    /// the desk blocks the connection until it has.
+    #[tauri::command]
+    pub async fn pairing_answer(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        request_id: String,
+        accept: bool,
+    ) -> Result<(), IpcError> {
+        let state = std::sync::Arc::clone(&state);
+        super::blocking(move || commands::pairing::answer_pairing(&state, &request_id, accept)).await
+    }
+
     #[tauri::command]
     pub fn plugins_list(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
@@ -760,6 +780,8 @@ mod wrappers {
             pairing_connect,
             pairing_status,
             pairing_cancel,
+            pairing_pending,
+            pairing_answer,
             plugins_list,
             plugins_enable,
             plugins_disable,

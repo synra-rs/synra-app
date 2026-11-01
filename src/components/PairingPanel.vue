@@ -24,6 +24,68 @@
     <h2 id="pairing-title" class="m-0 text-base font-medium">
       {{ messages.devices.pairingTitle }}
     </h2>
+    <!--
+      ★ The requests another device is waiting on this person to decide about.
+
+      This is the half that never existed: a device asked, the kernel filed the request and blocked the connection, and
+      nothing ever put the question in front of the only person who could answer it. Above the invitation flow because it
+      arrives on its own — a person who opened this panel to pair outward should still see that someone is asking.
+
+      Not a modal: the list can hold several, and a request that blocks the rest of the page would make the second one
+      unreachable. Each row carries its own answer, and a row is only removed when the kernel says it was answered.
+    -->
+    <div v-if="pairing.pending.length > 0" class="stack gap-3" data-testid="pairing-requests">
+      <h3 class="m-0 text-sm font-medium">
+        {{ messages.devices.pairingRequests }}
+      </h3>
+      <ErrorNotice v-if="pairing.pendingError" :code="pairing.pendingError.code" :params="pairing.pendingError.params" />
+      <div
+        v-for="prompt in pairing.pending"
+        :key="prompt.requestId"
+        class="stack gap-2 border border-line rounded-surface border-solid p-3"
+      >
+        <p class="m-0 break-words text-sm">
+          {{ messages.devices.pairingRequestWants(prompt.displayName) }}
+        </p>
+        <!-- The full id, because two devices can share a name and the name is only what the other one claimed. -->
+        <p class="m-0 break-all font-mono text-xs text-ink-dim">
+          {{ prompt.deviceId }}
+        </p>
+        <!--
+          The code is the verification: the other device shows the same six characters, and the person compares them.
+          Stated as a comparison rather than as an identifier, because it proves the two screens are looking at the same
+          request and nothing more.
+        -->
+        <p class="m-0 text-sm">
+          {{ messages.devices.pairingRequestCompare(prompt.verificationCode) }}
+        </p>
+        <p v-if="prompt.address" class="m-0 text-xs text-ink-dim">
+          {{ messages.devices.pairingRequestAddress(prompt.address) }}
+        </p>
+        <p v-if="prompt.expiresInMs > 0" class="m-0 text-xs text-ink-dim">
+          {{ messages.devices.pairingRequestExpires(Math.ceil(prompt.expiresInMs / 1000)) }}
+        </p>
+        <div class="row flex-wrap gap-2">
+          <!-- 44px where a finger is the pointer, antd's own floor from `md` up — same rule as every other surface. -->
+          <AButton
+            type="primary"
+            class="min-h-11 md:min-h-8"
+            :loading="pairing.answering === prompt.requestId"
+            :disabled="pairing.answering !== null && pairing.answering !== prompt.requestId"
+            @click="pairing.answer(prompt.requestId, true)"
+          >
+            {{ messages.devices.pairingRequestAccept }}
+          </AButton>
+          <AButton
+            class="min-h-11 md:min-h-8"
+            :disabled="pairing.answering !== null"
+            @click="pairing.answer(prompt.requestId, false)"
+          >
+            {{ messages.devices.pairingRequestDecline }}
+          </AButton>
+        </div>
+      </div>
+    </div>
     <ErrorNotice
       v-if="pairing.commandError"
       :code="pairing.commandError.code"
@@ -288,7 +350,30 @@ onScopeDispose(() => {
   disposed = true
   copyRevision += 1
 })
+/**
+ * How often the waiting-request list is read.
+ *
+ * Three seconds: a pairing window is tens of seconds, so noticing a second late costs a second of a person's wait. Every
+ * frame would spend a round trip per frame to shorten that, on a list that is usually empty.
+ */
+const REQUEST_POLL_MS = 3000
+
 onMounted(() => {
   void pairing.refresh()
+  /*
+   * ★ A request arrives on a socket thread; nothing announces it to this page. So the list is polled.
+   *
+   * Three seconds, not every frame: a pairing window is tens of seconds, and the cost of noticing a second late is that
+   * a person reads the prompt a second late. Polling every frame would spend a kernel round trip per frame to make that
+   * second shorter, and the desk's list is small enough that the plain read is the cheap half already.
+   *
+   * On the scope, not the component: a page change disposes it without a second `onBeforeUnmount` to keep in step — and
+   * `onScopeDispose` is what `watch` above already uses for the copy revision.
+   */
+  const poll = setInterval(() => {
+    void pairing.refreshPending()
+  }, REQUEST_POLL_MS)
+  onScopeDispose(() => clearInterval(poll))
+  void pairing.refreshPending()
 })
 </script>

@@ -111,7 +111,7 @@ describe('the devices page', () => {
       await toggle.trigger('click')
       await flushPromises()
       expect((wrapper.get('#device-pairing textarea').element as HTMLTextAreaElement).value).toBe('invitation-draft')
-      expect(mocks.call.mock.calls.map(([command]) => command).sort()).toEqual(['devices_snapshot', 'pairing_status'])
+      expect(mocks.call.mock.calls.map(([command]) => command).sort()).toEqual(['devices_snapshot', 'pairing_pending', 'pairing_status'])
     }
     finally {
       wrapper.unmount()
@@ -224,7 +224,7 @@ describe('the devices page', () => {
       for (const retired of ['Send text', 'Send file', '发送文字', '发送文件'])
         expect(labels).not.toContain(retired)
       expect(wrapper.findComponent({ name: 'AModal' }).exists()).toBe(false)
-      expect(mocks.call.mock.calls.every(([command]) => ['devices_snapshot', 'pairing_status'].includes(command))).toBe(true)
+      expect(mocks.call.mock.calls.every(([command]) => ['devices_snapshot', 'pairing_status', 'pairing_pending'].includes(command))).toBe(true)
     }
     finally {
       wrapper.unmount()
