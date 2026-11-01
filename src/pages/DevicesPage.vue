@@ -151,11 +151,27 @@ const opened = ref(false)
  * "is something happening", not a copy of it that has to be refreshed in the right order.
  */
 const showPairing = computed({
-  get: () => opened.value || pairing.active || pairing.error !== undefined,
+  get: () => opened.value || pairing.active,
   set: (value: boolean) => {
     opened.value = value
   }
 })
+
+/**
+ * ★ A command that fails opens the panel once; a status that is already broken does not.
+ *
+ * The getter above used to include `pairing.error`, which meant any standing error — on a platform with no device
+ * identity, every visit — pinned the dialog open and the close button changed a flag that could not make it disappear.
+ * Opening on the *transition* keeps the useful half (press 配对, see why it failed) without the half that trapped the
+ * page, and a person who closes it stays closed.
+ */
+watch(
+  () => pairing.commandError,
+  (error) => {
+    if (error !== undefined)
+      opened.value = true
+  }
+)
 function pair(deviceId: string): void {
   if (pairing.active || pairing.busy)
     return
