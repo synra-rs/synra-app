@@ -40,58 +40,12 @@ export const devices = {
   scanEmpty: 'No nearby devices found. Check that both devices are on the same network, then scan again.',
   refresh: 'Refresh devices',
   knownOnly: 'Showing the last successfully loaded device information.',
-  forgotten: (name: string): string => `Forgot ${name}. Pair again to reconnect.`,
+  forgotten: (name: string): string => `Forgot ${name}.`,
   unpaired: 'Not paired',
-  pair: 'Pair',
-  pairingTitle: 'Pair devices',
-  /*
-   * The other half of pairing: a device that asked, and is waiting on this person.
-   *
-   * ★ The words say what discovery can and cannot prove. "Found on your network" is a fact this side observed; it is not
-   * the device having proved who it is. The code is what closes that gap, so it is described as something to compare
-   * rather than as an identifier.
-   */
-  pairingRequests: 'Pairing requests',
-  pairingRequestWants: (name: string): string => `${name} wants to pair with this device.`,
-  pairingRequestCompare: (code: string): string => `Check that the other device shows ${code}.`,
-  pairingOutgoingTitle: 'Waiting for the other device',
-  pairingOutgoingWants: (name: string): string => `${name} is deciding whether to pair with this device.`,
-  pairingOutgoingStop: 'Hide',
-  pairingRequestAddress: (address: string): string => `Reached at ${address}.`,
-  pairingRequestExpires: (seconds: number): string => `Expires in ${seconds}s.`,
-  pairingRequestAccept: 'Accept',
-  pairingRequestDecline: 'Decline',
-  pairingRequestGone: 'That request is no longer waiting. Refresh to see the current list.',
-  /*
-   * ★ Said plainly, because the alternative is a button that looks pressable and refuses.
-   *
-   * The protocol has the server side of `synra/pairing/1` — a device can receive and answer a request — but nothing on
-   * this side can open one. That is a missing client, not a setting: no amount of retrying makes it work.
-   */
-  pairingRequestPeer: (name: string): string => `${name} is selected.`,
-  pairingRequestUnavailable: 'Starting a pairing from this device is not available yet: it can answer a request from another device, but cannot send one.',
-  pairingResume: 'Continue pairing',
-  pairingChooseTarget: 'Select a nearby device',
-  pairingRefresh: 'Check pairing status',
-  pairingRestart: 'Start a new pairing',
-  pairingCloseHelp: 'Closing this panel keeps pairing in progress. Use Cancel pairing to stop it.',
-  pairingPeer: (id: string): string => `Pairing with device: ${id}`,
-  pairingExpires: 'Deadline:',
-  pairingCancel: 'Cancel pairing',
-  pairingPhases: {
-    listening: 'Waiting for the first device to import this reply',
-    connecting: 'Connecting to the selected device',
-    confirming: 'Confirming and saving authorization',
-    cancelling: 'Cancelling pairing',
-    paired: 'Paired',
-    cancelled: 'Pairing cancelled',
-    timedOut: 'Pairing expired; start again with a new reply',
-    failed: 'Pairing failed'
-  },
-  /** Undoes a pairing. Confirmed inline because the next send to that device will have to pair again. */
+  /** Undoes a relationship. Confirmed inline because the next send to that device is a first contact again. */
   forget: 'Forget',
   forgetTitle: (name: string): string => `Forget ${name}?`,
-  forgetHelp: 'This device will need to be paired again to reconnect. Automatic acceptance for this sender will also be removed.',
+  forgetHelp: 'This device will be treated as new the next time it is reached. Automatic acceptance for this sender will also be removed.',
   forgetCancel: 'Keep',
   online: 'Reachable',
   offline: 'Not reachable'

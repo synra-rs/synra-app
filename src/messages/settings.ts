@@ -6,32 +6,6 @@
  * user-visible string out of the template (R31).
  */
 export const settings = {
-  credentials: {
-    title: 'Device identity',
-    attention: 'Device identity needs attention.',
-    review: 'Review',
-    detail: 'Device keys and pairing status. Replacing a key requires pairing again.',
-    refresh: 'Refresh identity',
-    fingerprint: 'Public certificate fingerprint',
-    backend: 'Key storage',
-    enrollment: 'Saved identity',
-    recorded: 'Saved',
-    incomplete: 'Missing or incomplete',
-    registrationLost: 'The saved registration is missing. The last registered fingerprint is shown for recovery. Confirm repair to replace the key and revoke all previous pairings.',
-    runtime: 'Current identity',
-    loaded: 'Using saved identity',
-    unavailable: 'Unavailable',
-    retired: 'Old keys awaiting cleanup',
-    absent: 'None',
-    repair: 'Repair device identity',
-    cleanup: 'Retry old key cleanup',
-    restart: 'Restart the application after successful repair to load the new identity, then pair devices again. If its key is missing, repair it first.',
-    repaired: 'New identity saved. Previous pairings have been revoked.',
-    remaining: (count: number): string => `${count} old key slots remain. Their original storage backend is required for cleanup.`,
-    confirmTitle: 'Replace this device key?',
-    confirmDetail: 'This revokes all existing pairings and cancels pending pairing attempts. The application must restart afterwards. Confirm the fingerprint shown below; a changed enrollment will be refused.',
-    confirm: 'Revoke pairings and replace key'
-  },
   title: 'Settings',
   navigation: 'Settings category',
   categories: {
