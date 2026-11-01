@@ -885,17 +885,6 @@ const loading = ref(false)
  * kernel invents later stays neutral, which is the honest default — the tag always carries the word (R23), so the
  * colour is redundancy rather than the state itself.
  */
-/**
- * The `id` of the "required permissions" label for one plugin's permission group.
- *
- * ★ Derived from the plugin id, not a fixed string: every plugin row on the page renders its own group, and two groups
- *   sharing one `id` would point their `aria-labelledby` at whichever came first — every row after that would be named
- *   by another plugin's heading.
- */
-function requestedLabelId(pluginId: string): string {
-  return `plugin-required-${pluginId.replace(/[^\w-]/g, '-')}`
-}
-
 function stateColour(state: string): 'success' | 'error' | 'warning' | 'default' {
   switch (state) {
     case 'active': return 'success'
@@ -910,6 +899,17 @@ function stateColour(state: string): 'success' | 'error' | 'warning' | 'default'
     case 'unavailable': return 'warning'
     default: return 'default'
   }
+}
+
+/**
+ * The `id` of the "required permissions" label for one plugin's permission group.
+ *
+ * ★ Derived from the plugin id, not a fixed string: every plugin row on the page renders its own group, and two groups
+ *   sharing one `id` would point their `aria-labelledby` at whichever came first — every row after that would be named
+ *   by another plugin's heading.
+ */
+function requestedLabelId(pluginId: string): string {
+  return `plugin-required-${pluginId.replace(/[^\w-]/g, '-')}`
 }
 
 /** The publishers whose signatures this device has seen. */
