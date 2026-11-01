@@ -319,6 +319,7 @@
         ref="filterInput"
         v-model:value="query"
         :placeholder="messages.plugins.filterPlaceholder"
+        :aria-label="messages.plugins.filterPlaceholder"
         allow-clear
       />
 

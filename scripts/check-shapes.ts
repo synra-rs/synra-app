@@ -907,9 +907,20 @@ async function checkDialogNames(): Promise<void> {
  */
 async function checkControlNames(): Promise<void> {
   const files = await sources(join(here, 'src'))
+  // ★ `AInput` and `ATextarea` are here because they were the next two that could be unnamed, and one was: the plugin
+  //   filter carried a `placeholder` and nothing else. A placeholder is not a name — a screen reader may or may not
+  //   announce it, and it disappears the moment there is text, exactly when the user needs to know what the field is.
+  //   `ASearchPalette`'s field had both, which is what made the difference visible.
+  //
+  // ★ `ASwitch` and `ACheckbox` are deliberately absent: every one in the tree is either named by `aria-label` or is a
+  //   `<label>`/child that names itself, and a control that names itself by its own text is not something this scan can
+  //   judge from the opening tag — asking them for an attribute would be a false failure (the devices page's step
+  //   select is the same shape, and it is correct).
   const controls = [
-    { tag: 'ASelect', pattern: /<ASelect\b[^>]*>/g },
-    { tag: 'AInputNumber', pattern: /<AInputNumber\b[^>]*>/g }
+    { tag: 'ASelect', pattern: /<ASelect\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g },
+    { tag: 'AInputNumber', pattern: /<AInputNumber\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g },
+    { tag: 'AInput', pattern: /<AInput\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g },
+    { tag: 'ATextarea', pattern: /<ATextarea\b(?:"[^"]*"|'[^']*'|[^>"'])*>/g }
   ] as const
   const counts: string[] = []
 
@@ -921,13 +932,19 @@ async function checkControlNames(): Promise<void> {
       const text = await readFile(file, 'utf8')
       for (const match of text.matchAll(pattern)) {
         counted += 1
-        if (!/aria-label|:id=|id=|:aria-labelledby/.test(match[0])) {
-          const line = text.slice(0, match.index).split('\n').length
-          failures.push({
-            check: 'control-names',
-            detail: `${relative(here, file)}:${line.toString()} draws an \`${tag}\` with no \`aria-label\`, no \`id\` and no enclosing label`
-          })
-        }
+        if (/aria-label|:id=|id=|:aria-labelledby/.test(match[0]))
+          continue
+        // Named by containment: something between the control and the nearest `<label>` opening tag.
+        const before = text.slice(0, match.index)
+        const openedLabel = before.lastIndexOf('<label')
+        const closedLabel = before.lastIndexOf('</label>')
+        if (openedLabel > closedLabel)
+          continue
+        const line = before.split('\n').length
+        failures.push({
+          check: 'control-names',
+          detail: `${relative(here, file)}:${line.toString()} draws an \`${tag}\` with no \`aria-label\`, no \`id\` and no enclosing label`
+        })
       }
     }
     counts.push(`${counted.toString()} ${tag}`)
