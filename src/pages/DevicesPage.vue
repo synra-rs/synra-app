@@ -167,6 +167,40 @@ function pair(deviceId: string): void {
 }
 
 /**
+ * ★ While a request is out, the device list is re-read until the answer lands.
+ *
+ *   The answer is written by a socket thread on this machine — the dial that was started before this page knew anything.
+ *   Nothing announces it: there is no event to subscribe to, because the record is simply a row that appears. Polling is
+ *   the honest way to notice a database row; the alternative is an event that only exists for this one page.
+ *
+ *   It stops on its own, three ways: the device shows up paired (success), the code's window runs out (the other person
+ *   never answered), or the person hides the code. The last one only stops the clock here — the request itself lives on
+ *   the other screen for as long as it has left.
+ */
+const OUTGOING_POLL_MS = 3000
+let outgoingPoll: ReturnType<typeof setInterval> | undefined
+function stopOutgoingPoll(): void {
+  clearInterval(outgoingPoll)
+  outgoingPoll = undefined
+}
+watch(() => pairing.outgoing, (outgoing) => {
+  stopOutgoingPoll()
+  if (outgoing === null)
+    return
+  const expiresAt = Date.now() + outgoing.expiresInMs
+  outgoingPoll = setInterval(() => {
+    void refresh()
+    const paired = devices.get(outgoing.deviceId)?.paired === true
+    if (!paired && Date.now() <= expiresAt)
+      return
+    stopOutgoingPoll()
+    if (paired)
+      pairing.dismissOutgoing()
+  }, OUTGOING_POLL_MS)
+})
+onScopeDispose(stopOutgoingPoll)
+
+/**
  * ★ Closing drops `?device=` as well as the panel. `PluginsPage` does the same with `?plugin=` (`leaveTarget`): with the
  * id still in the URL, leaving the page and coming back re-opens a panel the reader has already dismissed, and the
  * address bar goes on claiming a device is selected.
