@@ -291,17 +291,33 @@ async function checkFakeIsQuarantined(): Promise<void> {
   const allowed = new Set(['kernel.ts'])
   let importers = 0
 
+  // ★ The rule is about the *kind* of file, not the one name that happened to break it first. `fake-kernel` was the
+  //   import that reached production, but the same mistake is available from any fixture: `client-test-helpers`,
+  //   `dispatcher-test-helpers`, `injection-test-helpers`, `fake-kernel-fixtures`. None of them is named here yet —
+  //   that is the point of checking the pattern rather than the incident.
+  //
+  //   `fake-kernel.ts` imports `fake-kernel-fixtures`, and it is the file that *is* the fake; it is exempt below for
+  //   the same reason `kernel.ts` is allowed to know the double's name.
+  const fixture = /test-helpers|fake-kernel|fixtures/
+
   for (const file of await sources(root)) {
     const name = relative(join(here, 'src'), file).replaceAll('\\', '/')
     // Tests are the place a fake belongs, so they are not the thing being guarded against.
     if (name.endsWith('.test.ts') || allowed.has(name))
       continue
+    // The double itself composes its own fixtures; that is inside the quarantine, not through it.
+    const isTheDouble = name === 'ipc/fake-kernel.ts'
     const text = await readFile(file, 'utf8')
-    if (/(?:from|import)\s*\(?['"][^'"]*fake-kernel['"]/.test(text)) {
+    for (const match of text.matchAll(/(?:from|import)\s*\(?['"]([^'"]+)['"]/g)) {
+      const specifier = match[1]!
+      if (!fixture.test(specifier))
+        continue
+      if (isTheDouble && specifier.includes('fixtures'))
+        continue
       importers += 1
       failures.push({
         check: 'fake-quarantine',
-        detail: `${name} imports the fake kernel; only kernel.ts may choose it`
+        detail: `${name} imports \`${specifier}\`; only kernel.ts may choose the fake`
       })
     }
   }
