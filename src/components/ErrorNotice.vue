@@ -6,7 +6,13 @@
       a direction rather than as a button that would do nothing.
     -->
     <template v-if="actions.length > 0" #description>
-      <div class="row flex-wrap gap-2 pt-1">
+      <!--
+        ★ `[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8` is the same floor every other surface states
+          ([09 §3]): 44px where a finger is the pointer, antd's own 32px from `md` up. `size="small"` is 24px, so
+          these were the only controls in the interface a thumb could miss — on the one notice that appears when
+          something has already gone wrong.
+      -->
+      <div data-testid="error-actions" class="row flex-wrap gap-2 pt-1 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
         <template v-for="(action, index) in actions" :key="index">
           <AButton v-if="to(action)" size="small" @click="router.push(to(action)!)">
             {{ messages.actions[action.kind] }}
