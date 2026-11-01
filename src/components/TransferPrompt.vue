@@ -11,7 +11,7 @@
  *   rather than on the utility because a checkbox wrapper and a `<summary>` are not buttons, and the utility only
  *   reaches `.ant-btn`.
  *
- * ★ 639 matches `03 §3`'s narrow layout (`<640`) and `PairingPanel`'s own query, so both components switch at the same
+ * ★ 639 is `03 §3`'s narrow layout (`<640`); keeping the same number here means the two agmponents switch at the same
  *   width. `check-shapes.ts`'s `touch-breakpoints` holds it.
  */
 @media (pointer: coarse), (max-width: 639px) {

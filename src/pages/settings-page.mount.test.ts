@@ -63,7 +63,7 @@ const NO_METRICS = { values: [], overflowedTotal: 0, maxSeriesPerMetric: 1_000 }
  * refused it would put an error notice on every test here — including the ones asserting something else.
  */
 function answer(byCommand: Record<string, unknown>) {
-  const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, identity_credentials: { deviceId: IDENTITY.deviceId, enrollment: null, recovery: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }, ...byCommand }
+  const answers: Record<string, unknown> = { diag_metrics: NO_METRICS, ...byCommand }
   mocks.call.mockImplementation(async (command: string, args?: { patch?: { set?: Record<string, unknown>, unset?: string[] } }) => {
     if (command === 'config_set' && command in answers) {
       const snapshot = answers.config_get as { values: Record<string, unknown>, overridden: string[] } | undefined

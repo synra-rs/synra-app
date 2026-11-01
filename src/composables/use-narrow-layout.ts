@@ -7,7 +7,7 @@ import { onMounted, onUnmounted, readonly, ref } from 'vue'
  *
  * `03 §3` sets the narrow layout at `<640`, and `09 §3` raises every control to 44px where a finger is the pointer.
  * They usually agree, and they are not the same fact: a tablet at 800px has a finger and no room for a dialog, and a
- * desktop window dragged narrow has a mouse and no room either. `PairingPanel` needs "is there room for a dialog"
+ * desktop window dragged narrow has a mouse and no room either. Callers want "is the surface narrow"ere room for a dialog"
  * rather than either fact alone, so this asks both and takes the union.
  *
  * # Why `matchMedia` and not a resize listener
