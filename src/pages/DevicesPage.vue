@@ -15,9 +15,6 @@
         <AButton v-else :loading="startingScan" :disabled="scanning" @click="scan">
           {{ startingScan ? messages.devices.scanning : messages.devices.scan }}
         </AButton>
-        <AButton ref="pairTrigger" type="primary" :aria-expanded="showPairing" aria-controls="device-pairing" @click="togglePairing">
-          {{ pairing.active ? messages.devices.pairingResume : messages.devices.pairingTitle }}
-        </AButton>
       </PageHeader>
 
       <div v-if="snapshotError" class="stack gap-2">
@@ -34,8 +31,6 @@
       <p v-if="notice" class="m-0 text-sm" role="status">
         {{ notice }}
       </p>
-
-      <PairingPanel :selected="selectedPeer" :visible="showPairing" @close="showPairing = false" />
 
       <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
         <div v-if="scanError" class="stack gap-2">
@@ -88,13 +83,13 @@
         <h2 ref="pairedHeading" class="m-0 text-sm font-medium" tabindex="-1">
           {{ messages.devices.paired }}
         </h2>
-        <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @forget="askForget" />
+        <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" @forget="askForget" />
       </section>
       <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
         <h2 class="m-0 text-sm font-medium">
           {{ messages.devices.nearby }}
         </h2>
-        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" :pairing-busy="pairing.active || pairing.busy" @pair="pair" />
+        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" />
       </section>
     </div>
 
@@ -123,128 +118,16 @@
 <script setup lang="ts">
 import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
-import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
-import PairingPanel from '../components/PairingPanel.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
-import { usePairingStore } from '../stores/pairing'
 import DeviceRow from './devices/DeviceRow.vue'
 
 const devices = useDevicesStore()
-const pairing = usePairingStore()
-const route = useRoute()
-const router = useRouter()
-const selectedDeviceId = ref<string>()
-const selectedPeer = computed(() => selectedDeviceId.value ? devices.get(selectedDeviceId.value) : undefined)
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
-const opened = ref(false)
-/**
- * Whether the pairing dialog is on screen.
- *
- * ★ Derived rather than a second `ref` kept in step by a `watch`. Two answers to one question drift: the panel could be
- * showing while the flag said otherwise, and the toggle would then do the opposite of what it looked like. A running
- * task or a refusal opens it whether or not anyone pressed the button — `pairing.active` is the kernel's answer to
- * "is something happening", not a copy of it that has to be refreshed in the right order.
- */
-const showPairing = computed({
-  get: () => opened.value || pairing.active,
-  set: (value: boolean) => {
-    opened.value = value
-  }
-})
-
-/**
- * ★ A command that fails opens the panel once; a status that is already broken does not.
- *
- * The getter above used to include `pairing.error`, which meant any standing error — on a platform with no device
- * identity, every visit — pinned the dialog open and the close button changed a flag that could not make it disappear.
- * Opening on the *transition* keeps the useful half (press 配对, see why it failed) without the half that trapped the
- * page, and a person who closes it stays closed.
- */
-watch(
-  () => pairing.commandError,
-  (error) => {
-    if (error !== undefined)
-      opened.value = true
-  }
-)
-function pair(deviceId: string): void {
-  if (pairing.active || pairing.busy)
-    return
-  selectedDeviceId.value = deviceId
-  showPairing.value = true
-  // ★ The request goes out here, not from the panel: the row is what names the device, and a person who pressed that
-  // button should see the code even if they close the dialog a moment later.
-  void pairing.request(deviceId)
-}
-
-/**
- * ★ While a request is out, the device list is re-read until the answer lands.
- *
- *   The answer is written by a socket thread on this machine — the dial that was started before this page knew anything.
- *   Nothing announces it: there is no event to subscribe to, because the record is simply a row that appears. Polling is
- *   the honest way to notice a database row; the alternative is an event that only exists for this one page.
- *
- *   It stops on its own, three ways: the device shows up paired (success), the code's window runs out (the other person
- *   never answered), or the person hides the code. The last one only stops the clock here — the request itself lives on
- *   the other screen for as long as it has left.
- */
-const OUTGOING_POLL_MS = 3000
-let outgoingPoll: ReturnType<typeof setInterval> | undefined
-function stopOutgoingPoll(): void {
-  clearInterval(outgoingPoll)
-  outgoingPoll = undefined
-}
-watch(() => pairing.outgoing, (outgoing) => {
-  stopOutgoingPoll()
-  if (outgoing === null)
-    return
-  const expiresAt = Date.now() + outgoing.expiresInMs
-  outgoingPoll = setInterval(() => {
-    void refresh()
-    const paired = devices.get(outgoing.deviceId)?.paired === true
-    if (!paired && Date.now() <= expiresAt)
-      return
-    stopOutgoingPoll()
-    if (paired)
-      pairing.dismissOutgoing()
-  }, OUTGOING_POLL_MS)
-})
-onScopeDispose(stopOutgoingPoll)
-
-/**
- * ★ Closing drops `?device=` as well as the panel. `PluginsPage` does the same with `?plugin=` (`leaveTarget`): with the
- * id still in the URL, leaving the page and coming back re-opens a panel the reader has already dismissed, and the
- * address bar goes on claiming a device is selected.
- */
-async function togglePairing(): Promise<void> {
-  if (showPairing.value) {
-    const { device: _device, ...query } = route.query
-    await router.replace({ path: route.path, query, hash: route.hash })
-    showPairing.value = false
-    return
-  }
-  showPairing.value = true
-}
-
-/**
- * ★ A notice that says "connect this device" links here with `?device=`. Without this the button landed on the top of
- * the list and the reader had to find the device again — the same gap `installPlugin` had, on the other page.
- *
- * The id is applied through `pair()`, so the pairing panel opens exactly as it would from the row's own button. An id
- * the snapshot does not carry is ignored rather than selected: `pair()` would set a peer that `devices.get` cannot
- * resolve, and the panel would open empty.
- */
-const requestedDeviceId = computed(() => typeof route.query.device === 'string' ? route.query.device.trim() : '')
-watch([requestedDeviceId, () => devices.cards], ([deviceId]) => {
-  if (deviceId && devices.get(deviceId))
-    pair(deviceId)
-}, { immediate: true })
-
 let disposed = false
 let readRevision = 0
 let reading: Promise<boolean> | undefined
@@ -445,16 +328,5 @@ onScopeDispose(() => {
   disposed = true
   readRevision += 1
 })
-onMounted(() => {
-  void refresh()
-  /*
-   * ★ Read the pairing task here, not only inside the panel.
-   *
-   * A pairing that was already running when this page opened — a device asked on another screen, or the page was
-   * reloaded mid-task — lives only in the kernel's shared snapshot. The panel used to be the only reader, and the panel
-   * is not mounted until someone opens it: `pairing.active` stayed false, so nothing ever told them one was running and
-   * the resume entry never appeared. Reading it on mount makes `active` the kernel's answer rather than this page's guess.
-   */
-  void pairing.refresh()
-})
 </script>
+

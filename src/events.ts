@@ -29,7 +29,6 @@ import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
 import { useNoticesStore } from './stores/notices'
-import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
 
@@ -69,7 +68,6 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   }
 
   const dispatcher = new EventDispatcher(() => {
-    void usePairingStore().refresh(client)
     void reread(client, devices, dispatcher)
   })
 
@@ -126,12 +124,6 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     notices.apply(event)
   })
 
-  const pairing = usePairingStore()
-  dispatcher.on('pairingUpdated', () => {
-    // Re-read instead of applying a buffered event over a newer command result.
-    void pairing.refresh(client)
-    void reread(client, devices, dispatcher)
-  })
 
   const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
     dispatcher.accept(payload as SequencedKernelEvent)

@@ -19,8 +19,6 @@
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
       <div class="row flex-wrap items-center gap-2">
-        <AButton v-if="!card.paired" :disabled="pairingBusy" @click="emit('pair', card.deviceId)">
-          {{ messages.devices.pair }}
         </AButton>
         <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
@@ -74,8 +72,8 @@ import { ref, useId } from 'vue'
 import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
 
-defineProps<{ card: DeviceCard, pairingBusy: boolean }>()
-const emit = defineEmits<{ pair: [deviceId: string], forget: [card: DeviceCard] }>()
+defineProps<{ card: DeviceCard }>()
+const emit = defineEmits<{ forget: [card: DeviceCard] }>()
 const expanded = ref(false)
 const detailsId = useId()
 </script>

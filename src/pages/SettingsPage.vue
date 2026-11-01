@@ -17,15 +17,7 @@
       <AButton :loading="loading" @click="load">
         {{ messages.actions.retry }}
       </AButton>
-    </div>
-    <AAlert v-if="identityNeedsAttention && category !== 'security'" type="warning" show-icon :message="messages.settings.credentials.attention">
-      <template #action>
-        <AButton size="small" @click="category = 'security'">
-          {{ messages.settings.credentials.review }}
-        </AButton>
-      </template>
-    </AAlert>
-    <!--
+    </div>    <!--
       The category column is sized by its labels, not by a fixed 10rem: "Device and security" and "Plugins and sources"
       are wider than the Chinese labels, and a fixed track truncated them to "Device and sec…" in English while looking
       right in Chinese. `max-content` lets the longest label set the width; `minmax(0,1fr)` keeps the body able to shrink.
@@ -131,7 +123,6 @@
         </div>
 
         <div v-show="category === 'security'" class="min-w-0 stack gap-7" data-testid="settings-security">
-          <CredentialPanel :expanded="category === 'security' && identityNeedsAttention" />
           <SettingsGroup :title="messages.settings.trusted.title">
             <p class="m-0 pb-3 text-xs text-ink-dim">
               {{ messages.settings.trusted.detail }}
@@ -247,10 +238,9 @@
 
 <script setup lang="ts">
 import type { ConfigPatch, IpcError } from '@synra/protocol'
-import { Alert as AAlert, Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
+import {  Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import CredentialPanel from '../components/CredentialPanel.vue'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
@@ -261,7 +251,6 @@ import { useSettingsDraft } from '../components/settings/use-settings-draft'
 import { kernel } from '../kernel'
 import { localePreference } from '../locale'
 import { messages } from '../messages'
-import { useCredentialsStore } from '../stores/credentials'
 import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
@@ -327,10 +316,7 @@ watch(category, async (value) => {
 
 const settings = useSettingsStore()
 const devices = useDevicesStore()
-const credentials = useCredentialsStore()
 const identity = computed(() => devices.identity)
-const identityNeedsAttention = computed(() => Boolean(credentials.error || credentials.restartRequired || credentials.snapshot?.recovery
-  || (credentials.snapshot && (!credentials.snapshot.runtimeReady || !credentials.snapshot.enrollment?.ready || credentials.snapshot.retiredKeys > 0))))
 const errors = reactive<Partial<Record<Operation, IpcError | undefined>>>({})
 const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
 const busy = reactive(operationFlags())
@@ -616,3 +602,4 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', beforeUnload)
 })
 </script>
+

@@ -61,10 +61,8 @@ import { PreviewConfig } from './preview-config'
  */
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   config_set: ['patch'],
-  identity_repair: ['expectedFingerprint'],
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
-  pairing_cancel: ['requestId'],
   intent_dispatch: ['source'],
   intent_decide: ['intentId', 'decision'],
   intent_snapshot: ['intentId'],
@@ -138,12 +136,6 @@ export class FakeKernel implements Bridge {
     this.#requireArguments(command, args)
 
     switch (command) {
-      case 'identity_credentials':
-        return { deviceId: IDENTITY.deviceId, enrollment: null, recovery: null, retiredKeys: 0, runtimeReady: false, restartRequired: false }
-      case 'identity_cleanup':
-        return { remaining: 0, errorCode: null, detail: null }
-      case 'identity_repair':
-        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', params: {}, actions: [] })
       case 'identity_get':
         return { ...IDENTITY }
       case 'devices_snapshot':
@@ -160,11 +152,6 @@ export class FakeKernel implements Bridge {
         if (!this.#scan || this.#scan.scanId !== args?.scanId)
           throw Object.assign(new Error('error.invalid_argument'), { code: 'invalid_argument', retryable: false, params: { scanId: args?.scanId, running: this.#scan?.scanId }, actions: [] })
         this.#scanCancelled = true
-        return null
-        // The preview has no enrolled identity or TLS; it cannot manufacture a usable certificate or grant.
-        throw Object.assign(new Error('preview has no enrolled network identity'), { code: 'unsupported', message: 'error.unsupported', retryable: false, params: {}, actions: [] })
-      case 'pairing_status':
-      case 'pairing_cancel':
         return null
       case 'plugins_publishers':
         // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
