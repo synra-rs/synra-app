@@ -742,6 +742,7 @@ mod wrappers {
 ///
 /// `CommandOrControl` rather than `Ctrl`: on macOS the conventional summon key is Command, and a shortcut that only works
 /// on two of the three desktops is the kind of platform detail a user discovers by it not working.
+#[cfg(any(desktop, test))]
 const WAKE_SHORTCUT: &str = "CommandOrControl+Shift+Space";
 
 /// The shell, with the state it reads and the commands it answers, and no window opened yet.
@@ -796,6 +797,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 .path()
                 .app_data_dir()
                 .map_err(|error| format!("the data directory could not be found: {error}"))?;
+            // ★ A phone has no console, so from here on every step is named in a file. See `crash`.
+            crate::crash::install(&data_dir);
+            crate::crash::note("setup: data directory known");
             let mut instance_request = None;
             match crate::instance::claim(&data_dir) {
                 Ok(crate::instance::Start::First(guard)) => {
@@ -816,7 +820,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                     eprintln!("synra: the single-instance lock could not be taken: {error}");
                 }
             }
+            crate::crash::note("setup: opening the state");
             let state = app_state(app.handle())?;
+            crate::crash::note("setup: state ready");
             // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
             // command that publishes later finds a subscriber waiting — a bridge started after the first command would
             // miss exactly the event that command raised.
@@ -911,7 +917,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // ★ The listener starts after the state is managed, because it reads that state to build its host and router. The token
             // is managed rather than dropped so a later shutdown can stop the loop: without it the thread lives until the process
             // does, and a restart would fail to bind a port the old one still holds.
+            crate::crash::note("setup: opening the listener");
             app.manage(crate::listener::spawn(app.handle()));
+            crate::crash::note("setup: listener ready");
             // ★ A dispatch that was in flight when the last process ended is sent again with the same request identifier —
             // the receiving side deduplicates on it, so this either runs the action once or returns the outcome that already
             // happened. The immediate pass runs first, then a bounded backoff keeps trying what is still in flight; the
@@ -1182,34 +1190,6 @@ pub fn run() {
     }
 }
 
-/// The state, over the real database in the real place.
-///
-/// # Errors
-///
-/// A message saying what stopped it. The three ways this can fail are a directory that cannot be created, a database
-/// that cannot be opened or migrated, and an identity that cannot be written — and each one is a fact about the user's
-/// machine rather than a bug in the code, so each is reported in words rather than as an opaque error code.
-/// Runs a blocking command body off the window's thread, and awaits it.
-///
-/// # Why a helper rather than `spawn_blocking` at each call site
-///
-/// Because the error when the task cannot be started is not something a caller can act on, and every call site would invent
-/// its own sentence for it. One sentence, one place: a blocked thread that could not be obtained is the runtime shutting down,
-/// which during a command means the application is closing.
-async fn blocking<T, F>(body: F) -> Result<T, synra_ipc::IpcError>
-where
-    F: FnOnce() -> Result<T, synra_ipc::IpcError> + Send + 'static,
-    T: Send + 'static,
-{
-    match tauri::async_runtime::spawn_blocking(body).await {
-        Ok(answer) => answer,
-        Err(_) => Err(
-            synra_ipc::IpcError::unknown(synra_protocol::ErrorCode::Internal).with_params(
-                serde_json::json!({"reason": "the runtime stopped before the task ran"}),
-            ),
-        ),
-    }
-}
 
 fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     let startup = std::time::Instant::now();

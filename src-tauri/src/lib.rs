@@ -51,6 +51,8 @@
 )]
 
 pub mod commands;
+/// The file a phone can hand back: startup breadcrumbs and panics.
+pub mod crash;
 pub mod discovery;
 pub mod events;
 pub mod instance;

@@ -316,8 +316,6 @@ impl AppState {
             synra_core::platform_of_os(platform),
             env!("CARGO_PKG_VERSION"),
         );
-        // Read before the identity is moved into its Arc below: the desk needs the identifier and the field takes ownership.
-        let local_id = identity.device_id;
 
         // ★ Built before the host, because the host is given one.
         //

@@ -148,7 +148,7 @@ pub fn bind(mut state: AppState) -> AppState {
     let identity = state.identity.lock().clone();
     // ★ The second host this process builds, and it needs the recorder for the same reason the state's host does: an
     // accepted connection is a link, and its frames are the only evidence the listener ever handled anything.
-    let mut listener_host = synra_core::Host::new(identity.clone(), local_of(&identity))
+    let listener_host = synra_core::Host::new(identity.clone(), local_of(&identity))
         .with_metrics(Arc::clone(&state.metrics));
     let host = Arc::new(Mutex::new(listener_host));
 

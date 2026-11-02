@@ -17,7 +17,7 @@ impl Language {
         }
     }
 
-    #[cfg(any(feature = "tauri-shell", test))]
+    #[cfg(any(all(feature = "tauri-shell", not(target_os = "android")), test))]
     pub(crate) const fn show(self) -> &'static str {
         match self {
             Self::English => "Show Synra",
@@ -25,7 +25,7 @@ impl Language {
         }
     }
 
-    #[cfg(any(feature = "tauri-shell", test))]
+    #[cfg(any(all(feature = "tauri-shell", not(target_os = "android")), test))]
     pub(crate) const fn quit(self) -> &'static str {
         match self {
             Self::English => "Quit",
