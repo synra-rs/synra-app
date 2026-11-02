@@ -114,7 +114,20 @@
     </AModal>
     <AModal v-if="pairing && pairing.phase !== 'idle'" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
       <div class="stack gap-4">
-        <template v-if="pairing.phase === 'waiting' && pairing.offer">
+        <template v-if="pairing.phase === 'asked' && pairing.ask">
+          <p class="m-0 text-sm">
+            {{ messages.devices.pairingAsk(pairing.ask.displayName) }}
+          </p>
+          <output class="m-0 text-center text-3xl font-mono tracking-[0.3em]">{{ pairing.ask.code }}</output>
+          <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+            <AButton :loading="pairingBusy" @click="respondPair(false)">
+              {{ messages.devices.pairingRefuse }}
+            </AButton>
+            <AButton type="primary" :loading="pairingBusy" @click="respondPair(true)">
+              {{ messages.devices.pairingAccept }}
+            </AButton>
+          </div>
+        </template>        <template v-else-if="pairing.phase === 'waiting' && pairing.offer">
           <p class="m-0 text-sm">
             {{ messages.devices.pairingWaiting(pairing.offer.displayName) }}
           </p>
@@ -196,11 +209,38 @@ async function withdrawPair(): Promise<void> {
     pairingError.value = answer.error
 }
 
-function closePairing(): void {
+
+async function respondPair(accepted: boolean): Promise<void> {
+  pairingBusy.value = true
+  const answer = await kernel.call<PairingSnapshot>('devices_pairing_respond', { accepted })
+  pairingBusy.value = false
+  if (answer.ok)
+    pairing.value = answer.value
+  else
+    pairingError.value = answer.error
+}function closePairing(): void {
   pairing.value = undefined
   pairingTarget.value = undefined
   pairingError.value = undefined
 }
+
+/**
+ * Incoming requests.
+ *
+ * ★ Polled rather than pushed, and only while this page is open: the listener learns about an ask on a
+ * connection thread that has no window to talk to, and a prompt that nobody sees is a prompt that times
+ * out. A second is short enough that the person sees the request well inside the two-minute window.
+ */
+const askPoll = window.setInterval(async () => {
+  if (pairing.value || disposed)
+    return
+  const answer = await kernel.call<PairingSnapshot>('devices_pairing_snapshot')
+  if (answer.ok && answer.value.phase !== 'idle')
+    pairing.value = answer.value
+}, 1000)
+onScopeDispose(() => {
+  window.clearInterval(askPoll)
+})
 
 const pairingOutcomeText = computed(() => {
   const name = pairingTarget.value?.displayName ?? ''
