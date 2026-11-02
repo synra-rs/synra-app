@@ -304,7 +304,6 @@ onBeforeUnmount(() => {
               {{ words.title }}
               <span class="debug-scheme">synra://wire</span>
             </div>
-            <div class="debug-subtitle">{{ words.subtitle }}</div>
           </div>
 
           <div class="debug-counters" aria-hidden="true">
@@ -505,9 +504,9 @@ onBeforeUnmount(() => {
 .debug-head {
   display: flex;
   flex: none;
-  gap: 0.75rem;
+  gap: 0.6rem;
   align-items: center;
-  padding: 0.45rem 0.85rem 0.55rem;
+  padding: 0.28rem 0.85rem 0.32rem;
   border-bottom: 1px solid rgb(255 255 255 / 7%);
 }
 
@@ -529,15 +528,6 @@ onBeforeUnmount(() => {
   font-size: 0.66rem;
   font-weight: 400;
   color: #6f829b;
-}
-
-.debug-subtitle {
-  margin-top: 0.08rem;
-  overflow: hidden;
-  font-size: 0.66rem;
-  color: #7d8ea5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .debug-counters {

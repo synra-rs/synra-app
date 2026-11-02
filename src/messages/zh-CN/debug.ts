@@ -3,7 +3,6 @@ import type { LocaleEntries } from '../types'
 export const debug = {
   'debug.title': '线缆',
   'debug.all': '全部',
-  'debug.subtitle': '双向的每一帧',
   'debug.open': '打开线缆监视',
   'debug.close': '关闭',
   'debug.clear': '清空',

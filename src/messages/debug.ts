@@ -7,7 +7,6 @@
 export const debug = {
   title: 'Wire',
   all: 'All',
-  subtitle: 'Every frame, both directions',
   open: 'Open the wire',
   close: 'Close',
   clear: 'Clear',
