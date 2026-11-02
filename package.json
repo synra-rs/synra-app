@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "pnpm run build:facade && vue-tsc -b && vite build",
     "build:facade": "vite build --config vite.inject.config.ts",
+    "build:android": "tauri android build",
+    "build:ios": "tauri ios build",
     "check": "vue-tsc -b && pnpm run shapes",
     "shapes": "esno scripts/check-shapes.ts",
     "test": "vitest run --passWithNoTests",
