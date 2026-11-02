@@ -1196,6 +1196,9 @@ fn stop_background(app: &tauri::AppHandle) {
 #[tauri::mobile_entry_point]
 pub fn run() {
     if let Err(reason) = run_window() {
+        // ★ A refusal here is the one failure a phone shows as "it closed by itself": the entry point returns no code
+        // and nothing is listening on stderr, so the sentence is written where a person can fetch it.
+        crate::crash::note(&format!("run_window refused: {reason}"));
         eprintln!("synra: {reason}");
     }
 }

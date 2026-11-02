@@ -37,6 +37,19 @@ pub const FILE_NAME: &str = "crash.log";
 /// ignored: the first directory is the one the process is running in, and a
 /// hook that could be replaced is a hook a later mistake can silence.
 pub fn install(data_dir: &Path) {
+    // ★ On Android the private directory is the right place for the file and the wrong place to look for it: a
+    // device without root cannot read `/data/app/...`, so a log written only there is a log nobody can fetch. The
+    // external files directory of the same package is readable over `hdc`, so that is where a phone writes instead.
+    // The state directory stays the first choice everywhere else.
+    #[cfg(target_os = "android")]
+    let path = {
+        let public = Path::new("/sdcard/Android/data/com.synra.app/files");
+        match std::fs::create_dir_all(public) {
+            Ok(()) => public.join(FILE_NAME),
+            Err(_) => data_dir.join(FILE_NAME),
+        }
+    };
+    #[cfg(not(target_os = "android"))]
     let path = data_dir.join(FILE_NAME);
     if LOG.set(path.clone()).is_err() {
         return;
