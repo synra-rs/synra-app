@@ -19,7 +19,10 @@
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
       <div class="row flex-wrap items-center gap-2">
-        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
+'        <AButton v-if="!card.paired" class="min-w-20 justify-center" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
+          {{ messages.devices.pairing }}
+        </AButton>
+'        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />
         </AButton>
@@ -72,7 +75,7 @@ import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
 
 defineProps<{ card: DeviceCard }>()
-const emit = defineEmits<{ forget: [card: DeviceCard] }>()
+const emit = defineEmits<{ forget: [card: DeviceCard], pair: [card: DeviceCard] }>()
 const expanded = ref(false)
 const detailsId = useId()
 </script>

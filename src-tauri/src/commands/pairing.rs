@@ -22,7 +22,7 @@ use synra_protocol::DeviceId;
 use crate::state::{AppState, internal};
 
 /// 当前的配对状态，供界面渲染。
-pub fn pairing_snapshot(state: &AppState) -> Result<PairingSnapshot, IpcError> {
+pub fn devices_pairing_snapshot(state: &AppState) -> Result<PairingSnapshot, IpcError> {
     Ok(snapshot_of(&state.host.lock().pairing()))
 }
 
@@ -98,7 +98,7 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
 /// # Errors
 ///
 /// [`IpcError`] 当桌上没有等着答复的请求（已经答复过、已经过期）。
-pub fn pairing_respond(
+pub fn devices_pairing_respond(
     state: &Arc<AppState>,
     accepted: bool,
 ) -> Result<PairingSnapshot, IpcError> {
@@ -125,7 +125,7 @@ pub fn pairing_respond(
 /// # Errors
 ///
 /// [`IpcError`] 当本机没有正在等待的请求。
-pub fn pairing_cancel(state: &Arc<AppState>) -> Result<PairingSnapshot, IpcError> {
+pub fn devices_pairing_cancel(state: &Arc<AppState>) -> Result<PairingSnapshot, IpcError> {
     let desk = state.host.lock().pairing();
     if desk.cancel().is_err() {
         return Err(internal(

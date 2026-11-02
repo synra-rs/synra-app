@@ -22,9 +22,9 @@ export const REGISTERED = [
   'devices_forget',
   // Pairing: the code, the answer and the withdrawal, all on the one desk the kernel owns.
   'devices_pair',
-  'pairing_respond',
-  'pairing_cancel',
-  'pairing_snapshot',
+  'devices_pairing_respond',
+  'devices_pairing_cancel',
+  'devices_pairing_snapshot',
   // Pairing uses the shared restricted service with explicit certificate imports and a readable task snapshot.
   'plugins_list',
   'plugins_preview',

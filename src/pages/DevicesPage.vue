@@ -89,7 +89,7 @@
         <h2 class="m-0 text-sm font-medium">
           {{ messages.devices.nearby }}
         </h2>
-        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" />
+        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" />
       </section>
     </div>
 
@@ -112,11 +112,36 @@
         </div>
       </div>
     </AModal>
+    <AModal v-if="pairing && pairing.phase !== 'idle'" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
+      <div class="stack gap-4">
+        <template v-if="pairing.phase === 'waiting' && pairing.offer">
+          <p class="m-0 text-sm">
+            {{ messages.devices.pairingWaiting(pairing.offer.displayName) }}
+          </p>
+          <output class="m-0 text-center text-3xl font-mono tracking-[0.3em]">{{ pairing.offer.code }}</output>
+          <p class="m-0 text-xs text-ink-dim">
+            {{ messages.devices.pairingWaitingHelp }}
+          </p>
+        </template>
+        <p v-else-if="pairingOutcomeText" class="m-0 text-sm">
+          {{ pairingOutcomeText }}
+        </p>
+        <ErrorNotice v-if="pairingError" :code="pairingError.code" :params="pairingError.params" :actions="pairingError.actions?.filter(action => action.kind !== 'retry')" />
+        <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+          <AButton v-if="pairing.phase === 'waiting'" :loading="pairingBusy" @click="withdrawPair">
+            {{ messages.devices.pairingWithdraw }}
+          </AButton>
+          <AButton type="primary" @click="closePairing">
+            {{ messages.devices.pairingClose }}
+          </AButton>
+        </div>
+      </div>
+    </AModal>
   </section>
 </template>
 
 <script setup lang="ts">
-import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
+import type { DeviceCard, DevicesSnapshot, IpcError, PairingSnapshot, ScanOptions } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -127,6 +152,66 @@ import { useDevicesStore } from '../stores/devices'
 import DeviceRow from './devices/DeviceRow.vue'
 
 const devices = useDevicesStore()
+/**
+ * Pairing: the six digits this device shows, and the answer the other person gives.
+ *
+ * ★ The snapshot arrives as an event rather than from a poll. A poll would leave the panel up to a
+ * second behind the desk, and the desk is the one thing both people are looking at.
+ */
+const pairing = ref<PairingSnapshot>()
+const pairingTarget = ref<DeviceCard>()
+const pairingError = ref<IpcError>()
+const pairingBusy = ref(false)
+let stopPairingEvents: (() => void) | undefined
+void kernel.subscribe('kernel-event', (payload) => {
+  const event = payload as { type?: string, payload?: unknown }
+  if (event.type === 'pairingUpdated' && event.payload)
+    pairing.value = event.payload as PairingSnapshot
+}).then((off) => {
+  stopPairingEvents = off
+})
+onScopeDispose(() => {
+  stopPairingEvents?.()
+})
+
+async function startPair(card: DeviceCard): Promise<void> {
+  pairingTarget.value = card
+  pairingError.value = undefined
+  pairingBusy.value = true
+  const answer = await kernel.call<PairingSnapshot>('devices_pair', { deviceId: card.deviceId })
+  pairingBusy.value = false
+  if (answer.ok)
+    pairing.value = answer.value
+  else
+    pairingError.value = answer.error
+}
+
+async function withdrawPair(): Promise<void> {
+  pairingBusy.value = true
+  const answer = await kernel.call<PairingSnapshot>('devices_pairing_cancel')
+  pairingBusy.value = false
+  if (answer.ok)
+    pairing.value = answer.value
+  else
+    pairingError.value = answer.error
+}
+
+function closePairing(): void {
+  pairing.value = undefined
+  pairingTarget.value = undefined
+  pairingError.value = undefined
+}
+
+const pairingOutcomeText = computed(() => {
+  const name = pairingTarget.value?.displayName ?? ''
+  switch (pairing.value?.outcome) {
+    case 'paired': return messages.devices.pairingPaired(name)
+    case 'refused': return messages.devices.pairingRefused(name)
+    case 'cancelled': return messages.devices.pairingCancelled
+    case 'timedOut': return messages.devices.pairingExpired
+    default: return undefined
+  }
+})
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
 let disposed = false
 let readRevision = 0

@@ -47,6 +47,21 @@ export const devices = {
   forgetTitle: (name: string): string => `Forget ${name}?`,
   forgetHelp: 'This device will be treated as new the next time it is reached. Automatic acceptance for this sender will also be removed.',
   forgetCancel: 'Keep',
+  /** One person reads this number to another; it is not identity verification. */
+  pairing: 'Pair',
+  pairingWith: (name: string): string => `Pair with ${name}`,
+  pairingCode: 'Pairing code',
+  pairingWaiting: (name: string): string => `Read this code to the person at ${name}.`,
+  pairingWaitingHelp: 'They will see the same six digits. Two minutes at most.',
+  pairingWithdraw: 'Withdraw',
+  pairingClose: 'Close',
+  pairingPaired: (name: string): string => `Paired with ${name}.`,
+  pairingRefused: (name: string): string => `${name} did not accept.`,
+  pairingCancelled: 'Withdrew the pairing request.',
+  pairingExpired: 'Nobody answered in time.',
+  pairingAsk: (name: string): string => `${name} wants to pair. Is the code on that device`,
+  pairingAccept: 'Accept',
+  pairingRefuse: 'Refuse',
   online: 'Reachable',
   offline: 'Not reachable'
 } as const

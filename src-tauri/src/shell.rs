@@ -136,27 +136,27 @@ mod wrappers {
 
     /// Answers the request on the desk: accept or refuse.
     #[tauri::command(async)]
-    pub fn pairing_respond(
+    pub fn devices_pairing_respond(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         accepted: bool,
     ) -> Result<PairingSnapshot, IpcError> {
-        commands::pairing::pairing_respond(&state, accepted)
+        commands::pairing::devices_pairing_respond(&state, accepted)
     }
 
     /// Withdraws this device's own request.
     #[tauri::command(async)]
-    pub fn pairing_cancel(
+    pub fn devices_pairing_cancel(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
     ) -> Result<PairingSnapshot, IpcError> {
-        commands::pairing::pairing_cancel(&state)
+        commands::pairing::devices_pairing_cancel(&state)
     }
 
     /// What the pairing panel should draw right now.
     #[tauri::command(async)]
-    pub fn pairing_snapshot(
+    pub fn devices_pairing_snapshot(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
     ) -> Result<PairingSnapshot, IpcError> {
-        commands::pairing::pairing_snapshot(&state)
+        commands::pairing::devices_pairing_snapshot(&state)
     }
 
 
@@ -713,9 +713,9 @@ mod wrappers {
             devices_scan_cancel,
             devices_forget,
             devices_pair,
-            pairing_respond,
-            pairing_cancel,
-            pairing_snapshot,
+            devices_pairing_respond,
+            devices_pairing_cancel,
+            devices_pairing_snapshot,
             plugins_list,
             plugins_enable,
             plugins_disable,
@@ -950,13 +950,13 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // The bridge and the pairing watcher are the two threads that outlive the window but own no socket; their
             // tokens go in one value so the shutdown does not have to remember a second place. The retry loop's token
             // belongs in the same list: it sleeps between attempts, and nothing else would tell it the process is leaving.
-            let pairing_cancel = synra_core::supervisor::Cancellation::new();
+            let devices_pairing_cancel = synra_core::supervisor::Cancellation::new();
             let resume_cancel = synra_core::supervisor::Cancellation::new();
             let updates_cancel = synra_core::supervisor::Cancellation::new();
             app.manage(Background {
                 cancels: vec![
                     bridge_cancel,
-                    pairing_cancel.clone(),
+                    devices_pairing_cancel.clone(),
                     resume_cancel.clone(),
                     updates_cancel.clone(),
                 ],
