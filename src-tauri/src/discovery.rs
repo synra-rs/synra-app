@@ -15,13 +15,13 @@
 //! 3. `devices_scan_start` is the interface's command, and an implementation that needs another process would be one whose
 //!    failure mode ("the background service is not running") has nothing to do with the question the user asked.
 //!
-//! # What it announces as its port, and why it is the discovery port
+//! # What it announces as its port
 //!
-//! ★ This build has **no transport**: the window accepts no connections, so there is no port at which this device can be
-//! reached — and the wire format will not let it say so, because [`DeviceAnnouncement::validate`] refuses `port: 0`. So the
-//! announcement names the one port this process really does bind: the discovery responder. A peer that records this device
-//! and later dials it reaches a discovery responder rather than a transport, which is a fact about this build rather than
-//! an address nobody holds. When the shell gains its transport half, this becomes that port and this paragraph goes.
+//! ★ The port the shell's **transport listener** bound, because that is where a peer must dial. The listener binds an
+//! ephemeral port (`listener::bind`), so it is read back from the state rather than assumed.
+//!
+//! This used to announce the discovery responder's port, because the window had no transport half yet. The result was a
+//! device that could be found and never reached: every pairing dialled the UDP responder, and TCP cannot connect to it.
 //!
 //! [`DeviceAnnouncement::validate`]: synra_protocol::discovery::DeviceAnnouncement::validate
 

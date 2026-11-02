@@ -1360,9 +1360,14 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
 /// a network scan with the reason, and the interface falls back to the cached read — the devices already known are still
 /// listed. A window that refused to open over a busy UDP port would trade the user's whole application for one button.
 fn with_discovery_or_report(state: AppState) -> AppState {
-    // ★ The announced port is the discovery port, and that is not a mistake — it is the only port this process binds. See
-    // `crate::discovery`'s header: this build has no transport, and the wire format refuses `port: 0`.
-    let announcement = state.announcement(synra_protocol::limits::DISCOVERY_PORT);
+    // ★ 广播的是**对端该拨的端口**：窗口监听的随机端口，不是发现端口。
+    // 曾经写的是 `DISCOVERY_PORT`，于是每台设备都被记录成一个「能发现、拨不通」的地址——
+    // 对面把 TCP 连到 UDP 发现端口上，配对永远停在「联系不上」。
+    let Some(port) = state.listener.as_ref().map(|(_, port)| *port) else {
+        eprintln!("synra: pairing is unavailable: no transport port to announce");
+        return state;
+    };
+    let announcement = state.announcement(port);
     // The announcement the worker makes: it reports an identifier, and the host builds the card and publishes it.
     let announce: crate::discovery::Announce = {
         let db = Arc::clone(&state.db);
