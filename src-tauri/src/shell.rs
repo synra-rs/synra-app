@@ -1345,7 +1345,36 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
         startup.elapsed().as_secs_f64() * 1_000.0,
     );
 
+    state = with_wire_trace(state);
     Ok(state)
+}
+
+/// Hands every frame on the wire to the interface's debug console.
+///
+/// # Why the sink lives in this process rather than the daemon
+///
+/// The window is the process that has a console to show it in. A daemon runs headless, and a sink there would collect
+/// lines nobody reads. The tap itself is in `synra-observe`, so a link built by either host reports to the same place.
+///
+/// # Why installing always is acceptable
+///
+/// The sink pushes onto the already-bounded event bus; it does no formatting and cannot block a write. The console's
+/// drawer can therefore be opened at any moment and still show what happened while it was closed — which is the point of
+/// a debug view. A sink that only existed while the drawer was open would miss the failure the user opened it to see.
+fn with_wire_trace(state: AppState) -> AppState {
+    let events = Arc::clone(&state.events);
+    synra_observe::wire::install(Arc::new(move |line| {
+        events.emit(synra_ipc::event::KernelEvent::DebugWire(Box::new(
+            synra_ipc::event::DebugWire {
+                at_ms: line.at_ms,
+                direction: line.direction.as_str().to_owned(),
+                peer: line.peer.clone(),
+                label: line.label.clone(),
+                bytes: u64::try_from(line.bytes).unwrap_or(u64::MAX),
+            },
+        )));
+    }));
+    state
 }
 
 /// The window's discovery worker, or a window without one.

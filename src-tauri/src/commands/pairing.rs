@@ -85,9 +85,11 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
     let worker = Arc::clone(state);
     std::thread::spawn(move || {
         let data_dir = worker.paths.data_dir();
+        synra_observe::wire::note(peer.to_string(), format!("dial {address} · {name}"));
         let outcome =
             synra_core::pairing_dial::dial(&worker.host, address, peer, &name, platform, &request, &data_dir);
         if let Err(error) = &outcome {
+            synra_observe::wire::note(peer.to_string(), format!("dial failed · {error:?}"));
             eprintln!("synra: the pairing dial failed: {error:?}");
         }
         worker.publish(synra_ipc::event::KernelEvent::PairingUpdated(Box::new(

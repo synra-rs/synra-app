@@ -1,4 +1,5 @@
 import { crash } from './crash'
+import { debug } from './debug'
 import { devices } from './devices'
 import { actions, errors } from './errors'
 import { home } from './home'
@@ -43,6 +44,8 @@ export const englishMessages = {
   devices,
 
   crash,
+
+  debug,
 
   plugins,
 
