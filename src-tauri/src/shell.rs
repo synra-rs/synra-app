@@ -62,7 +62,7 @@ mod official_smoke;
 #[allow(clippy::needless_pass_by_value)]
 mod wrappers {
     use synra_ipc::{
-        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot,
+        ConfigPatch, ConfigSnapshot, DevicesSnapshot, DiagExportOptions, IdentitySnapshot, PairingSnapshot,
         InstallReport, InstallSourceDto, IntentDecisionDto, IntentSnapshot, IntentSourceDto,
         IpcError, PluginSnapshot, ScanOptions,
     };
@@ -124,6 +124,39 @@ mod wrappers {
         device_id: String,
     ) -> Result<(), IpcError> {
         commands::devices::devices_forget(&state, &device_id)
+    }
+    /// Starts pairing with a device: makes the code, dials, and answers with the code.
+    #[tauri::command(async)]
+    pub fn devices_pair(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        device_id: String,
+    ) -> Result<PairingSnapshot, IpcError> {
+        commands::pairing::devices_pair(&state, &device_id)
+    }
+
+    /// Answers the request on the desk: accept or refuse.
+    #[tauri::command(async)]
+    pub fn pairing_respond(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+        accepted: bool,
+    ) -> Result<PairingSnapshot, IpcError> {
+        commands::pairing::pairing_respond(&state, accepted)
+    }
+
+    /// Withdraws this device's own request.
+    #[tauri::command(async)]
+    pub fn pairing_cancel(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<PairingSnapshot, IpcError> {
+        commands::pairing::pairing_cancel(&state)
+    }
+
+    /// What the pairing panel should draw right now.
+    #[tauri::command(async)]
+    pub fn pairing_snapshot(
+        state: tauri::State<'_, std::sync::Arc<AppState>>,
+    ) -> Result<PairingSnapshot, IpcError> {
+        commands::pairing::pairing_snapshot(&state)
     }
 
 
@@ -679,6 +712,10 @@ mod wrappers {
             devices_scan_start,
             devices_scan_cancel,
             devices_forget,
+            devices_pair,
+            pairing_respond,
+            pairing_cancel,
+            pairing_snapshot,
             plugins_list,
             plugins_enable,
             plugins_disable,

@@ -15,6 +15,7 @@
 
 pub mod config;
 pub mod devices;
+pub mod pairing;
 pub mod diag;
 pub mod identity;
 pub mod intent;
