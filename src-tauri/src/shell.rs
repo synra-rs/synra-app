@@ -800,7 +800,17 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             // ★ A phone has no console, so from here on every step is named in a file. See `crash`.
             crate::crash::install(&data_dir);
             crate::crash::note("setup: data directory known");
+            // ★ Desktop only, and this is a platform fact rather than a preference.
+            //
+            // The lock exists for the second launch of a **window**: it asks the first one to come forward, and on a
+            // desk that is the difference between one tray icon and two. A phone has no second window to bring
+            // forward — the system hands the application to the foreground and no new process starts — so the only
+            // thing this check can do on Android is decide, wrongly, that the process is a duplicate and exit.
+            #[cfg(desktop)]
             let mut instance_request = None;
+            #[cfg(mobile)]
+            let instance_request: Option<std::path::PathBuf> = None;
+            #[cfg(desktop)]
             match crate::instance::claim(&data_dir) {
                 Ok(crate::instance::Start::First(guard)) => {
                     instance_request = Some(guard.request_path().to_path_buf());
