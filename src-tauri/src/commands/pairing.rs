@@ -64,23 +64,20 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
         _ => synra_protocol::session::PlatformKind::Desktop,
     };
     let desk = state.host.lock().pairing();
-    let offer = desk
-        .begin(peer, name.clone(), platform, false)
+    desk.begin(peer, name.clone(), platform, false)
         .map_err(|refused| internal(format!("pairing could not start: {refused:?}")))?;
+    // ★ 请求已经摆上桌：拨号线程拿的是这同一份，不再自己 `begin` 一次（那会得到 Busy，
+    // 界面便显示"等待"而实际从未拨号）。
+    let request = synra_core::pairing_dial::request_of(&desk)
+        .ok_or_else(|| internal("the pairing request is not on the desk".to_owned()))?;
     let snapshot = snapshot_of(&desk);
 
     // The dial goes on its own thread: this command's answer is the code, and the code already exists.
     let worker = Arc::clone(state);
     std::thread::spawn(move || {
         let data_dir = worker.paths.data_dir();
-        let outcome = synra_core::pairing_dial::dial(
-            &worker.host,
-            address,
-            peer,
-            &name,
-            platform,
-            &data_dir,
-        );
+        let outcome =
+            synra_core::pairing_dial::dial(&worker.host, address, &request, &data_dir);
         if let Err(error) = &outcome {
             eprintln!("synra: the pairing dial failed: {error:?}");
         }
@@ -89,7 +86,6 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
         )));
     });
 
-    let _ = offer;
     Ok(snapshot)
 }
 
