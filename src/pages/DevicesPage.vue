@@ -242,6 +242,9 @@ async function closePairing(): Promise<void> {
     await kernel.call('devices_pairing_cancel')
   else if (phase === 'asked')
     await kernel.call('devices_pairing_respond', { accepted: false })
+  // ★ 配对成功后两边的列表都该换一边：关掉提示时重新读一次，''已配对'' 才不会留在''附近''里。
+  if (pairing.value?.outcome === 'paired')
+    void refresh()
   pairing.value = undefined
   pairingTarget.value = undefined
   pairingError.value = undefined
