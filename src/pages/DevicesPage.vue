@@ -225,23 +225,15 @@ async function respondPair(accepted: boolean): Promise<void> {
 }
 
 /**
- * Incoming requests.
+ * Incoming requests, read once when the page opens.
  *
- * ★ Polled rather than pushed, and only while this page is open: the listener learns about an ask on a
- * connection thread that has no window to talk to, and a prompt that nobody sees is a prompt that times
- * out. A second is short enough that the person sees the request well inside the two-minute window.
+ * ★ Later changes arrive as events; this single read covers the case where a request was already on the
+ * desk before this page mounted.
  */
-const askPoll = window.setInterval(async () => {
-  if (pairing.value || disposed)
-    return
-  const answer = await kernel.call<PairingSnapshot>('devices_pairing_snapshot')
-  if (answer.ok && answer.value.phase !== 'idle')
+void kernel.call<PairingSnapshot>('devices_pairing_snapshot').then((answer) => {
+  if (answer.ok && answer.value.phase !== 'idle' && !pairing.value)
     pairing.value = answer.value
-}, 1000)
-onScopeDispose(() => {
-  window.clearInterval(askPoll)
 })
-
 const pairingOutcomeText = computed(() => {
   const name = pairingTarget.value?.displayName ?? ''
   switch (pairing.value?.outcome) {

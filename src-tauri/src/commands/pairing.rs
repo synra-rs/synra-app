@@ -140,7 +140,7 @@ pub fn devices_pairing_cancel(state: &Arc<AppState>) -> Result<PairingSnapshot, 
 }
 
 /// 从内核那张桌子读出界面要的形状。
-fn snapshot_of(desk: &Service) -> PairingSnapshot {
+pub(crate) fn snapshot_of(desk: &Service) -> PairingSnapshot {
     let phase = match desk.phase() {
         synra_core::pairing::Phase::Idle => PairingPhase::Idle,
         synra_core::pairing::Phase::Waiting => PairingPhase::Waiting,

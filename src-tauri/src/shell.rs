@@ -879,7 +879,17 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 std::sync::Arc::clone(&state.events),
                 &bridge_cancel,
             );
-            app.manage(std::sync::Arc::new(state));
+            let state = std::sync::Arc::new(state);
+            {
+                // Pairing changes call back here, so the window learns about a request without polling.
+                let weak = std::sync::Arc::downgrade(&state);
+                state.host.lock().pairing().set_sink(std::sync::Arc::new(move || {
+                    let Some(state) = weak.upgrade() else { return };
+                    let snapshot = commands::pairing::snapshot_of(&state.host.lock().pairing());
+                    state.publish(synra_ipc::event::KernelEvent::PairingUpdated(Box::new(snapshot)));
+                }));
+            }
+            app.manage(state);
             #[cfg(all(feature = "official-plugin-tests", debug_assertions, not(mobile)))]
             if let Some(package) = smoke_package {
                 official_smoke::run(app.handle(), &package)?;
