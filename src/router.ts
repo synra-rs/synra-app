@@ -20,10 +20,21 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
 import { messages } from './messages'
-import DevicesPage from './pages/DevicesPage.vue'
 import HomePage from './pages/HomePage.vue'
-import PluginsPage from './pages/PluginsPage.vue'
-import SettingsPage from './pages/SettingsPage.vue'
+
+/**
+ * A page, fetched when its route is entered rather than shipped with the shell.
+ *
+ * # Why the four screens are not in one bundle any more
+ *
+ * Because the bundle was 867 kB and the first screen needed all of it: opening the window parsed and compiled the
+ * devices, plugins and settings screens before anything was drawn. Each page is now its own chunk, so the shell's
+ * first paint carries the shell and the home screen — the other three cost a fetch when they are actually opened.
+ *
+ * The home screen stays a direct import because it *is* the first screen: deferring it would trade one chunk for a
+ * second round trip on the only path every launch takes.
+ */
+export type PageModule = () => Promise<{ default: typeof HomePage }>
 
 /**
  * One entry in the sidebar.
@@ -49,8 +60,8 @@ export interface PageRoute {
    *   what `uno.config.ts` derives its `safelist` from, so the two can never disagree.
    */
   readonly icon: string
-  /** The component. */
-  readonly component: typeof HomePage
+  /** The component, or the promise of one. */
+  readonly component: typeof HomePage | PageModule
 }
 
 /** Every page, in sidebar order. */
@@ -65,19 +76,19 @@ export const PAGES: readonly PageRoute[] = [
     path: '/devices',
     get label() { return messages.nav.devices.label },
     icon: messages.nav.devices.icon,
-    component: DevicesPage
+    component: () => import('./pages/DevicesPage.vue')
   },
   {
     path: '/plugins',
     get label() { return messages.nav.plugins.label },
     icon: messages.nav.plugins.icon,
-    component: PluginsPage
+    component: () => import('./pages/PluginsPage.vue')
   },
   {
     path: '/settings',
     get label() { return messages.nav.settings.label },
     icon: messages.nav.settings.icon,
-    component: SettingsPage
+    component: () => import('./pages/SettingsPage.vue')
   }
 ]
 
