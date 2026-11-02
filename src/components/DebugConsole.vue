@@ -378,7 +378,7 @@ onBeforeUnmount(() => {
 .debug-bubble {
   position: fixed;
   right: 1rem;
-  bottom: 5rem;
+  bottom: calc(5rem + env(safe-area-inset-bottom));
   z-index: 70;
   display: grid;
   place-items: center;
@@ -673,7 +673,7 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 1;
   min-height: 0;
-  padding: 0.45rem 0.55rem 0.7rem;
+  padding: 0.45rem 0.55rem calc(0.7rem + env(safe-area-inset-bottom));
 }
 
 .debug-term {
