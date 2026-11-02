@@ -218,7 +218,20 @@ async function respondPair(accepted: boolean): Promise<void> {
     pairing.value = answer.value
   else
     pairingError.value = answer.error
-}function closePairing(): void {
+}
+
+/**
+ * Closing a prompt is an answer, not silence.
+ *
+ * ★ 一条挂着的请求在对面看来是「还在等」。X 掉窗口而不答复，会让那台设备一直摆到两分钟到期，
+ * 也会让本机的配对桌一直被占着。所以：我在等对方 → 关闭等于撤回；对方在等我 → 关闭等于拒绝。
+ */
+async function closePairing(): Promise<void> {
+  const phase = pairing.value?.phase
+  if (phase === 'waiting')
+    await kernel.call('devices_pairing_cancel')
+  else if (phase === 'asked')
+    await kernel.call('devices_pairing_respond', { accepted: false })
   pairing.value = undefined
   pairingTarget.value = undefined
   pairingError.value = undefined
