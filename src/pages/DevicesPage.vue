@@ -112,7 +112,7 @@
         </div>
       </div>
     </AModal>
-    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
+    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? pairingTarget?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
       <div class="stack gap-4">
         <template v-if="pairing.phase === 'asked' && pairing.ask">
           <p class="m-0 text-sm">
