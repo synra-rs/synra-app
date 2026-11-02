@@ -1363,7 +1363,22 @@ fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
 /// a debug view. A sink that only existed while the drawer was open would miss the failure the user opened it to see.
 fn with_wire_trace(state: AppState) -> AppState {
     let events = Arc::clone(&state.events);
+    // ★ A transfer is thousands of blocks, and each is a frame. Reporting every one would fill the kernel event bus with
+    // debug lines and could cost a device card or a pairing prompt its delivery — the console must observe the bus, never
+    // compete with it. One block every 200 ms still shows a transfer moving; envelopes are never throttled.
+    let last_block = std::sync::Mutex::new(
+        std::time::Instant::now() - std::time::Duration::from_millis(200),
+    );
     synra_observe::wire::install(Arc::new(move |line| {
+        if line.label.starts_with("chunk") {
+            let mut last = last_block
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if last.elapsed() < std::time::Duration::from_millis(200) {
+                return;
+            }
+            *last = std::time::Instant::now();
+        }
         events.emit(synra_ipc::event::KernelEvent::DebugWire(Box::new(
             synra_ipc::event::DebugWire {
                 at_ms: line.at_ms,

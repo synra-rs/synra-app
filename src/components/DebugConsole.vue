@@ -232,7 +232,9 @@ onMounted(async () => {
     void show()
   }
 
-  stopListening = await kernel.subscribe('kernel-event', observe)
+  // A shell always has this; a mount test's kernel double may not, and a console that throws would take the page with it.
+  if (typeof kernel.subscribe === 'function')
+    stopListening = await kernel.subscribe('kernel-event', observe)
   window.addEventListener('keydown', onKey)
   window.addEventListener('resize', fit)
 })
