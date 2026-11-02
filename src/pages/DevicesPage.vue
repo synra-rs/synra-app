@@ -112,7 +112,7 @@
         </div>
       </div>
     </AModal>
-    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? pairingTarget?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
+    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairingPeer || '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
       <div class="stack gap-4">
         <template v-if="pairing.phase === 'asked' && pairing.ask">
           <p class="m-0 text-sm">
@@ -179,6 +179,7 @@ const pairingTarget = ref<DeviceCard>()
 const pairingError = ref<IpcError>()
 const pairingBusy = ref(false)
 const pairingUnreachable = ref(false)
+const pairingPeer = ref('')
 let stopPairingEvents: (() => void) | undefined
 void kernel.subscribe('kernel-event', (payload) => {
   const event = payload as { type?: string, payload?: unknown }
@@ -187,6 +188,7 @@ void kernel.subscribe('kernel-event', (payload) => {
     // ★ 拨号失败时守护进程把桌子清空，事件是 idle：界面若不解释一句，弹窗会静悄悄消失。
     if (pairing.value?.phase === 'waiting' && next.phase === 'idle')
       pairingUnreachable.value = true
+    pairingPeer.value = next.offer?.displayName ?? next.ask?.displayName ?? pairingPeer.value
     pairing.value = next
   }
 }).then((off) => {
@@ -198,6 +200,7 @@ onScopeDispose(() => {
 
 async function startPair(card: DeviceCard): Promise<void> {
   pairingTarget.value = card
+  pairingPeer.value = card.displayName
   pairingError.value = undefined
   pairingUnreachable.value = false
   pairingBusy.value = true
@@ -245,6 +248,7 @@ async function closePairing(): Promise<void> {
   // ★ 配对成功后两边的列表都该换一边：关掉提示时重新读一次，''已配对'' 才不会留在''附近''里。
   if (pairing.value?.outcome === 'paired')
     void refresh()
+  pairingPeer.value = ''
   pairing.value = undefined
   pairingTarget.value = undefined
   pairingError.value = undefined
@@ -262,7 +266,7 @@ void kernel.call<PairingSnapshot>('devices_pairing_snapshot').then((answer) => {
     pairing.value = answer.value
 })
 const pairingOutcomeText = computed(() => {
-  const name = pairingTarget.value?.displayName ?? ''
+  const name = pairingPeer.value
   switch (pairing.value?.outcome) {
     case 'paired': return messages.devices.pairingPaired(name)
     case 'refused': return messages.devices.pairingRefused(name)
