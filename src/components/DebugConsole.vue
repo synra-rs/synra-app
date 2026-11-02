@@ -299,12 +299,6 @@ onBeforeUnmount(() => {
         <div class="debug-grip" aria-hidden="true" />
 
         <header class="debug-head">
-          <div class="debug-lights" aria-hidden="true">
-            <span class="debug-light debug-light-red" />
-            <span class="debug-light debug-light-amber" />
-            <span class="debug-light debug-light-green" />
-          </div>
-
           <div class="debug-heading">
             <div class="debug-title">
               {{ words.title }}
@@ -516,24 +510,6 @@ onBeforeUnmount(() => {
   padding: 0.45rem 0.85rem 0.55rem;
   border-bottom: 1px solid rgb(255 255 255 / 7%);
 }
-
-.debug-lights {
-  display: flex;
-  flex: none;
-  gap: 0.32rem;
-  padding-right: 0.15rem;
-}
-
-.debug-light {
-  width: 0.62rem;
-  height: 0.62rem;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 20%);
-}
-
-.debug-light-red { background: #ff6b6b; }
-.debug-light-amber { background: #ffd479; }
-.debug-light-green { background: #55d98a; }
 
 .debug-heading {
   min-width: 0;
