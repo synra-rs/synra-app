@@ -49,6 +49,7 @@ export const devices = {
   'devices.pairingRefused': (name: string): string => `${name}没有接受。`,
   'devices.pairingCancelled': '已撤回配对请求。',
   'devices.pairingExpired': '没有人在这段时间里答复。',
+  'devices.pairingUnreachable': '联系不上那台设备。确认它在同一网络，再试一次。',
   'devices.pairingAsk': (name: string): string => `${name}想要配对。那台设备上的码是`,
   'devices.pairingAccept': '接受',
   'devices.pairingRefuse': '拒绝',

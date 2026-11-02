@@ -59,6 +59,7 @@ export const devices = {
   pairingRefused: (name: string): string => `${name} did not accept.`,
   pairingCancelled: 'Withdrew the pairing request.',
   pairingExpired: 'Nobody answered in time.',
+  pairingUnreachable: 'Could not reach that device. Check that it is on the same network and try again.',
   pairingAsk: (name: string): string => `${name} wants to pair. Is the code on that device`,
   pairingAccept: 'Accept',
   pairingRefuse: 'Refuse',

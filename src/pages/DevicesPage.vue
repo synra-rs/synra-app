@@ -112,7 +112,7 @@
         </div>
       </div>
     </AModal>
-    <AModal v-if="pairing && pairing.phase !== 'idle'" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
+    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairing.offer?.displayName ?? pairing.ask?.displayName ?? '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
       <div class="stack gap-4">
         <template v-if="pairing.phase === 'asked' && pairing.ask">
           <p class="m-0 text-sm">
@@ -138,6 +138,9 @@
         </template>
         <p v-else-if="pairingOutcomeText" class="m-0 text-sm">
           {{ pairingOutcomeText }}
+        </p>
+        <p v-if="pairingUnreachable" class="m-0 text-sm">
+          {{ messages.devices.pairingUnreachable }}
         </p>
         <ErrorNotice v-if="pairingError" :code="pairingError.code" :params="pairingError.params" :actions="pairingError.actions?.filter(action => action.kind !== 'retry')" />
         <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
@@ -175,11 +178,17 @@ const pairing = ref<PairingSnapshot>()
 const pairingTarget = ref<DeviceCard>()
 const pairingError = ref<IpcError>()
 const pairingBusy = ref(false)
+const pairingUnreachable = ref(false)
 let stopPairingEvents: (() => void) | undefined
 void kernel.subscribe('kernel-event', (payload) => {
   const event = payload as { type?: string, payload?: unknown }
-  if (event.type === 'pairingUpdated' && event.payload)
-    pairing.value = event.payload as PairingSnapshot
+  if (event.type === 'pairingUpdated' && event.payload) {
+    const next = event.payload as PairingSnapshot
+    // ★ 拨号失败时守护进程把桌子清空，事件是 idle：界面若不解释一句，弹窗会静悄悄消失。
+    if (pairing.value?.phase === 'waiting' && next.phase === 'idle')
+      pairingUnreachable.value = true
+    pairing.value = next
+  }
 }).then((off) => {
   stopPairingEvents = off
 })
@@ -190,6 +199,7 @@ onScopeDispose(() => {
 async function startPair(card: DeviceCard): Promise<void> {
   pairingTarget.value = card
   pairingError.value = undefined
+  pairingUnreachable.value = false
   pairingBusy.value = true
   const answer = await kernel.call<PairingSnapshot>('devices_pair', { deviceId: card.deviceId })
   pairingBusy.value = false
@@ -235,6 +245,7 @@ async function closePairing(): Promise<void> {
   pairing.value = undefined
   pairingTarget.value = undefined
   pairingError.value = undefined
+  pairingUnreachable.value = false
 }
 
 /**
