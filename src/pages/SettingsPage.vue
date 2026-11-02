@@ -99,6 +99,12 @@
                 <SettingsFeedback :error="errors.language" :saved="saved.language" :check-required="needsRead.language" :busy="busy.language" @check="checkSetting('language')" />
               </template>
             </SettingsRow>
+            <SettingsRow :label="messages.settings.wire.show" :description="messages.settings.wire.detail">
+              <ASwitch :checked="debugConsole" :aria-label="messages.settings.wire.show" :disabled="!configReady || busy.wire || needsRead.wire" :loading="busy.wire" @change="(value) => writeSetting('wire', { set: { 'ui.debugConsole': value === true } })" />
+              <template #feedback>
+                <SettingsFeedback :error="errors.wire" :saved="saved.wire" :check-required="needsRead.wire" :busy="busy.wire" @check="checkSetting('wire')" />
+              </template>
+            </SettingsRow>
             <SettingsRow :label="messages.settings.startup.launchAtLogin" :description="launchAtLoginUnavailable ? messages.settings.startup.unavailable : undefined">
               <ASwitch :checked="launchAtLogin" :aria-label="messages.settings.startup.launchAtLogin" :disabled="launchAtLoginUnavailable || busy.startup" :loading="busy.startup" @change="(value) => saveLaunchAtLogin(value === true)" />
               <template #feedback>
@@ -255,7 +261,7 @@ import { useDevicesStore } from '../stores/devices'
 import { useSettingsStore } from '../stores/settings'
 
 type Category = 'general' | 'security' | 'plugins' | 'diagnostics' | 'about'
-type Operation = 'name' | 'language' | 'startup' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'
+type Operation = 'name' | 'language' | 'startup' | 'wire' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'
 const category = ref<Category>('general')
 const categories = computed(() => (['general', 'security', 'plugins', 'diagnostics', 'about'] as const).map(value => ({ value, label: messages.settings.categories[value] })))
 
@@ -318,7 +324,7 @@ const settings = useSettingsStore()
 const devices = useDevicesStore()
 const identity = computed(() => devices.identity)
 const errors = reactive<Partial<Record<Operation, IpcError | undefined>>>({})
-const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
+const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, wire: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
 const busy = reactive(operationFlags())
 const saved = reactive(operationFlags())
 // A successful write followed by a failed read is not an invitation to send the write again.
@@ -384,6 +390,7 @@ async function saveName(): Promise<boolean> {
 }
 
 const askCancel = computed(() => settings.value('transfers.confirmCancel') !== false)
+const debugConsole = computed(() => settings.value('ui.debugConsole') !== false)
 const notifyOnReceive = computed(() => settings.value('transfers.notifyOnReceive') !== false)
 const languageOptions = computed(() => [
   { value: 'system', label: messages.settings.language.system },

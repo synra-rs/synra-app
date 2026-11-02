@@ -21,10 +21,11 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal } from '@xterm/xterm'
 import type { SequencedKernelEvent } from '@synra/protocol'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { kernel } from '../kernel'
 import { messages } from '../messages'
+import { useSettingsStore } from '../stores/settings'
 import type { WireLine } from '../debug/wire'
 import { formatWireLine } from '../debug/wire'
 
@@ -38,7 +39,13 @@ const receivedCount = ref(0)
 const pulse = ref(false)
 const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
 
+const settings = useSettingsStore()
+/** On unless somebody turned it off: the console is a tool with a switch, not a hidden developer mode. */
+const enabled = computed(() => settings.value('ui.debugConsole') !== false)
+
 const host = ref<HTMLDivElement | null>(null)
+const bubble = ref<HTMLButtonElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
 const terminal = ref<Terminal | null>(null)
 /** Loaded with the terminal, because xterm is a third of the app's JavaScript and only this drawer uses it. */
 let fitAddon: FitAddon | null = null
@@ -96,6 +103,8 @@ function write(line: WireLine) {
 }
 
 function observe(payload: unknown) {
+  if (!enabled.value)
+    return
   const event = payload as SequencedKernelEvent | undefined
   if (!event || event.type !== 'debugWire')
     return
@@ -180,6 +189,9 @@ async function show() {
   unread.value = 0
   await ensureTerminal()
   await fit()
+  await nextTick()
+  // The drawer is a dialog: focus belongs inside it, on the control that closes it.
+  closeButton.value?.focus()
   // The panel animates for 260ms; measuring only before it ends computes columns from a half-open height.
   window.setTimeout(() => {
     void fit()
@@ -189,7 +201,15 @@ async function show() {
 
 function hide() {
   open.value = false
+  // Returning focus to the bubble is what makes the drawer a round trip rather than a place focus can be lost.
+  void nextTick(() => bubble.value?.focus())
 }
+
+// A switch turned off in Settings closes what it opened; leaving the drawer up would contradict the switch.
+watch(enabled, (on) => {
+  if (!on)
+    hide()
+})
 
 function toggle() {
   if (open.value)
@@ -270,7 +290,8 @@ onBeforeUnmount(() => {
   -->
   <Teleport to="body">
     <button
-      v-show="!open"
+      v-show="!open && enabled"
+      ref="bubble"
       type="button"
       class="debug-bubble border-0 bg-transparent"
       :class="{ 'debug-bubble-pulse': pulse }"
@@ -292,10 +313,15 @@ onBeforeUnmount(() => {
       <span v-if="unread > 0" class="debug-bubble-badge">{{ unread > 99 ? '99+' : unread }}</span>
     </button>
 
-    <div class="debug-layer" :class="{ 'debug-layer-open': open }" :aria-hidden="!open">
+    <div
+      class="debug-layer"
+      :class="{ 'debug-layer-open': open }"
+      :aria-hidden="!open"
+      :inert="!open"
+    >
       <div class="debug-scrim" @click="hide" />
 
-      <section class="debug-sheet" role="dialog" :aria-label="words.title">
+      <section class="debug-sheet" role="dialog" aria-modal="true" :aria-label="words.title">
         <div class="debug-grip" aria-hidden="true" />
 
         <header class="debug-head">
@@ -318,7 +344,13 @@ onBeforeUnmount(() => {
             </button>
             <button type="button" class="debug-action border-0 bg-transparent" @click="clear">{{ words.clear }}</button>
             <button type="button" class="debug-action border-0 bg-transparent" @click="copy">{{ copyLabel }}</button>
-            <button type="button" class="debug-action debug-action-close border-0 bg-transparent" :aria-label="words.close" @click="hide">
+            <button
+              ref="closeButton"
+              type="button"
+              class="debug-action debug-action-close border-0 bg-transparent"
+              :aria-label="words.close"
+              @click="hide"
+            >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>

@@ -177,6 +177,34 @@ describe('the settings page', () => {
     }
   })
 
+  it('writes the wire console switch as a normal preference', async () => {
+    let saved: unknown = true
+    answer({ identity_get: IDENTITY, config_set: null })
+    const fallback = mocks.call.getMockImplementation()!
+    mocks.call.mockImplementation(async (command: string, args?: { patch?: { set?: Record<string, unknown> } }) => {
+      if (command === 'config_get')
+        return { ok: true, value: { values: { 'ui.debugConsole': saved }, overridden: ['ui.debugConsole'] } }
+      if (command === 'config_set') {
+        saved = args?.patch?.set?.['ui.debugConsole']
+        return { ok: true, value: null }
+      }
+      return fallback(command, args)
+    })
+    const wrapper = await mountPage()
+    try {
+      await flushPromises()
+      const wire = wrapper.findAllComponents({ name: 'ASwitch' }).find(value => value.attributes('aria-label') === messages.settings.wire.show)
+      expect(wire).toBeDefined()
+      expect(wire!.props('checked')).toBe(true)
+      await wire!.vm.$emit('change', false)
+      await flushPromises()
+      expect(mocks.call).toHaveBeenCalledWith('config_set', { patch: { set: { 'ui.debugConsole': false } } })
+    }
+    finally {
+      wrapper.unmount()
+    }
+  })
+
   it('keeps the current language when saving is refused', async () => {
     answer({ config_get: { values: { 'ui.locale': 'en' }, overridden: ['ui.locale'] }, identity_get: IDENTITY })
     const fallback = mocks.call.getMockImplementation()!
@@ -272,7 +300,7 @@ describe('the settings page', () => {
     await flushPromises()
 
     const switches = wrapper.findAllComponents({ name: 'ASwitch' })
-    expect(switches).toHaveLength(3)
+    expect(switches).toHaveLength(4)
     const cancelSwitch = switches.find(value => value.attributes('aria-label') === messages.settings.transfers.cancelAsk)
     expect(cancelSwitch).toBeDefined()
     await cancelSwitch?.vm.$emit('change', false)

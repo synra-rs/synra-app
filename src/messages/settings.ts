@@ -77,6 +77,12 @@ export const settings = {
     launchAtLoginDetail: 'Keep Synra available after you sign in.',
     unavailable: 'This build cannot register itself to start at login.'
   },
+  /** The wire console is a tool, not a developer mode: anyone can turn its bubble on or off here. */
+  wire: {
+    title: 'Wire console',
+    show: 'Show the wire console',
+    detail: 'A floating bubble opens a terminal of every frame sent and received.'
+  },
   /** What a transfer asks before it is abandoned; the friction is a preference, not a fixed rule. */
   transfers: {
     title: 'Transfers',
