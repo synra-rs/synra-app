@@ -67,6 +67,8 @@ function playDemo() {
   const base = Date.now() - 12_000
   const lines: WireLine[] = [
     { atMs: base, direction: 'note', peer: 'local', label: 'scan started · 3000ms', bytes: 0 },
+    { atMs: base + 40, direction: 'note', peer: 'lan', label: 'query', bytes: 0 },
+    { atMs: base + 300, direction: 'note', peer: 'lan', label: 'heard 192.168.0.192:3413', bytes: 0 },
     { atMs: base + 320, direction: 'received', peer: '7f3a9c21', label: '_synra.device.changed', bytes: 214 },
     { atMs: base + 900, direction: 'note', peer: '7f3a9c21', label: 'dial 192.168.0.42:47100', bytes: 0 },
     { atMs: base + 980, direction: 'sent', peer: '7f3a9c21', label: '_synra.pair.request', bytes: 128 },
