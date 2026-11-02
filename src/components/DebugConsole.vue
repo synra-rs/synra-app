@@ -18,9 +18,8 @@
  * The failure a user opens the console to see usually happened a moment earlier. Dropping everything until the click
  * would make the console show a healthy silence. The buffer is bounded and cleared when the terminal takes it.
  */
-import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
-import '@xterm/xterm/css/xterm.css'
+import type { FitAddon } from '@xterm/addon-fit'
+import type { Terminal } from '@xterm/xterm'
 import type { SequencedKernelEvent } from '@synra/protocol'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -41,7 +40,8 @@ const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
 
 const host = ref<HTMLDivElement | null>(null)
 const terminal = ref<Terminal | null>(null)
-const fitAddon = new FitAddon()
+/** Loaded with the terminal, because xterm is a third of the app's JavaScript and only this drawer uses it. */
+let fitAddon: FitAddon | null = null
 /** Lines heard while the terminal did not exist yet; flushed on mount. */
 const pending: WireLine[] = []
 const MAX_PENDING = 2000
@@ -115,12 +115,57 @@ function observe(payload: unknown) {
   }
 }
 
+/** Loads xterm on the first open, then opens it into the now-laid-out host. */
+async function ensureTerminal() {
+  if (terminal.value)
+    return
+  const [{ Terminal }, { FitAddon }, _styles] = await Promise.all([
+    import('@xterm/xterm'),
+    import('@xterm/addon-fit'),
+    import('@xterm/xterm/css/xterm.css'),
+  ])
+  await nextTick()
+  if (!host.value)
+    return
+  const term = new Terminal({
+    allowTransparency: true,
+    convertEol: false,
+    cursorBlink: false,
+    disableStdin: true,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
+    fontSize: 12,
+    lineHeight: 1.35,
+    scrollback: 8000,
+    theme: {
+      background: '#080c12',
+      foreground: '#dbe4f0',
+      cursor: '#0b0f14',
+      selectionBackground: 'rgba(120, 180, 255, 0.28)',
+      scrollbarSliderBackground: 'rgba(255, 255, 255, 0.14)',
+      scrollbarSliderHoverBackground: 'rgba(255, 255, 255, 0.28)',
+      scrollbarSliderActiveBackground: 'rgba(255, 255, 255, 0.42)',
+    },
+  })
+  fitAddon = new FitAddon()
+  term.loadAddon(fitAddon)
+  term.open(host.value)
+  terminal.value = term
+  // What arrived before the drawer existed is still worth reading.
+  for (const line of pending) {
+    if (passes(line)) {
+      term.write(`${formatWireLine(line)}\r\n`)
+      lineCount.value += 1
+    }
+  }
+  pending.length = 0
+}
+
 async function fit() {
   if (!open.value)
     return
   await nextTick()
   try {
-    fitAddon.fit()
+    fitAddon?.fit()
   } catch {
     // The drawer is mid-animation; the transitionend below measures again.
   }
@@ -133,6 +178,7 @@ function scrollToEnd() {
 async function show() {
   open.value = true
   unread.value = 0
+  await ensureTerminal()
   await fit()
   // The panel animates for 260ms; measuring only before it ends computes columns from a half-open height.
   window.setTimeout(() => {
@@ -195,38 +241,6 @@ function onKey(event: KeyboardEvent) {
 }
 
 onMounted(async () => {
-  const term = new Terminal({
-    allowTransparency: true,
-    convertEol: false,
-    cursorBlink: false,
-    disableStdin: true,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
-    fontSize: 12,
-    lineHeight: 1.35,
-    scrollback: 8000,
-    theme: {
-      background: '#080c12',
-      foreground: '#dbe4f0',
-      cursor: '#0b0f14',
-      selectionBackground: 'rgba(120, 180, 255, 0.28)',
-      scrollbarSliderBackground: 'rgba(255, 255, 255, 0.14)',
-      scrollbarSliderHoverBackground: 'rgba(255, 255, 255, 0.28)',
-      scrollbarSliderActiveBackground: 'rgba(255, 255, 255, 0.42)',
-    },
-  })
-  term.loadAddon(fitAddon)
-  if (host.value)
-    term.open(host.value)
-  terminal.value = term
-  // What arrived before the drawer existed is still worth reading.
-  for (const line of pending) {
-    if (passes(line)) {
-      term.write(`${formatWireLine(line)}\r\n`)
-      lineCount.value += 1
-    }
-  }
-  pending.length = 0
-
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('wire-demo')) {
     playDemo()
     void show()
