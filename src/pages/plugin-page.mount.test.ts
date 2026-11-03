@@ -18,7 +18,7 @@ describe('the plugin workspace', () => {
     await filter.setValue('no-match')
     await router.replace('/plugins?plugin=%40acme%2Freader&other=keep')
     await flushPromises()
-    expect(wrapper.getComponent(PluginDetail).text()).toContain('Reader')
+    expect(document.querySelector('.ant-drawer-title')?.textContent).toContain('Reader')
     await wrapper.getComponent(PluginDetail).vm.$emit('close')
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ other: 'keep' })
@@ -47,13 +47,13 @@ describe('the plugin workspace', () => {
     expect(wrapper.findAllComponents(PluginRow)[1]!.text()).not.toContain(messages.plugins.openAction)
   })
   it('draws updates delivered by events without background update checks', async () => {
-    const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
+    await mountPage('/plugins?plugin=%40acme%2Freader')
     usePluginsStore().upsert(card({ update: { pluginId: '@acme/reader', version: '2.0.0', needsNewConsent: true, addedCapabilities: ['fs:read'] }, stateReason: 'Paused by the host' }))
     await flushPromises()
-    const detail = wrapper.getComponent(PluginDetail)
-    expect(detail.text()).toContain('2.0.0')
-    expect(detail.text()).toContain('fs:read')
-    expect(detail.text()).toContain('Paused by the host')
+    const detail = document.querySelector('.ant-drawer-body')!
+    expect(detail.textContent).toContain('2.0.0')
+    expect(detail.textContent).toContain('fs:read')
+    expect(detail.textContent).toContain('Paused by the host')
     expect(mocks.call.mock.calls.some(([name]) => name === 'plugins_check_update')).toBe(false)
   })
   it('checks and clears a no longer available update through the action menu', async () => {

@@ -1,5 +1,5 @@
 <template>
-  <ADrawer :get-container="false" :open="visible" width="min(640px, 100vw)" :title="plugin.title" :closable="!busy" @close="close">
+  <ADrawer :open="visible" :push="false" width="min(640px, 100vw)" :title="plugin.title" :closable="!busy" @close="close">
     <div class="stack gap-4">
       <div class="row-between flex-wrap gap-2">
         <span class="text-base text-ink-dim">{{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }}</span>
@@ -25,9 +25,9 @@
           <PluginAudit :plugin-id="plugin.pluginId" :active="tab === 'audit' && visible" />
         </ATabPane>
       </ATabs>
-      <PluginSync ref="sync" triggerless :plugin="plugin" :operations="library.operations" />
     </div>
   </ADrawer>
+  <PluginSync ref="sync" triggerless :plugin="plugin" :operations="library.operations" />
   <PluginRemoval v-if="removing" :plugin="plugin" :library="library" @close="removed" />
 </template>
 

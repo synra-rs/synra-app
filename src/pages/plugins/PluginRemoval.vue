@@ -1,5 +1,5 @@
 <template>
-  <AModal :get-container="false" :open="visible" :width="440" :title="messages.plugins.removeTitle" :closable="!busy" :mask-closable="!busy" :keyboard="!busy" :footer="null" @cancel="$emit('close')">
+  <AModal :open="visible" :width="440" :title="messages.plugins.removeTitle" :closable="!busy" :mask-closable="!busy" :keyboard="!busy" :footer="null" @cancel="$emit('close')">
     <div class="stack gap-4">
       <p class="m-0 text-base">
         {{ messages.plugins.removeDetail(plugin.title) }}

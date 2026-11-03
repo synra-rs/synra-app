@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises } from '@vue/test-utils'
+import { Input } from 'ant-design-vue'
 import { describe, expect, it } from 'vitest'
 import { answer, card, click, ErrorNotice, LocalInstallDialog, messages, mocks, mountPage, PluginPermissions } from './workflow.testkit'
 
@@ -49,14 +50,14 @@ describe('local installation', () => {
     await click(dialog, messages.plugins.installAction)
     expect(dialog.getComponent(ErrorNotice).props('code')).toBe('invalid_argument')
     await click(dialog, messages.plugins.choosePackage)
-    expect(dialog.get('input').element.value).toBe('D:/chosen')
+    expect(dialog.getComponent(Input).get('input').element.value).toBe('D:/chosen')
   })
   it('does not submit a composing Enter', async () => {
     const { wrapper } = await mountPage()
     await click(wrapper, messages.plugins.workflow.localInstall)
     const dialog = wrapper.getComponent(LocalInstallDialog)
-    await dialog.get('input').setValue('D:/manual')
-    await dialog.get('input').trigger('keydown', { key: 'Enter', isComposing: true })
+    await dialog.getComponent(Input).get('input').setValue('D:/manual')
+    await dialog.getComponent(Input).get('input').trigger('keydown', { key: 'Enter', isComposing: true })
     await flushPromises()
     expect(mocks.call.mock.calls.some(([command]) => command === 'plugins_install')).toBe(false)
   })
@@ -64,7 +65,7 @@ describe('local installation', () => {
     const { wrapper } = await mountPage()
     await click(wrapper, messages.plugins.workflow.localInstall)
     const dialog = wrapper.getComponent(LocalInstallDialog)
-    await dialog.get('input').trigger('keydown', { key: 'Escape', keyCode: 27, isComposing: true })
+    await dialog.getComponent(Input).get('input').trigger('keydown', { key: 'Escape', keyCode: 27, isComposing: true })
     await flushPromises()
     expect(wrapper.findComponent(LocalInstallDialog).exists()).toBe(true)
   })

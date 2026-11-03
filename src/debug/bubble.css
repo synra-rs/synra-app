@@ -2,7 +2,7 @@
   position: fixed;
   right: 1rem;
   bottom: calc(4rem + env(safe-area-inset-bottom));
-  z-index: 70;
+  z-index: 1100;
   display: grid;
   place-items: center;
   width: var(--synra-control-standard);

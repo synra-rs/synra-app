@@ -1,5 +1,5 @@
 <template>
-  <AModal v-if="pairing.visible" :open="visible" :width="420" :title="messages.devices.pairingWith(pairing.peerName)" :get-container="false" :footer="null" :closable="!pairing.busy" :mask-closable="false" @cancel="pairing.close">
+  <AModal v-if="pairing.visible" :open="visible" :width="420" :title="messages.devices.pairingWith(pairing.peerName)" :footer="null" :closable="!pairing.busy" :mask-closable="false" @cancel="pairing.close">
     <div class="stack gap-4" aria-live="polite">
       <template v-if="pairing.snapshot.phase === 'asked' && pairing.snapshot.ask">
         <p class="m-0 text-base">

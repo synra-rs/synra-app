@@ -7,6 +7,9 @@
  */
 declare module 'uno.css'
 
+/** Local stylesheets apply styles without exporting a JavaScript API. */
+declare module '*.css' {}
+
 /**
  * xterm ships its stylesheet as a real file, but its package exports do not advertise the `.css` path to TypeScript.
  * The import is a side effect only — the terminal still works without the styles, it is simply unpositioned — so the

@@ -21,7 +21,7 @@ it('submits registry queries explicitly and opens the result without another id 
   expect(mocks.call).toHaveBeenCalledWith('plugins_catalog_search', { query: { query: 'article', offset: 0, sort: 'relevance' } })
   await click(view, messages.plugins.workflow.details)
   expect(mocks.call).toHaveBeenCalledWith('plugins_preview', { pluginId: item.pluginId })
-  expect(view.getComponent(RegistryInstallDialog).text()).toContain(item.title)
+  expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
 })
 it('keeps a preview after failed installation and sends only one pending install', async () => {
   let finish!: (value: unknown) => void
@@ -36,7 +36,7 @@ it('keeps a preview after failed installation and sends only one pending install
   expect(mocks.call.mock.calls.filter(([name]) => name === 'plugins_install')).toHaveLength(1)
   finish({ ok: false, error: { code: 'unavailable', message: 'error.unavailable' } })
   await flushPromises()
-  expect(dialog.text()).toContain(item.title)
+  expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
   expect(dialog.getComponent(ErrorNotice).props('code')).toBe('unavailable')
 })
 it('offers registry settings for an unconfigured source', async () => {

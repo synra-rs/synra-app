@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises } from '@vue/test-utils'
+import { Checkbox } from 'ant-design-vue'
 import { expect, it } from 'vitest'
 import { answer, card, click, clickBody, ErrorNotice, messages, mocks, mountPage, PluginRemoval, usePluginsStore } from './workflow.testkit'
 
@@ -11,18 +12,18 @@ async function removal() {
 }
 it('opens routine update details when addedCapabilities is omitted', async () => {
   answer({ plugins_list: [card({ update: { pluginId: '@acme/reader', version: '2.0', needsNewConsent: false } })] })
-  const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
-  expect(wrapper.text()).toContain(messages.plugins.updateNoNewPermissions)
-  expect(wrapper.text()).toContain('2.0')
+  await mountPage('/plugins?plugin=%40acme%2Freader')
+  expect(document.body.textContent).toContain(messages.plugins.updateNoNewPermissions)
+  expect(document.body.textContent).toContain('2.0')
 })
 it('asks about data and resets the destructive choice after cancellation', async () => {
   const { wrapper, dialog } = await removal()
-  expect((dialog.get('input').element as HTMLInputElement).checked).toBe(false)
-  await dialog.get('input').setValue(true)
+  expect((dialog.getComponent(Checkbox).get('input').element as HTMLInputElement).checked).toBe(false)
+  await dialog.getComponent(Checkbox).get('input').setValue(true)
   await click(dialog, messages.plugins.workflow.cancel)
   await click(wrapper, messages.plugins.workflow.more)
   await clickBody(messages.plugins.removeAction, 'menuitem')
-  expect((wrapper.getComponent(PluginRemoval).get('input').element as HTMLInputElement).checked).toBe(false)
+  expect((wrapper.getComponent(PluginRemoval).getComponent(Checkbox).get('input').element as HTMLInputElement).checked).toBe(false)
   expect(mocks.call.mock.calls.some(([command]) => command === 'plugins_uninstall')).toBe(false)
 })
 it('removes the selected plugin and returns to its list with data kept by default', async () => {
@@ -57,6 +58,6 @@ it('binds publisher trust to the full fingerprint and preserves failed decisions
   await click(wrapper, messages.plugins.publishers.trust)
   expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: publisher.publisherId, fingerprint: publisher.fingerprint, trust: 'trusted' })
   await flushPromises()
-  expect(wrapper.text()).toContain(publisher.fingerprint)
+  expect(document.body.textContent).toContain(publisher.fingerprint)
   expect(wrapper.findAllComponents(ErrorNotice).some(notice => notice.props('code') === 'invalid_argument')).toBe(true)
 })

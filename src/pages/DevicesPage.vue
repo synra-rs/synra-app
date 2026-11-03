@@ -93,7 +93,7 @@
       </section>
     </div>
 
-    <AModal v-if="forgetTarget" :open="forgetVisible" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :get-container="false" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
+    <AModal v-if="forgetTarget" :open="forgetVisible" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
       <div class="stack gap-4">
         <p class="m-0 text-base">
           {{ messages.devices.forgetHelp }}

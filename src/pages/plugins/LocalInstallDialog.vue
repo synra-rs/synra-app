@@ -1,5 +1,5 @@
 <template>
-  <AModal :get-container="false" :open="visible" :width="580" :title="messages.plugins.workflow.localInstall" :footer="null" :closable="!installing && !choosing" :mask-closable="!installing && !choosing" :keyboard="!installing && !choosing" @cancel="$emit('close')">
+  <AModal :open="visible" :width="580" :title="messages.plugins.workflow.localInstall" :footer="null" :closable="!installing && !choosing" :mask-closable="!installing && !choosing" :keyboard="!installing && !choosing" @cancel="$emit('close')">
     <div class="stack gap-4">
       <p class="m-0 text-base text-ink-dim">
         {{ messages.plugins.workflow.localHelp }}

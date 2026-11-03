@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { PluginSnapshot, SyncPlanDto } from '@synra/protocol'
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
@@ -73,11 +73,11 @@ it('reads the plan when it opens, and offers to send when a target needs the art
     await flushPromises()
 
     expect(run.mock.calls[0]?.slice(0, 2), 'the plan was not read').toEqual(['demo', 'syncPlan'])
-    const targets = wrapper.find('[data-sync-targets]')
+    const targets = new DOMWrapper(document.body).find('[data-sync-targets]')
     expect(targets.exists(), 'the plan was not rendered').toBe(true)
     expect(targets.text()).toContain('Pixel 8')
     // One online target needs the artifact, so sending is meaningful.
-    const start = wrapper.findAll('button').find(button => button.text() === 'Start sync')
+    const start = new DOMWrapper(document.body).findAll('button').find(button => button.text() === 'Start sync')
     expect(start?.attributes('disabled'), 'send should be offered when a target needs the artifact').toBeUndefined()
   }
   finally {
@@ -96,7 +96,7 @@ it('does not offer to send when no online target needs anything', async () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    const start = wrapper.findAll('button').find(button => button.text() === 'Start sync')
+    const start = new DOMWrapper(document.body).findAll('button').find(button => button.text() === 'Start sync')
     expect(start, 'the send button should still be on screen').toBeDefined()
     expect(start!.attributes('disabled'), 'send must be disabled when nothing needs the artifact').toBeDefined()
   }
@@ -127,9 +127,9 @@ it('drops a plan that arrives after the plugin version changed', async () => {
     resolvePlan?.({ ok: true, value: PLAN })
     await flushPromises()
 
-    expect(wrapper.find('[data-sync-targets]').exists(), 'a plan for the old version was applied').toBe(false)
+    expect(new DOMWrapper(document.body).find('[data-sync-targets]').exists(), 'a plan for the old version was applied').toBe(false)
     // The reader is told why there is nothing to trust rather than being shown an empty panel.
-    expect(wrapper.text()).toContain('Refresh')
+    expect(document.body.textContent).toContain('Refresh')
   }
   finally {
     wrapper.unmount()
@@ -164,7 +164,7 @@ it('keeps the panel shut while a send is in flight', async () => {
     await wrapper.findAll('button')[0]!.trigger('click')
     await flushPromises()
 
-    const start = wrapper.findAll('button').find(button => button.text() === 'Start sync')!
+    const start = new DOMWrapper(document.body).findAll('button').find(button => button.text() === 'Start sync')!
     await start.trigger('click')
     await flushPromises()
 

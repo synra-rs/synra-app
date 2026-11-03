@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { flushPromises, mount } from '@vue/test-utils'
-import { Modal } from 'ant-design-vue'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
+import { Input, Modal } from 'ant-design-vue'
 import { describe, expect, it } from 'vitest'
 import { answer, click, LocalInstallDialog, messages, mocks, mountPage, PairingPrompt, usePairingStore } from './workflow.testkit'
 
@@ -12,9 +12,9 @@ describe('pairing presentation', () => {
     const wrapper = mount(PairingPrompt, { attachTo: document.body })
     try {
       await flushPromises()
-      expect(wrapper.get('output').text()).toBe(peer.code)
-      expect(wrapper.text()).toContain(messages.devices.pairingWaiting(peer.displayName))
-      expect(wrapper.text()).not.toContain(messages.devices.pairingAccept)
+      expect(new DOMWrapper(document.body).get('output').text()).toBe(peer.code)
+      expect(document.body.textContent).toContain(messages.devices.pairingWaiting(peer.displayName))
+      expect(document.body.textContent).not.toContain(messages.devices.pairingAccept)
       expect(pairing.snapshot.phase).toBe('waiting')
     }
     finally { wrapper.unmount() }
@@ -26,7 +26,7 @@ describe('pairing presentation', () => {
     const wrapper = mount(PairingPrompt, { attachTo: document.body })
     try {
       await flushPromises()
-      expect(wrapper.get('output').text()).toBe(peer.code)
+      expect(new DOMWrapper(document.body).get('output').text()).toBe(peer.code)
       expect(mocks.call).not.toHaveBeenCalled()
       await click(wrapper, accepted ? messages.devices.pairingAccept : block ? messages.devices.pairingBlock : messages.devices.pairingRefuse)
       expect(mocks.call).toHaveBeenCalledWith('devices_pairing_respond', { accepted, block })
@@ -39,7 +39,7 @@ describe('pairing presentation', () => {
     const { wrapper: page } = await mountPage()
     await click(page, messages.plugins.workflow.localInstall)
     const editor = page.getComponent(LocalInstallDialog)
-    await editor.get('input').setValue('D:/chosen/source.synra')
+    await editor.getComponent(Input).get('input').setValue('D:/chosen/source.synra')
     const prompt = mount(PairingPrompt, { attachTo: document.body })
     try {
       const pairing = usePairingStore()
@@ -50,7 +50,7 @@ describe('pairing presentation', () => {
       await click(prompt, messages.devices.pairingRefuse)
       await click(prompt, messages.devices.pairingClose)
       expect(editor.getComponent(Modal).props('open')).toBe(true)
-      expect(editor.get('input').element.value).toBe('D:/chosen/source.synra')
+      expect(editor.getComponent(Input).get('input').element.value).toBe('D:/chosen/source.synra')
     }
     finally { prompt.unmount() }
   })

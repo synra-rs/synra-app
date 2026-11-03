@@ -1,9 +1,3 @@
-<style scoped src="../debug/bubble.css" />
-
-<style scoped src="../debug/console.css" />
-
-<style src="../debug/terminal.css" />
-
 <template>
   <Teleport to="body">
     <button
@@ -112,6 +106,9 @@
 <script setup lang="ts">
 import { useTemplateRef } from 'vue'
 import { useWireConsole } from '../debug/use-wire-console'
+import '../debug/bubble.css'
+import '../debug/console.css'
+import '../debug/terminal.css'
 
 const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')

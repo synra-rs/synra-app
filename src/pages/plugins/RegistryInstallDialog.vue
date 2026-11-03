@@ -1,5 +1,5 @@
 <template>
-  <AModal :get-container="false" :open="visible" :width="600" :title="messages.plugins.workflow.details" :footer="null" :closable="!installing" :mask-closable="!installing" :keyboard="!installing" @cancel="$emit('close')">
+  <AModal :open="visible" :width="600" :title="messages.plugins.workflow.details" :footer="null" :closable="!installing" :mask-closable="!installing" :keyboard="!installing" @cancel="$emit('close')">
     <div class="stack gap-4">
       <p v-if="loading" class="m-0 text-base text-ink-dim" role="status">
         {{ messages.plugins.workflow.loading }}

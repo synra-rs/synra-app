@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { VueWrapper } from '@vue/test-utils'
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { messages } from '../messages'
@@ -33,14 +33,14 @@ describe('the global pairing prompt', () => {
     wrapper = mount(PairingPrompt, { attachTo: document.body })
     store.apply({ type: 'pairingUpdated', payload: { phase: 'asked', ask: peer } })
     await flushPromises()
-    expect(wrapper.get('output').text()).toBe('000123')
-    const buttons = wrapper.findAll('button').map(button => button.text())
+    expect(new DOMWrapper(document.body).get('output').text()).toBe('000123')
+    const buttons = new DOMWrapper(document.body).findAll('button').map(button => button.text())
     expect(buttons).toContain(messages.devices.pairingAccept)
     expect(buttons).toContain(messages.devices.pairingRefuse)
     expect(buttons).toContain(messages.devices.pairingBlock)
     expect(buttons).not.toContain(messages.devices.pairingWithdraw)
     call.mockResolvedValue({ ok: true, value: { phase: 'done', outcome: 'refused' } })
-    await wrapper.findAll('button').find(button => button.text() === messages.devices.pairingBlock)!.trigger('click')
+    await new DOMWrapper(document.body).findAll('button').find(button => button.text() === messages.devices.pairingBlock)!.trigger('click')
     await flushPromises()
     expect(call).toHaveBeenCalledWith('devices_pairing_respond', { accepted: false, block: true })
   })
@@ -50,8 +50,8 @@ describe('the global pairing prompt', () => {
     store.apply({ type: 'pairingUpdated', payload: { phase: 'waiting', offer: peer } })
     wrapper = mount(PairingPrompt, { attachTo: document.body })
     await flushPromises()
-    expect(wrapper.get('output').text()).toBe('000123')
-    const buttons = wrapper.findAll('button').map(button => button.text())
+    expect(new DOMWrapper(document.body).get('output').text()).toBe('000123')
+    const buttons = new DOMWrapper(document.body).findAll('button').map(button => button.text())
     expect(buttons).toContain(messages.devices.pairingWithdraw)
     expect(buttons).not.toContain(messages.devices.pairingAccept)
     expect(buttons).not.toContain(messages.devices.pairingRefuse)

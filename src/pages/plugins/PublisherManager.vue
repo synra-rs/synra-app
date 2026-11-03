@@ -1,5 +1,5 @@
 <template>
-  <ADrawer :get-container="false" :open="visible" width="min(600px, 100vw)" :title="messages.plugins.publishers.title" @close="$emit('close')">
+  <ADrawer :open="visible" :push="false" width="min(600px, 100vw)" :title="messages.plugins.publishers.title" @close="$emit('close')">
     <div class="stack gap-4">
       <p class="m-0 text-base text-ink-dim">
         {{ messages.plugins.publishers.detail }}

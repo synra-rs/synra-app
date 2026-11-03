@@ -5,7 +5,6 @@
   <AModal
     :open="visible"
     :title="messages.plugins.sync.title(plugin.title)"
-    :get-container="false"
     :footer="null"
     :closable="!sending"
     :mask-closable="!sending"

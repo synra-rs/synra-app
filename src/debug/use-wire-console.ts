@@ -11,7 +11,8 @@ import { subscribeWireLines } from './wire-stream'
 
 export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTMLButtonElement | null>, closeButton: Ref<HTMLButtonElement | null>) {
   const open = ref(false)
-  const visible = useDialogVisibility(open, 5)
+  // Explicit diagnostics temporarily suspend workflows without hiding their own entry point.
+  const visible = useDialogVisibility(open, 110)
   const paused = ref(false)
   const filter = ref<'all' | 'sent' | 'received'>('all')
   const unread = ref(0)
@@ -120,7 +121,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     pending.length = 0
   }
   async function fit() {
-    if (!open.value)
+    if (!visible.value)
       return
     await nextTick()
     try {
