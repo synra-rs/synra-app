@@ -19,10 +19,10 @@
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
       <div class="row flex-wrap items-center gap-2">
-'        <AButton v-if="!card.paired" class="min-w-20 justify-center" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
+        <AButton v-if="!card.paired && !card.blocked" class="min-w-20 justify-center" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
           {{ messages.devices.pairing }}
         </AButton>
-'        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
+        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />
         </AButton>
@@ -58,7 +58,7 @@
           <span v-else>{{ messages.devices.unknownTime }}</span>
         </dd>
       </dl>
-      <div v-if="card.paired">
+      <div v-if="card.paired || card.blocked">
         <AButton danger @click="emit('forget', card)">
           {{ messages.devices.forget }}
         </AButton>

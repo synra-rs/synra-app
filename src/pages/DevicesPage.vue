@@ -89,7 +89,7 @@
         <h2 class="m-0 text-sm font-medium">
           {{ messages.devices.nearby }}
         </h2>
-        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" />
+        <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" @forget="askForget" />
       </section>
     </div>
 
@@ -106,49 +106,8 @@
           <AButton ref="keepButton" :disabled="forgetting" @click="closeForget">
             {{ messages.devices.forgetCancel }}
           </AButton>
-          <AButton type="primary" danger :loading="forgetting" :disabled="forgetting || !devices.get(forgetTarget.deviceId)?.paired" @click="forget">
+          <AButton type="primary" danger :loading="forgetting" :disabled="forgetting || !(devices.get(forgetTarget.deviceId)?.paired || devices.get(forgetTarget.deviceId)?.blocked)" @click="forget">
             {{ messages.devices.forget }}
-          </AButton>
-        </div>
-      </div>
-    </AModal>
-    <AModal v-if="pairing && (pairing.phase !== 'idle' || pairingUnreachable)" :open="true" :title="messages.devices.pairingWith(pairingPeer || '')" :get-container="false" :footer="null" :closable="true" :mask-closable="false" @cancel="closePairing">
-      <div class="stack gap-4">
-        <template v-if="pairing.phase === 'asked' && pairing.ask">
-          <p class="m-0 text-sm">
-            {{ messages.devices.pairingAsk(pairing.ask.displayName) }}
-          </p>
-          <output class="m-0 text-center text-3xl font-mono tracking-[0.3em]">{{ pairing.ask.code }}</output>
-          <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
-            <AButton :loading="pairingBusy" @click="respondPair(false)">
-              {{ messages.devices.pairingRefuse }}
-            </AButton>
-            <AButton type="primary" :loading="pairingBusy" @click="respondPair(true)">
-              {{ messages.devices.pairingAccept }}
-            </AButton>
-          </div>
-        </template>        <template v-else-if="pairing.phase === 'waiting' && pairing.offer">
-          <p class="m-0 text-sm">
-            {{ messages.devices.pairingWaiting(pairing.offer.displayName) }}
-          </p>
-          <output class="m-0 text-center text-3xl font-mono tracking-[0.3em]">{{ pairing.offer.code }}</output>
-          <p class="m-0 text-xs text-ink-dim">
-            {{ messages.devices.pairingWaitingHelp }}
-          </p>
-        </template>
-        <p v-else-if="pairingOutcomeText" class="m-0 text-sm">
-          {{ pairingOutcomeText }}
-        </p>
-        <p v-if="pairingUnreachable" class="m-0 text-sm">
-          {{ messages.devices.pairingUnreachable }}
-        </p>
-        <ErrorNotice v-if="pairingError" :code="pairingError.code" :params="pairingError.params" :actions="pairingError.actions?.filter(action => action.kind !== 'retry')" />
-        <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
-          <AButton v-if="pairing.phase === 'waiting'" :loading="pairingBusy" @click="withdrawPair">
-            {{ messages.devices.pairingWithdraw }}
-          </AButton>
-          <AButton type="primary" @click="closePairing">
-            {{ messages.devices.pairingClose }}
           </AButton>
         </div>
       </div>
@@ -157,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DeviceCard, DevicesSnapshot, IpcError, PairingSnapshot, ScanOptions } from '@synra/protocol'
+import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -165,116 +124,12 @@ import PageHeader from '../components/PageHeader.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
+import { usePairingStore } from '../stores/pairing'
 import DeviceRow from './devices/DeviceRow.vue'
 
 const devices = useDevicesStore()
-/**
- * Pairing: the six digits this device shows, and the answer the other person gives.
- *
- * ★ The snapshot arrives as an event rather than from a poll. A poll would leave the panel up to a
- * second behind the desk, and the desk is the one thing both people are looking at.
- */
-const pairing = ref<PairingSnapshot>()
-const pairingTarget = ref<DeviceCard>()
-const pairingError = ref<IpcError>()
-const pairingBusy = ref(false)
-const pairingUnreachable = ref(false)
-const pairingPeer = ref('')
-let stopPairingEvents: (() => void) | undefined
-void kernel.subscribe('kernel-event', (payload) => {
-  const event = payload as { type?: string, payload?: unknown }
-  if (event.type === 'pairingUpdated' && event.payload) {
-    const next = event.payload as PairingSnapshot
-    // ★ 拨号失败时守护进程把桌子清空，事件是 idle：界面若不解释一句，弹窗会静悄悄消失。
-    if (pairing.value?.phase === 'waiting' && next.phase === 'idle')
-      pairingUnreachable.value = true
-    pairingPeer.value = next.offer?.displayName ?? next.ask?.displayName ?? pairingPeer.value
-    pairing.value = next
-  }
-}).then((off) => {
-  stopPairingEvents = off
-})
-onScopeDispose(() => {
-  stopPairingEvents?.()
-})
-
-async function startPair(card: DeviceCard): Promise<void> {
-  pairingTarget.value = card
-  pairingPeer.value = card.displayName
-  pairingError.value = undefined
-  pairingUnreachable.value = false
-  pairingBusy.value = true
-  const answer = await kernel.call<PairingSnapshot>('devices_pair', { deviceId: card.deviceId })
-  pairingBusy.value = false
-  if (answer.ok)
-    pairing.value = answer.value
-  else
-    pairingError.value = answer.error
-}
-
-async function withdrawPair(): Promise<void> {
-  pairingBusy.value = true
-  const answer = await kernel.call<PairingSnapshot>('devices_pairing_cancel')
-  pairingBusy.value = false
-  if (answer.ok)
-    pairing.value = answer.value
-  else
-    pairingError.value = answer.error
-}
-
-
-async function respondPair(accepted: boolean): Promise<void> {
-  pairingBusy.value = true
-  const answer = await kernel.call<PairingSnapshot>('devices_pairing_respond', { accepted })
-  pairingBusy.value = false
-  if (answer.ok)
-    pairing.value = answer.value
-  else
-    pairingError.value = answer.error
-}
-
-/**
- * Closing a prompt is an answer, not silence.
- *
- * ★ 一条挂着的请求在对面看来是「还在等」。X 掉窗口而不答复，会让那台设备一直摆到两分钟到期，
- * 也会让本机的配对桌一直被占着。所以：我在等对方 → 关闭等于撤回；对方在等我 → 关闭等于拒绝。
- */
-async function closePairing(): Promise<void> {
-  const phase = pairing.value?.phase
-  if (phase === 'waiting')
-    await kernel.call('devices_pairing_cancel')
-  else if (phase === 'asked')
-    await kernel.call('devices_pairing_respond', { accepted: false })
-  // ★ 配对成功后两边的列表都该换一边：关掉提示时重新读一次，''已配对'' 才不会留在''附近''里。
-  if (pairing.value?.outcome === 'paired')
-    void refresh()
-  pairingPeer.value = ''
-  pairing.value = undefined
-  pairingTarget.value = undefined
-  pairingError.value = undefined
-  pairingUnreachable.value = false
-}
-
-/**
- * Incoming requests, read once when the page opens.
- *
- * ★ Later changes arrive as events; this single read covers the case where a request was already on the
- * desk before this page mounted.
- */
-void kernel.call<PairingSnapshot>('devices_pairing_snapshot').then((answer) => {
-  if (answer.ok && answer.value.phase !== 'idle' && !pairing.value)
-    pairing.value = answer.value
-})
-const pairingOutcomeText = computed(() => {
-  const name = pairingPeer.value
-  switch (pairing.value?.outcome) {
-    case 'paired': return messages.devices.pairingPaired(name)
-    case 'refused': return messages.devices.pairingRefused(name)
-    case 'cancelled': return messages.devices.pairingCancelled
-    case 'timedOut': return messages.devices.pairingExpired
-    default: return undefined
-  }
-})
+const pairing = usePairingStore()
+const startPair = pairing.start
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
 let disposed = false
 let readRevision = 0
@@ -421,7 +276,7 @@ const keepButton = ref<InstanceType<typeof AButton>>()
 const pairedHeading = ref<HTMLElement>()
 let forgetTrigger: HTMLElement | null = null
 async function askForget(card: DeviceCard): Promise<void> {
-  if (forgetting.value || !devices.get(card.deviceId)?.paired)
+  if (forgetting.value || !(devices.get(card.deviceId)?.paired || devices.get(card.deviceId)?.blocked))
     return
   forgetTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
   forgetTarget.value = card
@@ -443,7 +298,7 @@ async function closeForget(): Promise<void> {
 }
 async function forget(): Promise<void> {
   const target = forgetTarget.value
-  if (forgetting.value || !target || !devices.get(target.deviceId)?.paired)
+  if (forgetting.value || !target || !(devices.get(target.deviceId)?.paired || devices.get(target.deviceId)?.blocked))
     return
   forgetting.value = true
   forgetError.value = undefined
@@ -474,5 +329,3 @@ onScopeDispose(() => {
   readRevision += 1
 })
 </script>
-
-

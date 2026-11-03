@@ -139,8 +139,9 @@ mod wrappers {
     pub fn devices_pairing_respond(
         state: tauri::State<'_, std::sync::Arc<AppState>>,
         accepted: bool,
+        block: Option<bool>,
     ) -> Result<PairingSnapshot, IpcError> {
-        commands::pairing::devices_pairing_respond(&state, accepted)
+        commands::pairing::devices_pairing_respond(&state, accepted, block.unwrap_or(false))
     }
 
     /// Withdraws this device's own request.

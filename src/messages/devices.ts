@@ -63,6 +63,7 @@ export const devices = {
   pairingAsk: (name: string): string => `${name} wants to pair. Is the code on that device`,
   pairingAccept: 'Accept',
   pairingRefuse: 'Refuse',
+  pairingBlock: 'Block',
   online: 'Reachable',
   offline: 'Not reachable'
 } as const

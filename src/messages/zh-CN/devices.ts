@@ -53,5 +53,6 @@ export const devices = {
   'devices.pairingAsk': (name: string): string => `${name}想要配对。那台设备上的码是`,
   'devices.pairingAccept': '接受',
   'devices.pairingRefuse': '拒绝',
+  'devices.pairingBlock': '拉黑',
   'devices.offline': '无法连接'
 } satisfies Partial<LocaleEntries>

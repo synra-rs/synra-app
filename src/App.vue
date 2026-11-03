@@ -40,6 +40,7 @@
     <div class="fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] overflow-hidden screen md:grid-rows-[minmax(0,1fr)]" :class="rail ? 'md:grid-cols-[6rem_minmax(0,1fr)]' : 'md:grid-cols-[15rem_minmax(0,1fr)]'">
       <!-- The one prompt that is about a peer waiting on this answer; at the root so it is visible on every page. -->
       <TransferPrompt />
+      <PairingPrompt />
       <!-- The wire console: a bubble on every page and a bottom drawer. Global for the same reason the prompt is. -->
       <DebugConsole />
       <!-- The shell's search: the entry is in the sidebar, the box is a modal at the root. -->
@@ -102,7 +103,7 @@
             -->
             <button
               type="button"
-              class="ms-auto grid min-h-11 shrink-0 place-items-center rounded-pill border-0 bg-transparent px-2.5 text-ink-dim transition-colors hover:bg-raised hover:text-ink focus-visible:ring-1 focus-visible:ring-primary md:min-h-8"
+              class="grid ms-auto min-h-11 shrink-0 place-items-center border-0 rounded-pill bg-transparent px-2.5 text-ink-dim transition-colors md:min-h-8 hover:bg-raised hover:text-ink focus-visible:ring-1 focus-visible:ring-primary"
               :class="{ 'ms-0': rail }"
               :aria-label="messages.search.title"
               data-testid="search-entry"
@@ -284,6 +285,7 @@ import { useRoute, useRouter } from 'vue-router'
 import CrashNotice from './components/CrashNotice.vue'
 import DebugConsole from './components/DebugConsole.vue'
 import NoticeHost from './components/NoticeHost.vue'
+import PairingPrompt from './components/PairingPrompt.vue'
 import SearchPalette from './components/SearchPalette.vue'
 import TransferPrompt from './components/TransferPrompt.vue'
 import { kernel } from './kernel'

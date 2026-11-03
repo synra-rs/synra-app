@@ -6,16 +6,18 @@
  * silence.
  */
 
-import type { DeviceCard, SequencedKernelEvent } from '@synra/protocol'
+import type { DeviceCard, DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 import { startEvents } from './events'
 import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { KernelClient } from './ipc/client'
-import { DEVICES, PEER_ID } from './ipc/fake-kernel-fixtures'
+import { DEVICES, IDENTITY, PEER_ID } from './ipc/fake-kernel-fixtures'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
+import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
 
@@ -50,6 +52,48 @@ beforeEach(() => {
 })
 
 describe('the event stream', () => {
+  it('keeps the latest device refresh when completion snapshots return out of order', async () => {
+    const pending: Array<(value: DevicesSnapshot) => void> = []
+    let deliver: ((payload: unknown) => void) | undefined
+    const client = new KernelClient({
+      invoke: async command => command === 'devices_pairing_snapshot'
+        ? { phase: 'idle' }
+        : new Promise<DevicesSnapshot>((resolve) => { pending.push(resolve) }),
+      listen: async (_channel, handler) => {
+        deliver = handler
+        return () => {}
+      }
+    })
+    await startEvents(client)
+    const store = useDevicesStore()
+    const snapshot: DevicesSnapshot = { identity: { ...IDENTITY }, devices: [card(PEER_ID)] }
+    deliver?.({ seq: 1, at: 1, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } })
+    deliver?.({ seq: 2, at: 2, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } })
+    pending[1]?.(snapshot)
+    await nextTick()
+    await nextTick()
+    pending[0]?.({ ...snapshot, devices: [] })
+    await nextTick()
+    await nextTick()
+    expect(store.get(PEER_ID)?.deviceId).toBe(PEER_ID)
+  })
+  it('delivers incoming pairing requests without a page subscriber and rereads devices on completion', async () => {
+    const { client, listeners, invoke } = harness()
+    await startEvents(client)
+    const store = usePairingStore()
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 1,
+      at: 1,
+      type: 'pairingUpdated',
+      payload: { phase: 'asked', ask: { code: '000123', deviceId: PEER_ID, displayName: 'PC', platform: 'desktop' } }
+    } satisfies SequencedKernelEvent)
+    expect(store.visible).toBe(true)
+    expect(store.snapshot.ask?.code).toBe('000123')
+    invoke.mockClear()
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({ seq: 2, at: 2, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } } satisfies SequencedKernelEvent)
+    expect(invoke).toHaveBeenCalledWith('devices_snapshot', {})
+    expect(store.snapshot.outcome).toBe('paired')
+  })
   it('subscribes to the one channel the shell emits on', async () => {
     const { client, listeners } = harness()
 

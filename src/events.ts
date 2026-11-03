@@ -29,6 +29,7 @@ import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
 import { useIntentsStore } from './stores/intents'
 import { useNoticesStore } from './stores/notices'
+import { usePairingStore } from './stores/pairing'
 import { usePluginsStore } from './stores/plugins'
 import { useSettingsStore } from './stores/settings'
 
@@ -48,6 +49,8 @@ export interface StartedEvents {
  */
 export async function startEvents(client: KernelClient = kernel): Promise<StartedEvents> {
   const devices = useDevicesStore()
+  const pairing = usePairingStore()
+  let devicesReadRevision = 0
 
   /**
    * Re-reads the device snapshot and marks the picture whole again.
@@ -60,8 +63,9 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
    * whole when the call failed is the silent-staleness failure the sequence tracker exists to make visible.
    */
   async function reread(client: KernelClient, devices: ReturnType<typeof useDevicesStore>, dispatcher: EventDispatcher): Promise<void> {
+    const revision = ++devicesReadRevision
     const answer = await client.call<DevicesSnapshot>('devices_snapshot', {})
-    if (!answer.ok)
+    if (!answer.ok || revision !== devicesReadRevision)
       return
     devices.applySnapshot(answer.value)
     dispatcher.snapshotTaken()
@@ -69,6 +73,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
 
   const dispatcher = new EventDispatcher(() => {
     void reread(client, devices, dispatcher)
+    void pairing.read(client)
   })
 
   dispatcher.on('deviceCardUpdated', (event) => {
@@ -81,6 +86,11 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   // response is to re-read rather than to model a second copy of it here.
   dispatcher.on('scanUpdated', () => {
     void reread(client, devices, dispatcher)
+  })
+  dispatcher.on('pairingUpdated', (event) => {
+    pairing.apply(event)
+    if (event.payload.phase === 'done')
+      void reread(client, devices, dispatcher)
   })
 
   // ★ The two facts that had no consumer until now: an intent arriving and a transfer moving. `apply` answers whether the
@@ -124,10 +134,10 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     notices.apply(event)
   })
 
-
   const stop = await client.subscribe(KERNEL_EVENT_CHANNEL, (payload) => {
     dispatcher.accept(payload as SequencedKernelEvent)
   })
+  await pairing.read(client)
 
   return { dispatcher, stop: async () => stop() }
 }

@@ -449,8 +449,8 @@ fn card_from_paired(
         // right. Every paired device was reported online, so the dashboard showed a green dot for a laptop that had been
         // shut for a week, and the first the user heard about it was a send that failed. The registry is what knows:
         // `live_for` answers "is there a session with this peer now", which is exactly the question the card asks.
-        online: host.lock().sessions().live_for(device_id).is_some(),
-        paired: true,
+        online: !row.blocked && host.lock().sessions().live_for(device_id).is_some(),
+        paired: !row.blocked,
         blocked: row.blocked,
         last_seen_ms: row.last_seen_ms,
         address: row.address.clone(),

@@ -59,8 +59,9 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
     let already = state
         .db()
         .paired_devices()
-        .map(|rows| rows.iter().any(|row| row.device_id == device_id))
-        .unwrap_or(false);
+        .map_err(internal)?
+        .iter()
+        .any(|row| row.device_id == device_id);
     if already {
         return Err(internal(format!(
             "{name} is already paired; forget it on both devices before pairing again"
@@ -86,12 +87,8 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
         .begin(peer, name.clone(), platform, already)
         .map_err(|refused| internal(format!("pairing could not start: {refused:?}")))?;
     // ★ 信封里「谁发的」必须是本机：桌子只负责码与对端，身份由这一层填。
-    let request = synra_protocol::pairing::PairRequest::new(
-        offer.code,
-        self_id,
-        self_name,
-        self_platform,
-    );
+    let request =
+        synra_protocol::pairing::PairRequest::new(offer.code, self_id, self_name, self_platform);
     let snapshot = snapshot_of(&desk);
 
     // The dial goes on its own thread: this command's answer is the code, and the code already exists.
@@ -99,8 +96,15 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
     std::thread::spawn(move || {
         let data_dir = worker.paths.data_dir();
         synra_observe::wire::note(peer.to_string(), format!("dial {address} · {name}"));
-        let outcome =
-            synra_core::pairing_dial::dial(&worker.host, address, peer, &name, platform, &request, &data_dir);
+        let outcome = synra_core::pairing_dial::dial(
+            &worker.host,
+            address,
+            peer,
+            &name,
+            platform,
+            &request,
+            &data_dir,
+        );
         if let Err(error) = &outcome {
             synra_observe::wire::note(peer.to_string(), format!("dial failed · {error:?}"));
             eprintln!("synra: the pairing dial failed: {error:?}");
@@ -121,8 +125,28 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
 pub fn devices_pairing_respond(
     state: &Arc<AppState>,
     accepted: bool,
+    block: bool,
 ) -> Result<PairingSnapshot, IpcError> {
     let desk = state.host.lock().pairing();
+    if block {
+        if accepted {
+            return Err(internal("a blocked request cannot be accepted"));
+        }
+        let ask = desk
+            .ask()
+            .ok_or_else(|| internal("there is no pairing request waiting for an answer"))?;
+        state
+            .db()
+            .block_device(&synra_store::Paired {
+                device_id: ask.peer.to_string(),
+                display_name: ask.peer_name,
+                platform: platform_text(ask.peer_platform),
+                features: "[]".to_owned(),
+                address: None,
+                paired_at_ms: synra_store::sqlite::now_ms(),
+            })
+            .map_err(internal)?;
+    }
     let outcome = if accepted {
         desk.accept()
     } else {
@@ -137,6 +161,14 @@ pub fn devices_pairing_respond(
     state.publish(synra_ipc::event::KernelEvent::PairingUpdated(Box::new(
         snapshot.clone(),
     )));
+    if block {
+        let cards = super::devices::devices_snapshot(state)?.devices;
+        for card in cards.into_iter().filter(|card| card.blocked) {
+            state.publish(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(
+                card,
+            )));
+        }
+    }
     Ok(snapshot)
 }
 
@@ -202,3 +234,6 @@ fn platform_text(platform: synra_protocol::session::PlatformKind) -> String {
     }
     .to_owned()
 }
+
+#[cfg(test)]
+mod tests;

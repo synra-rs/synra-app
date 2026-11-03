@@ -139,18 +139,9 @@ fn record_and_announce(state: &AppState, intent: synra_protocol::ids::IntentId) 
 /// than the interface losing itself.
 #[must_use]
 pub fn bind(mut state: AppState) -> AppState {
-    // ★ **Once**, and into a local, before anything else touches the identity.
-    //
-    // This was a self-deadlock: `Host::new(state.identity.lock().clone(), local_of(&state))` holds the guard from the first
-    // argument until the end of the statement — Rust keeps a temporary alive across the whole expression — and `local_of`
-    // locks the same `parking_lot::Mutex` again. That mutex is **not reentrant**, so `setup` never returned, the window never
-    // loaded, and the only sign was a white screen with discovery's log above it.
-    let identity = state.identity.lock().clone();
-    // ★ The second host this process builds, and it needs the recorder for the same reason the state's host does: an
-    // accepted connection is a link, and its frames are the only evidence the listener ever handled anything.
-    let listener_host = synra_core::Host::new(identity.clone(), local_of(&identity))
-        .with_metrics(Arc::clone(&state.metrics));
-    let host = Arc::new(Mutex::new(listener_host));
+    // Commands, incoming connections and the event sink must use the same pairing service.
+    // A second Host has its own desk, so its request can never reach the UI or receive the user's answer.
+    let host = Arc::clone(&state.host);
 
     let bound = {
         let mut guard = host.lock();
@@ -521,22 +512,19 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
         )
 }
 
-/// What this device says about itself on the wire.
-///
-/// It takes the identity rather than the state: a version that locked the state would be the second caller of a lock its own caller
-/// already holds, and `parking_lot`'s mutex is not reentrant. Passing the value makes that impossible to write by accident.
-fn local_of(identity: &synra_core::identity::Identity) -> synra_core::peer::LocalPeer {
-    synra_core::peer::LocalPeer::new(
-        identity.device_id,
-        identity.display_name.clone(),
-        synra_protocol::session::PlatformKind::Desktop,
-        env!("CARGO_PKG_VERSION"),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{received_notice, received_notification};
+
+    #[test]
+    fn listener_and_commands_share_the_same_host_and_pairing_desk() {
+        let state = super::bind(crate::testing::state());
+        let (listener, _) = state.listener.as_ref().expect("binds");
+        assert!(std::sync::Arc::ptr_eq(listener, &state.host));
+        let incoming = listener.lock().pairing();
+        let commands = state.host.lock().pairing();
+        assert!(std::sync::Arc::ptr_eq(&incoming, &commands));
+    }
 
     fn received(bundle: Option<&str>) -> synra_core::listener::FinishedTransfer {
         synra_core::listener::FinishedTransfer {
