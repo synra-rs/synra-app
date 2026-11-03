@@ -36,7 +36,7 @@
             treatments on one screen. `[&_.ant-menu]:bg-transparent` because `AMenu` paints its own fill, and a second
             fill inside the container's fill is one layer too many.
         -->
-        <AMenu class="hidden overflow-hidden rounded-surface border border-line [&_.ant-menu]:bg-transparent lg:block" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
+        <AMenu class="hidden overflow-hidden border border-line rounded-surface lg:block [&_.ant-menu]:bg-transparent" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
           <AMenu.Item v-for="item in categories" :key="item.value">
             {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
           </AMenu.Item>
@@ -47,7 +47,7 @@
           above had a border — the page read as one bordered thing and one unbordered thing, in that order. The rail
           and this column are the two halves of one page and now share a treatment.
       -->
-      <div class="max-w-3xl min-w-0 w-full stack gap-6 rounded-surface border border-line bg-glass p-5">
+      <div class="max-w-3xl min-w-0 w-full stack gap-6 border border-line rounded-surface bg-glass p-5">
         <!--
           ★ `sr-only` below `lg`, visible at `lg`. In the narrow layout the select directly above already shows the
             current category, so this heading repeated it — two "通用" lines a few pixels apart, which read as a
@@ -55,7 +55,7 @@
             category change (`watch(category) → categoryHeading.focus()`), and a `display:none` element cannot take
             focus, so hiding it visually would drop keyboard readers at the top of the document with no announcement.
         -->
-        <h2 ref="categoryHeading" tabindex="-1" class="m-0 text-base font-semibold outline-none sr-only lg:not-sr-only">
+        <h2 ref="categoryHeading" tabindex="-1" class="sr-only m-0 text-base font-semibold outline-none lg:not-sr-only">
           {{ categories.find(item => item.value === category)?.label }}
         </h2>
 
@@ -244,7 +244,7 @@
 
 <script setup lang="ts">
 import type { ConfigPatch, IpcError } from '@synra/protocol'
-import {  Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
+import { Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import HelpText from '../components/HelpText.vue'
@@ -609,4 +609,3 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', beforeUnload)
 })
 </script>
-

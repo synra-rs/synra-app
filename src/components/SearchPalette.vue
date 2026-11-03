@@ -70,12 +70,12 @@
           -->
           <button
             v-for="item in group.items"
-            :key="item.id"
             :id="optionDomId(item.id)"
+            :key="item.id"
             type="button"
             role="option"
             :aria-selected="item.id === activeId"
-            class="min-h-11 w-full row items-center gap-2 rounded-control border-0 bg-transparent px-2 text-start text-sm hover:bg-surface"
+            class="min-h-11 w-full row items-center gap-2 border-0 rounded-control bg-transparent px-2 text-start text-sm hover:bg-surface"
             :class="{ 'bg-raised': item.id === activeId }"
             @click="choose(item)"
             @mouseenter="activeId = item.id"

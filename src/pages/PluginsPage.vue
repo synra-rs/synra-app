@@ -365,7 +365,7 @@
             ★ The negative inline margin keeps the text on the page's left edge at rest while letting the hover fill
               bleed past it; without it, the padding would indent every plugin relative to the title above them.
           -->
-          <AList.Item class="-mx-3 rounded-surface px-3 py-3 transition-colors @hover:bg-raised">
+          <AList.Item class="rounded-surface px-3 py-3 transition-colors -mx-3 @hover:bg-raised">
             <div class="min-w-0 w-full stack gap-3">
               <div class="min-w-0 row flex-wrap items-center gap-3">
                 <!--

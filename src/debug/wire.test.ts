@@ -9,7 +9,7 @@ function line(overrides: Partial<Parameters<typeof formatWireLine>[0]> = {}) {
     peer: 'dev_b',
     label: '_synra.pair.request',
     bytes: 1536,
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -20,20 +20,20 @@ describe('the wire formatter', () => {
 
   it('marks a sent frame with a cyan arrow and its size', () => {
     const text = formatWireLine(line())
-    expect(text).toContain('\x1b[38;5;45m→\x1b[0m')
+    expect(text).toContain('\x1B[38;5;45m→\x1B[0m')
     expect(text).toContain('_synra.pair.request')
     expect(text).toContain('1.5KB')
-    expect(text).toContain('\x1b[90m')
+    expect(text).toContain('\x1B[90m')
   })
 
   it('marks a received frame with a green arrow', () => {
     const text = formatWireLine(line({ direction: 'received' }))
-    expect(text).toContain('\x1b[38;5;120m←\x1b[0m')
+    expect(text).toContain('\x1B[38;5;120m←\x1B[0m')
   })
 
   it('marks a note with an amber dot and no size', () => {
     const text = formatWireLine(line({ direction: 'note', bytes: 0, label: 'dial failed' }))
-    expect(text).toContain('\x1b[38;5;220m•\x1b[0m')
+    expect(text).toContain('\x1B[38;5;220m•\x1B[0m')
     expect(text).toContain('dial failed')
     expect(text).not.toContain('B')
   })

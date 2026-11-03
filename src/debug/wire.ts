@@ -13,14 +13,14 @@ export interface WireLine {
   bytes: number
 }
 
-const RESET = '\x1b[0m'
-const DIM = '\x1b[90m'
-const WHITE = '\x1b[97m'
-const SENT = '\x1b[38;5;45m'
-const RECEIVED = '\x1b[38;5;120m'
-const NOTE = '\x1b[38;5;220m'
-const NOTE_TEXT = '\x1b[38;5;223m'
-const PEER = '\x1b[38;5;177m'
+const RESET = '\x1B[0m'
+const DIM = '\x1B[90m'
+const WHITE = '\x1B[97m'
+const SENT = '\x1B[38;5;45m'
+const RECEIVED = '\x1B[38;5;120m'
+const NOTE = '\x1B[38;5;220m'
+const NOTE_TEXT = '\x1B[38;5;223m'
+const PEER = '\x1B[38;5;177m'
 
 /** `HH:MM:SS.mmm`, in the reader's own timezone. */
 export function formatWireTime(atMs: number): string {

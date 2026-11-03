@@ -136,5 +136,4 @@ describe('the commands the shell registers', () => {
       expect(reason.length, `${name} has an empty reason`).toBeGreaterThan(10)
     }
   })
-
 })

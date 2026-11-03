@@ -1,402 +1,3 @@
-<script setup lang="ts">
-/**
- * The wire console: a floating bubble on every page, and a bottom drawer that shows the kernel's traffic.
- *
- * # Why a terminal rather than a list
- *
- * The thing being read is a stream of protocol frames: alignment, colour and monospace are what make one frame's shape
- * legible at a glance. `@xterm/xterm` is the same renderer the reference implementation (antfu/node-modules-inspector)
- * and `peon-hall` use, so ANSI colour and scrollback behave the way a reader already expects.
- *
- * # Why the bubble is global
- *
- * Pairing, discovery and transfer failures are not one page's problem. A console mounted inside the devices screen would
- * be absent exactly when a user is looking at settings and wondering why nothing arrives.
- *
- * # Why events are buffered before the drawer opens
- *
- * The failure a user opens the console to see usually happened a moment earlier. Dropping everything until the click
- * would make the console show a healthy silence. The buffer is bounded and cleared when the terminal takes it.
- */
-import type { FitAddon } from '@xterm/addon-fit'
-import type { Terminal } from '@xterm/xterm'
-import type { SequencedKernelEvent } from '@synra/protocol'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-
-import { kernel } from '../kernel'
-import { messages } from '../messages'
-import { useSettingsStore } from '../stores/settings'
-import type { WireLine } from '../debug/wire'
-import { formatWireLine } from '../debug/wire'
-
-const open = ref(false)
-const paused = ref(false)
-const filter = ref<'all' | 'sent' | 'received'>('all')
-const unread = ref(0)
-const lineCount = ref(0)
-const sentCount = ref(0)
-const receivedCount = ref(0)
-const pulse = ref(false)
-const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
-
-const settings = useSettingsStore()
-/** On unless somebody turned it off: the console is a tool with a switch, not a hidden developer mode. */
-const enabled = computed(() => settings.value('ui.debugConsole') !== false)
-
-const host = ref<HTMLDivElement | null>(null)
-const bubble = ref<HTMLButtonElement | null>(null)
-const closeButton = ref<HTMLButtonElement | null>(null)
-const terminal = ref<Terminal | null>(null)
-/** Loaded with the terminal, because xterm is a third of the app's JavaScript and only this drawer uses it. */
-let fitAddon: FitAddon | null = null
-/** Lines heard while the terminal did not exist yet; flushed on mount. */
-const pending: WireLine[] = []
-const MAX_PENDING = 2000
-let stopListening: (() => void) | null = null
-let pulseTimer: number | undefined
-let copyTimer: number | undefined
-
-const words = computed(() => messages.debug)
-
-/**
- * A handful of frames for `?wire-demo=1`, so the drawer can be reviewed without a peer.
- *
- * `import.meta.env.DEV` is replaced at build time, so this branch and its lines are absent from a packaged window.
- */
-function playDemo() {
-  const base = Date.now() - 12_000
-  const lines: WireLine[] = [
-    { atMs: base, direction: 'note', peer: 'local', label: 'scan started · 3000ms', bytes: 0 },
-    { atMs: base + 40, direction: 'note', peer: 'lan', label: 'query', bytes: 0 },
-    { atMs: base + 300, direction: 'note', peer: 'lan', label: 'heard 192.168.0.192:3413', bytes: 0 },
-    { atMs: base + 320, direction: 'received', peer: '7f3a9c21', label: '_synra.device.changed', bytes: 214 },
-    { atMs: base + 900, direction: 'note', peer: '7f3a9c21', label: 'dial 192.168.0.42:47100', bytes: 0 },
-    { atMs: base + 980, direction: 'sent', peer: '7f3a9c21', label: '_synra.pair.request', bytes: 128 },
-    { atMs: base + 1280, direction: 'received', peer: '7f3a9c21', label: '_synra.pair.response', bytes: 42 },
-    { atMs: base + 1300, direction: 'note', peer: '7f3a9c21', label: 'paired · accepted', bytes: 0 },
-    { atMs: base + 4100, direction: 'sent', peer: '7f3a9c21', label: '_synra.session.hello', bytes: 96 },
-    { atMs: base + 4300, direction: 'received', peer: '7f3a9c21', label: '_synra.plugin.list', bytes: 2048 },
-    { atMs: base + 5100, direction: 'sent', peer: '7f3a9c21', label: 'chunk #7', bytes: 65_536 },
-    { atMs: base + 5120, direction: 'received', peer: '7f3a9c21', label: '_synra.transfer.accept', bytes: 64 },
-  ]
-  for (const line of lines)
-    write(line)
-}
-
-/** Whether a line passes the header's filter. */
-function passes(line: WireLine): boolean {
-  if (filter.value === 'all')
-    return true
-  return line.direction === filter.value
-}
-
-function write(line: WireLine) {
-  const term = terminal.value
-  if (!term) {
-    if (pending.length >= MAX_PENDING)
-      pending.shift()
-    pending.push(line)
-    return
-  }
-  if (paused.value || !passes(line))
-    return
-  term.write(`${formatWireLine(line)}\r\n`)
-  lineCount.value += 1
-}
-
-function observe(payload: unknown) {
-  if (!enabled.value)
-    return
-  const event = payload as SequencedKernelEvent | undefined
-  if (!event || event.type !== 'debugWire')
-    return
-  const line = event.payload as WireLine
-  if (line.direction === 'sent')
-    sentCount.value += 1
-  else if (line.direction === 'received')
-    receivedCount.value += 1
-  write(line)
-  if (!open.value) {
-    unread.value += 1
-    pulse.value = true
-    window.clearTimeout(pulseTimer)
-    pulseTimer = window.setTimeout(() => {
-      pulse.value = false
-    }, 900)
-  }
-}
-
-/** Loads xterm on the first open, then opens it into the now-laid-out host. */
-async function ensureTerminal() {
-  if (terminal.value)
-    return
-  const [{ Terminal }, { FitAddon }, _styles] = await Promise.all([
-    import('@xterm/xterm'),
-    import('@xterm/addon-fit'),
-    import('@xterm/xterm/css/xterm.css'),
-  ])
-  await nextTick()
-  if (!host.value)
-    return
-  const term = new Terminal({
-    allowTransparency: true,
-    convertEol: false,
-    cursorBlink: false,
-    disableStdin: true,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
-    fontSize: 12,
-    lineHeight: 1.35,
-    scrollback: 8000,
-    theme: {
-      background: '#080c12',
-      foreground: '#dbe4f0',
-      cursor: '#0b0f14',
-      selectionBackground: 'rgba(120, 180, 255, 0.28)',
-      scrollbarSliderBackground: 'rgba(255, 255, 255, 0.14)',
-      scrollbarSliderHoverBackground: 'rgba(255, 255, 255, 0.28)',
-      scrollbarSliderActiveBackground: 'rgba(255, 255, 255, 0.42)',
-    },
-  })
-  fitAddon = new FitAddon()
-  term.loadAddon(fitAddon)
-  term.open(host.value)
-  terminal.value = term
-  // What arrived before the drawer existed is still worth reading.
-  for (const line of pending) {
-    if (passes(line)) {
-      term.write(`${formatWireLine(line)}\r\n`)
-      lineCount.value += 1
-    }
-  }
-  pending.length = 0
-}
-
-async function fit() {
-  if (!open.value)
-    return
-  await nextTick()
-  try {
-    fitAddon?.fit()
-  } catch {
-    // The drawer is mid-animation; the transitionend below measures again.
-  }
-}
-
-function scrollToEnd() {
-  terminal.value?.scrollToBottom()
-}
-
-async function show() {
-  open.value = true
-  unread.value = 0
-  await ensureTerminal()
-  await fit()
-  await nextTick()
-  // The drawer is a dialog: focus belongs inside it, on the control that closes it.
-  closeButton.value?.focus()
-  // The panel animates for 260ms; measuring only before it ends computes columns from a half-open height.
-  window.setTimeout(() => {
-    void fit()
-    scrollToEnd()
-  }, 280)
-}
-
-function hide() {
-  open.value = false
-  // Returning focus to the bubble is what makes the drawer a round trip rather than a place focus can be lost.
-  void nextTick(() => bubble.value?.focus())
-}
-
-// A switch turned off in Settings closes what it opened; leaving the drawer up would contradict the switch.
-watch(enabled, (on) => {
-  if (!on)
-    hide()
-})
-
-function toggle() {
-  if (open.value)
-    hide()
-  else
-    void show()
-}
-
-function clear() {
-  terminal.value?.clear()
-  pending.length = 0
-  lineCount.value = 0
-  sentCount.value = 0
-  receivedCount.value = 0
-  unread.value = 0
-}
-
-async function copy() {
-  const term = terminal.value
-  if (!term)
-    return
-  const buffer = term.buffer.active
-  const lines: string[] = []
-  for (let y = 0; y < buffer.length; y += 1)
-    lines.push(buffer.getLine(y)?.translateToString(true) ?? '')
-  try {
-    await navigator.clipboard.writeText(lines.join('\n').trimEnd())
-    copyState.value = 'copied'
-  } catch {
-    copyState.value = 'failed'
-  }
-  window.clearTimeout(copyTimer)
-  copyTimer = window.setTimeout(() => {
-    copyState.value = 'idle'
-  }, 1500)
-}
-
-const copyLabel = computed(() => {
-  if (copyState.value === 'copied')
-    return words.value.copied
-  if (copyState.value === 'failed')
-    return words.value.copyFailed
-  return words.value.copy
-})
-
-function onKey(event: KeyboardEvent) {
-  if (event.key === 'Escape' && open.value)
-    hide()
-}
-
-onMounted(async () => {
-  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('wire-demo')) {
-    playDemo()
-    void show()
-  }
-
-  // A shell always has this; a mount test's kernel double may not, and a console that throws would take the page with it.
-  if (typeof kernel.subscribe === 'function')
-    stopListening = await kernel.subscribe('kernel-event', observe)
-  window.addEventListener('keydown', onKey)
-  window.addEventListener('resize', fit)
-})
-
-onBeforeUnmount(() => {
-  stopListening?.()
-  window.removeEventListener('keydown', onKey)
-  window.removeEventListener('resize', fit)
-  window.clearTimeout(pulseTimer)
-  window.clearTimeout(copyTimer)
-  terminal.value?.dispose()
-})
-</script>
-
-<template>
-  <!--
-    Teleported to the body: the shell is a CSS grid with `overflow-hidden`, and a fixed bubble inside a grid cell is
-    clipped by the cell's scroll container in some engines. The console belongs to the window, not to a page's pane.
-  -->
-  <Teleport to="body">
-    <button
-      v-show="!open && enabled"
-      ref="bubble"
-      type="button"
-      class="debug-bubble border-0 bg-transparent"
-      :class="{ 'debug-bubble-pulse': pulse }"
-      :aria-label="words.open"
-      :title="words.open"
-      @click="toggle"
-    >
-      <span class="debug-bubble-glow" aria-hidden="true" />
-      <svg viewBox="0 0 24 24" class="debug-bubble-icon" aria-hidden="true">
-        <path
-          d="M4 6.5 9 11l-5 4.5M12 18h8"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <span v-if="unread > 0" class="debug-bubble-badge">{{ unread > 99 ? '99+' : unread }}</span>
-    </button>
-
-    <div
-      class="debug-layer"
-      :class="{ 'debug-layer-open': open }"
-      :aria-hidden="!open"
-      :inert="!open"
-    >
-      <div class="debug-scrim" @click="hide" />
-
-      <section class="debug-sheet" role="dialog" aria-modal="true" :aria-label="words.title">
-        <div class="debug-grip" aria-hidden="true" />
-
-        <header class="debug-head">
-          <div class="debug-heading">
-            <div class="debug-title">
-              {{ words.title }}
-              <span class="debug-scheme">synra://wire</span>
-            </div>
-          </div>
-
-          <div class="debug-counters" aria-hidden="true">
-            <span class="debug-counter debug-counter-sent">↑ {{ sentCount }}</span>
-            <span class="debug-counter debug-counter-received">↓ {{ receivedCount }}</span>
-            <span class="debug-counter">{{ words.lines(lineCount) }}</span>
-          </div>
-
-          <div class="debug-actions">
-            <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
-              {{ paused ? words.resume : words.pause }}
-            </button>
-            <button type="button" class="debug-action border-0 bg-transparent" @click="clear">{{ words.clear }}</button>
-            <button type="button" class="debug-action border-0 bg-transparent" @click="copy">{{ copyLabel }}</button>
-            <button
-              ref="closeButton"
-              type="button"
-              class="debug-action debug-action-close border-0 bg-transparent"
-              :aria-label="words.close"
-              @click="hide"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-              </svg>
-            </button>
-          </div>
-        </header>
-
-        <div class="debug-filters">
-          <button
-            type="button"
-            class="debug-filter border-0 bg-transparent"
-            :class="{ 'debug-filter-on': filter === 'all' }"
-            @click="filter = 'all'"
-          >
-            {{ words.all }}
-          </button>
-          <button
-            type="button"
-            class="debug-filter debug-filter-sent border-0 bg-transparent"
-            :class="{ 'debug-filter-on': filter === 'sent' }"
-            @click="filter = 'sent'"
-          >
-            {{ words.sent }}
-          </button>
-          <button
-            type="button"
-            class="debug-filter debug-filter-received border-0 bg-transparent"
-            :class="{ 'debug-filter-on': filter === 'received' }"
-            @click="filter = 'received'"
-          >
-            {{ words.received }}
-          </button>
-          <span class="debug-hint">{{ words.hintOpen }}</span>
-        </div>
-
-        <div class="debug-term-wrap">
-          <div ref="host" class="debug-term" />
-          <div v-if="lineCount === 0" class="debug-empty">{{ words.empty }}</div>
-        </div>
-      </section>
-    </div>
-  </Teleport>
-</template>
-
 <style scoped>
 /*
  * The bubble is deliberately the only saturated thing on the page: it is the entry to a diagnostic tool, and a reader
@@ -711,7 +312,6 @@ onBeforeUnmount(() => {
 }
 </style>
 
-<!-- xterm paints its scrollbar into the DOM at runtime, so its width cannot be scoped. -->
 <style>
 .debug-sheet .xterm-scrollable-element > .scrollbar.vertical {
   width: 10px !important;
@@ -723,3 +323,411 @@ onBeforeUnmount(() => {
   border-radius: 9999px;
 }
 </style>
+
+<template>
+  <!--
+    Teleported to the body: the shell is a CSS grid with `overflow-hidden`, and a fixed bubble inside a grid cell is
+    clipped by the cell's scroll container in some engines. The console belongs to the window, not to a page's pane.
+  -->
+  <Teleport to="body">
+    <button
+      v-show="!open && enabled"
+      ref="bubble"
+      type="button"
+      class="debug-bubble border-0 bg-transparent"
+      :class="{ 'debug-bubble-pulse': pulse }"
+      :aria-label="words.open"
+      :title="words.open"
+      @click="toggle"
+    >
+      <span class="debug-bubble-glow" aria-hidden="true" />
+      <svg viewBox="0 0 24 24" class="debug-bubble-icon" aria-hidden="true">
+        <path
+          d="M4 6.5 9 11l-5 4.5M12 18h8"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <span v-if="unread > 0" class="debug-bubble-badge">{{ unread > 99 ? '99+' : unread }}</span>
+    </button>
+
+    <div
+      class="debug-layer"
+      :class="{ 'debug-layer-open': open }"
+      :aria-hidden="!open"
+      :inert="!open"
+    >
+      <div class="debug-scrim" @click="hide" />
+
+      <section class="debug-sheet" role="dialog" aria-modal="true" :aria-label="words.title">
+        <div class="debug-grip" aria-hidden="true" />
+
+        <header class="debug-head">
+          <div class="debug-heading">
+            <div class="debug-title">
+              {{ words.title }}
+              <span class="debug-scheme">synra://wire</span>
+            </div>
+          </div>
+
+          <div class="debug-counters" aria-hidden="true">
+            <span class="debug-counter debug-counter-sent">↑ {{ sentCount }}</span>
+            <span class="debug-counter debug-counter-received">↓ {{ receivedCount }}</span>
+            <span class="debug-counter">{{ words.lines(lineCount) }}</span>
+          </div>
+
+          <div class="debug-actions">
+            <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
+              {{ paused ? words.resume : words.pause }}
+            </button>
+            <button type="button" class="debug-action border-0 bg-transparent" @click="clear">
+              {{ words.clear }}
+            </button>
+            <button type="button" class="debug-action border-0 bg-transparent" @click="copy">
+              {{ copyLabel }}
+            </button>
+            <button
+              ref="closeButton"
+              type="button"
+              class="debug-action debug-action-close border-0 bg-transparent"
+              :aria-label="words.close"
+              @click="hide"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="debug-filters">
+          <button
+            type="button"
+            class="debug-filter border-0 bg-transparent"
+            :class="{ 'debug-filter-on': filter === 'all' }"
+            @click="filter = 'all'"
+          >
+            {{ words.all }}
+          </button>
+          <button
+            type="button"
+            class="debug-filter debug-filter-sent border-0 bg-transparent"
+            :class="{ 'debug-filter-on': filter === 'sent' }"
+            @click="filter = 'sent'"
+          >
+            {{ words.sent }}
+          </button>
+          <button
+            type="button"
+            class="debug-filter debug-filter-received border-0 bg-transparent"
+            :class="{ 'debug-filter-on': filter === 'received' }"
+            @click="filter = 'received'"
+          >
+            {{ words.received }}
+          </button>
+          <span class="debug-hint">{{ words.hintOpen }}</span>
+        </div>
+
+        <div class="debug-term-wrap">
+          <div ref="host" class="debug-term" />
+          <div v-if="lineCount === 0" class="debug-empty">
+            {{ words.empty }}
+          </div>
+        </div>
+      </section>
+    </div>
+  </Teleport>
+</template>
+
+<!-- xterm paints its scrollbar into the DOM at runtime, so its width cannot be scoped. -->
+<script setup lang="ts">
+import type { SequencedKernelEvent } from '@synra/protocol'
+/**
+ * The wire console: a floating bubble on every page, and a bottom drawer that shows the kernel's traffic.
+ *
+ * # Why a terminal rather than a list
+ *
+ * The thing being read is a stream of protocol frames: alignment, colour and monospace are what make one frame's shape
+ * legible at a glance. `@xterm/xterm` is the same renderer the reference implementation (antfu/node-modules-inspector)
+ * and `peon-hall` use, so ANSI colour and scrollback behave the way a reader already expects.
+ *
+ * # Why the bubble is global
+ *
+ * Pairing, discovery and transfer failures are not one page's problem. A console mounted inside the devices screen would
+ * be absent exactly when a user is looking at settings and wondering why nothing arrives.
+ *
+ * # Why events are buffered before the drawer opens
+ *
+ * The failure a user opens the console to see usually happened a moment earlier. Dropping everything until the click
+ * would make the console show a healthy silence. The buffer is bounded and cleared when the terminal takes it.
+ */
+import type { FitAddon } from '@xterm/addon-fit'
+import type { Terminal } from '@xterm/xterm'
+import type { WireLine } from '../debug/wire'
+
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { formatWireLine } from '../debug/wire'
+import { kernel } from '../kernel'
+import { messages } from '../messages'
+import { useSettingsStore } from '../stores/settings'
+
+const open = ref(false)
+const paused = ref(false)
+const filter = ref<'all' | 'sent' | 'received'>('all')
+const unread = ref(0)
+const lineCount = ref(0)
+const sentCount = ref(0)
+const receivedCount = ref(0)
+const pulse = ref(false)
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+
+const settings = useSettingsStore()
+/** On unless somebody turned it off: the console is a tool with a switch, not a hidden developer mode. */
+const enabled = computed(() => settings.value('ui.debugConsole') !== false)
+
+const host = ref<HTMLDivElement | null>(null)
+const bubble = ref<HTMLButtonElement | null>(null)
+const closeButton = ref<HTMLButtonElement | null>(null)
+const terminal = ref<Terminal | null>(null)
+/** Loaded with the terminal, because xterm is a third of the app's JavaScript and only this drawer uses it. */
+let fitAddon: FitAddon | null = null
+/** Lines heard while the terminal did not exist yet; flushed on mount. */
+const pending: WireLine[] = []
+const MAX_PENDING = 2000
+let stopListening: (() => void) | null = null
+let pulseTimer: number | undefined
+let copyTimer: number | undefined
+
+const words = computed(() => messages.debug)
+
+/**
+ * A handful of frames for `?wire-demo=1`, so the drawer can be reviewed without a peer.
+ *
+ * `import.meta.env.DEV` is replaced at build time, so this branch and its lines are absent from a packaged window.
+ */
+function playDemo() {
+  const base = Date.now() - 12_000
+  const lines: WireLine[] = [
+    { atMs: base, direction: 'note', peer: 'local', label: 'scan started · 3000ms', bytes: 0 },
+    { atMs: base + 40, direction: 'note', peer: 'lan', label: 'query', bytes: 0 },
+    { atMs: base + 300, direction: 'note', peer: 'lan', label: 'heard 192.168.0.192:3413', bytes: 0 },
+    { atMs: base + 320, direction: 'received', peer: '7f3a9c21', label: '_synra.device.changed', bytes: 214 },
+    { atMs: base + 900, direction: 'note', peer: '7f3a9c21', label: 'dial 192.168.0.42:47100', bytes: 0 },
+    { atMs: base + 980, direction: 'sent', peer: '7f3a9c21', label: '_synra.pair.request', bytes: 128 },
+    { atMs: base + 1280, direction: 'received', peer: '7f3a9c21', label: '_synra.pair.response', bytes: 42 },
+    { atMs: base + 1300, direction: 'note', peer: '7f3a9c21', label: 'paired · accepted', bytes: 0 },
+    { atMs: base + 4100, direction: 'sent', peer: '7f3a9c21', label: '_synra.session.hello', bytes: 96 },
+    { atMs: base + 4300, direction: 'received', peer: '7f3a9c21', label: '_synra.plugin.list', bytes: 2048 },
+    { atMs: base + 5100, direction: 'sent', peer: '7f3a9c21', label: 'chunk #7', bytes: 65_536 },
+    { atMs: base + 5120, direction: 'received', peer: '7f3a9c21', label: '_synra.transfer.accept', bytes: 64 }
+  ]
+  for (const line of lines)
+    write(line)
+}
+
+/** Whether a line passes the header's filter. */
+function passes(line: WireLine): boolean {
+  if (filter.value === 'all')
+    return true
+  return line.direction === filter.value
+}
+
+function write(line: WireLine) {
+  const term = terminal.value
+  if (!term) {
+    if (pending.length >= MAX_PENDING)
+      pending.shift()
+    pending.push(line)
+    return
+  }
+  if (paused.value || !passes(line))
+    return
+  term.write(`${formatWireLine(line)}\r\n`)
+  lineCount.value += 1
+}
+
+function observe(payload: unknown) {
+  if (!enabled.value)
+    return
+  const event = payload as SequencedKernelEvent | undefined
+  if (!event || event.type !== 'debugWire')
+    return
+  const line = event.payload as WireLine
+  if (line.direction === 'sent')
+    sentCount.value += 1
+  else if (line.direction === 'received')
+    receivedCount.value += 1
+  write(line)
+  if (!open.value) {
+    unread.value += 1
+    pulse.value = true
+    window.clearTimeout(pulseTimer)
+    pulseTimer = window.setTimeout(() => {
+      pulse.value = false
+    }, 900)
+  }
+}
+
+/** Loads xterm on the first open, then opens it into the now-laid-out host. */
+async function ensureTerminal() {
+  if (terminal.value)
+    return
+  const [{ Terminal }, { FitAddon }, _styles] = await Promise.all([
+    import('@xterm/xterm'),
+    import('@xterm/addon-fit'),
+    import('@xterm/xterm/css/xterm.css')
+  ])
+  await nextTick()
+  if (!host.value)
+    return
+  const term = new Terminal({
+    allowTransparency: true,
+    convertEol: false,
+    cursorBlink: false,
+    disableStdin: true,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
+    fontSize: 12,
+    lineHeight: 1.35,
+    scrollback: 8000,
+    theme: {
+      background: '#080c12',
+      foreground: '#dbe4f0',
+      cursor: '#0b0f14',
+      selectionBackground: 'rgba(120, 180, 255, 0.28)',
+      scrollbarSliderBackground: 'rgba(255, 255, 255, 0.14)',
+      scrollbarSliderHoverBackground: 'rgba(255, 255, 255, 0.28)',
+      scrollbarSliderActiveBackground: 'rgba(255, 255, 255, 0.42)'
+    }
+  })
+  fitAddon = new FitAddon()
+  term.loadAddon(fitAddon)
+  term.open(host.value)
+  terminal.value = term
+  // What arrived before the drawer existed is still worth reading.
+  for (const line of pending) {
+    if (passes(line)) {
+      term.write(`${formatWireLine(line)}\r\n`)
+      lineCount.value += 1
+    }
+  }
+  pending.length = 0
+}
+
+async function fit() {
+  if (!open.value)
+    return
+  await nextTick()
+  try {
+    fitAddon?.fit()
+  }
+  catch {
+    // The drawer is mid-animation; the transitionend below measures again.
+  }
+}
+
+function scrollToEnd() {
+  terminal.value?.scrollToBottom()
+}
+
+async function show() {
+  open.value = true
+  unread.value = 0
+  await ensureTerminal()
+  await fit()
+  await nextTick()
+  // The drawer is a dialog: focus belongs inside it, on the control that closes it.
+  closeButton.value?.focus()
+  // The panel animates for 260ms; measuring only before it ends computes columns from a half-open height.
+  window.setTimeout(() => {
+    void fit()
+    scrollToEnd()
+  }, 280)
+}
+
+function hide() {
+  open.value = false
+  // Returning focus to the bubble is what makes the drawer a round trip rather than a place focus can be lost.
+  void nextTick(() => bubble.value?.focus())
+}
+
+// A switch turned off in Settings closes what it opened; leaving the drawer up would contradict the switch.
+watch(enabled, (on) => {
+  if (!on)
+    hide()
+})
+
+function toggle() {
+  if (open.value)
+    hide()
+  else
+    void show()
+}
+
+function clear() {
+  terminal.value?.clear()
+  pending.length = 0
+  lineCount.value = 0
+  sentCount.value = 0
+  receivedCount.value = 0
+  unread.value = 0
+}
+
+async function copy() {
+  const term = terminal.value
+  if (!term)
+    return
+  const buffer = term.buffer.active
+  const lines: string[] = []
+  for (let y = 0; y < buffer.length; y += 1)
+    lines.push(buffer.getLine(y)?.translateToString(true) ?? '')
+  try {
+    await navigator.clipboard.writeText(lines.join('\n').trimEnd())
+    copyState.value = 'copied'
+  }
+  catch {
+    copyState.value = 'failed'
+  }
+  window.clearTimeout(copyTimer)
+  copyTimer = window.setTimeout(() => {
+    copyState.value = 'idle'
+  }, 1500)
+}
+
+const copyLabel = computed(() => {
+  if (copyState.value === 'copied')
+    return words.value.copied
+  if (copyState.value === 'failed')
+    return words.value.copyFailed
+  return words.value.copy
+})
+
+function onKey(event: KeyboardEvent) {
+  if (event.key === 'Escape' && open.value)
+    hide()
+}
+
+onMounted(async () => {
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('wire-demo')) {
+    playDemo()
+    void show()
+  }
+
+  // A shell always has this; a mount test's kernel double may not, and a console that throws would take the page with it.
+  if (typeof kernel.subscribe === 'function')
+    stopListening = await kernel.subscribe('kernel-event', observe)
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('resize', fit)
+})
+
+onBeforeUnmount(() => {
+  stopListening?.()
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('resize', fit)
+  window.clearTimeout(pulseTimer)
+  window.clearTimeout(copyTimer)
+  terminal.value?.dispose()
+})
+</script>

@@ -13,7 +13,7 @@
         Above the actions, because it explains them — "check the invitation" reads differently once you know it was
         the device id that did not parse.
       -->
-      <p v-if="detail" data-testid="error-detail" class="m-0 text-xs break-words">
+      <p v-if="detail" data-testid="error-detail" class="m-0 break-words text-xs">
         {{ detail }}
       </p>
       <!--
