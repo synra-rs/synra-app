@@ -23,6 +23,7 @@
 import type { DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
 
 import type { KernelClient } from './ipc/client'
+import { publishWireLine } from './debug/wire-stream'
 import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
@@ -130,6 +131,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   // ★ The one event with no page of its own: a received file is news wherever the user happens to be. The store keeps the
   // latest and the root draws it; a notice that arrived while another was showing replaces it rather than queueing.
   const notices = useNoticesStore()
+  dispatcher.on('debugWire', event => publishWireLine(event.payload))
   dispatcher.on('notice', (event) => {
     notices.apply(event)
   })

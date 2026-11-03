@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import type { PluginSnapshot, SyncPlanDto } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { reactive } from 'vue'
 
 import PluginSync from './PluginSync.vue'
 
 type PluginProps = InstanceType<typeof PluginSync>['$props']
+beforeEach(() => setActivePinia(createPinia()))
 
 /**
  * `PluginSync` had no test.

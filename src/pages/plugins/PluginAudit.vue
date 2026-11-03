@@ -1,13 +1,13 @@
 <template>
-  <details :open="expanded" class="min-w-0 stack gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-6" data-plugin-audit @toggle="toggle">
-    <summary ref="summary" class="min-h-11 cursor-pointer py-3 text-sm text-ink-dim">
+  <section class="min-w-0 stack gap-2" :aria-label="messages.plugins.audit.title" data-plugin-audit>
+    <h3 ref="summary" tabindex="-1" class="sr-only">
       {{ messages.plugins.audit.title }}
-    </summary>
+    </h3>
     <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="retryAudit" />
-    <p v-if="loading" role="status" class="m-0 text-xs text-ink-dim">
+    <p v-if="loading" role="status" class="m-0 text-sm text-ink-dim">
       {{ messages.plugins.audit.loading }}
     </p>
-    <ul v-if="rows?.length" class="m-0 stack list-none gap-3 p-0 text-xs">
+    <ul v-if="rows?.length" class="m-0 stack list-none gap-3 p-0 text-sm">
       <li v-for="(entry, index) in rows" :key="`${entry.atMs}-${entry.capability}-${index}`" class="min-w-0 stack gap-1">
         <div class="min-w-0 row flex-wrap gap-2">
           <span class="min-w-0 whitespace-normal break-all font-mono">{{ entry.capability }}</span>
@@ -29,7 +29,7 @@
         </details>
       </li>
     </ul>
-    <p v-else-if="rows !== undefined && !loading && !error" class="m-0 text-xs text-ink-dim">
+    <p v-else-if="rows !== undefined && !loading && !error" class="m-0 text-sm text-ink-dim">
       {{ messages.plugins.audit.empty }}
     </p>
     <div v-if="rows?.length" class="row flex-wrap gap-2">
@@ -41,7 +41,7 @@
       </AButton>
     </div>
     <div v-if="confirming" class="stack gap-2 border border-line rounded-surface p-3" role="group" :aria-label="messages.plugins.audit.clear">
-      <p class="m-0 text-xs">
+      <p class="m-0 text-sm">
         {{ messages.plugins.audit.clearDetail }}
       </p>
       <div class="row gap-2">
@@ -53,7 +53,7 @@
         </AButton>
       </div>
     </div>
-  </details>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -66,19 +66,17 @@ import { messages } from '../../messages'
 import { usePluginAudit } from './audit-state'
 
 const props = defineProps<{ pluginId: string, active: boolean }>()
-const { expanded, rows, done, error, busy, loading, clearing, setExpanded, loadMore, clear, retry, retryOperation } = usePluginAudit(kernel, toRef(props, 'pluginId'), toRef(props, 'active'))
+const { rows, done, error, busy, loading, clearing, setExpanded, loadMore, clear, retry, retryOperation } = usePluginAudit(kernel, toRef(props, 'pluginId'), toRef(props, 'active'))
 const confirming = ref(false)
 const summary = ref<HTMLElement>()
 const clearButton = ref<{ $el: HTMLButtonElement }>()
 const cancelButton = ref<{ $el: HTMLButtonElement }>()
 
-watch([expanded, () => props.pluginId], () => {
+watch([() => props.active, () => props.pluginId], () => {
   confirming.value = false
 })
 
-function toggle(event: Event): void {
-  void setExpanded((event.target as HTMLDetailsElement).open)
-}
+watch(() => props.active, active => void setExpanded(active), { immediate: true })
 
 async function askClear(): Promise<void> {
   confirming.value = true

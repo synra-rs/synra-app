@@ -5,42 +5,20 @@
   width: min(24rem, calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
   max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
-
-/*
- * ★ 44px is `09 §3`'s floor for a thumb — the number `min-h-11` carries (11 × 4px spacing). These rules are here
- *   rather than on the utility because a checkbox wrapper and a `<summary>` are not buttons, and the utility only
- *   reaches `.ant-btn`.
- *
- * ★ 639 is `03 §3`'s narrow layout (`<640`); keeping the same number here means the two agmponents switch at the same
- *   width. `check-shapes.ts`'s `touch-breakpoints` holds it.
- */
-@media (pointer: coarse), (max-width: 639px) {
-  .transfer-prompt :deep(.ant-btn),
-  .transfer-prompt :deep(.ant-checkbox-wrapper) {
-    min-height: 44px;
-  }
-  .transfer-prompt :deep(.ant-checkbox-wrapper) {
-    align-items: center;
-  }
-  .transfer-prompt summary {
-    min-height: 44px;
-    align-content: center;
-  }
-}
 </style>
 
 <template>
-  <section v-if="prompt" ref="panel" class="transfer-prompt ring-warning fixed z-50 min-w-0 stack gap-3 overflow-y-auto overscroll-contain rounded-surface bg-surface p-4 shadow-lg ring-1" aria-labelledby="transfer-prompt-title" tabindex="-1">
+  <section v-if="prompt && visible" ref="panel" class="transfer-prompt ring-warning fixed z-50 min-w-0 stack gap-3 overflow-y-auto overscroll-contain rounded-surface bg-surface p-4 shadow-lg ring-1" aria-labelledby="transfer-prompt-title" tabindex="-1">
     <div class="stack gap-1" role="status" aria-live="polite" aria-atomic="true">
-      <h2 id="transfer-prompt-title" class="m-0 text-sm font-medium">
+      <h2 id="transfer-prompt-title" class="m-0 text-base font-medium">
         {{ messages.transfers.prompt.title }}
       </h2>
-      <span v-if="offered.length > 1" class="text-xs text-ink-dim">{{ messages.transfers.prompt.pending(offered.length) }}</span>
-      <span class="break-words text-sm font-medium">{{ prompt.peerName }}</span>
-      <span class="line-clamp-2 break-all text-sm">{{ prompt.fileName }}</span>
+      <span v-if="offered.length > 1" class="text-sm text-ink-dim">{{ messages.transfers.prompt.pending(offered.length) }}</span>
+      <span class="break-words text-base font-medium">{{ prompt.peerName }}</span>
+      <span class="line-clamp-2 break-all text-base">{{ prompt.fileName }}</span>
     </div>
-    <details class="text-xs text-ink-dim">
-      <summary class="min-h-11 cursor-pointer">
+    <details class="text-sm text-ink-dim">
+      <summary class="synra-choice min-h-8 cursor-pointer">
         {{ messages.transfers.prompt.details }}
       </summary>
       <dl class="m-0 stack gap-1 pt-2">
@@ -58,7 +36,7 @@
         </dd>
       </dl>
     </details>
-    <p class="m-0 text-xs text-ink-dim">
+    <p class="m-0 text-sm text-ink-dim">
       {{ messages.transfers.prompt.detail }}
     </p>
     <ACheckbox v-model:checked="always" :disabled="busy || answered">
@@ -73,7 +51,7 @@
         {{ messages.transfers.prompt.reject }}
       </AButton>
     </div>
-    <p v-else class="m-0 text-xs text-ink-dim" role="status">
+    <p v-else class="m-0 text-sm text-ink-dim" role="status">
       {{ messages.transfers.prompt.answered }}
     </p>
     <div class="stack gap-2">
@@ -91,12 +69,14 @@ import { Button as AButton, Checkbox as ACheckbox } from 'ant-design-vue'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
+import { useDialogVisibility } from '../stores/dialogs'
 import { useIntentsStore } from '../stores/intents'
 import ErrorNotice from './ErrorNotice.vue'
 
 const intents = useIntentsStore()
 const offered = computed(() => intents.transfers.filter(entry => entry.direction === 'receive' && entry.state === 'offered'))
 const prompt = computed(() => offered.value[0])
+const visible = useDialogVisibility(computed(() => !!prompt.value), 80)
 const pending = ref<{ id: string, accept: boolean }>()
 const busy = computed(() => pending.value !== undefined)
 const always = ref(false)

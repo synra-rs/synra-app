@@ -49,19 +49,6 @@ describe('settings row', () => {
     wrapper.unmount()
   })
 
-  it('carries the touch floor with its desktop drop, like every other control', () => {
-    // ★ The pair `09 §3` settled on: 44px for a thumb, 32px for a pointer. Asserting only the first would let the
-    // desktop drop be deleted without a failure — the mistake 16.85 corrected. Here the row scopes the rule to the
-    // buttons slotted into it, so the selector is the thing to check.
-    // The row scopes the rule to the buttons slotted into it, so match the selector as a substring of the class list
-    // taken from the element — `html()` escapes the brackets and would never match.
-    const wrapper = mount(SettingsRow, { props: { label: 'Policy' } })
-    const field = wrapper.findAll('div').map(div => div.classes().join(' ')).join(' ').replaceAll(' ', '')
-    expect(field).toContain('[&_.ant-btn]:min-h-11')
-    expect(field).toContain('md:[&_.ant-btn]:min-h-8')
-    wrapper.unmount()
-  })
-
   it('gives feedback a full-width row of its own', () => {
     const wrapper = mount(SettingsRow, {
       props: { label: 'Policy' },

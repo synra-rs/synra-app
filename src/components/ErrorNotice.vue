@@ -13,7 +13,7 @@
         Above the actions, because it explains them — "check the invitation" reads differently once you know it was
         the device id that did not parse.
       -->
-      <p v-if="detail" data-testid="error-detail" class="m-0 break-words text-xs">
+      <p v-if="detail" data-testid="error-detail" class="m-0 break-words text-sm">
         {{ detail }}
       </p>
       <!--
@@ -22,7 +22,7 @@
         as a direction rather than as a button that would do nothing.
       -->
       <!--
-        ★ `[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8` is the same floor every other surface states
+        ★ `` is the same floor every other surface states
           ([09 §3]): 44px where a finger is the pointer, antd's own 32px from `md` up. `size="small"` is 24px, so
           these were the only controls in the interface a thumb could miss — on the one notice that appears when
           something has already gone wrong.
@@ -30,7 +30,7 @@
       <div
         v-if="actions.length > 0"
         data-testid="error-actions"
-        class="row flex-wrap gap-2 pt-1 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
+        class="row flex-wrap gap-2 pt-1"
         :class="{ 'pt-2': detail }"
       >
         <template v-for="(action, index) in actions" :key="index">
@@ -40,7 +40,7 @@
           <AButton v-else-if="action.kind === 'retry'" size="small" type="primary" @click="emit('retry')">
             {{ messages.actions.retry }}
           </AButton>
-          <span v-else class="text-xs text-ink-dim">{{ messages.actions[action.kind] }}</span>
+          <span v-else class="text-sm text-ink-dim">{{ messages.actions[action.kind] }}</span>
         </template>
       </div>
     </template>

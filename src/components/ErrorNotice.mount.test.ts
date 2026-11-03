@@ -92,33 +92,10 @@ describe('error notice actions', () => {
     wrapper.unmount()
   })
 
-  it('gives its actions a finger-sized target', async () => {
-    // ★ `size="small"` is antd's 24px button — below the 44px floor in [09 §3], and this is the one notice that
-    //   appears when something has already gone wrong, often on a phone where the whole width is a thumb.
-    //
-    //   Every other surface states the floor on a wrapper (`[&_.ant-btn]:min-h-11`); this one stated nothing, so its
-    //   buttons were the only ones in the interface a finger could miss. Asserted on the wrapper's class list because
-    //   jsdom does not lay anything out — the classes are what the browser will read.
-    const { wrapper } = await mountNotice([{ kind: 'retry' }])
-    const row = wrapper.find('[data-testid="error-actions"]')
-    expect(row, 'the action row is missing').toBeDefined()
-    expect(row.classes().join(' ')).toContain('[&_.ant-btn]:min-h-11')
-    wrapper.unmount()
-  })
-})
-describe('the kernel explanation', () => {
-  /**
-   * ★ `invalid_argument` is one code and every kind of refusal wears it. Before this, the reader got the code's one
-   * sentence — "Something in the request was not valid." — whether the device id would not parse or the service was
-   * missing, and had nothing to act on. The kernel had already said which; the interface dropped it.
-   */
   async function mountWith(params: unknown, detail?: string) {
     const instance = router()
     await instance.push('/')
-    const wrapper = mount(ErrorNotice, {
-      props: { code: 'invalid_argument', params, detail },
-      global: { plugins: [instance] }
-    })
+    const wrapper = mount(ErrorNotice, { props: { code: 'invalid_argument', params, detail }, global: { plugins: [instance] } })
     await flushPromises()
     return wrapper
   }

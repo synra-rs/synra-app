@@ -1,11 +1,11 @@
 <template>
-  <article class="min-w-0 border-b border-line py-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+  <article class="min-w-0 border-b border-line py-3">
     <div class="min-w-0 row-between flex-wrap gap-3">
       <div class="min-w-0 stack flex-1 gap-1">
-        <h3 class="m-0 truncate text-sm font-medium" :title="card.displayName">
+        <h3 class="m-0 truncate text-base font-medium" :title="card.displayName">
           {{ card.displayName }}
         </h3>
-        <div class="row flex-wrap gap-x-3 gap-y-1 text-xs text-ink-dim">
+        <div class="row flex-wrap gap-x-3 gap-y-1 text-sm text-ink-dim">
           <span>{{ card.platform }}</span>
           <span>{{ card.online ? messages.devices.online : messages.devices.offline }}</span>
           <ATag v-if="card.blocked" color="warning">
@@ -19,17 +19,17 @@
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
       <div class="row flex-wrap items-center gap-2">
-        <AButton v-if="!card.paired && !card.blocked" class="min-w-20 justify-center" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
+        <AButton v-if="!card.paired && !card.blocked" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
           {{ messages.devices.pairing }}
         </AButton>
-        <AButton class="min-w-20 justify-center" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
+        <AButton type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />
         </AButton>
       </div>
     </div>
     <div v-if="expanded" :id="detailsId" class="mt-4 min-w-0 stack gap-4" role="region" :aria-label="messages.devices.detailsFor(card.displayName)">
-      <dl class="grid m-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-[auto_minmax(0,1fr)]">
+      <dl class="grid m-0 gap-x-6 gap-y-3 text-base sm:grid-cols-[auto_minmax(0,1fr)]">
         <dt class="text-ink-dim">
           {{ messages.devices.name }}
         </dt>

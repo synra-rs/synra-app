@@ -8,6 +8,7 @@
 export const search = {
   /** The icon's accessible name, and the dialog's title once it opens. */
   title: 'Search',
+  close: 'Close search',
   /**
    * ★ The `code` chip after this carries the key itself, so this half has to end where a key would start — "Shortcut"
    *   reads "Shortcut /", and the chip is what makes the slash look pressable rather than grammatical.

@@ -1,9 +1,9 @@
 <template>
-  <AButton ref="trigger" size="small" :loading="busy" :disabled="operations.busy.has(plugin.pluginId)" @click="show">
+  <AButton v-if="!triggerless" ref="trigger" size="small" :loading="busy" :disabled="operations.busy.has(plugin.pluginId)" @click="show">
     {{ messages.plugins.syncAction }}
   </AButton>
   <AModal
-    :open="opened"
+    :open="visible"
     :title="messages.plugins.sync.title(plugin.title)"
     :get-container="false"
     :footer="null"
@@ -12,44 +12,44 @@
     :keyboard="!sending"
     @cancel="close"
   >
-    <div class="min-w-0 stack gap-4 [&_.ant-btn]:min-h-11">
-      <p v-if="busy" role="status" class="m-0 text-sm text-ink-dim">
+    <div class="min-w-0 stack gap-4">
+      <p v-if="busy" role="status" class="m-0 text-base text-ink-dim">
         {{ sending ? messages.plugins.syncing : messages.plugins.sync.planning }}
       </p>
       <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="readPlan" />
-      <p v-if="stale" class="m-0 text-sm text-ink-dim">
+      <p v-if="stale" class="m-0 text-base text-ink-dim">
         {{ messages.plugins.sync.stale }}
       </p>
       <ul v-if="plan?.targets.length" class="m-0 stack list-none gap-3 p-0" data-sync-targets>
         <li v-for="target in plan.targets" :key="target.deviceId" class="min-w-0 stack gap-1">
-          <div class="min-w-0 row-between flex-wrap gap-2 text-sm">
+          <div class="min-w-0 row-between flex-wrap gap-2 text-base">
             <span class="min-w-0 break-all">{{ target.displayName || target.deviceId }}</span>
-            <span class="text-xs text-ink-dim">{{ target.online ? messages.plugins.sync.online : messages.plugins.sync.offline }}</span>
+            <span class="text-sm text-ink-dim">{{ target.online ? messages.plugins.sync.online : messages.plugins.sync.offline }}</span>
           </div>
-          <p class="m-0 break-all text-xs text-ink-dim">
+          <p class="m-0 break-all text-sm text-ink-dim">
             {{ target.needsArtifact ? messages.plugins.sync.needed : messages.plugins.sync.current }}
             <span v-if="target.version" class="block">{{ messages.plugins.version }} {{ target.version }}</span>
           </p>
         </li>
       </ul>
-      <p v-if="plan && !plan.targets.length" class="m-0 text-sm text-ink-dim">
+      <p v-if="plan && !plan.targets.length" class="m-0 text-base text-ink-dim">
         {{ messages.plugins.sync.noDevices }}
       </p>
-      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact)" class="m-0 text-sm text-ink-dim">
+      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact)" class="m-0 text-base text-ink-dim">
         {{ messages.plugins.syncNothing }}
       </p>
-      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact && target.online) && !report" class="m-0 text-sm text-ink-dim">
+      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact && target.online) && !report" class="m-0 text-base text-ink-dim">
         {{ messages.plugins.sync.noneOnline }}
       </p>
       <div v-if="report" class="stack gap-2" role="status" data-sync-report>
-        <p class="m-0 text-sm">
+        <p class="m-0 text-base">
           {{ messages.plugins.syncDone(report.updated, report.unchanged, report.failures?.length ?? 0) }}
         </p>
         <ul v-if="report.failures?.length" class="m-0 stack list-none gap-3 p-0">
           <li v-for="failure in report.failures" :key="failure.deviceId" class="min-w-0 stack gap-1">
-            <span class="break-all text-sm">{{ deviceName(failure.deviceId) }}</span>
+            <span class="break-all text-base">{{ deviceName(failure.deviceId) }}</span>
             <ErrorNotice :code="failureOf(failure.error).code" />
-            <details class="text-xs text-ink-dim">
+            <details class="text-sm text-ink-dim">
               <summary class="min-h-11 cursor-pointer py-3">
                 {{ messages.plugins.sync.failureDetails }}
               </summary>
@@ -85,10 +85,12 @@ import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import ErrorNotice from '../../components/ErrorNotice.vue'
 import { kernel } from '../../kernel'
 import { messages } from '../../messages'
+import { useDialogVisibility } from '../../stores/dialogs'
 import { planSync, runSync } from './actions'
 
-const props = defineProps<{ plugin: PluginSnapshot, operations: ReturnType<typeof usePluginOperations> }>()
+const props = defineProps<{ plugin: PluginSnapshot, operations: ReturnType<typeof usePluginOperations>, triggerless?: boolean }>()
 const opened = ref(false)
+const visible = useDialogVisibility(opened, 50)
 const plan = ref<SyncPlanDto>()
 const report = ref<SyncReport>()
 const error = ref<Failure>()
@@ -182,4 +184,6 @@ function failureOf(value: unknown): Failure {
 function detailOf(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? ''
 }
+
+defineExpose({ show })
 </script>

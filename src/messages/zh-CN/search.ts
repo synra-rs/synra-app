@@ -1,4 +1,5 @@
 export const search = {
+  'search.close': '关闭搜索',
   'search.title': '搜索',
   'search.placeholder': '搜索',
   'search.shortcut': '/',

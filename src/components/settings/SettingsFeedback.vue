@@ -5,11 +5,11 @@
       means the component does not depend on a caller four levels up, which is precisely how `ErrorNotice` became the
       one control a thumb could miss (16.151).
   -->
-  <div v-if="error || saved || checkRequired" class="min-w-0 stack gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" aria-live="polite">
+  <div v-if="error || saved || checkRequired" class="min-w-0 stack gap-2" aria-live="polite">
     <ErrorNotice v-if="error" :code="error.code" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
-    <span v-else-if="saved" class="text-xs text-ink-dim">{{ messages.settings.edit.saved }}</span>
+    <span v-else-if="saved" class="text-sm text-ink-dim">{{ messages.settings.edit.saved }}</span>
     <template v-if="checkRequired">
-      <span class="text-xs text-ink-dim">{{ messages.settings.edit.checkDetail }}</span>
+      <span class="text-sm text-ink-dim">{{ messages.settings.edit.checkDetail }}</span>
       <AButton :loading="busy" @click="emit('check')">
         {{ messages.settings.edit.check }}
       </AButton>

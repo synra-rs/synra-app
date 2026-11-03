@@ -43,7 +43,7 @@ export type Outcome<T>
     | { readonly ok: false, readonly failure: Failure }
 
 /** Turns a failed `CallResult` into the shape the notice renders. */
-function failureOf(error: {
+export function failureOf(error: {
   code: string
   message: string
   actions?: readonly SuggestedAction[] | undefined

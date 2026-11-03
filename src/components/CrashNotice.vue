@@ -9,7 +9,7 @@
     type="warning"
     show-icon
     :message="messages.crash.title"
-    class="mb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8"
+    class="mb-4"
   >
     <template #description>
       <div class="stack gap-2">
@@ -19,7 +19,7 @@
           <li
             v-for="report in notices"
             :key="`${report.atMs}-${report.location ?? ''}`"
-            class="stack gap-1 text-xs"
+            class="stack gap-1 text-sm"
           >
             <span class="text-ink-dim font-mono">
               {{ formatDateTime(report.atMs) }} · {{ report.version }}
@@ -29,15 +29,15 @@
           </li>
         </ul>
 
-        <span v-if="bundlePath" class="text-xs text-ink-dim font-mono">{{ bundlePath }}</span>
+        <span v-if="bundlePath" class="text-sm text-ink-dim font-mono">{{ bundlePath }}</span>
         <!-- What the file holds, next to where it went: a bundle that silently left a section out reads as complete. -->
         <template v-if="bundleSections">
-          <span class="text-xs text-ink-dim">{{ messages.crash.bundleIncluded(bundleSections.included.join('; ')) }}</span>
-          <span v-if="bundleSections.excluded.length > 0" class="text-xs text-ink-dim">
+          <span class="text-sm text-ink-dim">{{ messages.crash.bundleIncluded(bundleSections.included.join('; ')) }}</span>
+          <span v-if="bundleSections.excluded.length > 0" class="text-sm text-ink-dim">
             {{ messages.crash.bundleExcluded(bundleSections.excluded.join('; ')) }}
           </span>
         </template>
-        <span v-if="failure" class="text-error text-xs">{{ failure }}</span>
+        <span v-if="failure" class="text-error text-sm">{{ failure }}</span>
 
         <div class="row flex-wrap gap-2">
           <AButton size="small" @click="details = !details">

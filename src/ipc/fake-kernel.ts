@@ -1,66 +1,24 @@
-/**
- * A kernel that is not there.
- *
- * # What this is for
- *
- * The roadmap puts a fake kernel in M0 so that the interface is not the thing that is waiting at the end. Four pages that
- * render against snapshots are worth building now, because every later milestone then has a place to put its work
- * instead of inventing one.
- *
- * # Why it implements `Bridge` and nothing else
- *
- * `Bridge` is the named seam `KernelClient` calls through. A fake that implemented the client itself would be testing a
- * fake — the parts worth testing are the error mapping, the retry classification and the listen-then-snapshot ordering,
- * and all three live *below* `Bridge`. So the fake is a bridge, and everything above it is the real code.
- *
- * # Why it answers real command names
- *
- * `scripts/check-shapes.ts` compares every command this repository names against the kernel's own list, and a name that
- * drifts is a call that fails at runtime with "command not found" and points at neither file. A fake that invented
- * `getDevices` would pass every test and teach the interface a command the kernel does not have — so this one answers
- * the 40 names that are declared.
- *
- * # Why the data is in a file beside this one
- *
- * The tables were the longest part of this file and the least informative: a reader looking for what the fake *does* had
- * to scroll past a device list to find it. They are in `fake-kernel-fixtures.ts`, which only this file imports — the
- * `fake-quarantine` check in `scripts/check-shapes.ts` allows one production file to name the fake, and this is it.
- */
-
-import type { AuditEntryDto, DevicesSnapshot, ScanOptions, ScanState, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
-
+import type { SequencedKernelEvent } from '@synra/protocol'
 import type { Bridge } from './client'
 import { KERNEL_EVENT_CHANNEL } from './channel'
 import {
-  DEVICES,
-  IDENTITY,
   INTENT,
   INTENTS,
-  PLUGIN_AUDIT,
-  PLUGINS,
   TRANSFERS
 } from './fake-kernel-fixtures'
 import { PreviewConfig } from './preview-config'
+import { PreviewDevices } from './preview-devices'
+import { PreviewPlugins } from './preview-plugins'
 
-/**
- * The arguments the shell requires, per command — the half of the contract this fake used to ignore.
- *
- * ★ **Why the fake checks this at all.**
- *
- * `#[tauri::command]` deserializes every argument *before* the command body runs, so a call that is missing one is
- * rejected by the bridge — `invalid args \`opts\` for command \`devices_scan_start\`: command devices_scan_start missing
- * required key opts` — and a rejection is not a refusal value. `DevicesPage.vue` called `devices_scan_start` with no
- * arguments at all for as long as it did because this fake answered anyway: every test was green, `pnpm dev` scanned
- * happily, and the first run against the real shell said "The interface could not reach the kernel". A fake that is
- * **more permissive** than the thing it stands in for is the one failure it cannot catch, so the names here are the
- * shell's own (`src-tauri/src/shell.rs`), and `scripts/check-shapes.ts` compares this table against those wrapper
- * signatures in both directions.
- *
- * The keys are camelCase because that is the rename rule `#[tauri::command]` applies to a parameter name: `scan_id` on the
- * Rust side is `scanId` over the wire.
- */
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   config_set: ['patch'],
+  devices_pair: ['deviceId'],
+  devices_forget: ['deviceId'],
+  devices_pairing_respond: ['accepted'],
+  plugins_enable: ['pluginId'],
+  plugins_disable: ['pluginId'],
+  plugins_consent_respond: ['pluginId', 'granted'],
+  plugins_install: ['source'],
   devices_scan_start: ['opts'],
   devices_scan_cancel: ['scanId'],
   intent_dispatch: ['source'],
@@ -83,43 +41,15 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   plugins_sync_run: ['plan'],
   plugins_catalog_search: ['query'],
   plugins_request_registry_search: ['query'],
-  // The removal takes both arguments and the shell refuses without either, so the fake must require them too — this is
-  // the check that keeps a dev-build click from succeeding with a call the real shell would reject.
   plugins_uninstall: ['pluginId', 'removeData'],
   diag_export: ['options']
 }
-
-/**
- * A `Bridge` that answers from constants.
- *
- * # Why the constants are copied per call rather than shared
- *
- * `applySnapshot` replaces the array it is given, and a component that sorted one in place would edit the constant that
- * every later call returns. Copying costs three devices and makes the fake safe to hold across tests.
- */
 export class FakeKernel implements Bridge {
+  readonly #devices = new PreviewDevices((type, payload) => this.#emit(type, payload))
+  readonly #plugins = new PreviewPlugins((type, payload) => this.#emit(type, payload))
   readonly #config = new PreviewConfig()
-  readonly #audit = new Map<string, AuditEntryDto[]>(Object.entries(PLUGIN_AUDIT).map(([id, rows]) => [id, rows.map(row => ({ ...row }))]))
-  /** Handlers by channel, so `listen` can hand back an unsubscribe that actually unsubscribes. */
   readonly #handlers = new Map<string, Set<(payload: unknown) => void>>()
-
-  /** Monotonic, because the dispatcher's judgement is a function of it. */
   #seq = 0
-
-  /** One admitted scan, with completion published by its timer. */
-  #scanTimer: ReturnType<typeof setInterval> | undefined
-  #scan: ScanState | undefined
-  #scanNumber = 0
-  #scanCancelled = false
-
-  /**
-   * Refuses a call that is missing an argument the shell requires.
-   *
-   * The message is the one `tauri::Error::InvalidArgs` formats: Tauri rejects the invoke with that string, and the client
-   * classifies a rejection that is not an `IpcError` as `error.bridgeFailed` — which is the sentence the user saw. It is
-   * an `Error` here rather than a bare string because this is TypeScript, and `bridgeFailure` reads `thrown.message`
-   * either way, so the interface cannot tell the difference.
-   */
   #requireArguments(command: string, args?: Readonly<Record<string, unknown>>): void {
     for (const key of REQUIRED_ARGS[command] ?? []) {
       if (args?.[key] === undefined) {
@@ -131,83 +61,25 @@ export class FakeKernel implements Bridge {
   }
 
   async invoke(command: string, args?: Readonly<Record<string, unknown>>): Promise<unknown> {
-    // First, because this is the order the shell has: the bridge deserializes the arguments and only then runs the
-    // command. See `REQUIRED_ARGS`.
     this.#requireArguments(command, args)
-
+    if (command.startsWith('devices_') || command === 'identity_get')
+      return this.#devices.invoke(command, args)
+    if (command.startsWith('plugins_'))
+      return this.#plugins.invoke(command, args)
     switch (command) {
-      case 'identity_get':
-        return { ...IDENTITY }
-      case 'devices_snapshot':
-        return this.#devicesSnapshot()
-      case 'devices_scan_start': {
-        // Cached reads do not acquire or interrupt the admitted network scanner.
-        const opts = args?.opts as ScanOptions | undefined
-        if (opts?.cachedOnly === true || opts?.timeoutMs === 0) {
-          return 'scan-cached'
-        }
-        return this.#startScan()
-      }
-      case 'devices_scan_cancel':
-        if (!this.#scan || this.#scan.scanId !== args?.scanId)
-          throw Object.assign(new Error('error.invalid_argument'), { code: 'invalid_argument', retryable: false, params: { scanId: args?.scanId, running: this.#scan?.scanId }, actions: [] })
-        this.#scanCancelled = true
-        return null
-      case 'plugins_publishers':
-        // ★ A bare array, `Many`: an empty list is a valid answer, not a missing one.
-        return []
-      case 'plugins_catalog_search':
-      case 'plugins_request_registry_search':
-        // A search that finds nothing is an answer, not a refusal; the page draws its own empty state.
-        return []
-      case 'plugins_audit': {
-        const offset = Number(args?.offset ?? 0)
-        const limit = Number(args?.limit ?? 20)
-        return (this.#audit.get(String(args?.pluginId)) ?? []).slice(offset, offset + limit).map(row => ({ ...row }))
-      }
-      case 'plugins_audit_clear':
-        this.#audit.delete(String(args?.pluginId))
-        return null
-      case 'plugins_sync_plan':
-        return {
-          pluginId: String(args?.pluginId),
-          targets: DEVICES.filter(device => device.paired).map(device => ({
-            deviceId: device.deviceId,
-            displayName: device.displayName,
-            online: device.online,
-            needsArtifact: true
-          }))
-        } satisfies SyncPlanDto
-      case 'plugins_sync_run': {
-        const plan = args?.plan as SyncPlanDto
-        return {
-          updated: plan.targets.filter(target => target.online && target.needsArtifact).length,
-          unchanged: plan.targets.filter(target => !target.needsArtifact).length,
-          failures: plan.targets.filter(target => !target.online && target.needsArtifact).map(target => ({
-            deviceId: target.deviceId,
-            error: { code: 'unavailable', message: 'error.unavailable', retryable: true }
-          }))
-        } satisfies SyncReport
-      }
       case 'diag_export':
-        // `One`: a path and the two section lists. A fake that answered `null` would make the result panel untestable in
-        // the dev build, and the shape here is the one `DiagExportResult` declares.
         return {
           path: 'synra-diagnostics.json',
           included: ['environment', 'config', 'devices', 'plugins'],
           excluded: []
         }
       case 'diag_logs_tail':
-        // `Many`: a bare array of lines. Empty is an answer too — the page has its own sentence for it.
         return []
       case 'diag_crash_dismiss':
-        // `Unit`: the reports are gone, and there is nothing to return.
         return null
       case 'diag_crashes':
-        // `Many`: a bare array. A fresh dev installation has no crash report, which is the ordinary case.
         return []
       case 'diag_probes':
-        // `One`: the report the page renders. Two statuses, so a caller that ignored `status` still sees both branches.
         return {
           results: [
             { name: 'tcp_port_available', status: 'ok', detail: 'a free port was found' },
@@ -219,96 +91,27 @@ export class FakeKernel implements Bridge {
             }
           ]
         }
-      case 'plugins_uninstall':
-        // `One`: the removal's report. The fake echoes the decision and claims no bytes — the page prints what it is
-        // given, so a made-up number here would show up in the dev build as if it were measured.
-        return {
-          bytesFreed: 0,
-          dataKept: args?.removeData !== true,
-          leftovers: []
-        }
-      case 'plugins_publisher_decide':
-        return {}
-      case 'plugins_preview':
-        // The permissions a preview shows, in the kernel's own shape. A fake that answered nothing would make the
-        // confirmation dialog untestable in every page that opens it.
-        return {
-          pluginId: '@acme/hello',
-          version: '1.0.0',
-          title: 'Hello',
-          publisher: '@acme',
-          capabilities: ['log:*'],
-          headless: true,
-          hasUi: false
-        }
-      case 'plugins_updates':
-        // `Many`: the cached result of the last pass. None is the ordinary answer, and it is not an error.
-        return []
-      case 'plugins_check_update':
-        // `Maybe`: "no update" is `null`, and the fake answers the ordinary case rather than inventing one.
-        return null
-      case 'plugins_update':
-        // `One`: the shell returns the install report, so the caller can read the version and any warning. A fake that
-        // answered `null` here would let the page compile against a shape the kernel does not send.
-        return {
-          pluginId: String((args as { pluginId?: unknown } | undefined)?.pluginId ?? '@acme/hello'),
-          version: '1.2.0',
-          warnings: [],
-          enabled: false
-        }
-      case 'plugins_reload':
-        // `One`: the answer is the card, and the fake answers the plugin the caller asked about.
-        return { ...PLUGINS[0] }
-      case 'plugins_list':
-        // ★ A bare array, because the kernel's own table says this command returns `Many`.
-        //
-        // `crates/synra-ipc/src/command.rs` declares the payload's arity per command: `"plugins_list" => Plugins, Host,
-        // Many, false`, and the shell's signature is `Result<Vec<PluginSnapshot>, IpcError>`. `Many` means the payload
-        // *is* the list — there is no envelope field to read it from.
-        //
-        // This used to answer `{ plugins: […] }`. That shape matched an earlier `PluginsPage.vue` which read
-        // `answer.value.plugins`, so every test passed and the real app crashed with `t.value is not iterable` the
-        // moment it ran against a real kernel. A fake that agrees with the interface instead of with the contract is
-        // the one failure mode a fake cannot catch by itself — which is why `commands.test.ts` now asserts every shape
-        // here against `command.rs`.
-        return PLUGINS.map(plugin => ({ ...plugin }))
       case 'intent_dispatch':
-        // `One` id: the board's identifier for the intent the share became.
         return '11111111-1111-4111-8111-111111111111'
       case 'intent_decide':
-        // `Unit`: the board records the decision and publishes its own update.
         return null
       case 'intent_list':
-        // ★ A bare array, because the contract says this command returns `Many` — the shape the home page got wrong.
-        //
-        // The page used to call `intent_snapshot` (which takes an identifier and answers about *one* intent) with no
-        // arguments and read `answer.value.intents`, an envelope no command sends. `intent_list` is the command that was
-        // missing, and this is what it answers with.
         return INTENTS.map(intent => ({ ...intent }))
       case 'intent_snapshot':
-        // `One`, and it takes an `intent_id`: the command answers about *one* intent rather than listing them.
         return { ...INTENT }
       case 'transfer_respond':
-        // The answer is nothing; the row leaves through the `transferFinished` event the kernel will publish.
         return {}
       case 'transfer_list':
-        // ★ A bare array, for the same reason as `plugins_list` above: `Many`.
         return TRANSFERS.map(transfer => ({ ...transfer }))
       case 'transfer_received':
-        // `Many`: an empty inbox is the ordinary fresh-install case.
         return []
       case 'transfer_open':
-        // `Unit`: the platform did the opening, and there is nothing to return.
         return null
       case 'transfer_reveal':
-        // `Unit`: the platform opened a file manager, and there is nothing to return.
         return null
       case 'transfer_discard':
-        // `Unit`: the file is gone, and there is nothing to return.
         return null
       case 'transfer_send_text':
-        // `One` is one value, and the shell returns the transfer's id — a string. The page does not read it, but the fake
-        // still answers the shape the contract allows rather than a `null` the shell never returns.
         return '55555555-5555-4555-8555-555555555555'
       case 'transfer_send_file':
         return '66666666-6666-4666-8666-666666666666'
@@ -322,9 +125,6 @@ export class FakeKernel implements Bridge {
         return null
       }
       default:
-        // A refusal, in the kernel's own shape, rather than a rejection: the client checks for it and a fake that
-        // rejected would teach the interface that an unknown command throws. `unsupported` because that is what this
-        // kernel is saying — it does not have that command — rather than that the argument was malformed.
         return {
           code: 'unsupported',
           message: 'error.commandNotFound',
@@ -341,69 +141,11 @@ export class FakeKernel implements Bridge {
       this.#handlers.set(event, handlers)
     }
     handlers.add(handler)
-    // A function rather than a bare `delete`, because a caller that unsubscribes twice must not remove a handler some
-    // other listener still owns.
     return () => {
       handlers?.delete(handler)
     }
   }
 
-  /** The device list as the kernel spells it: `devices`, not `cards`, and the identity alongside. */
-  #devicesSnapshot(): DevicesSnapshot {
-    return {
-      identity: { ...IDENTITY },
-      devices: DEVICES.map(device => ({ ...device })),
-      ...(this.#scan ? { scanning: { ...this.#scan } } : {})
-    }
-  }
-
-  /**
-   * A scan that takes about a second and finds one device on the way.
-   *
-   * The point is the *events*, not the timing: a page that renders correctly against a static snapshot proves nothing
-   * about the listen-then-snapshot ordering or the sequence tracker, and those are the parts that are hardest to notice
-   * being wrong.
-   */
-  #startScan(): string {
-    if (this.#scan)
-      throw Object.assign(new Error('error.rate_limited'), { code: 'rate_limited', retryable: false, params: { running: this.#scan.scanId }, actions: [] })
-    const scanId = `preview-scan-${++this.#scanNumber}`
-    const totalMs = 900
-    const startedAt = Date.now()
-    this.#scanCancelled = false
-    this.#scan = { scanId, elapsedMs: 0, totalMs, found: 0 }
-    this.#emit('scanUpdated', this.#scan)
-
-    this.#scanTimer = setInterval(() => {
-      const elapsedMs = Date.now() - startedAt
-      if (this.#scanCancelled || elapsedMs >= totalMs) {
-        const cancelled = this.#scanCancelled
-        this.#stopScan()
-        this.#emit('scanUpdated', { scanId, elapsedMs, totalMs, found: cancelled ? 0 : 1 })
-        if (!cancelled)
-          this.#emit('deviceCardUpdated', { ...DEVICES[1]!, lastSeenMs: Date.now() })
-        return
-      }
-      this.#scan = { scanId, elapsedMs, totalMs, found: 0 }
-      this.#emit('scanUpdated', this.#scan)
-    }, 300)
-    return scanId
-  }
-
-  #stopScan(): void {
-    this.#scan = undefined
-    if (this.#scanTimer !== undefined) {
-      clearInterval(this.#scanTimer)
-      this.#scanTimer = undefined
-    }
-  }
-
-  /**
-   * Publishes one event the way the kernel would.
-   *
-   * Flattened, because `KernelEventEnvelope` and `KernelEvent` are one object on the wire — the interface's dispatcher
-   * reads `seq` off the same value it switches on.
-   */
   #emit(type: SequencedKernelEvent['type'], payload: unknown): void {
     this.#seq += 1
     const event = { type, payload, seq: this.#seq, at: Date.now() }

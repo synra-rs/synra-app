@@ -51,4 +51,10 @@ export default antfu({
       'jsonc/comma-dangle': ['warn', 'never']
     }
   }
+}, {
+  files: ['**/*.testkit.ts'],
+  rules: {
+    // Mock registration must finish before dynamically importing the component under test.
+    'antfu/no-top-level-await': 'off'
+  }
 })

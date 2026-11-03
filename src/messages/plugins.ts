@@ -3,7 +3,10 @@
  *
  * One label per machine fact, so no two of them are ever joined by a separator (R21).
  */
+import { workflow } from './plugin-workflow'
+
 export const plugins = {
+  workflow,
   title: 'Plugins',
   installHeading: 'Install plugin',
   /**

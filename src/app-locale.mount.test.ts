@@ -72,9 +72,10 @@ it('gives the search entry a full-size target', async () => {
   try {
     await flushPromises()
     const entry = wrapper.get('[data-testid="search-entry"]')
-    expect(entry.classes()).toContain('min-h-11')
-    // The desktop drop, so this entry is not taller than the nav items beside it.
-    expect(wrapper.html()).toContain('md:min-h-8')
+    expect(entry.attributes('aria-label')).toBe(messages.search.title)
+    await entry.trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[role="combobox"]')).not.toBeNull()
   }
   finally {
     wrapper.unmount()

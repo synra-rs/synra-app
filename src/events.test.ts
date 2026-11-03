@@ -11,6 +11,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
+import { subscribeWireLines } from './debug/wire-stream'
 import { startEvents } from './events'
 import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { KernelClient } from './ipc/client'
@@ -49,6 +50,20 @@ function card(id: string): DeviceCard {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+})
+
+it('routes diagnostic frames without starting snapshot reads', async () => {
+  const { client, invoke, listeners } = harness()
+  const line = { atMs: 1, direction: 'sent', peer: 'peer', label: 'pair', bytes: 4 }
+  const observe = vi.fn()
+  const unsubscribe = subscribeWireLines(observe)
+  const started = await startEvents(client)
+  invoke.mockClear()
+  listeners.get(KERNEL_EVENT_CHANNEL)!({ seq: 1, at: 1, type: 'debugWire', payload: line })
+  expect(observe).toHaveBeenCalledWith(line)
+  expect(invoke).not.toHaveBeenCalled()
+  unsubscribe()
+  await started.stop()
 })
 
 describe('the event stream', () => {

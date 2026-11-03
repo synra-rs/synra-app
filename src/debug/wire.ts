@@ -5,13 +5,9 @@
  * colour code that a test can read is the only way to know a line is green because it was *received* rather than because
  * it happened to look green.
  */
-export interface WireLine {
-  atMs: number
-  direction: string
-  peer: string
-  label: string
-  bytes: number
-}
+import type { KernelEvent } from '@synra/protocol'
+
+export type WireLine = Extract<KernelEvent, { type: 'debugWire' }>['payload']
 
 const RESET = '\x1B[0m'
 const DIM = '\x1B[90m'

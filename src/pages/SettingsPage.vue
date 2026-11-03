@@ -1,64 +1,28 @@
 <template>
-  <!--
-    A form page, not a workspace. [03 §3](../../design-docs/ui-design/03-shell-and-navigation.md) gives forms 640–768px
-    and warns against stretching controls across a wide window: declaring the workspace width here pushed each row's
-    switch ~1000px away from its label.
-
-    The width is the rail plus the reading column plus the grid gap, not the reading measure alone: the rail is
-    `max-content` so the English labels ("Device and security") are not truncated, and a page narrower than
-    rail + gap + 768 would squeeze that column and reintroduce the truncation this page was just fixed for.
-  -->
-  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="form">
+  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4" data-page-width="form">
     <PageHeader :title="messages.settings.title">
-      <span v-if="hasDrafts" class="text-xs text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
+      <span v-if="hasDrafts" class="text-sm text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
     </PageHeader>
     <div v-if="readError" class="stack gap-2">
       <SettingsFeedback :error="readError" />
       <AButton :loading="loading" @click="load">
         {{ messages.actions.retry }}
       </AButton>
-    </div>    <!--
-      The category column is sized by its labels, not by a fixed 10rem: "Device and security" and "Plugins and sources"
-      are wider than the Chinese labels, and a fixed track truncated them to "Device and sec…" in English while looking
-      right in Chinese. `max-content` lets the longest label set the width; `minmax(0,1fr)` keeps the body able to shrink.
-    -->
+    </div>
     <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[max-content_minmax(0,1fr)] lg:gap-8">
       <nav :aria-label="messages.settings.navigation" class="min-w-0">
-        <!-- ★ `lg:hidden` on the label as well as the select: the pair only exists in the narrow layout. Left visible
-             at the wide width, the label had nothing to name (its select is hidden) and became a bare clickable
-             element announced as "Settings category" beside a menu that had no name of its own — seen in
-             `bsk_inspect`'s tree as `button "设置分类"` next to `navigation "设置分类"`. -->
         <label for="settings-category" class="sr-only lg:hidden">{{ messages.settings.navigation }}</label>
         <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
-        <!--
-          ★ The left rail gets a container like every other grouped surface on the page. It was a bare `AMenu` floating
-            on the background while the warning above it had a border and the right column had nothing — three panel
-            treatments on one screen. `[&_.ant-menu]:bg-transparent` because `AMenu` paints its own fill, and a second
-            fill inside the container's fill is one layer too many.
-        -->
         <AMenu class="hidden overflow-hidden border border-line rounded-surface lg:block [&_.ant-menu]:bg-transparent" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
           <AMenu.Item v-for="item in categories" :key="item.value">
             {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
           </AMenu.Item>
         </AMenu>
       </nav>
-      <!--
-        ★ The content column is a surface too. Left as a bare column it floated on the background while the warning
-          above had a border — the page read as one bordered thing and one unbordered thing, in that order. The rail
-          and this column are the two halves of one page and now share a treatment.
-      -->
       <div class="max-w-3xl min-w-0 w-full stack gap-6 border border-line rounded-surface bg-glass p-5">
-        <!--
-          ★ `sr-only` below `lg`, visible at `lg`. In the narrow layout the select directly above already shows the
-            current category, so this heading repeated it — two "通用" lines a few pixels apart, which read as a
-            rendering mistake rather than a title. `sr-only` rather than `hidden`: this is where focus lands after a
-            category change (`watch(category) → categoryHeading.focus()`), and a `display:none` element cannot take
-            focus, so hiding it visually would drop keyboard readers at the top of the document with no announcement.
-        -->
-        <h2 ref="categoryHeading" tabindex="-1" class="sr-only m-0 text-base font-semibold outline-none lg:not-sr-only">
+        <h2 :ref="setCategoryHeading" tabindex="-1" class="sr-only m-0 text-base font-semibold">
           {{ categories.find(item => item.value === category)?.label }}
         </h2>
-
         <div v-show="category === 'general'" class="min-w-0 stack gap-7" data-testid="settings-general">
           <SettingsGroup :title="messages.settings.preferences">
             <SettingsRow :label="messages.settings.field.name" for-id="device-name">
@@ -68,12 +32,6 @@
                   <AButton type="primary" :loading="busy.name" :disabled="needsRead.name || !nameDirty || !nameDraft.trim()" @click="saveName">
                     {{ nameConflict ? messages.settings.edit.overwrite : messages.settings.field.save }}
                   </AButton>
-                  <!--
-                    ★ The conflict sentence below offers two ways out — "load the current value, or overwrite with this
-                    draft" — but this row only had the second. The other two fields that can conflict (registry, audit
-                    retention) both swap their button to `loadCurrent`; a name conflict left overwriting as the only move,
-                    which loses whatever the other window wrote.
-                  -->
                   <AButton v-if="nameConflict" :disabled="busy.name" @click="resetName">
                     {{ messages.settings.edit.loadCurrent }}
                   </AButton>
@@ -81,10 +39,10 @@
                     {{ messages.settings.field.cancel }}
                   </AButton>
                 </div>
-                <span v-if="nameConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
+                <span v-if="nameConflict" class="text-warning text-sm">{{ messages.settings.edit.conflict }}</span>
               </template>
               <div v-else-if="identity" class="min-w-0 row flex-wrap justify-end gap-2">
-                <span class="min-w-0 break-all text-sm">{{ identity.displayName }}</span>
+                <span class="min-w-0 break-all text-base">{{ identity.displayName }}</span>
                 <AButton :disabled="busy.name" @click="startRename">
                   {{ messages.settings.field.rename }}
                 </AButton>
@@ -127,13 +85,12 @@
             </SettingsRow>
           </SettingsGroup>
         </div>
-
         <div v-show="category === 'security'" class="min-w-0 stack gap-7" data-testid="settings-security">
           <SettingsGroup :title="messages.settings.trusted.title">
-            <p class="m-0 pb-3 text-xs text-ink-dim">
+            <p class="m-0 pb-3 text-sm text-ink-dim">
               {{ messages.settings.trusted.detail }}
             </p>
-            <p v-if="!trusted.length" class="m-0 py-3 text-sm text-ink-dim">
+            <p v-if="!trusted.length" class="m-0 py-3 text-base text-ink-dim">
               {{ messages.settings.trusted.empty }}
             </p>
             <SettingsRow v-for="device in trusted" :key="device.id" :label="device.name">
@@ -144,13 +101,12 @@
             <SettingsFeedback :error="errors.trusted" :saved="saved.trusted" :check-required="needsRead.trusted" :busy="busy.trusted" @check="checkSetting('trusted')" />
           </SettingsGroup>
         </div>
-
         <div v-show="category === 'plugins'" class="min-w-0 stack gap-7" data-testid="settings-plugins">
           <SettingsGroup :title="messages.settings.registry.title">
             <div class="min-w-0 stack gap-3 pb-4">
               <div v-for="(url, index) in registryUrls" :key="index" class="min-w-0 row items-start gap-2">
                 <div class="min-w-0 flex-1">
-                  <label :for="`registry-${index}`" class="mb-1 block text-xs text-ink-dim">{{ messages.settings.registry.source(index + 1) }}</label>
+                  <label :for="`registry-${index}`" class="mb-1 block text-sm text-ink-dim">{{ messages.settings.registry.source(index + 1) }}</label>
                   <AInput :id="`registry-${index}`" :value="url" :disabled="!configReady || busy.registry || needsRead.registry" :placeholder="messages.settings.registry.placeholder" allow-clear @update:value="(value: string) => updateRegistry(index, value)" @press-enter="(event: KeyboardEvent) => { if (!event.isComposing) saveRegistry() }" />
                 </div>
                 <AButton v-if="registryUrls.length > 1" class="mt-5" :disabled="busy.registry || needsRead.registry" :aria-label="messages.settings.registry.removeSource(index + 1)" @click="registryUrls = registryUrls.filter((_, at) => at !== index)">
@@ -158,8 +114,8 @@
                 </AButton>
               </div>
               <HelpText>{{ messages.settings.registry.detail }}</HelpText>
-              <span v-if="registryConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
-              <div class="row flex-wrap gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+              <span v-if="registryConflict" class="text-warning text-sm">{{ messages.settings.edit.conflict }}</span>
+              <div class="row flex-wrap gap-2">
                 <AButton :disabled="!configReady || busy.registry || needsRead.registry" @click="registryUrls = [...registryUrls, '']">
                   {{ messages.settings.registry.add }}
                 </AButton>
@@ -192,40 +148,33 @@
                   {{ retentionConflict ? messages.settings.edit.loadCurrent : messages.settings.field.cancel }}
                 </AButton>
               </div>
-              <span v-if="retentionConflict" class="text-warning text-xs">{{ messages.settings.edit.conflict }}</span>
+              <span v-if="retentionConflict" class="text-warning text-sm">{{ messages.settings.edit.conflict }}</span>
               <template #feedback>
                 <SettingsFeedback :error="errors.retention" :saved="saved.retention" :check-required="needsRead.retention" :busy="busy.retention" @check="checkSetting('retention')" />
               </template>
             </SettingsRow>
           </SettingsGroup>
         </div>
-
         <SettingsDiagnostics v-if="diagnosticsVisited" v-show="category === 'diagnostics'" :active="category === 'diagnostics'" />
-
         <div v-show="category === 'about'" class="min-w-0 stack gap-7" data-testid="settings-about">
           <SettingsGroup title="Synra">
             <SettingsRow :label="messages.settings.field.platform">
-              <span class="text-sm">{{ identity?.platform }}</span>
+              <span class="text-base">{{ identity?.platform }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.field.kernel">
-              <span v-if="identity" class="text-sm font-mono">v{{ identity.kernelVersion }}</span>
+              <span v-if="identity" class="text-base font-mono">v{{ identity.kernelVersion }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.field.deviceId">
-              <span class="max-w-full break-all text-xs text-ink-dim font-mono">{{ identity?.deviceId }}</span>
+              <span class="max-w-full break-all text-sm text-ink-dim font-mono">{{ identity?.deviceId }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.preference.theme">
-              <span class="text-sm text-ink-dim">{{ messages.settings.themeFixed }}</span>
+              <span class="text-base text-ink-dim">{{ messages.settings.themeFixed }}</span>
             </SettingsRow>
           </SettingsGroup>
         </div>
       </div>
     </div>
-    <!--
-      ★ `wrap-class-name` because this dialog teleports to `body`, outside the page's `<section>`: the section raises
-      the body's buttons to 44px, and a teleported dialog is not in the body's tree. The wrap layer is the ancestor the
-      footer buttons actually sit under, so the utility has to live there.
-    -->
-    <AModal :open="leaveOpen" :title="messages.settings.edit.leaveTitle" :closable="!anyBusy" :mask-closable="!anyBusy" :keyboard="!anyBusy" wrap-class-name="[&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" @cancel="resolveLeave(false)">
+    <AModal :open="leaveVisible" :title="messages.settings.edit.leaveTitle" :closable="!anyBusy" :mask-closable="!anyBusy" :keyboard="!anyBusy" @cancel="resolveLeave(false)">
       <p>{{ messages.settings.edit.leaveDetail }}</p>
       <template #footer>
         <AButton :disabled="anyBusy" @click="resolveLeave(false)">
@@ -243,369 +192,18 @@
 </template>
 
 <script setup lang="ts">
-import type { ConfigPatch, IpcError } from '@synra/protocol'
 import { Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
 import SettingsFeedback from '../components/settings/SettingsFeedback.vue'
 import SettingsGroup from '../components/settings/SettingsGroup.vue'
 import SettingsRow from '../components/settings/SettingsRow.vue'
-import { useSettingsDraft } from '../components/settings/use-settings-draft'
-import { kernel } from '../kernel'
 import { localePreference } from '../locale'
 import { messages } from '../messages'
-import { useDevicesStore } from '../stores/devices'
-import { useSettingsStore } from '../stores/settings'
+import { useDialogVisibility } from '../stores/dialogs'
+import { useSettingsPage } from './settings/use-settings-page'
 
-type Category = 'general' | 'security' | 'plugins' | 'diagnostics' | 'about'
-type Operation = 'name' | 'language' | 'startup' | 'wire' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'
-const category = ref<Category>('general')
-const categories = computed(() => (['general', 'security', 'plugins', 'diagnostics', 'about'] as const).map(value => ({ value, label: messages.settings.categories[value] })))
-
-/**
- * `?category=` picks the section, so a search result lands on "Diagnostics" instead of the top of the page
- * ([03 §5](../../design-docs/ui-design/03-shell-and-navigation.md) leaves this to the category implementation). A query
- * value that is not a category is ignored rather than redirecting: a stale link should open the page, not an error.
- *
- * ★ **Watched, not read once on mount.** The search box is reachable *from* this page, so choosing a section while
- *   already here is a query change on the same route — Vue Router reuses the component, `onMounted` does not run
- *   again, and a mount-only read leaves the page on whatever section it was showing. That is what the first version
- *   did, and the browser showed it: picking "Diagnostics" from here stayed on "General".
- *
- * Only the *query* is watched. After arrival the segmented control owns the selection, and watching the route object
- * would fight the user the moment they pick another section while the query is still in the address.
- */
-const route = useRoute()
-function categoryFromQuery(): Category | undefined {
-  const asked = route.query.category
-  return categories.value.find(item => item.value === asked)?.value
-}
-const categoryHeading = ref<HTMLElement>()
-const diagnosticsVisited = ref(false)
-const router = useRouter()
-// ★ Declared after both refs it writes: with `immediate: true` the callback runs during setup, and a watcher placed
-//   above `diagnosticsVisited` would read it in its temporal dead zone.
-watch(() => route.query.category, () => {
-  const asked = categoryFromQuery()
-  if (!asked)
-    return
-  category.value = asked
-  if (asked === 'diagnostics')
-    diagnosticsVisited.value = true
-}, { immediate: true })
-/**
- * ★ Choosing a column by hand drops `?category=`. `DevicesPage` and `PluginsPage` do the same for their ids: with the
- * query still there, leaving and coming back would jump to the column the notice asked for, overriding the choice the
- * reader just made.
- *
- * The replace is fired and forgotten on purpose — the column has already changed, and the URL catching up is a side
- * effect; awaiting it here would make every click wait on the router.
- */
-function selectCategory(value: unknown): void {
-  if (!categories.value.some(item => item.value === value))
-    return
-  category.value = value as Category
-  if (route.query.category !== undefined) {
-    const { category: _category, ...query } = route.query
-    void router.replace({ path: route.path, query, hash: route.hash })
-  }
-}
-watch(category, async (value) => {
-  if (value === 'diagnostics')
-    diagnosticsVisited.value = true
-  await nextTick()
-  categoryHeading.value?.focus({ preventScroll: true })
-})
-
-const settings = useSettingsStore()
-const devices = useDevicesStore()
-const identity = computed(() => devices.identity)
-const errors = reactive<Partial<Record<Operation, IpcError | undefined>>>({})
-const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, wire: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
-const busy = reactive(operationFlags())
-const saved = reactive(operationFlags())
-// A successful write followed by a failed read is not an invitation to send the write again.
-const needsRead = reactive(operationFlags())
-const anyBusy = computed(() => Object.values(busy).some(Boolean))
-const configReady = ref(false)
-const readError = ref<IpcError>()
-const loading = ref(false)
-let disposed = false
-
-const { value: nameDraft, dirty: nameDirty, conflict: nameConflict, reset: resetName } = useSettingsDraft(() => identity.value?.displayName ?? '')
-const renaming = ref(false)
-function startRename(): void {
-  resetName()
-  renaming.value = true
-  errors.name = undefined
-  saved.name = false
-  void nextTick(() => document.getElementById('device-name')?.focus())
-}
-function cancelRename(): void {
-  resetName()
-  renaming.value = false
-  errors.name = undefined
-}
-async function checkName(): Promise<boolean> {
-  const answer = await devices.readIdentity(kernel)
-  if (disposed)
-    return false
-  if (!answer.ok) {
-    errors.name = answer.error
-    return false
-  }
-  needsRead.name = false
-  errors.name = undefined
-  saved.name = true
-  resetName()
-  renaming.value = false
-  return true
-}
-async function saveName(): Promise<boolean> {
-  if (busy.name)
-    return false
-  busy.name = true
-  errors.name = undefined
-  try {
-    if (needsRead.name)
-      return await checkName()
-    if (!nameDirty.value || !nameDraft.value.trim())
-      return !nameDirty.value
-    const answer = await kernel.call<null>('identity_set_display_name', { name: nameDraft.value })
-    if (disposed)
-      return false
-    if (!answer.ok) {
-      errors.name = answer.error
-      return false
-    }
-    needsRead.name = true
-    return await checkName()
-  }
-  finally {
-    busy.name = false
-  }
-}
-
-const askCancel = computed(() => settings.value('transfers.confirmCancel') !== false)
-const debugConsole = computed(() => settings.value('ui.debugConsole') !== false)
-const notifyOnReceive = computed(() => settings.value('transfers.notifyOnReceive') !== false)
-const languageOptions = computed(() => [
-  { value: 'system', label: messages.settings.language.system },
-  { value: 'zh-CN', label: messages.settings.language.chinese },
-  { value: 'en', label: messages.settings.language.english }
-])
-const updatePolicyOptions = computed(() => [
-  { value: 'never', label: messages.settings.updates.never },
-  { value: 'notify-only', label: messages.settings.updates.notifyOnly },
-  { value: 'auto-minor', label: messages.settings.updates.autoMinor },
-  { value: 'auto-all', label: messages.settings.updates.autoAll }
-])
-const updatePolicy = computed(() => {
-  const value = settings.value('plugins.auto_update')
-  return typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value) ? value : 'notify-only'
-})
-async function saveLanguage(value: unknown): Promise<void> {
-  if (value === 'system' || value === 'en' || value === 'zh-CN')
-    await writeSetting('language', { set: { 'ui.locale': value } })
-}
-async function saveUpdatePolicy(value: unknown): Promise<void> {
-  if (typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value))
-    await writeSetting('policy', { set: { 'plugins.auto_update': value } })
-}
-
-function registrySource(): string[] {
-  const raw = settings.value('plugins.registry')
-  const urls = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []
-  return urls.length ? urls : ['']
-}
-const { value: registryUrls, dirty: registryDirty, conflict: registryConflict, reset: resetRegistry } = useSettingsDraft(registrySource)
-const { value: retentionDays, dirty: retentionDirty, conflict: retentionConflict, reset: resetRetention } = useSettingsDraft(() => {
-  const raw = settings.value('audit.retentionDays')
-  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 7
-})
-function updateRegistry(index: number, value: string): void {
-  registryUrls.value = registryUrls.value.map((url, at) => index === at ? value : url)
-  saved.registry = false
-}
-async function saveRegistry(): Promise<boolean> {
-  if (!registryDirty.value && !needsRead.registry)
-    return true
-  const urls = registryUrls.value.map(url => url.trim()).filter(Boolean)
-  return await writeSetting('registry', urls.length ? { set: { 'plugins.registry': urls.length === 1 ? urls[0]! : urls } } : { unset: ['plugins.registry'] })
-}
-async function saveRetention(): Promise<boolean> {
-  if (!retentionDirty.value && !needsRead.retention)
-    return true
-  return await writeSetting('retention', { set: { 'audit.retentionDays': Math.min(3650, Math.max(1, Math.trunc(retentionDays.value))) } })
-}
-const trusted = computed(() => {
-  const raw = settings.value('transfers.acceptFrom')
-  return (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []).map(id => ({ id, name: devices.get(id)?.displayName ?? id }))
-})
-const removingId = ref<string>()
-async function forgetTrusted(id: string): Promise<void> {
-  if (busy.trusted || needsRead.trusted)
-    return
-  removingId.value = id
-  const remaining = trusted.value.filter(device => device.id !== id).map(device => device.id)
-  await writeSetting('trusted', remaining.length ? { set: { 'transfers.acceptFrom': remaining } } : { unset: ['transfers.acceptFrom'] })
-}
-
-async function readSetting(operation: Operation): Promise<boolean> {
-  const answer = await settings.read(kernel)
-  if (disposed)
-    return false
-  if (!answer.ok) {
-    errors[operation] = answer.error
-    return false
-  }
-  configReady.value = true
-  needsRead[operation] = false
-  errors[operation] = undefined
-  saved[operation] = true
-  if (operation === 'registry')
-    resetRegistry()
-  if (operation === 'retention')
-    resetRetention()
-  return true
-}
-async function checkSetting(operation: Operation): Promise<boolean> {
-  if (busy[operation])
-    return false
-  busy[operation] = true
-  try {
-    return await readSetting(operation)
-  }
-  finally {
-    busy[operation] = false
-  }
-}
-async function writeSetting(operation: Operation, patch: ConfigPatch): Promise<boolean> {
-  if (busy[operation] || !configReady.value)
-    return false
-  busy[operation] = true
-  saved[operation] = false
-  errors[operation] = undefined
-  try {
-    if (needsRead[operation])
-      return await readSetting(operation)
-    const answer = await kernel.call<null>('config_set', { patch })
-    if (disposed)
-      return false
-    if (!answer.ok) {
-      errors[operation] = answer.error
-      return false
-    }
-    needsRead[operation] = true
-    return await readSetting(operation)
-  }
-  finally {
-    busy[operation] = false
-  }
-}
-
-const launchAtLogin = ref(false)
-const launchAtLoginUnavailable = ref(false)
-async function loadLaunchAtLogin(): Promise<void> {
-  try {
-    const { isEnabled } = await import('@tauri-apps/plugin-autostart')
-    launchAtLogin.value = await isEnabled()
-  }
-  catch {
-    launchAtLoginUnavailable.value = true
-  }
-}
-async function saveLaunchAtLogin(value: boolean): Promise<void> {
-  if (busy.startup || launchAtLoginUnavailable.value)
-    return
-  busy.startup = true
-  errors.startup = undefined
-  saved.startup = false
-  try {
-    const { enable, disable, isEnabled } = await import('@tauri-apps/plugin-autostart')
-    if (value)
-      await enable()
-    else
-      await disable()
-    launchAtLogin.value = await isEnabled()
-    saved.startup = true
-  }
-  catch {
-    errors.startup = { code: 'internal', message: 'error.internal', retryable: false }
-  }
-  finally {
-    busy.startup = false
-  }
-}
-
-const pluginDrafts = computed(() => registryDirty.value || retentionDirty.value || needsRead.registry || needsRead.retention)
-const hasDrafts = computed(() => (renaming.value && (nameDirty.value || needsRead.name)) || pluginDrafts.value)
-const leaveOpen = ref(false)
-let leaveResolve: ((leave: boolean) => void) | undefined
-function resolveLeave(leave: boolean): void {
-  leaveOpen.value = false
-  leaveResolve?.(leave)
-  leaveResolve = undefined
-}
-onBeforeRouteLeave(() => {
-  if (!hasDrafts.value && !anyBusy.value)
-    return true
-  if (leaveResolve)
-    return false
-  leaveOpen.value = true
-  return new Promise<boolean>((resolve) => {
-    leaveResolve = resolve
-  })
-})
-async function saveAndLeave(): Promise<void> {
-  if (anyBusy.value)
-    return
-  if (nameConflict.value || registryConflict.value || retentionConflict.value) {
-    category.value = nameConflict.value ? 'general' : 'plugins'
-    resolveLeave(false)
-    return
-  }
-  if (renaming.value && !await saveName()) {
-    category.value = 'general'
-    resolveLeave(false)
-    return
-  }
-  if (!await saveRegistry() || !await saveRetention()) {
-    category.value = 'plugins'
-    resolveLeave(false)
-    return
-  }
-  resolveLeave(true)
-}
-function beforeUnload(event: BeforeUnloadEvent): void {
-  if (hasDrafts.value || anyBusy.value) {
-    event.preventDefault()
-    event.returnValue = ''
-  }
-}
-async function load(): Promise<void> {
-  if (loading.value)
-    return
-  loading.value = true
-  const [config, name] = await Promise.all([settings.read(kernel), devices.readIdentity(kernel)])
-  if (!disposed) {
-    if (config.ok)
-      configReady.value = true
-    readError.value = !config.ok ? config.error : !name.ok ? name.error : undefined
-  }
-  loading.value = false
-}
-onMounted(() => {
-  void load()
-  void loadLaunchAtLogin()
-  window.addEventListener('beforeunload', beforeUnload)
-})
-onUnmounted(() => {
-  disposed = true
-  resolveLeave(false)
-  window.removeEventListener('beforeunload', beforeUnload)
-})
+const { category, categories, setCategoryHeading, diagnosticsVisited, selectCategory, identity, readError, loading, renaming, startRename, cancelRename, checkName, saveName, askCancel, debugConsole, notifyOnReceive, languageOptions, updatePolicyOptions, updatePolicy, saveLanguage, saveUpdatePolicy, updateRegistry, saveRegistry, saveRetention, trusted, removingId, forgetTrusted, launchAtLogin, launchAtLoginUnavailable, saveLaunchAtLogin, pluginDrafts, hasDrafts, resolveLeave, saveAndLeave, load, errors, busy, saved, needsRead, anyBusy, configReady, checkSetting, writeSetting, nameDraft, nameDirty, nameConflict, registryUrls, registryDirty, registryConflict, retentionDays, retentionDirty, retentionConflict, resetName, resetRegistry, resetRetention, leaveOpen } = useSettingsPage()
+const leaveVisible = useDialogVisibility(leaveOpen, 60)
 </script>

@@ -1,0 +1,9 @@
+.debug-sheet .xterm-scrollable-element > .scrollbar.vertical {
+  width: 10px !important;
+}
+
+.debug-sheet .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: 1px !important;
+  width: 8px !important;
+  border-radius: 9999px;
+}

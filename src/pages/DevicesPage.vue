@@ -6,7 +6,7 @@
     warns against. The workspace width is therefore capped at 896px — wider than the reading measure, because the rows
     hold a name and an action set on one line, and narrower than a full workspace, because nothing here fills it.
   -->
-  <section class="mx-auto max-w-4xl min-w-0 pb-4 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8" data-page-width="narrow-workspace">
+  <section class="mx-auto max-w-4xl min-w-0 pb-4" data-page-width="narrow-workspace">
     <div class="stack gap-6">
       <PageHeader :title="messages.devices.title">
         <AButton v-if="scanState" :loading="cancellingScan" :disabled="cancellingScan" @click="cancelScan">
@@ -19,7 +19,7 @@
 
       <div v-if="snapshotError" class="stack gap-2">
         <ErrorNotice :code="snapshotError.code" :params="snapshotError.params" :actions="snapshotError.actions?.filter(action => action.kind !== 'retry')" />
-        <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
+        <p v-if="devices.cards.length" class="m-0 text-sm text-ink-dim">
           {{ messages.devices.knownOnly }}
         </p>
         <div>
@@ -28,14 +28,14 @@
           </AButton>
         </div>
       </div>
-      <p v-if="notice" class="m-0 text-sm" role="status">
+      <p v-if="notice" class="m-0 text-base" role="status">
         {{ notice }}
       </p>
 
       <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
         <div v-if="scanError" class="stack gap-2">
           <ErrorNotice :code="scanError.code" :params="scanError.params" :actions="scanError.actions?.filter(action => action.kind !== 'retry')" />
-          <p v-if="devices.cards.length" class="m-0 text-xs text-ink-dim">
+          <p v-if="devices.cards.length" class="m-0 text-sm text-ink-dim">
             {{ messages.devices.scanFailedKnown }}
           </p>
           <div v-if="scanError.retryable">
@@ -44,13 +44,13 @@
             </AButton>
           </div>
         </div>
-        <p v-else class="m-0 row flex-wrap gap-2 text-sm text-ink-dim">
+        <p v-else class="m-0 row flex-wrap gap-2 text-base text-ink-dim">
           <span v-if="scanning" class="i-carbon-circle-dash animate-spin" aria-hidden="true" />
           <span>{{ scanSummary }}</span>
           <span v-if="scanState">{{ messages.devices.scanProgress }} {{ scanState.found }}</span>
         </p>
-        <details v-if="scanState" class="text-xs text-ink-dim">
-          <summary class="min-h-11 row cursor-pointer md:min-h-8">
+        <details v-if="scanState" class="text-sm text-ink-dim">
+          <summary class="synra-choice min-h-8 row cursor-pointer">
             {{ messages.devices.scanDetails }}
           </summary>
           <dl class="grid m-0 gap-2 py-2">
@@ -67,7 +67,7 @@
         </details>
       </div>
 
-      <p v-if="refreshing && !ready && !devices.cards.length" class="m-0 text-sm text-ink-dim" role="status">
+      <p v-if="refreshing && !ready && !devices.cards.length" class="m-0 text-base text-ink-dim" role="status">
         {{ messages.devices.loading }}
       </p>
       <AEmpty v-else-if="ready && !snapshotError && !devices.cards.length && !scanning" :description="scanReport === 'finished' ? messages.devices.scanEmpty : messages.devices.empty">
@@ -79,30 +79,30 @@
         </AButton>
       </AEmpty>
 
-      <section v-if="devices.paired.length" :aria-label="messages.devices.paired" class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
-        <h2 ref="pairedHeading" class="m-0 text-sm font-medium" tabindex="-1">
+      <section v-if="devices.paired.length" :aria-label="messages.devices.paired" class="min-w-0 stack gap-0">
+        <h2 ref="pairedHeading" class="m-0 text-base font-medium" tabindex="-1">
           {{ messages.devices.paired }}
         </h2>
         <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" @forget="askForget" />
       </section>
-      <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="min-w-0 stack gap-3 border border-line rounded-surface bg-glass p-4">
-        <h2 class="m-0 text-sm font-medium">
+      <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="min-w-0 stack gap-0">
+        <h2 class="m-0 text-base font-medium">
           {{ messages.devices.nearby }}
         </h2>
         <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" @forget="askForget" />
       </section>
     </div>
 
-    <AModal v-if="forgetTarget" :open="true" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :get-container="false" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
+    <AModal v-if="forgetTarget" :open="forgetVisible" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :get-container="false" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
       <div class="stack gap-4">
-        <p class="m-0 text-sm">
+        <p class="m-0 text-base">
           {{ messages.devices.forgetHelp }}
         </p>
-        <p class="m-0 break-all text-xs text-ink-dim font-mono">
+        <p class="m-0 break-all text-sm text-ink-dim font-mono">
           {{ forgetTarget.deviceId }}
         </p>
         <ErrorNotice v-if="forgetError" :code="forgetError.code" :params="forgetError.params" :actions="forgetError.actions?.filter(action => action.kind !== 'retry')" />
-        <div class="row justify-end gap-2 [&_.ant-btn]:min-h-11 md:[&_.ant-btn]:min-h-8">
+        <div class="row justify-end gap-2">
           <AButton ref="keepButton" :disabled="forgetting" @click="closeForget">
             {{ messages.devices.forgetCancel }}
           </AButton>
@@ -116,159 +116,27 @@
 </template>
 
 <script setup lang="ts">
-import type { DeviceCard, DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
+import type { DeviceCard, IpcError } from '@synra/protocol'
 import { Button as AButton, Empty as AEmpty, Modal as AModal } from 'ant-design-vue'
-import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import { computed, nextTick, onScopeDispose, ref } from 'vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
 import { kernel } from '../kernel'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
+import { useDialogVisibility } from '../stores/dialogs'
 import { usePairingStore } from '../stores/pairing'
 import DeviceRow from './devices/DeviceRow.vue'
+import { useDeviceDiscovery } from './devices/use-device-discovery'
 
 const devices = useDevicesStore()
 const pairing = usePairingStore()
 const startPair = pairing.start
 const nearby = computed(() => devices.cards.filter(card => !card.paired))
 let disposed = false
-let readRevision = 0
-let reading: Promise<boolean> | undefined
-const snapshotError = ref<IpcError>()
-const refreshing = ref(false)
-const ready = ref(devices.identity !== undefined)
-function refresh(): Promise<boolean> {
-  readRevision += 1
-  if (reading)
-    return reading
-  refreshing.value = true
-  reading = readLatest().finally(() => {
-    reading = undefined
-    refreshing.value = false
-  })
-  return reading
-}
-async function readLatest(): Promise<boolean> {
-  while (true) {
-    if (disposed)
-      return false
-    const revision = readRevision
-    const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
-    if (disposed)
-      return false
-    if (revision !== readRevision)
-      continue
-    snapshotError.value = answer.ok ? undefined : answer.error
-    if (!answer.ok)
-      return false
-    devices.applySnapshot(answer.value)
-    ready.value = true
-    return true
-  }
-}
-
-const NETWORK_SCAN: ScanOptions = { includePaired: false, cachedOnly: false }
-const CACHED_SCAN: ScanOptions = { includePaired: false, cachedOnly: true }
-const startingScan = ref(false)
-const cancellingScan = ref(false)
-const stopAccepted = ref(false)
-const scanState = computed(() => devices.scan)
-const scanning = computed(() => startingScan.value || devices.scanning || cancellingScan.value)
-const scanReport = ref<'finished' | 'stopRequested' | 'cached'>()
-const scanError = ref<IpcError>()
-const failedCancelId = ref<string>()
-let scanGeneration = 0
-const scanSummary = computed(() => scanning.value
-  ? stopAccepted.value ? messages.devices.scanStopping : messages.devices.scanning
-  : scanReport.value === 'cached'
-    ? messages.devices.scanCached
-    : scanReport.value === 'stopRequested' ? messages.devices.scanStopped : messages.devices.scanFinished)
-
-async function scan(): Promise<void> {
-  if (scanning.value)
-    return
-  startingScan.value = true
-  stopAccepted.value = false
-  scanReport.value = undefined
-  scanError.value = undefined
-  failedCancelId.value = undefined
-  try {
-    const answer = await kernel.call<string>('devices_scan_start', { opts: NETWORK_SCAN })
-    if (disposed)
-      return
-    if (!answer.ok) {
-      if (answer.error.code !== 'unsupported') {
-        scanError.value = answer.error
-        return
-      }
-      const cached = await kernel.call<string>('devices_scan_start', { opts: CACHED_SCAN })
-      if (disposed)
-        return
-      if (!cached.ok) {
-        scanError.value = cached.error
-        return
-      }
-      scanReport.value = 'cached'
-    }
-    const refreshed = await refresh()
-    if (refreshed && !disposed && !devices.scanning && scanReport.value !== 'cached')
-      scanReport.value = stopAccepted.value ? 'stopRequested' : 'finished'
-  }
-  finally {
-    startingScan.value = false
-  }
-}
-
-async function cancelScan(): Promise<void> {
-  const id = scanState.value?.scanId
-  if (!id || cancellingScan.value)
-    return
-  const generation = scanGeneration
-  cancellingScan.value = true
-  scanError.value = undefined
-  failedCancelId.value = id
-  try {
-    const answer = await kernel.call<null>('devices_scan_cancel', { scanId: id })
-    if (disposed)
-      return
-    if (!answer.ok) {
-      scanError.value = answer.error
-      return
-    }
-    stopAccepted.value = generation === scanGeneration && (!scanState.value || scanState.value.scanId === id)
-    const refreshed = await refresh()
-    if (refreshed && !disposed && !startingScan.value && !devices.scanning && stopAccepted.value)
-      scanReport.value = 'stopRequested'
-  }
-  finally {
-    cancellingScan.value = false
-  }
-}
-
-async function retryScan(): Promise<void> {
-  if (failedCancelId.value) {
-    if (scanState.value?.scanId === failedCancelId.value)
-      await cancelScan()
-    else if (await refresh())
-      scanError.value = undefined
-  }
-  else {
-    await scan()
-  }
-}
-watch(() => devices.scan?.scanId, (scanId, previousId) => {
-  if (scanId && scanId !== previousId) {
-    scanGeneration += 1
-    stopAccepted.value = false
-    scanReport.value = undefined
-  }
-}, { flush: 'sync' })
-watch(() => devices.scanning, (running, wasRunning) => {
-  if (wasRunning && !running && !startingScan.value && !cancellingScan.value && !scanError.value && scanReport.value !== 'cached')
-    scanReport.value = stopAccepted.value ? 'stopRequested' : 'finished'
-})
-
+const { snapshotError, refreshing, ready, refresh, startingScan, cancellingScan, scanState, scanning, scanReport, scanError, failedCancelId, scanSummary, scan, cancelScan, retryScan } = useDeviceDiscovery()
 const forgetTarget = ref<DeviceCard>()
+const forgetVisible = useDialogVisibility(computed(() => !!forgetTarget.value), 60)
 const forgetError = ref<IpcError>()
 const forgetting = ref(false)
 const notice = ref('')
@@ -326,6 +194,5 @@ async function forget(): Promise<void> {
 
 onScopeDispose(() => {
   disposed = true
-  readRevision += 1
 })
 </script>
