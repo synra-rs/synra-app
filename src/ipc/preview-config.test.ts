@@ -1,6 +1,24 @@
 import { expect, it, vi } from 'vitest'
 import { PreviewConfig } from './preview-config'
 
+it('does not access Node experimental global storage outside a browser', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  const read = vi.fn(() => {
+    throw new Error('global storage must not be read')
+  })
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: read })
+  try {
+    expect(new PreviewConfig().snapshot()).toEqual({ values: {}, overridden: [] })
+    expect(read).not.toHaveBeenCalled()
+  }
+  finally {
+    if (original)
+      Object.defineProperty(globalThis, 'localStorage', original)
+    else
+      Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})
+
 function storage() {
   const values = new Map<string, string>()
   return {

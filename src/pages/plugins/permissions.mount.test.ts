@@ -13,6 +13,44 @@ async function editor() {
 }
 
 describe('permission decisions', () => {
+  it('opens an awaiting decision when the kernel omits the empty denied list', async () => {
+    const plugin = { ...card({ state: 'awaiting_consent', granted: [] }) }
+    delete plugin.denied
+    answer({ plugins_list: [plugin] })
+    const { form } = await editor()
+    expect(form.findAll('input[type="checkbox"]')).toHaveLength(2)
+    expect(form.findAll('input:checked')).toHaveLength(0)
+    expect(form.text()).toContain(messages.plugins.workflow.allowSelected)
+  })
+  it('accepts an omitted denied list after granting every requested capability', async () => {
+    const granted = ['log:*', 'net:fetch:example.com']
+    const plugin = { ...card({ granted }) }
+    delete plugin.denied
+    answer({ plugins_consent_respond: plugin })
+    const { form, router, wrapper } = await editor()
+    await form.findAll('input[type="checkbox"]')[1]!.setValue(true)
+    await click(form, messages.plugins.consentAction)
+    expect(form.findAll('input[type="checkbox"]')).toHaveLength(0)
+    expect(form.text()).not.toContain(messages.plugins.workflow.newPermission)
+    await router.push('/plugins')
+    await flushPromises()
+    expect(wrapper.findComponent(PluginPermissions).exists()).toBe(false)
+    await router.push('/plugins?plugin=%40acme%2Freader&tab=permissions')
+    await flushPromises()
+    await clickBody(messages.plugins.workflow.permissions, 'tab')
+    expect(wrapper.findComponent(PluginPermissions).exists()).toBe(true)
+  })
+  it('shows no permissions when both empty optional lists are omitted', async () => {
+    const plugin = { ...card({ granted: [] }) }
+    delete plugin.denied
+    delete plugin.requested
+    answer({ plugins_list: [plugin] })
+    const page = await mountPage('/plugins?plugin=%40acme%2Freader&tab=permissions')
+    await clickBody(messages.plugins.workflow.permissions, 'tab')
+    const form = page.wrapper.getComponent(PluginPermissions)
+    expect(form.text()).toContain(messages.plugins.preview.none)
+    expect(form.findAll('input[type="checkbox"]')).toHaveLength(0)
+  })
   it('saves the selected subset and leaves other requests denied', async () => {
     answer({ plugins_consent_respond: ({ granted }: { granted: string[] }) => ({ ok: true, value: card({ granted, denied: ['net:fetch:example.com'] }) }) })
     const { form } = await editor()
@@ -47,7 +85,9 @@ describe('permission decisions', () => {
     await flushPromises()
     expect(form.findAll('input:checked')).toHaveLength(0)
     await form.findAll('input[type="checkbox"]')[1]!.setValue(true)
-    store.upsert(card({ granted: ['log:*'], denied: ['net:fetch:example.com'] }))
+    const updated = { ...card({ granted: ['log:*', 'net:fetch:example.com'] }) }
+    delete updated.denied
+    store.apply({ type: 'pluginUpdated', payload: updated })
     await flushPromises()
     expect((form.findAll('input[type="checkbox"]')[0]!.element as HTMLInputElement).checked).toBe(false)
     expect((form.findAll('input[type="checkbox"]')[1]!.element as HTMLInputElement).checked).toBe(true)

@@ -18,7 +18,7 @@ export class PreviewPlugins {
     const id = String(args.pluginId)
     const plugin = this.#plugins.find(plugin => plugin.pluginId === id)
     switch (command) {
-      case 'plugins_list': return this.#plugins.map(plugin => ({ ...plugin }))
+      case 'plugins_list': return this.#plugins.map(serializedPlugin)
       case 'plugins_publishers': return []
       case 'plugins_publisher_decide': return null
       case 'plugins_enable':
@@ -29,7 +29,7 @@ export class PreviewPlugins {
           return { code: 'not_found', message: 'error.notFound', retryable: false }
         const granted = command === 'plugins_consent_respond' ? args.granted as string[] : plugin.granted
         const enabled = command === 'plugins_enable' || (command !== 'plugins_disable' && plugin.enabled)
-        const next: PluginSnapshot = { ...plugin, enabled, granted, denied: (plugin.requested ?? []).filter(capability => !granted.includes(capability)), state: enabled ? granted.length ? 'active' : 'awaiting_consent' : 'disabled' }
+        const next = serializedPlugin({ ...plugin, enabled, granted, denied: (plugin.requested ?? []).filter(capability => !granted.includes(capability)), state: enabled ? granted.length ? 'active' : 'awaiting_consent' : 'disabled' })
         this.#plugins = this.#plugins.map(item => item.pluginId === id ? next : item)
         this.emit('pluginUpdated', next)
         return command === 'plugins_consent_respond' || command === 'plugins_reload' ? next : null
@@ -46,7 +46,7 @@ export class PreviewPlugins {
       case 'plugins_install': {
         const source = args.source as { source: string, pluginId?: string }
         const pluginId = source.pluginId ?? '@preview/local'
-        const next = { ...this.#plugins[0]!, pluginId, title: source.source === 'registry' ? 'Reader' : 'Local plugin', enabled: false, state: 'disabled', granted: [], denied: [], requested: ['fs:read'], hasUi: true }
+        const next = serializedPlugin({ ...this.#plugins[0]!, pluginId, title: source.source === 'registry' ? 'Reader' : 'Local plugin', enabled: false, state: 'disabled', granted: [], denied: [], requested: ['fs:read'], hasUi: true })
         this.#plugins = [...this.#plugins.filter(plugin => plugin.pluginId !== pluginId), next]
         this.emit('pluginUpdated', next)
         return { pluginId, version: next.version, enabled: false } satisfies InstallReport
@@ -69,4 +69,10 @@ export class PreviewPlugins {
       default: return { code: 'unsupported', message: 'error.commandNotFound', retryable: false }
     }
   }
+}
+
+/** Match the real PluginSnapshot serializer so previews exercise absent empty collections. */
+function serializedPlugin(plugin: PluginSnapshot): PluginSnapshot {
+  const { requested, denied, ...fields } = plugin
+  return { ...fields, ...(requested?.length ? { requested } : {}), ...(denied?.length ? { denied } : {}) }
 }

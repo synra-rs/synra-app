@@ -9,7 +9,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function browserStorage(): StorageLike | undefined {
   try {
-    return typeof localStorage === 'undefined' ? undefined : localStorage
+    return typeof window === 'undefined' ? undefined : window.localStorage
   }
   catch {
     return undefined

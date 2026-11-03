@@ -9,6 +9,12 @@ async function removal() {
   await clickBody(messages.plugins.removeAction, 'menuitem')
   return { ...page, dialog: page.wrapper.getComponent(PluginRemoval) }
 }
+it('opens routine update details when addedCapabilities is omitted', async () => {
+  answer({ plugins_list: [card({ update: { pluginId: '@acme/reader', version: '2.0', needsNewConsent: false } })] })
+  const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
+  expect(wrapper.text()).toContain(messages.plugins.updateNoNewPermissions)
+  expect(wrapper.text()).toContain('2.0')
+})
 it('asks about data and resets the destructive choice after cancellation', async () => {
   const { wrapper, dialog } = await removal()
   expect((dialog.get('input').element as HTMLInputElement).checked).toBe(false)

@@ -26,7 +26,7 @@
         <span class="shrink-0 text-sm text-ink-dim">{{ plugin.granted.includes(capability) ? messages.plugins.workflow.allowed : messages.plugins.workflow.denied }}</span>
       </div>
       <span v-if="editing && draft.includes(capability) !== plugin.granted.includes(capability)" class="text-sm text-primary-ink">{{ messages.plugins.workflow.changed }}</span>
-      <span v-else-if="!plugin.granted.includes(capability) && !plugin.denied.includes(capability)" class="text-sm text-ink-dim">{{ messages.plugins.workflow.newPermission }}</span>
+      <span v-else-if="!plugin.granted.includes(capability) && !denied.includes(capability)" class="text-sm text-ink-dim">{{ messages.plugins.workflow.newPermission }}</span>
     </div>
     <template v-if="editing && capabilities.length">
       <p class="m-0 text-sm text-ink-dim">
@@ -65,8 +65,9 @@ const editing = ref(props.initialEdit || props.plugin.state === 'awaiting_consen
 const error = ref<Failure>()
 const busy = computed(() => props.operations.busy.get(props.plugin.pluginId) === 'consent')
 const locked = computed(() => props.operations.busy.has(props.plugin.pluginId))
-const capabilities = computed(() => [...new Set(props.plugin.requested ?? [...props.plugin.granted, ...props.plugin.denied])])
-const firstDecision = computed(() => !props.plugin.granted.length && !props.plugin.denied.length)
+const capabilities = computed(() => [...new Set(props.plugin.requested ?? [])])
+const denied = computed(() => props.plugin.denied ?? [])
+const firstDecision = computed(() => !props.plugin.granted.length && !denied.value.length)
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every(value => b.includes(value))
 const changed = computed(() => !same(draft.value, props.plugin.granted))
 watch(() => props.plugin, (next, previous) => {
