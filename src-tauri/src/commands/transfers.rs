@@ -1344,44 +1344,7 @@ pub(crate) fn unix_millis() -> u64 {
         .map_or(0_u64, |elapsed| elapsed.as_millis() as u64)
 }
 
-/// Where a paired device can be reached, or a refusal that says which kind of missing this is.
-///
-/// # Why the two failures are different answers
-///
-/// [`ErrorCode::Unsupported`] covers both "never paired" and "paired, but this side has never seen an address", and it says
-/// which in the parameters — the first needs the user to pair, the second needs the user to connect once. A single "cannot
-/// send" would leave them guessing.
-///
-/// # Errors
-///
-/// [`ErrorCode::Internal`] when the database cannot be read, and [`ErrorCode::Unsupported`] as above.
-pub fn address_of(
-    state: &crate::state::AppState,
-    to: synra_protocol::ids::DeviceId,
-) -> Result<std::net::SocketAddr, IpcError> {
-    use synra_protocol::ErrorCode;
-
-    let address = state
-        .db()
-        .paired_devices()
-        .map_err(|error| {
-            IpcError::unknown(ErrorCode::Internal)
-                .with_params(serde_json::json!({"detail": error.to_string()}))
-        })?
-        .into_iter()
-        .find(|device| device.device_id == to.to_string())
-        .and_then(|device| device.address);
-
-    let Some(address) = address else {
-        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(
-            serde_json::json!({"deviceId": to.to_string(), "reason": "it has no address"}),
-        ));
-    };
-    address.parse::<std::net::SocketAddr>().map_err(|error| {
-        IpcError::unknown(ErrorCode::Unsupported)
-            .with_params(serde_json::json!({"address": address, "reason": error.to_string()}))
-    })
-}
+pub use super::peers::address_of;
 
 /// Sends text as a file, and answers the transfer it started.
 ///
@@ -1484,7 +1447,12 @@ fn record_pairing(
         display_name: negotiated.display_name.clone(),
         platform: platform.to_owned(),
         features: serde_json::to_string(
-            &negotiated.agreed.common.iter().map(|feature| feature.as_str()).collect::<Vec<_>>(),
+            &negotiated
+                .agreed
+                .common
+                .iter()
+                .map(|feature| feature.as_str())
+                .collect::<Vec<_>>(),
         )
         .unwrap_or_else(|_| "[]".to_owned()),
         address: Some(address.to_string()),

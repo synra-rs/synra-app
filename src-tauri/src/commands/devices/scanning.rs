@@ -1,25 +1,8 @@
-//! The devices this one can see.
-//!
-//! # The order the list is in
-//!
-//! Paired devices first, then by name, then by identifier. Paired first because that is the order a user reads the list
-//! in — the devices they can already send to are what the screen is for, and the ones they have to pair with next are
-//! what they are shopping for. Then the name, so the order is the same on every device that has seen the same set, and
-//! then the identifier, so the order is *total*: two devices with the same name still agree on which comes first.
-//!
-//! # What is not here, and why
-//!
-//! `devices_connect` and `devices_disconnect` do not exist, here or in the contract. A link is opened when there is
-//! something to carry over it — a transfer dials, announces itself and is recorded. A bare "connect" would be a dial
-//! with no payload: a session that exists only so a screen can say it exists.
-
+use super::devices_snapshot;
+use crate::state::{AppState, ScanTask};
 use std::time::{Duration, Instant};
-
 use synra_core::supervisor::Cancellation;
-use synra_ipc::{DeviceCard, DevicesSnapshot, IpcError, ScanOptions, ScanState};
-use synra_protocol::DeviceId;
-
-use crate::state::{AppState, ScanTask, internal};
+use synra_ipc::{IpcError, ScanOptions, ScanState};
 
 /// How long a scan runs, from what the caller asked for.
 ///
@@ -30,71 +13,11 @@ use crate::state::{AppState, ScanTask, internal};
 /// not say how long. A caller may ask for less and nothing may ask for more — the request arrives from a local process and
 /// is unauthenticated input. (The shell used to carry its own thirty-second ceiling, from when it answered scans it had
 /// not run; the protocol's is lower, which makes the shell's a second opinion nothing consults.)
-fn scan_budget(opts: &ScanOptions) -> Duration {
+pub(super) fn scan_budget(opts: &ScanOptions) -> Duration {
     let asked = opts
         .timeout_ms
         .map_or(synra_protocol::limits::SCAN_PASSIVE, Duration::from_millis);
     asked.min(synra_protocol::limits::SCAN_TOTAL)
-}
-
-/// Everything the devices screen shows, in one call.
-///
-/// One call rather than three, because a screen assembled from three calls renders three inconsistent states — a list
-/// with no name beside it, a scan that started after the list was fetched — and the user sees that as the app flickering.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`] when the device records cannot be read, **or when one of them holds an identifier that is not
-/// an identifier**. The second is the interesting one: a row whose device id does not parse is a corrupted database, and
-/// answering with the rest of the list would present a short list as if those devices did not exist.
-pub fn devices_snapshot(state: &AppState) -> Result<DevicesSnapshot, IpcError> {
-    // ★ One guard for both reads, dropped before any card is built — building reads the manifest off disk, and holding a
-    // database lock across file I/O would serialise every other command behind the filesystem.
-    let (paired, seen) = {
-        let db = state.db();
-        (
-            db.paired_devices().map_err(internal)?,
-            db.seen_devices().map_err(internal)?,
-        )
-    };
-
-    let mut cards: Vec<DeviceCard> = paired
-        .iter()
-        .map(|row| card_from_paired(&state.host, row))
-        .collect::<Result<_, _>>()?;
-    // ★ Seen-but-unpaired devices are added here rather than by the interface.
-    //
-    // The interface cannot know which seen devices are already paired — that is the kernel's record — so a list built
-    // by the interface either shows a paired device twice or needs a second call to find out which are which. Both are
-    // worse than one call that already knows.
-    for row in &seen {
-        let card = card_from_seen(row)?;
-        if cards
-            .iter()
-            .any(|existing| existing.device_id == card.device_id)
-        {
-            continue;
-        }
-        cards.push(card);
-    }
-    cards.sort_by(|left, right| {
-        right
-            .paired
-            .cmp(&left.paired)
-            .then_with(|| left.display_name.cmp(&right.display_name))
-            .then_with(|| left.device_id.cmp(&right.device_id))
-    });
-
-    let scanning = state
-        .scanning
-        .lock()
-        .as_ref()
-        .map(|task| task.snapshot.clone());
-    Ok(DevicesSnapshot {
-        identity: state.identity_snapshot(crate::KERNEL_VERSION),
-        devices: cards,
-        scanning,
-    })
 }
 
 /// Starts a scan and answers with its identifier.
@@ -127,7 +50,7 @@ pub fn devices_scan_start(state: &AppState, opts: &ScanOptions) -> Result<String
     scan_with(state, opts, crate::discovery::Discovery::scan)
 }
 
-fn scan_with(
+pub(super) fn scan_with(
     state: &AppState,
     opts: &ScanOptions,
     scan: impl FnOnce(&crate::discovery::Discovery, Duration, &Cancellation),
@@ -286,7 +209,7 @@ fn observe_candidates(state: &AppState, found: u64) {
 /// The interface applies each card to the store it already has, so a device that appeared, one that went offline and one
 /// that changed its name are three different facts; a single "the list changed" would collapse them into a re-read of
 /// everything. The cards come from `devices_snapshot`, so the card in the event is the card in the next list.
-fn announce_cards(state: &AppState) {
+pub(super) fn announce_cards(state: &AppState) {
     if let Ok(snapshot) = devices_snapshot(state) {
         for card in snapshot.devices {
             state.publish(synra_ipc::event::KernelEvent::DeviceCardUpdated(Box::new(
@@ -334,154 +257,3 @@ pub fn devices_scan_cancel(state: &AppState, scan_id: &str) -> Result<(), IpcErr
     cancellation.cancel();
     Ok(())
 }
-
-/// Forgets a device, and its pairing with it.
-///
-/// # Errors
-///
-/// * [`IpcError::InvalidArgument`] when the identifier does not parse.
-/// * [`IpcError::Internal`] when the unpairing cannot be written.
-pub fn devices_forget(state: &AppState, device_id: &str) -> Result<(), IpcError> {
-    let parsed = parse_from_interface(device_id)?;
-    // Serialise with acceptance: a pending response cannot re-add the preference after unpairing. Remove the preference
-    // first and propagate failures. If unpairing then fails, the device stays paired but asks again, and that safer partial
-    // result is announced rather than hidden. No host/plugin work runs while the database is held.
-    let (unpaired, changed) = {
-        let db = state.db();
-        let changed = crate::commands::transfers::forget_sender(&db, device_id)?;
-        (db.unpair_device(device_id).map_err(internal), changed)
-    };
-    if changed {
-        super::config::announce_config(state);
-    }
-    unpaired?;
-    state.host.lock().went_offline(parsed, state.started_at_ms);
-    // ★ The window learns the device is gone without asking. What a page drew is a snapshot; a device forgotten here
-    // would otherwise stay on the list until the page was reopened — with a pairing prompt beside it.
-    state.publish(synra_ipc::event::KernelEvent::DeviceRemoved { device_id: parsed });
-    Ok(())
-}
-
-/// A card for a device that was seen and never paired.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`] when the stored identifier does not parse, for the reason [`devices_snapshot`] gives: a
-/// corrupted row must not become a missing card.
-fn card_from_seen(row: &synra_store::SeenDeviceRow) -> Result<DeviceCard, IpcError> {
-    let device_id = parse_from_store(row.device_id.as_str())?;
-    Ok(DeviceCard {
-        device_id,
-        display_name: row.display_name.clone(),
-        platform: row.platform.clone(),
-        online: true,
-        paired: false,
-        // A seen device that has never been paired is not blocked; blocking is a decision the user made, and a row that
-        // has one is a paired row that was left in place deliberately.
-        blocked: false,
-        last_seen_ms: row.last_seen_ms,
-        // ★ No address for a seen device.
-        //
-        // The store keeps an address for a paired device because that is where it is *reachable*; for a device seen once
-        // over discovery, the address in that announcement is where it was then, which is not a promise about now.
-        // Showing it would offer a device the user cannot reach, on a card that looks exactly as usable as a paired one.
-        // Absent is the honest answer, and the interface is already written to omit the field.
-        address: None,
-        transfer: None,
-    })
-}
-
-/// The card for one device, looked up in the record.
-///
-/// # Why this exists rather than a call to [`devices_snapshot`]
-///
-/// Because the caller that needs it is the **discovery worker's** announcement, and it has no `AppState` to give — only the
-/// database, the session registry and the identifier it just recorded. Building the card from the same two functions the
-/// snapshot uses is what keeps one description of a card instead of two.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`] when a stored identifier does not parse, for the reason [`devices_snapshot`] gives.
-#[cfg(feature = "tauri-shell")]
-pub(crate) fn card_for(
-    db: &std::sync::Arc<parking_lot::Mutex<synra_store::SynraDb>>,
-    host: &synra_core::SharedHost,
-    device_id: &str,
-) -> Result<Option<DeviceCard>, IpcError> {
-    // Locked, read, released before a card is built: `card_from_paired` takes the registry, and holding the database lock
-    // across that is one more lock order for nobody's benefit.
-    let (paired, seen) = {
-        let db = db.lock();
-        (
-            db.paired_devices().map_err(internal)?,
-            db.seen_devices().map_err(internal)?,
-        )
-    };
-
-    if let Some(row) = paired.iter().find(|row| row.device_id == device_id) {
-        return card_from_paired(host, row).map(Some);
-    }
-    match seen.iter().find(|row| row.device_id == device_id) {
-        Some(row) => card_from_seen(row).map(Some),
-        None => Ok(None),
-    }
-}
-
-/// A card for a device this kernel has paired with.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`] when the stored identifier does not parse. See [`devices_snapshot`]: a corrupted row must not
-/// become a missing card.
-fn card_from_paired(
-    host: &synra_core::SharedHost,
-    row: &synra_store::DeviceRow,
-) -> Result<DeviceCard, IpcError> {
-    let device_id = parse_from_store(row.device_id.as_str())?;
-    Ok(DeviceCard {
-        device_id,
-        display_name: row.display_name.clone(),
-        platform: row.platform.clone(),
-        // A paired device with no open session is offline rather than absent — the two answer different questions
-        // ("can I send to this now" against "have I ever heard of it"), and the interface renders them differently.
-        //
-        // ★ This line said `true` for several rounds while the sentence above it said "offline", and the sentence was
-        // right. Every paired device was reported online, so the dashboard showed a green dot for a laptop that had been
-        // shut for a week, and the first the user heard about it was a send that failed. The registry is what knows:
-        // `live_for` answers "is there a session with this peer now", which is exactly the question the card asks.
-        online: !row.blocked && host.lock().sessions().live_for(device_id).is_some(),
-        paired: !row.blocked,
-        blocked: row.blocked,
-        last_seen_ms: row.last_seen_ms,
-        address: row.address.clone(),
-        transfer: None,
-    })
-}
-
-/// Parses a device identifier the interface sent.
-///
-/// # Errors
-///
-/// [`IpcError::InvalidArgument`], because the caller sent it and the caller can fix it.
-fn parse_from_interface(device_id: &str) -> Result<DeviceId, IpcError> {
-    device_id.parse::<DeviceId>().map_err(|error| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"deviceId": device_id, "detail": error.to_string()}))
-    })
-}
-
-/// Parses a device identifier the kernel stored.
-///
-/// # Errors
-///
-/// [`IpcError::Internal`]. A row that does not parse is a corrupted database, not a bad request — and reporting it as
-/// `invalid_argument` would send the user looking at their own input for a fault that is on disk.
-fn parse_from_store(device_id: &str) -> Result<DeviceId, IpcError> {
-    device_id.parse::<DeviceId>().map_err(|error| {
-        IpcError::unknown(synra_protocol::ErrorCode::Internal)
-            .with_params(serde_json::json!({"deviceId": device_id, "detail": error.to_string()}))
-    })
-}
-
-#[cfg(test)]
-mod tests;

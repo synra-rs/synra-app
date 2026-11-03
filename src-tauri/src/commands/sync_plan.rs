@@ -138,15 +138,16 @@ pub fn interpret(
 /// Because the caller reports the reason to its log, and "it has no address", "the address does not parse" and "it did not answer"
 /// are three different failures: the first needs a connection, the second is stored data that needs fixing, and the third needs the
 /// device to be switched on.
-fn ask(state: &crate::state::AppState, at: &str, to: DeviceId) -> Result<PluginList, String> {
-    let address = at
-        .parse::<SocketAddr>()
-        .map_err(|error| format!("{at}: {error}"))?;
+fn ask(
+    state: &crate::state::AppState,
+    address: SocketAddr,
+    to: DeviceId,
+) -> Result<PluginList, String> {
     let identity = state.identity.lock().clone();
     let now_ms = unix_millis();
     let parts = state.host.lock().dialling_parts();
     let dialled = synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| format!("{address}: {error}"))?;
     let mut link = dialled
         .into_link()
         // Same recorder as every other dial: the byte counters are per link, so a link that skips it is one the panel
@@ -206,32 +207,21 @@ pub fn plugins_sync_plan(
     let asked_at_ms = synra_store::sqlite::now_ms();
     let peers: Vec<PeerView> = devices
         .into_iter()
+        .filter(|device| !device.blocked)
         .map(|device| {
             let to = device.device_id.parse::<DeviceId>().ok();
-            let answer = match (&device.address, to) {
-                (Some(address), Some(to)) => ask(state, address, to)
+            let answer = to.and_then(|to| {
+                super::peers::address_of(state, to)
+                    .map_err(|error| format!("{error:?}"))
+                    .and_then(|address| ask(state, address, to))
                     .inspect_err(|why| {
                         eprintln!(
                             "synra: {} could not be asked what it holds: {why}",
                             device.display_name
-                        );
+                        )
                     })
-                    .ok(),
-                (None, _) => {
-                    eprintln!(
-                        "synra: {} has no address this device has dialled",
-                        device.display_name
-                    );
-                    None
-                }
-                (Some(_), None) => {
-                    eprintln!(
-                        "synra: {} is stored under an identifier this build cannot read",
-                        device.display_name
-                    );
-                    None
-                }
-            };
+                    .ok()
+            });
             match answer {
                 Some(list) => {
                     let (remote, held) = interpret(&id, &list);
@@ -281,5 +271,8 @@ fn unix_millis() -> u64 {
         .map_or(0_u64, |elapsed| elapsed.as_millis() as u64)
 }
 
+#[cfg(test)]
+#[path = "sync_plan/network_tests.rs"]
+mod network_tests;
 #[cfg(test)]
 mod tests;

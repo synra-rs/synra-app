@@ -25,6 +25,7 @@ pub mod intent_remote;
 /// Sending again the dispatches a restart left waiting, keyed by the identifier the receiver deduplicates on.
 pub mod intent_resume;
 pub mod pairing;
+mod peers;
 pub mod plugin_ui;
 pub mod plugin_updates;
 pub mod plugins;
