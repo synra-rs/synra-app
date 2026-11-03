@@ -32,7 +32,8 @@
     "targets": "all",
     "windows": {
       "nsis": {
-        "installerHooks": "nsis/firewall.nsh"
+        "installerHooks": "nsis/firewall.nsh",
+        "installMode": "perMachine"
       }
     },
     "icon": [
