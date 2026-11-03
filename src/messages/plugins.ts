@@ -29,7 +29,7 @@ export const plugins = {
     // kernel's lifecycle names, never the word the card is handed, so five entries were unreachable.
     active: 'Active',
     disabled: 'Disabled',
-    awaiting_consent: 'Needs permission review',
+    awaiting_consent: 'Needs confirmation',
     unreadable: 'Plugin files cannot be read',
     faulted: 'Stopped after an error',
     /**

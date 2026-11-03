@@ -4,14 +4,19 @@ import { DEVICES, PLUGIN_AUDIT, PLUGINS } from './fake-kernel-fixtures'
 /** Isolated browser fixtures; Native always calls the real bridge. */
 export class PreviewPlugins {
   #plugins: PluginSnapshot[] = PLUGINS.map(plugin => ({ ...plugin }))
+  readonly #approved = new Set<string>()
   readonly #audit = new Map<string, AuditEntryDto[]>(Object.entries(PLUGIN_AUDIT).map(([id, rows]) => [id, [...rows]]))
   constructor(private emit: (type: SequencedKernelEvent['type'], payload: unknown) => void) {
     const base = this.#plugins[0]!
     this.#plugins.push(
-      { ...base, pluginId: '@preview/notes', title: 'Notes', description: 'Browse and organize your notes.', hasUi: true },
+      { ...base, pluginId: '@preview/notes', title: 'Notes', description: 'Browse and organize your notes.', hasUi: true, state: 'awaiting_consent', requested: [], granted: [], denied: [] },
       { ...base, pluginId: '@preview/calendar', title: 'Calendar', enabled: false, state: 'disabled', hasUi: true },
       { ...base, pluginId: '@preview/archive', title: 'Archive with a deliberately long descriptive name', state: 'awaiting_consent', granted: [], denied: [], requested: ['fs:read', 'net:fetch:archive.example.test'] }
     )
+    for (const plugin of this.#plugins) {
+      if (plugin.granted.length)
+        this.#approved.add(plugin.pluginId)
+    }
   }
 
   invoke(command: string, args: Readonly<Record<string, unknown>> = {}): unknown {
@@ -28,8 +33,16 @@ export class PreviewPlugins {
         if (!plugin)
           return { code: 'not_found', message: 'error.notFound', retryable: false }
         const granted = command === 'plugins_consent_respond' ? args.granted as string[] : plugin.granted
+        if (command === 'plugins_consent_respond') {
+          if (granted.some(capability => !plugin.requested?.includes(capability)))
+            return { code: 'invalid_argument', message: 'error.invalidArgument', retryable: false }
+          if (granted.length || !plugin.requested?.length)
+            this.#approved.add(id)
+          else
+            this.#approved.delete(id)
+        }
         const enabled = command === 'plugins_enable' || (command !== 'plugins_disable' && plugin.enabled)
-        const next = serializedPlugin({ ...plugin, enabled, granted, denied: (plugin.requested ?? []).filter(capability => !granted.includes(capability)), state: enabled ? granted.length ? 'active' : 'awaiting_consent' : 'disabled' })
+        const next = serializedPlugin({ ...plugin, enabled, granted, denied: (plugin.requested ?? []).filter(capability => !granted.includes(capability)), state: enabled ? this.#approved.has(id) ? 'active' : 'awaiting_consent' : 'disabled' })
         this.#plugins = this.#plugins.map(item => item.pluginId === id ? next : item)
         this.emit('pluginUpdated', next)
         return command === 'plugins_consent_respond' || command === 'plugins_reload' ? next : null
@@ -46,12 +59,14 @@ export class PreviewPlugins {
       case 'plugins_install': {
         const source = args.source as { source: string, pluginId?: string }
         const pluginId = source.pluginId ?? '@preview/local'
+        this.#approved.delete(pluginId)
         const next = serializedPlugin({ ...this.#plugins[0]!, pluginId, title: source.source === 'registry' ? 'Reader' : 'Local plugin', enabled: false, state: 'disabled', granted: [], denied: [], requested: ['fs:read'], hasUi: true })
         this.#plugins = [...this.#plugins.filter(plugin => plugin.pluginId !== pluginId), next]
         this.emit('pluginUpdated', next)
         return { pluginId, version: next.version, enabled: false } satisfies InstallReport
       }
       case 'plugins_uninstall':
+        this.#approved.delete(id)
         this.#plugins = this.#plugins.filter(plugin => plugin.pluginId !== id)
         return { bytesFreed: 0, dataKept: args.removeData !== true, leftovers: [] }
       case 'plugins_updates': return []

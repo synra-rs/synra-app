@@ -13,7 +13,7 @@ export const plugins = {
   'plugins.openLabel': name => `打开 ${name}`,
   'plugins.states.active': '运行中',
   'plugins.states.disabled': '已停用',
-  'plugins.states.awaiting_consent': '需要检查权限',
+  'plugins.states.awaiting_consent': '需要确认',
   'plugins.states.unreadable': '无法读取插件文件',
   'plugins.states.faulted': '发生错误后已停止',
   'plugins.states.unavailable': '此版本无法启动',

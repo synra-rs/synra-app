@@ -6,7 +6,7 @@
         <span class="block truncate text-sm text-ink-dim">{{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }} · {{ summary }}</span>
       </button>
       <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="$emit('details', 'permissions')">
-        {{ messages.plugins.reviewPermissions }}
+        {{ plugin.requested?.length ? messages.plugins.reviewPermissions : messages.plugins.workflow.reviewRun }}
       </AButton>
       <AButton v-else-if="plugin.state === 'faulted'" size="small" :disabled="busy" @click="library.retry(plugin)">
         {{ messages.plugins.retry }}

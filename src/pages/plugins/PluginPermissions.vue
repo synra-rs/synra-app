@@ -11,6 +11,15 @@
     <p v-if="!capabilities.length" class="m-0 text-base text-ink-dim">
       {{ messages.plugins.preview.none }}
     </p>
+    <div v-if="approvalOnly" class="stack items-start gap-3">
+      <p class="m-0 text-sm text-ink-dim">
+        {{ messages.plugins.workflow.noPermissionsApproval }}
+      </p>
+      <ErrorNotice v-if="error" :code="error.code" :detail="error.detail" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
+      <AButton type="primary" :loading="busy" :disabled="locked" @click="save">
+        {{ messages.plugins.workflow.allowRun }}
+      </AButton>
+    </div>
     <div v-for="capability in capabilities" :key="capability" class="min-w-0 border-b border-line py-3">
       <ACheckbox v-if="editing" class="w-full" :checked="draft.includes(capability)" :disabled="busy" @update:checked="checked => select(capability, checked)">
         <span class="min-w-0 stack gap-1">
@@ -67,6 +76,7 @@ const busy = computed(() => props.operations.busy.get(props.plugin.pluginId) ===
 const locked = computed(() => props.operations.busy.has(props.plugin.pluginId))
 const capabilities = computed(() => [...new Set(props.plugin.requested ?? [])])
 const denied = computed(() => props.plugin.denied ?? [])
+const approvalOnly = computed(() => !capabilities.value.length && (props.plugin.state === 'awaiting_consent' || (props.initialEdit && editing.value)))
 const firstDecision = computed(() => !props.plugin.granted.length && !denied.value.length)
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every(value => b.includes(value))
 const changed = computed(() => !same(draft.value, props.plugin.granted))
