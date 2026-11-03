@@ -53,6 +53,19 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
             }
         }
     };
+    // A card can outlive the row it came from. Starting an offer for a peer that is already in the records would show a
+    // code for a decision that has already been made; the listener would refuse it, and the person would see a six-digit
+    // number followed by "did not accept" for a device that is, in fact, still paired.
+    let already = state
+        .db()
+        .paired_devices()
+        .map(|rows| rows.iter().any(|row| row.device_id == device_id))
+        .unwrap_or(false);
+    if already {
+        return Err(internal(format!(
+            "{name} is already paired; forget it on both devices before pairing again"
+        )));
+    }
     let Some(address) = state.host.lock().address_of(peer) else {
         return Err(internal(format!(
             "{name} is not reachable right now; run a scan and try again"
@@ -70,7 +83,7 @@ pub fn devices_pair(state: &Arc<AppState>, device_id: &str) -> Result<PairingSna
         (local.device_id, local.display_name.clone(), local.platform)
     };
     let offer = desk
-        .begin(peer, name.clone(), platform, false)
+        .begin(peer, name.clone(), platform, already)
         .map_err(|refused| internal(format!("pairing could not start: {refused:?}")))?;
     // ★ 信封里「谁发的」必须是本机：桌子只负责码与对端，身份由这一层填。
     let request = synra_protocol::pairing::PairRequest::new(
