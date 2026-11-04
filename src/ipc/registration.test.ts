@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { readIpcContract } from '../../scripts/ipc-contract'
 import { NOT_YET_REGISTERED, REGISTERED } from './command-inventory'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -45,26 +46,15 @@ const APP_ROOT = resolve(HERE, '..', '..')
 // is not in …" rather than with anything about a command — a failed test that named the wrong file, and a gate that was
 // red before this change rather than because of it.
 const SHELL_RS = resolve(APP_ROOT, 'src-tauri', 'src', 'shell.rs')
-const CONTRACT_RS = resolve(APP_ROOT, '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
+const { path: CONTRACT_RS, source: contractSource } = readIpcContract(APP_ROOT)
 
 /** The command names the contract declares, read from `command.rs`. */
 function declaredInContract(): string[] {
-  let source: string
-  try {
-    source = readFileSync(CONTRACT_RS, 'utf8')
-  }
-  catch (cause) {
-    throw new Error(
-      `the IPC contract is unreadable at ${CONTRACT_RS} — this test needs the sibling synra-rust-core checkout, the `
-      + `same one scripts/check-shapes.ts reads: ${String(cause)}`
-    )
-  }
-
   // The `commands!` macro body is one entry per line: `"name" => Domain, Interface, ReturnShape, bool;`. Matching the
   // quoted name at the start of a line keeps this from picking up the macro definition above it, where the name is a
   // `$name` metavariable rather than a literal.
   const names: string[] = []
-  for (const line of source.split('\n')) {
+  for (const line of contractSource.split('\n')) {
     const match = /^\s*"([a-z0-9_]+)"\s*=>/.exec(line)
     if (match?.[1] !== undefined)
       names.push(match[1])

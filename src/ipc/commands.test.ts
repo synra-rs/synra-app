@@ -25,12 +25,12 @@
  */
 
 import type { AuditEntryDto, SyncPlanDto, SyncReport } from '@synra/protocol'
-import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { readIpcContract } from '../../scripts/ipc-contract'
 import { KernelClient } from './client'
 import { FakeKernel } from './fake-kernel'
 
@@ -70,8 +70,8 @@ it('keeps preview audit pages independent and clears only the selected plugin', 
   expect(await new FakeKernel().invoke('plugins_audit', { pluginId: '@synra-plugin/github', limit: 20 })).toHaveLength(2)
 })
 
-/** The contract, in the sibling core checkout — the same file `scripts/check-shapes.ts` reads. */
-const CONTRACT_RS = resolve(HERE, '..', '..', '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
+/** The same contract checkout that `scripts/check-shapes.ts` reads. */
+const { path: CONTRACT_RS, source: contractSource } = readIpcContract(resolve(HERE, '..', '..'))
 
 /** What `command.rs` says a command's payload is. */
 type Arity = 'Unit' | 'One' | 'Many' | 'Maybe'
@@ -84,19 +84,8 @@ type Arity = 'Unit' | 'One' | 'Many' | 'Maybe'
  * silently stopped matching half the table would otherwise look exactly like a parser that read it all.
  */
 function declaredArities(): Map<string, Arity> {
-  let source: string
-  try {
-    source = readFileSync(CONTRACT_RS, 'utf8')
-  }
-  catch (cause) {
-    throw new Error(
-      `the IPC contract is unreadable at ${CONTRACT_RS} — this test needs the sibling synra-rust-core checkout, the `
-      + `same one scripts/check-shapes.ts reads: ${String(cause)}`
-    )
-  }
-
   const arities = new Map<string, Arity>()
-  for (const line of source.split('\n')) {
+  for (const line of contractSource.split('\n')) {
     const match = /^\s*"([a-z0-9_]+)"\s*=>\s*[A-Za-z]+,\s*[A-Za-z]+,\s*(Unit|One|Many|Maybe)\s*,/.exec(line)
     const name = match?.[1]
     const arity = match?.[2]

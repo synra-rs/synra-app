@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
+import { readIpcContract } from '../ipc-contract'
 import { clientTypes, failures, here, notes, sources } from './common'
 
 export async function checkInjection(): Promise<void> {
@@ -130,13 +131,15 @@ export async function checkCommandNames(): Promise<ReadonlySet<string>> {
         called.add(match[1])
     }
   }
-  const rust = join(here, '..', 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
+  let rust: string
   let rustText: string
   try {
-    rustText = await readFile(rust, 'utf8')
+    const contract = readIpcContract(here)
+    rust = contract.path
+    rustText = contract.source
   }
-  catch {
-    notes.push('command-names: the kernel checkout is not beside this one, so the names were not compared')
+  catch (cause) {
+    failures.push({ check: 'command-names', detail: String(cause) })
     return called
   }
   // The macro's arms are `"name" => Domain, Interface, Shape, mutating;`. The name is the first quoted string on the
