@@ -1,224 +1,48 @@
-# synra-app
+# Synra
 
-> **应用仓库。** Tauri 2 桌面端 + 移动端，以及宿主 UI 与插件 UI 的承载。
->
-> 这是 **`synra` 五仓库拓扑**中的第 2 个（[设计文档 §3](https://github.com/synra-rs/design-docs/blob/main/README.md)）：
->
-> | 仓库                                                       | 装什么                                                        |
-> | ---------------------------------------------------------- | ------------------------------------------------------------- |
-> | [`synra-core`](https://github.com/synra-rs/synra-core)       | Rust 内核 + CLI + 插件工具链                                    |
-> | **`synra-app`** ← 本仓库                                     | Tauri 应用（桌面 + 移动 + 宿主 UI）                               |
-> | [`synra-js`](https://github.com/synra-rs/synra-js)           | 插件 UI 的类型库（`@synra/client` / `@synra/protocol` / `@synra/theme`） |
-> | [`docs`](https://github.com/synra-rs/docs)                   | 官网 + 用户文档 + schema                                         |
-> | [`design-docs`](https://github.com/synra-rs/design-docs)     | 设计文档（唯一权威）                                             |
->
-> **域名**：[synra-app.dev](https://synra-app.dev)（官网 + 文档 + schema 托管）
+Synra 让设备通过插件协作：在手机上打开一个插件，选择电脑，再由电脑完成对应操作。
+软件本体负责设备连接、插件管理和授权，具体功能由插件提供。
 
-## 状态
+[使用文档](https://synra-app.dev/zh/guide/introduction) · [快速上手](https://synra-app.dev/zh/guide/quick-start) · [问题反馈](https://github.com/synra-rs/synra-app/issues)
 
-✅ **已在实现中。**
+## 可以做什么
 
-这份 README 曾经写着「尚未开始实现。目前只有这份 README」——那句话在写下它的当天就不再成立。留着这个更正，
-是因为**一份没跟着代码改的 README 比没有 README 更容易骗人**：它会让下一个人以为不必读代码。
+- 在局域网发现设备，通过两端相同的配对码和接收端确认建立配对。
+- 从本地目录或已配置的注册表安装插件，预览来源与权限，并决定是否信任发布者的签名密钥。
+- 安装、确认、启用和管理插件，查看权限、版本、配额及最近调用。
+- 检查更新，并按策略接收通知或自动安装已验证且未新增权限的版本。
+- 将插件同步到已配对设备，查看任务状态并处理接收确认。
+- 打开独立插件页面：桌面使用新窗口，Android 提供宿主返回栏和系统返回。
+- 查看连接、传输与运行日志，管理设置和已信任的接收来源。
 
-| | |
+例如，Touchpad 插件提供手机触摸区域，电脑同意本次连接后才接受鼠标操作。
+插件授权与设备配对分别管理，需要逐次确认的操作会另行询问。
+
+## 开始使用
+
+1. 在参与协作的设备上运行相互匹配的 Synra 构建，并保持应用运行。
+2. 在“设备”中扫描并发起配对，核对两端配对码，由接收端同意。
+3. 安装所需插件，确认权限并启用；跨设备功能通常需要两端安装对应插件。
+4. 打开插件，选择目标设备，按插件提示完成操作。
+
+当前为开发版本，已构建 Windows 桌面程序与 Android ARM64 APK。
+其他系统的应用分发与原生能力请以[平台说明](https://synra-app.dev/zh/reference/platform-matrix)为准。
+
+> 当前设备通信使用明文 TCP，配对码用于人工核对，不提供传输加密或密码学身份认证。请在可信局域网使用。
+
+## 项目组成
+
+| 项目 | 作用 |
 | --- | --- |
-| `src/`（前端） | 72 个文件、约 6.8k 行（42 个生产文件 + 30 个测试与夹具） |
-| `src-tauri/src/`（壳） | 30 个文件、约 8.1k 行（21 个生产 + 9 个测试） |
-| 命令 | 契约 57 条 · **注册 57 条** · 其中被调用 46 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
-| 页面 | 4 页（Home / Devices / Plugins / Settings） |
-| 前端 store | 5 / 8（devices / pairing / plugins / intents / settings） |
+| [synra-core](https://github.com/synra-rs/synra-core) | 无界面的 Rust 内核、设备通信、插件运行时与作者工具 |
+| 本仓库 | 基于 Tauri 与 Vue 的桌面和移动端应用，承载通用管理界面与插件页面 |
+| [synra-js](https://github.com/synra-rs/synra-js) | 插件页面客户端类型、共享协议、测试工具和主题 |
+| [Starter](https://github.com/synra-rs/synra-plugin-starter) / [Touchpad](https://github.com/synra-rs/synra-plugin-touchpad) | 独立插件示例与实际功能 |
 
-### 宿主界面边界
+## 参与开发
 
-主程序提供设备发现与配对、插件安装与权限管理、应用设置、诊断，以及通用任务和传输记录。
-分享内容、读取剪贴板、发送文字或文件等具体功能由插件页面提供，宿主不固定内置这些业务入口。
-首页可以展示已接收、已完成、插件标识、调用记录及文件元数据；任务授权和取消属于通用控制。
-插件名、调用标识等预览数据可用于演示状态，不能据此在宿主界面加入对应插件的功能按钮。
-
-四页共享页面头部与内容对齐；首页使用紧凑连接摘要和局部空状态，设备配对、插件安装与管理内容按需展开。
-收起表单保留当前草稿；插件运行异常、新增权限提示和重试仍保持可见。当前实现进展见设计仓库的 `ui-design/11-current-progress.md`。
-
-### 已经能跑的
-
-- **进程内是真内核，不是假内核**（[`src-tauri/src/state.rs`](./src-tauri/src/state.rs)）：`SynraDb`、`Identity`、
-  `SharedHost`、`Board`、`PluginSet`、`Discovery`、`RingRecorder` 都在 `AppState` 里；扫描是真的 UDP 扫描
-  （[`discovery.rs`](./src-tauri/src/discovery.rs)）。
-- **插件宿主是真的**（[`plugin_host.rs`](./src-tauri/src/plugin_host.rs)）：平台动作、插件存储、受控 `fetch`、
-  审计环都是真的；事件 / 设备发送 / 密钥 / 传输 / 动作组返回 `NOT_IMPLEMENTED`，是**明确的拒绝**而不是静默。
-- 前端有类型化 client、`IpcError` 映射与重试分类、`EventDispatcher` + `SequenceTracker`（seq / gap / 未知事件兜底）、
-  4 页、集中文案（`src/messages/`），假内核被**关在测试目录里**，有守卫盯着。
-- **事件桥是真的**：`src-tauri/src/events.rs` 订阅内核总线并 `emit` 到 `kernel-event`，四个 store（devices / plugins /
-  intents / settings）按事件更新；配对、传输、插件、配置、扫描都有发布点。
-- **网络那一半在窗口里**：`discovery.rs` 扫、`listener.rs` 收、`transfers.rs` 与 `sync_run.rs` 拨号发；
-  插件页有自己的 origin（`synra-plugin://`）、令牌与初始化脚本。
-- **插件页有 `window.synra`**：`src/ipc/injection/bootstrap.ts` 构建成 `src-tauri/inject/facade.js`
-  （`pnpm run build:facade`），壳把它和 seed 一起拼进 `initialization_script`（seed 是包装函数的参数，不在全局 —— token
-  按设计留在闭包里）；`device.list` 已经走 `plugin_ui_rpc`。
-  生成物提交进仓库，`pnpm shapes` 的 `facade-fresh` 会重建并逐字节比较。
-- 验证：`pnpm test` 235 条（含 29 个挂载测试）、`pnpm run lint` 0 error、`pnpm run build` 通过、`pnpm shapes` 8 项一致；
-  Rust 侧 244 条。
-
-### 还没有的（下一步就是这些）
-
-1. **插件页的其余能力**：`window.synra` 的所有命名空间都已接上 `plugin_ui_rpc`；`transfer.*` 现在有**分块通道**
-   （`transfer.begin` / `chunk` / `finish` / `abort`，每块 1 MiB，整文件 64 MiB），插件页的 `send` 会自动分块，
-   并在**字节交给发送端后**就返回 —— 结束状态用 `status` / `onProgress` 查（19 §8.16）。
-2. **插件窗口的收尾**：插件卡上的「打开」按钮已经接上 `plugin_ui_open`，导航范围限制（`on_navigation`）也已装好；
-   剩下的是每窗口 CSP —— 受 Tauri 2.12 限制只能继承全局策略。
-3. **单实例 / 优雅关停**：单实例锁（`instance.lock`，操作系统文件锁）与「第二次启动唤起已有窗口」（`instance.show`，
-   500 ms 轮询）已经做了；退出路径（`ExitRequested`，托盘 Quit 也走它）会取消 listener、discovery、事件桥与 pairing
-   监视线程的 token，四个后台线程都会在各自的轮询间隔内退出。
-4. **同步的终点**：插件卡上的「Sync to devices」已经接上 `plugins_sync_plan` / `plugins_sync_run`（先读计划再发送）；
-   发送侧把已安装目录打成 `.synra`（跳过已解包的 `ui/`），接收侧（窗口与 daemon 都是）先 `install::from_package`
-   走完整校验与落盘，再 `record_received` 写历史与对端状态；安装失败时回 `refused` 而不是声称已装。
-5. **接收端的接受/拒绝**：已经做了（`file.transfer.request` 的询问步骤、全局提示、拒绝回 abort、按设备“总是接受”），
-   设置页可以列出并移除已信任的发送方；忘记设备时信任一并删除；**发送端 abort 时接收端删除半成品并收掉行**。见 19 §8.14 / §8.18。
-
-## 设备配对
-
-配对从 `commands/pairing.rs` 发起，经 core 的 `pairing_dial` 与 `listener` 交换请求和答复。
-网络 Hello 只建立连接，不写入配对记录。发起端与接收端显示同一组六位码，发起端等待并可撤回，
-接收端可接受、拒绝或拉黑；只有接受后才保存双方的配对关系。
-
-监听器复用 `AppState.host`，与命令和事件通知共用同一个配对状态实例。
-前端由 `src/events.ts` 统一接收 `pairingUpdated`，更新 `src/stores/pairing.ts`；
-根组件挂载 `PairingPrompt`，因此在首页或设置页也能回答请求。拉黑会持久化并拒绝后续连接，
-已阻止设备的详情中可用“忘记”移除这项决定。
-
-`src-tauri/src/commands/pairing/tests.rs` 用真实 TCP 回环连接同时驱动两端，覆盖等待、相同码、接受、
-拒绝、撤回与拉黑后的重启，避免仅测试单侧状态机而漏掉握手提前写入配对记录的问题。
-前端另测全局弹窗、事件分发，以及迟到的命令或快照不能覆盖新状态。
-
-## 这个仓库装什么
-
-```
-synra-app/
-├─ package.json / vite.config.ts          # 标准 Vite + pnpm（ADR-012）
-├─ src/                                   # 前端：宿主 UI
-│  ├─ pages/{Home,Devices,Plugins,Settings}Page.vue
-│  ├─ components/                         #   目前一个（ErrorNotice）
-│  ├─ stores/devices.ts                   #   ★ 只读镜像：缓存快照 + 应用增量
-│  ├─ ipc/                                #   类型化 client、事件分发、注入面
-│  └─ messages/                           #   ★ 所有用户可见文案都在这里
-└─ src-tauri/                             # 独立 workspace（理由见它的 Cargo.toml 顶部）
-   ├─ src/state.rs                        #   AppState：进程内内核
-   ├─ src/commands/                       #   命令实现：&AppState -> Result<_, IpcError>，不依赖 Tauri
-   ├─ src/shell.rs                        #   唯一一处 #[tauri::command] 与 generate_handler!
-   ├─ src/plugin_host.rs                  #   DesktopHost：插件 Host trait 的桌面实现
-   ├─ src/discovery.rs                    #   真套接字 + 记录 worker
-   └─ tauri.conf.json                     #   identifier = com.synra.app
-```
-
-## 它不装什么
-
-| 不装                              | 在哪                                                          |
-| --------------------------------- | ------------------------------------------------------------ |
-| 内核（发现、传输、协议、插件宿主）    | [`synra-core`](https://github.com/synra-rs/synra-core)         |
-| Wasm 运行时（wasmtime）            | 同上（`crates/synra-plugin-host/`，本仓库只开 feature 引入）       |
-| 插件校验 / 签名的**逻辑**            | 同上（本仓库只做 UI 承载与令牌注入）                               |
-| `@synra/client` 等类型包            | [`synra-js`](https://github.com/synra-rs/synra-js)              |
-
-## 与 core 的边界（判据）
-
-> **如果一个功能在"没有 UI"的情况下也需要工作，它属于 core。**
-
-| 属于 core                              | 属于本仓库                                        |
-| -------------------------------------- | ------------------------------------------------- |
-| `KernelEvent` 枚举（事件的事实来源）       | 事件 → Tauri `emit` 的桥、前端分发                  |
-| `SynraError` + 稳定错误码                 | 面向 UI 的错误映射 + 可操作建议                       |
-| UI 插件**会话令牌的签发 / 校验**            | 令牌的**注入方式**（initialization script）、CSP      |
-| 插件 artifact 的落盘与校验                 | 插件 WebView 的创建与销毁                           |
-| 意图路由（匹配 / 决策 / 下发）              | 候选的展示与用户选择 UI                              |
-
-**两条硬性检查**（`pnpm shapes` 已实现）：
-
-1. `src-tauri/src/inject/` 的注入对象必须 `satisfies SynraClient` —— **漏字段/多字段在编译期报错**；
-2. 本仓库**不得**出现第二处 `SynraResponse` / `SynraError` 声明（类型只在 `@synra/client` 里定义一次）。
-
-## 开发工具链
-
-根目录的 [rust-toolchain.toml](./rust-toolchain.toml) 同样适用于 `src-tauri/` 中的 Cargo 命令。
-先在仓库内执行 `rustup toolchain install --no-self-update` 安装固定版本和组件；
-CI 的 shell job 使用该开发版本，独立 MSRV job 从 `src-tauri/Cargo.toml` 读取最低版本并显式选择。
-MSRV 检查使用无默认特性构建，默认 Tauri 构建仍需相应平台工具。
-
-## 运行
-
-```powershell
-pnpm install
-pnpm test             # vitest（219 条；默认 node 环境，页面各有一个 jsdom 挂载测试）
-pnpm run build:facade # 生成 src-tauri/inject/facade.js —— Rust 侧 include_str! 它
-pnpm build            # vue-tsc -b + vite build
-pnpm shapes           # 8 条守卫（含 facade-fresh：重建门面并逐字节比较）
-
-pnpm tauri dev       # 真正跑起来：需要 WebView2（Windows）+ Rust 1.90+
-```
-
-`src-tauri` 是**独立 workspace**，它的逻辑测试不编译 Tauri，所以这是最快的一条反馈路径：
-
-```powershell
-cd src-tauri
-cargo test --no-default-features
-```
-
-`@synra/client` / `@synra/protocol` / `@synra/theme` 在本地通过 `pnpm-workspace.yaml` 的 `overrides: link:`
-指向同级的 `synra-js/`（理由写在那份文件里）。CI 里同样用 `link:` —— 三个仓库并排 checkout —— 所以那三行
-`overrides` 在两边都是真的；要换成版本依赖是**发布**时的事，不是 CI 的事。
-
-### Starter 真实桌面验收
-
-先按独立 Starter 仓库的 README 构建 `dist/`，并确保本仓库前端与 facade 已构建。
-以下入口只存在于启用 `official-plugin-tests` 的 desktop debug 构建，通过生产命令安装、
-授予本机 debug 声明与设备列表读取能力、启用并打开真实插件窗口。
-
-```powershell
-$taskPreviousTauriConfig = $env:TAURI_CONFIG
-try {
-  $env:TAURI_CONFIG = '{"identifier":"com.synra.ui-smoke","plugins":{"deep-link":{"desktop":{"schemes":[]}}}}'
-  cargo build --locked --manifest-path src-tauri/Cargo.toml --bin synra-app --features official-plugin-tests -j 1
-}
-finally {
-  $env:TAURI_CONFIG = $taskPreviousTauriConfig
-}
-$taskStarterDist = (Resolve-Path ../synra-plugin-starter/dist).Path
-./src-tauri/target/debug/synra-app.exe --starter-ui-smoke $taskStarterDist
-```
-
-入口在数据库初始化之前验证独立 identifier 和空链接 schemes，拒绝在正常应用配置下自动安装。
-空验收 profile 执行安装；只有 Starter fixture 时通过生产 update 入口替换，便于重复验收而不丢弃本机身份。
-包含其他插件时拒绝自动变更；也可不带参数重开实例，再从插件页打开 Starter。
-它保留独立的应用数据与本机密钥以便复查，不能当作手机到电脑操作验收。
-普通开发时重新构建默认配置，避免继续运行这个独立 profile 的二进制。
-
-## 已知不一致
-
-Android 的原生工程位于 `src-tauri/gen/android`，随源码提交。插件使用独立 `PluginActivity`，
-由宿主提供“返回 Synra”和系统返回，避免复用 `singleTask` 主页面而失去返回途径。
-SDK 路径、Tauri 临时配置、生成的桥接代码、构建产物及签名密钥仍被忽略；没有本地签名配置也可构建 debug 包。
-
-Touchpad 的完整包验收在 Windows 上显式运行：设置 `SYNRA_TOUCHPAD_PACKAGE` 指向独立仓库的 CLI-built `dist`，
-执行 `cargo test --no-default-features --features touchpad-plugin-tests --manifest-path src-tauri/Cargo.toml official_touchpad --lib`。
-它通过真实 `.synra` 安装、授权、页面 RPC、Wasm、TCP 和输入会话；默认记录原生效果，不能当作实体两机验收。
-
-- **包标识符**：`src-tauri/tauri.conf.json` 是 `com.synra.app`，[设计文档拍板](https://github.com/synra-rs/design-docs/blob/main/README.md)
-  的是 `dev.synra-app.app`。发布前必须定一个 —— Android 的 `applicationId` 发版后改不了，而改它要重新生成
-  `gen/android`。
-- **没有 CI 之外的东西**：`.github/workflows/ci.yml` 会跑 `pnpm test` / `build` / `shapes` 与
-  `cargo test --no-default-features`，但它**不跑** `pnpm tauri build`（需要 WebView2 与平台依赖），
-  也不做端到端 —— 打包产物仍然是手工的。
-
-## 下一步
-
-1. 事件桥（`KernelEvent` → `emit`），否则所有页面只能轮询；
-2. 补 `pairing_*` 与 `transfer_*` 命令，再补对应的页面；
-3. 插件页把已有的 `plugins_enable/disable/consent_respond/audit` 接上界面；
-4. 插件 UI 承载（第二 WebView / origin / 令牌 / 注入脚本）—— 这是 M4 的关键验收，做之前先跑
-   [设计文档 19 §0.1](https://github.com/synra-rs/design-docs/blob/main/19-roadmap.md) 的 spike 5 与 6。
-
-设计依据：[08 IPC 契约与前端集成](https://github.com/synra-rs/design-docs/blob/main/08-ipc-and-frontend.md)、
-[28 App UI 规范](https://github.com/synra-rs/design-docs/blob/main/28-app-ui.md)、
-[23 客户端库](https://github.com/synra-rs/design-docs/blob/main/23-client-library.md)。
+本地运行、构建、检查和插件验收见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+本轮总结的协作方法见[开发经验](./ai-docs/good-practices/README.md)。
 
 ## 许可
 

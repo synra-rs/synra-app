@@ -2,8 +2,8 @@
 
 The shell and the interface around `synra-core`. Rust in `src-tauri/`, TypeScript and Vue in `src/`.
 
-Its sibling is [`synra-core`](https://github.com/synra-rs/synra-core); the boundary is in the README ("if it has to work
-without a UI, it belongs to core"). This file is what a person needs *before* their first edit, and it exists because those
+Its sibling is [`synra-core`](https://github.com/synra-rs/synra-core); CONTRIBUTING.md describes the boundary (rules that
+must work without a UI belong to core). This file is what a person needs *before* their first edit, and it exists because those
 facts were learned the expensive way.
 
 The root `rust-toolchain.toml` also selects Rust when commands run inside `src-tauri/`. CI installs this development toolchain;
@@ -17,7 +17,7 @@ cargo check --manifest-path src-tauri/Cargo.toml                        # the sh
 pnpm test        # vitest: node by default, four pages opt into jsdom
 pnpm run lint    # eslint — and it is not decoration, see §4
 pnpm run build   # vue-tsc -b + vite build
-pnpm run shapes  # seven guards the README calls hard requirements — one of them now checks the README itself
+pnpm run shapes  # contract and integration guards including command counts in CONTRIBUTING.md
 ```
 
 ★ **Both Cargo invocations.** `shell.rs` only compiles under the default feature, so `--no-default-features` alone cannot
@@ -33,7 +33,7 @@ workspace", which reads like a broken guard and is really a wrong directory.
 | Fact | Why it matters |
 | --- | --- |
 | `src/events.ts` is the **only** subscriber to `KERNEL_EVENT_CHANNEL` | A second one means two sequence trackers on one channel, and both conclude they missed events |
-| Four stores (`devices`, `plugins`, `intents`, `settings`) each have `apply(event): boolean` | `false` means "I cannot place this", which is the caller's cue to re-read — never "nothing happened" |
+| Snapshot stores consume events through the central dispatcher | An `apply(event): boolean` result of `false` means "I cannot place this", which cues a re-read — never "nothing happened" |
 | Pages are **readers** of a store | A page that keeps its own copy goes stale the moment an event arrives |
 | A card's description lives in `commands::devices` | `card_for` / `card_from_paired` / `card_from_seen` are the only builders; a second one drifts |
 | `AppState.hosted_ui` records which plugin page is in which WebView | A token is a nonce: it cannot say which plugin a page is |

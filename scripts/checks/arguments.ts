@@ -144,38 +144,38 @@ export async function checkCommandArguments(called: ReadonlySet<string>): Promis
   )
   if (unreadable > 0)
     notes.push(`command-arguments: ${String(unreadable)} call(s) were not read — their name or arguments are not literals`)
-  // ★ Both counts the README states are checked, and the second used to be exempt.
+  // Both counts in the development guide stay checked; the README introduces the product.
   //
   // The registered count was guarded after it drifted "23 → 25 while the shell grew to 29". The "called" count was left
   // alone because the call-site total is not the distinct-command total: comparing them reported 15 against 10 and would
   // have failed a true sentence. Now `checkCommandNames` returns the **distinct** set, so the same number can be checked —
   // and it needed to be: the log and export panels added two callers and the prose silently stayed at 29 while the code
   // reached 31.
-  const readme = await readFile('README.md', 'utf8')
+  const readme = await readFile('CONTRIBUTING.md', 'utf8')
   const stated = /注册 (\d+) 条/.exec(readme)
   if (stated === null) {
     failures.push({
       check: 'readme-counts',
-      detail: 'README.md no longer states how many commands are registered, so nothing checks it'
+      detail: 'CONTRIBUTING.md no longer states how many commands are registered, so nothing checks it'
     })
   }
   else if (stated[1] !== String(wrappers.size)) {
     failures.push({
       check: 'readme-counts',
-      detail: `README.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`
+      detail: `CONTRIBUTING.md says ${stated[1] ?? '?'} registered commands, and shell.rs registers ${String(wrappers.size)}`
     })
   }
   const calledStated = /被调用 (\d+) 条/.exec(readme)
   if (calledStated === null) {
     failures.push({
       check: 'readme-counts',
-      detail: 'README.md no longer states how many commands are called, so nothing checks it'
+      detail: 'CONTRIBUTING.md no longer states how many commands are called, so nothing checks it'
     })
   }
   else if (calledStated[1] !== String(called.size)) {
     failures.push({
       check: 'readme-counts',
-      detail: `README.md says ${calledStated[1] ?? '?'} called commands, and src calls ${String(called.size)} distinct ones`
+      detail: `CONTRIBUTING.md says ${calledStated[1] ?? '?'} called commands, and src calls ${String(called.size)} distinct ones`
     })
   }
 }
