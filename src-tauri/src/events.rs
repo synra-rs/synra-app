@@ -102,6 +102,14 @@ pub fn spawn(
                 Some(delivery) => {
                     for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {
                         #[cfg(not(mobile))]
+                        if let KernelEvent::InputUpdated(snapshot) = &envelope.event
+                            && snapshot.session.as_ref().is_some_and(|session| {
+                                session.phase == synra_ipc::InputPhase::Pending
+                            })
+                        {
+                            crate::window::show_main(&app);
+                        }
+                        #[cfg(not(mobile))]
                         if let KernelEvent::ConfigUpdated(snapshot) = &envelope.event {
                             let language = crate::locale::from_preference(
                                 snapshot

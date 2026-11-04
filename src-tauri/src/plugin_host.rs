@@ -30,6 +30,7 @@ use synra_store::SynraDb;
 
 /// The desktop shell's answer to a plugin's host calls.
 pub struct DesktopHost {
+    input: Option<Arc<synra_core::input::Controller>>,
     events: Arc<synra_core::plugin_events::EventService>,
     /// The database, for the questions answered from what is recorded: which capabilities the user granted, and the
     /// devices this machine knows.
@@ -73,14 +74,24 @@ impl DesktopHost {
 
     /// A host over the state, using the platform the rest of the shell uses.
     #[must_use]
-    pub fn with_platform(db: Arc<Mutex<SynraDb>>, platform: Arc<synra_platform::CommandPlatform>) -> Self {
+    pub fn with_platform(
+        db: Arc<Mutex<SynraDb>>,
+        platform: Arc<synra_platform::CommandPlatform>,
+    ) -> Self {
         let events = synra_core::plugin_events::EventService::new(Arc::clone(&db));
         Self {
+            input: None,
             events,
             db,
             platform,
             fetch_clients: Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Attach the shared gated input controller, without creating another host or database.
+    pub fn with_input_controller(mut self, controller: Arc<synra_core::input::Controller>) -> Self {
+        self.input = Some(controller);
+        self
     }
 
     /// One setting, as the store has it.
@@ -89,7 +100,9 @@ impl DesktopHost {
     /// questions that read it.
     fn setting(&self, key: &str) -> Option<String> {
         let rows = self.db.lock().config().ok()?;
-        rows.into_iter().find(|row| row.key == key).map(|row| row.value)
+        rows.into_iter()
+            .find(|row| row.key == key)
+            .map(|row| row.value)
     }
 
     /// The capabilities the user granted this plugin, as the database records them.
@@ -111,7 +124,10 @@ impl DesktopHost {
 ///
 /// [`CallError`] with `capabilityDenied` when the plugin holds no `network:fetch:<host>` grant at all — a different answer
 /// from "that host is not one of them", and the one a plugin author needs when nothing works.
-fn fetcher_for(host: &DesktopHost, plugin: &PluginId) -> Result<Arc<synra_fetch::Client>, CallError> {
+fn fetcher_for(
+    host: &DesktopHost,
+    plugin: &PluginId,
+) -> Result<Arc<synra_fetch::Client>, CallError> {
     let hosts = granted_hosts(host, plugin);
 
     // ★ An empty list is refused rather than treated as "any host".
@@ -122,7 +138,9 @@ fn fetcher_for(host: &DesktopHost, plugin: &PluginId) -> Result<Arc<synra_fetch:
     if hosts.is_empty() {
         return Err(CallError::new(
             CallError::CAPABILITY_DENIED,
-            format!("`{plugin}` holds no `network:fetch:<host>` grant, so there is nowhere it may fetch from"),
+            format!(
+                "`{plugin}` holds no `network:fetch:<host>` grant, so there is nowhere it may fetch from"
+            ),
         ));
     }
 
@@ -143,7 +161,9 @@ fn fetcher_for(host: &DesktopHost, plugin: &PluginId) -> Result<Arc<synra_fetch:
         synra_core::network::NetworkGuard::for_hosts(&hosts),
         synra_fetch::Limits::default(),
     ));
-    host.fetch_clients.lock().insert(plugin.clone(), (hosts, Arc::clone(&client)));
+    host.fetch_clients
+        .lock()
+        .insert(plugin.clone(), (hosts, Arc::clone(&client)));
     Ok(client)
 }
 
@@ -153,7 +173,11 @@ fn fetcher_for(host: &DesktopHost, plugin: &PluginId) -> Result<Arc<synra_fetch:
 /// method is not this host's to enforce — the client sends whatever the plugin asked for, and the guard decides *where*. A
 /// capability that is not `network:fetch:` prefixed, or whose host segment is empty or the literal `*`, contributes nothing.
 fn granted_hosts(host: &DesktopHost, plugin: &PluginId) -> Vec<String> {
-    let mut hosts: Vec<String> = host.granted(plugin).iter().filter_map(|capability| host_of(capability)).collect();
+    let mut hosts: Vec<String> = host
+        .granted(plugin)
+        .iter()
+        .filter_map(|capability| host_of(capability))
+        .collect();
     hosts.sort();
     hosts.dedup();
     hosts
@@ -223,6 +247,14 @@ fn platform_refusal(error: &synra_platform::PlatformError) -> CallError {
 }
 
 impl Host for DesktopHost {
+    fn input_session(&self, plugin: &PluginId, request: &str) -> Result<String, CallError> {
+        self.input
+            .as_ref()
+            .ok_or_else(|| CallError::unknown("input-session"))?
+            .request(plugin, request)
+            .map_err(|reason| CallError::new(CallError::BAD_ARGUMENT, reason))
+    }
+
     fn sdk_version(&self) -> String {
         synra_plugin_host::SDK_VERSION.to_owned()
     }
@@ -274,6 +306,7 @@ impl Host for DesktopHost {
             .supported_actions()
             .iter()
             .map(|action| action.capability().to_owned())
+            .chain(synra_platform::pointer::supported().then(|| synra_platform::pointer::CAPABILITY.to_owned()))
             .collect()
     }
 
@@ -306,7 +339,11 @@ impl Host for DesktopHost {
         rows.iter()
             .filter(|device| device.is_usable())
             .map(|device| {
-                (device.device_id.clone(), device.display_name.clone(), device.platform.clone())
+                (
+                    device.device_id.clone(),
+                    device.display_name.clone(),
+                    device.platform.clone(),
+                )
             })
             .collect()
     }
@@ -395,7 +432,11 @@ impl Host for DesktopHost {
         Ok(())
     }
 
-    fn storage_keys(&self, plugin: &PluginId, prefix: Option<&str>) -> Result<Vec<String>, CallError> {
+    fn storage_keys(
+        &self,
+        plugin: &PluginId,
+        prefix: Option<&str>,
+    ) -> Result<Vec<String>, CallError> {
         self.db
             .lock()
             .storage_keys(plugin.as_str(), prefix)
@@ -426,7 +467,13 @@ impl Host for DesktopHost {
         client.fetch_plugin(request_json, &self.granted(plugin))
     }
 
-    fn transfer_send(&self, _p: &PluginId, _k: &str, _t: &str, _m: &str) -> Result<String, CallError> {
+    fn transfer_send(
+        &self,
+        _p: &PluginId,
+        _k: &str,
+        _t: &str,
+        _m: &str,
+    ) -> Result<String, CallError> {
         Err(not_implemented("transfers"))
     }
 
@@ -434,22 +481,32 @@ impl Host for DesktopHost {
         Err(not_implemented("transfers"))
     }
 
-    fn action_declare(&self, plugin: &PluginId, name: &str, schema_json: &str) -> Result<(), CallError> {
+    fn action_declare(
+        &self,
+        plugin: &PluginId,
+        name: &str,
+        schema_json: &str,
+    ) -> Result<(), CallError> {
         // ★ The empty string is "no schema", not "a schema that is empty": `DeclareArguments` defaults the field, so a
         // plugin that declares only a name sends nothing, and storing `""` would make every reader parse a blank.
         let schema = if schema_json.trim().is_empty() {
             None
-        }
-        else {
+        } else {
             // Validated here so the table holds JSON or nothing. A declaration that is not JSON is the plugin's own
             // error, and the answer names it rather than storing a string every later reader has to guard against.
             serde_json::from_str::<serde_json::Value>(schema_json).map_err(|error| {
-                CallError::new(CallError::BAD_ARGUMENT, format!("the schema for `{name}` is not JSON: {error}"))
+                CallError::new(
+                    CallError::BAD_ARGUMENT,
+                    format!("the schema for `{name}` is not JSON: {error}"),
+                )
             })?;
             Some(schema_json)
         };
         if name.trim().is_empty() {
-            return Err(CallError::new(CallError::BAD_ARGUMENT, "an action needs a name"));
+            return Err(CallError::new(
+                CallError::BAD_ARGUMENT,
+                "an action needs a name",
+            ));
         }
         self.db
             .lock()
@@ -476,7 +533,10 @@ impl Host for DesktopHost {
                     action.insert("args".to_owned(), parsed);
                 }
                 if let Some(description) = row.description {
-                    action.insert("description".to_owned(), serde_json::Value::String(description));
+                    action.insert(
+                        "description".to_owned(),
+                        serde_json::Value::String(description),
+                    );
                 }
                 serde_json::Value::Object(action)
             })
@@ -485,7 +545,13 @@ impl Host for DesktopHost {
             .map_err(|error| CallError::new(CallError::HOST_FAILED, error.to_string()))
     }
 
-    fn action_invoke(&self, _p: &PluginId, _t: &str, _n: &str, _a: &str) -> Result<String, CallError> {
+    fn action_invoke(
+        &self,
+        _p: &PluginId,
+        _t: &str,
+        _n: &str,
+        _a: &str,
+    ) -> Result<String, CallError> {
         // ★ Still refused, and now it is the only action call that is: a plugin invoking **another** plugin's action is
         // a cross-plugin permission (`action:invoke:*`), and the path it needs — resolve the target, check the grant,
         // reach a set this host does not own — is not the one `self.invoke` uses. The UI's own call is in
@@ -517,7 +583,9 @@ pub fn audit_sink(db: Arc<Mutex<SynraDb>>) -> synra_core::dispatch::plugins::Aud
             capability: entry.capability.to_string(),
             outcome: entry.outcome.as_str().to_owned(),
             at_ms: entry.at_ms,
-            elapsed_ms: entry.elapsed_ms.map(|elapsed| i64::try_from(elapsed).unwrap_or(i64::MAX)),
+            elapsed_ms: entry
+                .elapsed_ms
+                .map(|elapsed| i64::try_from(elapsed).unwrap_or(i64::MAX)),
             // ★ The action's trace, when the call had one. `can-handle` and lifecycle calls do not, and `None` says that
             // rather than making every row look like part of a user action.
             trace_id: entry.trace.map(|trace| trace.to_string()),
@@ -571,9 +639,15 @@ mod tests {
     #[test]
     fn a_capability_names_a_host_or_it_names_nothing() {
         // The parsing rule on its own, because the tests below depend on it being the fail-closed reading.
-        assert_eq!(host_of("network:fetch:api.github.com").as_deref(), Some("api.github.com"));
+        assert_eq!(
+            host_of("network:fetch:api.github.com").as_deref(),
+            Some("api.github.com")
+        );
         // A method qualifier is not part of the host: the guard decides *where*, and the method travels as sent.
-        assert_eq!(host_of("network:fetch:api.github.com:POST").as_deref(), Some("api.github.com"));
+        assert_eq!(
+            host_of("network:fetch:api.github.com:POST").as_deref(),
+            Some("api.github.com")
+        );
 
         // ★ `*` is the family spelling the **gate** uses, not a hostname — reading it as one builds a guard for a machine
         // called `*`, and reading it as "anything" is the capability an SSRF guard exists to make deliberate.
@@ -590,8 +664,15 @@ mod tests {
         let host = host_with(&[]);
         let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no grant");
 
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED);
-        assert!(refused.message.contains("network:fetch:"), "and it says what to ask for: {}", refused.message);
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED
+        );
+        assert!(
+            refused.message.contains("network:fetch:"),
+            "and it says what to ask for: {}",
+            refused.message
+        );
     }
 
     #[test]
@@ -601,7 +682,11 @@ mod tests {
         let host = host_with(&[("network:fetch:*", true)]);
         let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no host named");
 
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused}");
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED,
+            "{refused}"
+        );
     }
 
     #[test]
@@ -615,11 +700,20 @@ mod tests {
 
         host.db
             .lock()
-            .record_grants("@acme/notes", &[("network:fetch:api.github.com".to_owned(), false)], 2, "d2")
+            .record_grants(
+                "@acme/notes",
+                &[("network:fetch:api.github.com".to_owned(), false)],
+                2,
+                "d2",
+            )
             .expect("the withdrawal is recorded");
         let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("withdrawn");
 
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused}");
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED,
+            "{refused}"
+        );
     }
 
     #[test]
@@ -635,12 +729,26 @@ mod tests {
         let host = host();
         let plugin = id("@acme/notes");
 
-        assert_eq!(host.storage_get(&plugin, "k").expect("reads"), None, "an empty store reads as absent");
+        assert_eq!(
+            host.storage_get(&plugin, "k").expect("reads"),
+            None,
+            "an empty store reads as absent"
+        );
 
         host.storage_set(&plugin, "k", "kept").expect("writes");
-        assert_eq!(host.storage_get(&plugin, "k").expect("reads").as_deref(), Some("kept"));
-        assert_eq!(host.storage_used(&plugin).expect("measures"), 4, "the value's bytes");
-        assert_eq!(host.storage_keys(&plugin, None).expect("lists"), vec!["k".to_owned()]);
+        assert_eq!(
+            host.storage_get(&plugin, "k").expect("reads").as_deref(),
+            Some("kept")
+        );
+        assert_eq!(
+            host.storage_used(&plugin).expect("measures"),
+            4,
+            "the value's bytes"
+        );
+        assert_eq!(
+            host.storage_keys(&plugin, None).expect("lists"),
+            vec!["k".to_owned()]
+        );
 
         // And another plugin's key space is its own, which is what the pair being the primary key buys.
         let other = id("@acme/chat");
@@ -655,9 +763,12 @@ mod tests {
         db.migrate().expect("migrates");
         db.insert_plugin("@acme/notes", true, true, "healthy", 1, 1)
             .expect("a plugin row");
-        let decisions: Vec<(String, bool)> =
-            grants.iter().map(|(cap, granted)| ((*cap).to_owned(), *granted)).collect();
-        db.record_grants("@acme/notes", &decisions, 1, "digest").expect("decisions");
+        let decisions: Vec<(String, bool)> = grants
+            .iter()
+            .map(|(cap, granted)| ((*cap).to_owned(), *granted))
+            .collect();
+        db.record_grants("@acme/notes", &decisions, 1, "digest")
+            .expect("decisions");
         DesktopHost::new(Arc::new(Mutex::new(db)))
     }
 
@@ -734,7 +845,11 @@ mod tests {
             // ★ Read from the contract rather than spelled here. This assertion used to compare against the
             // literal `"notImplemented"`, which is a string this test and the implementation could agree on while both were
             // wrong — the shape of assertion that cannot catch the implementation spelling it wrong.
-            assert_eq!(error.code, synra_plugin_host::host_calls::CallError::NOT_IMPLEMENTED, "{error:?}");
+            assert_eq!(
+                error.code,
+                synra_plugin_host::host_calls::CallError::NOT_IMPLEMENTED,
+                "{error:?}"
+            );
         }
 
         // ★ Storage is **not** in that list any more, and its absence is the point.
@@ -743,23 +858,42 @@ mod tests {
         // that removing it from the loop cannot be mistaken for removing the feature.
         let plugin = id("@acme/notes");
         host.storage_set(&plugin, "k", "v").expect("writes");
-        assert_eq!(host.storage_get(&plugin, "k").expect("reads").as_deref(), Some("v"));
+        assert_eq!(
+            host.storage_get(&plugin, "k").expect("reads").as_deref(),
+            Some("v")
+        );
         assert_eq!(host.storage_used(&plugin).expect("measures"), 1);
 
         // ★ And network is not in that list either. Asserted positively the same way: the refusal below is a **capability**
         // answer rather than a "this shell cannot" one, which is the difference this test exists to protect — and it is
         // reachable without a network, because the guard refuses before anything is sent.
-        let refused = host.fetch(&plugin, r#"{"url":"https://api.github.com/"}"#).expect_err("no grant");
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED, "{refused:?}");
+        let refused = host
+            .fetch(&plugin, r#"{"url":"https://api.github.com/"}"#)
+            .expect_err("no grant");
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED,
+            "{refused:?}"
+        );
 
         // ★ Actions are out of the list too, in the half that belongs to this host: a plugin declares its own and lists
         // them. The declaration is validated here — a schema that is not JSON is the plugin's error, not a row every
         // reader has to guard against.
-        host.action_declare(&plugin, "send", r#"{"type":"object"}"#).expect("declares");
+        host.action_declare(&plugin, "send", r#"{"type":"object"}"#)
+            .expect("declares");
         let listed = host.action_list(&plugin).expect("lists");
-        assert!(listed.contains("\"send\""), "the declaration did not reach the list: {listed}");
-        let refused = host.action_declare(&plugin, "broken", "not json").expect_err("not JSON");
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::BAD_ARGUMENT, "{refused:?}");
+        assert!(
+            listed.contains("\"send\""),
+            "the declaration did not reach the list: {listed}"
+        );
+        let refused = host
+            .action_declare(&plugin, "broken", "not json")
+            .expect_err("not JSON");
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::BAD_ARGUMENT,
+            "{refused:?}"
+        );
 
         // The one action call that still refuses is **another** plugin's: that is a cross-plugin permission, and the
         // path it needs — resolve the target, check the grant, reach a set this host does not own — is not the one the
@@ -767,7 +901,11 @@ mod tests {
         let refused = host
             .action_invoke(&plugin, "@acme/other", "send", "null")
             .expect_err("this host does not reach another plugin");
-        assert_eq!(refused.code, synra_plugin_host::host_calls::CallError::NOT_IMPLEMENTED, "{refused:?}");
+        assert_eq!(
+            refused.code,
+            synra_plugin_host::host_calls::CallError::NOT_IMPLEMENTED,
+            "{refused:?}"
+        );
     }
 
     #[test]
@@ -815,7 +953,10 @@ mod tests {
         let host = DesktopHost::new(Arc::new(Mutex::new(db)));
 
         assert_eq!(host.locale(), "zh-CN");
-        assert!(host.dark_mode(), "the interface setting is dark and the host said light");
+        assert!(
+            host.dark_mode(),
+            "the interface setting is dark and the host said light"
+        );
     }
 }
 

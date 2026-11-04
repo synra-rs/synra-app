@@ -81,6 +81,8 @@ pub struct AppState {
     pub identity: Arc<Mutex<Identity>>,
     /// The peer registry and the links out of it.
     pub host: SharedHost,
+    /// Shared input session lifetime; pointer control is never inferred from pairing.
+    pub input: crate::input::Input,
     /// The intents in flight, and what each is waiting for.
     pub board: Arc<Mutex<Board>>,
     /// How the retry loop is doing with each dispatch: how many times it has sent it again, and whether it stopped.
@@ -359,11 +361,16 @@ impl AppState {
         let _ = process_system
             .refresh_processes(sysinfo::ProcessesToUpdate::Some(&[process_pid]), true);
 
+        let host = shared(Host::new(identity.clone(), peer).with_metrics(Arc::clone(&metrics)));
+        let db = Arc::new(Mutex::new(db));
+        let events = Arc::new(synra_core::bus::EventBus::new());
+        let input = crate::input::Input::new(Arc::clone(&db), &host, Arc::clone(&events));
         let state = Self {
             process_pid,
             process_system: Mutex::new(process_system),
-            host: shared(Host::new(identity.clone(), peer).with_metrics(Arc::clone(&metrics))),
-            db: Arc::new(Mutex::new(db)),
+            host,
+            input,
+            db,
             paths,
             identity: Arc::new(Mutex::new(identity)),
             board: Arc::new(Mutex::new(board)),
@@ -384,7 +391,7 @@ impl AppState {
             platform: Arc::new(synra_platform::CommandPlatform::new()),
             metrics,
             log: None,
-            events: Arc::new(synra_core::bus::EventBus::new()),
+            events,
             ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
             hosted_ui: Mutex::new(std::collections::HashMap::new()),
             transfers: crate::commands::transfers::Transfers::new(),

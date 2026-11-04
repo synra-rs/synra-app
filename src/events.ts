@@ -28,6 +28,7 @@ import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
 import { EventDispatcher } from './ipc/dispatcher'
 import { kernel } from './kernel'
 import { useDevicesStore } from './stores/devices'
+import { useInputStore } from './stores/input'
 import { useIntentsStore } from './stores/intents'
 import { useNoticesStore } from './stores/notices'
 import { usePairingStore } from './stores/pairing'
@@ -51,6 +52,7 @@ export interface StartedEvents {
 export async function startEvents(client: KernelClient = kernel): Promise<StartedEvents> {
   const devices = useDevicesStore()
   const pairing = usePairingStore()
+  const input = useInputStore()
   let devicesReadRevision = 0
 
   /**
@@ -75,6 +77,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   const dispatcher = new EventDispatcher(() => {
     void reread(client, devices, dispatcher)
     void pairing.read(client)
+    void input.read(client)
   })
 
   dispatcher.on('deviceCardUpdated', (event) => {
@@ -93,6 +96,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     if (event.payload.phase === 'done')
       void reread(client, devices, dispatcher)
   })
+  dispatcher.on('inputUpdated', event => input.apply(event))
 
   // ★ The two facts that had no consumer until now: an intent arriving and a transfer moving. `apply` answers whether the
   // store recognised the event, and a `false` here is a bug in this file rather than a missed event — every kind the
@@ -140,6 +144,7 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     dispatcher.accept(payload as SequencedKernelEvent)
   })
   await pairing.read(client)
+  await input.read(client)
 
   return { dispatcher, stop: async () => stop() }
 }

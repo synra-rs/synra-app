@@ -55,6 +55,7 @@ pub mod commands;
 pub mod crash;
 pub mod discovery;
 pub mod events;
+pub mod input;
 pub mod instance;
 #[cfg(any(feature = "tauri-shell", test))]
 mod ipc_access;
@@ -63,6 +64,8 @@ mod ipc_access;
 pub mod listener;
 mod locale;
 pub mod plugin_host;
+#[cfg(feature = "tauri-shell")]
+pub mod plugin_window;
 pub mod state;
 /// The incoming transfers waiting for an answer.
 pub mod transfer_desk;

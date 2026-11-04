@@ -3,6 +3,7 @@ import { debug } from './debug'
 import { devices } from './devices'
 import { actions, errors } from './errors'
 import { home } from './home'
+import { input } from './input'
 import { nav } from './nav'
 import { notices } from './notices'
 import { plugins } from './plugins'
@@ -40,6 +41,7 @@ export const englishMessages = {
   notices,
 
   home,
+  input,
 
   devices,
 

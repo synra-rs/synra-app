@@ -25,7 +25,7 @@
 | --- | --- |
 | `src/`（前端） | 72 个文件、约 6.8k 行（42 个生产文件 + 30 个测试与夹具） |
 | `src-tauri/src/`（壳） | 30 个文件、约 8.1k 行（21 个生产 + 9 个测试） |
-| 命令 | 契约 54 条 · **注册 54 条** · 其中被调用 43 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
+| 命令 | 契约 57 条 · **注册 57 条** · 其中被调用 46 条（清单在 [`src/ipc/command-inventory.ts`](./src/ipc/command-inventory.ts)） |
 | 页面 | 4 页（Home / Devices / Plugins / Settings） |
 | 前端 store | 5 / 8（devices / pairing / plugins / intents / settings） |
 
@@ -192,6 +192,14 @@ $taskStarterDist = (Resolve-Path ../synra-plugin-starter/dist).Path
 普通开发时重新构建默认配置，避免继续运行这个独立 profile 的二进制。
 
 ## 已知不一致
+
+Android 的原生工程位于 `src-tauri/gen/android`，随源码提交。插件使用独立 `PluginActivity`，
+由宿主提供“返回 Synra”和系统返回，避免复用 `singleTask` 主页面而失去返回途径。
+SDK 路径、Tauri 临时配置、生成的桥接代码、构建产物及签名密钥仍被忽略；没有本地签名配置也可构建 debug 包。
+
+Touchpad 的完整包验收在 Windows 上显式运行：设置 `SYNRA_TOUCHPAD_PACKAGE` 指向独立仓库的 CLI-built `dist`，
+执行 `cargo test --no-default-features --features touchpad-plugin-tests --manifest-path src-tauri/Cargo.toml official_touchpad --lib`。
+它通过真实 `.synra` 安装、授权、页面 RPC、Wasm、TCP 和输入会话；默认记录原生效果，不能当作实体两机验收。
 
 - **包标识符**：`src-tauri/tauri.conf.json` 是 `com.synra.app`，[设计文档拍板](https://github.com/synra-rs/design-docs/blob/main/README.md)
   的是 `dev.synra-app.app`。发布前必须定一个 —— Android 的 `applicationId` 发版后改不了，而改它要重新生成

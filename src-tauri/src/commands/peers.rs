@@ -43,8 +43,16 @@ pub(crate) fn presence(host: &SharedHost, row: &synra_store::DeviceRow, now_ms: 
 /// # Errors
 /// Refuses unpaired/blocked peers, missing endpoints and unreadable stored addresses.
 pub fn address_of(state: &AppState, to: DeviceId) -> Result<SocketAddr, IpcError> {
-    let row = state
-        .db()
+    resolve(&state.db, &state.host, to)
+}
+
+pub(crate) fn resolve(
+    db: &std::sync::Arc<parking_lot::Mutex<synra_store::SynraDb>>,
+    host: &SharedHost,
+    to: DeviceId,
+) -> Result<SocketAddr, IpcError> {
+    let row = db
+        .lock()
         .paired_devices()
         .map_err(internal)?
         .into_iter()
@@ -54,8 +62,7 @@ pub fn address_of(state: &AppState, to: DeviceId) -> Result<SocketAddr, IpcError
                 serde_json::json!({"deviceId": to, "reason": "it is not an approved peer"}),
             )
         })?;
-    let current = state
-        .host
+    let current = host
         .lock()
         .recent_address(to, synra_store::sqlite::now_ms());
     if let Some(address) = current {

@@ -125,10 +125,12 @@ fn dispatch(
     let plugin_id = entry.plugin_id;
 
     let Some(op) = PluginUiOp::parse(method) else {
-        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "method": method,
-            "reason": "this host has no such operation",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "method": method,
+                "reason": "this host has no such operation",
+            })),
+        );
     };
 
     match op {
@@ -206,28 +208,37 @@ fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
 ///
 /// Because they are two representations of one decision, and the session's is the one the kernel validated. The façade's
 /// array is for `env.can` (a synchronous answer with no round trip); a call that changes state goes through the gate.
-fn require_grant(session: &ValidatedSession, capability: &str, method: &str) -> Result<(), IpcError> {
+fn require_grant(
+    session: &ValidatedSession,
+    capability: &str,
+    method: &str,
+) -> Result<(), IpcError> {
     let wanted = Capability::parse(capability).map_err(internal)?;
     if session.grants().contains(&wanted) {
         return Ok(());
     }
-    Err(IpcError::unknown(ErrorCode::CapabilityDenied).with_params(serde_json::json!({
-        "method": method,
-        "capability": capability,
-    })))
+    Err(
+        IpcError::unknown(ErrorCode::CapabilityDenied).with_params(serde_json::json!({
+            "method": method,
+            "capability": capability,
+        })),
+    )
 }
 
 /// One required string argument.
 fn string_arg<'a>(args: &'a serde_json::Value, field: &str) -> Result<&'a str, IpcError> {
-    args.get(field).and_then(serde_json::Value::as_str).ok_or_else(|| {
-        IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": field, "reason": "a string is required"}))
-    })
+    args.get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"field": field, "reason": "a string is required"}))
+        })
 }
 
 /// A database failure is this host's problem, not the plugin's.
 fn internal(error: impl std::fmt::Display) -> IpcError {
-    IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({"detail": error.to_string()}))
+    IpcError::unknown(ErrorCode::Internal)
+        .with_params(serde_json::json!({"detail": error.to_string()}))
 }
 
 /// How many bytes this plugin's storage may hold.
@@ -258,7 +269,10 @@ fn storage_get(
 ) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "storage:local:read", "storage.get")?;
     let key = string_arg(args, "key")?;
-    let value = state.db().storage_get(plugin.as_str(), key).map_err(internal)?;
+    let value = state
+        .db()
+        .storage_get(plugin.as_str(), key)
+        .map_err(internal)?;
     // `null` rather than an absent field: the client's return is `string | null`, and "no value" is an answer.
     Ok(value.map_or(serde_json::Value::Null, serde_json::Value::String))
 }
@@ -290,12 +304,14 @@ fn storage_set(
     // A write replaces, so the growth is the difference — the same arithmetic `HostCalls` does for the Wasm half.
     let after = storage_after(used, replaced, value.len());
     if after > limit {
-        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
-            "quota": "storage",
-            "usedBytes": used,
-            "limitBytes": limit,
-            "valueBytes": value.len(),
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+                "quota": "storage",
+                "usedBytes": used,
+                "limitBytes": limit,
+                "valueBytes": value.len(),
+            })),
+        );
     }
 
     state
@@ -326,7 +342,10 @@ fn storage_delete(
 ) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "storage:local:write", "storage.delete")?;
     let key = string_arg(args, "key")?;
-    let removed = state.db().storage_delete(plugin.as_str(), key).map_err(internal)?;
+    let removed = state
+        .db()
+        .storage_delete(plugin.as_str(), key)
+        .map_err(internal)?;
     Ok(serde_json::Value::Bool(removed))
 }
 
@@ -339,7 +358,10 @@ fn storage_keys(
 ) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "storage:local:read", "storage.keys")?;
     let prefix = args.get("prefix").and_then(serde_json::Value::as_str);
-    let keys = state.db().storage_keys(plugin.as_str(), prefix).map_err(internal)?;
+    let keys = state
+        .db()
+        .storage_keys(plugin.as_str(), prefix)
+        .map_err(internal)?;
     Ok(serde_json::Value::Array(
         keys.into_iter().map(serde_json::Value::String).collect(),
     ))
@@ -352,7 +374,10 @@ fn storage_quota(
     plugin: &PluginId,
 ) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "storage:local:read", "storage.quota")?;
-    let used = state.db().storage_used_bytes(plugin.as_str()).map_err(internal)?;
+    let used = state
+        .db()
+        .storage_used_bytes(plugin.as_str())
+        .map_err(internal)?;
     Ok(serde_json::json!({
         "usedBytes": used,
         "maxBytes": storage_limit(state, plugin),
@@ -392,12 +417,12 @@ fn platform_error(error: synra_platform::PlatformError) -> IpcError {
             IpcError::unknown(ErrorCode::RateLimited)
                 .with_params(serde_json::json!({"retryAfterMs": remaining_ms}))
         }
-        PlatformError::QuotaExceeded { used, limit, .. } => IpcError::unknown(ErrorCode::RateLimited)
-            .with_params(serde_json::json!({"quota": "platform", "used": used, "limit": limit})),
-        PlatformError::TooLong { field, len, max } => {
-            IpcError::unknown(ErrorCode::PayloadTooLarge)
-                .with_params(serde_json::json!({"field": field, "len": len, "max": max}))
+        PlatformError::QuotaExceeded { used, limit, .. } => {
+            IpcError::unknown(ErrorCode::RateLimited)
+                .with_params(serde_json::json!({"quota": "platform", "used": used, "limit": limit}))
         }
+        PlatformError::TooLong { field, len, max } => IpcError::unknown(ErrorCode::PayloadTooLarge)
+            .with_params(serde_json::json!({"field": field, "len": len, "max": max})),
         PlatformError::Unsupported(what) => IpcError::unknown(ErrorCode::Unsupported)
             .with_params(serde_json::json!({"reason": what})),
         // A refused URL or path is the caller's argument: the scheme, the credentials or the shape of it.
@@ -410,7 +435,10 @@ fn platform_error(error: synra_platform::PlatformError) -> IpcError {
 }
 
 /// The clipboard, read through the platform runner.
-fn clipboard_read(state: &AppState, session: &ValidatedSession) -> Result<serde_json::Value, IpcError> {
+fn clipboard_read(
+    state: &AppState,
+    session: &ValidatedSession,
+) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "platform:read-clipboard", "clipboard.read")?;
     let text = state.platform.read_clipboard().map_err(platform_error)?;
     Ok(text.map_or(serde_json::Value::Null, serde_json::Value::String))
@@ -424,7 +452,10 @@ fn clipboard_write(
 ) -> Result<serde_json::Value, IpcError> {
     require_grant(session, "platform:write-clipboard", "clipboard.write")?;
     let text = string_arg(args, "text")?;
-    state.platform.write_clipboard(text).map_err(platform_error)?;
+    state
+        .platform
+        .write_clipboard(text)
+        .map_err(platform_error)?;
     Ok(serde_json::Value::Null)
 }
 
@@ -511,22 +542,31 @@ fn network_fetch(
             "reason": "a per-request timeout is not implemented; the host's own ceiling applies",
         })));
     }
-    let method = init.get("method").and_then(serde_json::Value::as_str).unwrap_or("GET").to_owned();
-    let headers = init.get("headers").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let method = init
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("GET")
+        .to_owned();
+    let headers = init
+        .get("headers")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
     if !headers.is_object() {
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": "headers", "reason": "an object is required"})));
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({"field": "headers", "reason": "an object is required"}),
+        ));
     }
-    let body = match init.get("body") {
-        None | Some(serde_json::Value::Null) => None,
-        Some(serde_json::Value::String(text)) => Some(text.clone()),
-        Some(_) => {
-            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "field": "body",
-                "reason": "a string body is required; bytes are not supported by this channel",
-            })))
-        }
-    };
+    let body =
+        match init.get("body") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(text)) => Some(text.clone()),
+            Some(_) => return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({
+                    "field": "body",
+                    "reason": "a string body is required; bytes are not supported by this channel",
+                }),
+            )),
+        };
 
     let request = serde_json::json!({
         "url": input,
@@ -559,7 +599,9 @@ fn network_fetch(
 // the call would be one plugin driving another.
 
 /// The host every plugin instance reaches, with the set's lock released.
-fn host_of(state: &AppState) -> Result<std::sync::Arc<dyn synra_plugin_host::host_calls::Host>, IpcError> {
+fn host_of(
+    state: &AppState,
+) -> Result<std::sync::Arc<dyn synra_plugin_host::host_calls::Host>, IpcError> {
     let set = state.plugin_set()?;
     let guard = set.lock();
     Ok(std::sync::Arc::clone(guard.host()))
@@ -568,7 +610,9 @@ fn host_of(state: &AppState) -> Result<std::sync::Arc<dyn synra_plugin_host::hos
 /// The actions this plugin declared, as `ActionDescriptor[]`.
 fn self_actions(state: &AppState, plugin: &PluginId) -> Result<serde_json::Value, IpcError> {
     let host = host_of(state)?;
-    let answer = host.action_list(plugin).map_err(|error| call_error(&error))?;
+    let answer = host
+        .action_list(plugin)
+        .map_err(|error| call_error(&error))?;
     serde_json::from_str(&answer).map_err(internal)
 }
 
@@ -584,27 +628,38 @@ fn self_invoke(
     // ★ The ownership check, before the call rather than inside it. `Work::InvokeAction` names an action and nothing
     // about which plugin declared it; a name that this plugin never declared would reach its `actions.invoke` export
     // anyway — and the design's rule is that the kernel validates it belongs to this plugin, so the check is here.
-    let declared = state.db().plugin_actions(plugin.as_str()).map_err(internal)?;
+    let declared = state
+        .db()
+        .plugin_actions(plugin.as_str())
+        .map_err(internal)?;
     if !declared.iter().any(|row| row.name == action) {
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-            "field": "action",
-            "reason": "this plugin has not declared that action",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "field": "action",
+                "reason": "this plugin has not declared that action",
+            })),
+        );
     }
 
     let now_ms = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
     let outcome = {
         let set = state.plugin_set()?;
         let mut guard = set.lock();
-        let budget = guard
-            .quota(plugin)
-            .map_or_else(|| synra_plugin_host::CallBudget::from_quota(&synra_plugin_host::quota::Quota::default()), |quota| {
-                synra_plugin_host::CallBudget::from_quota(&quota)
-            });
+        let budget = guard.quota(plugin).map_or_else(
+            || {
+                synra_plugin_host::CallBudget::from_quota(
+                    &synra_plugin_host::quota::Quota::default(),
+                )
+            },
+            |quota| synra_plugin_host::CallBudget::from_quota(&quota),
+        );
         guard
             .call(
                 plugin,
-                &synra_plugin_host::Work::InvokeAction { name: action.to_owned(), args_json: arguments.to_string() },
+                &synra_plugin_host::Work::InvokeAction {
+                    name: action.to_owned(),
+                    args_json: arguments.to_string(),
+                },
                 budget,
                 now_ms,
             )
@@ -695,10 +750,12 @@ impl Uploads {
     /// Removes an upload, but only for the plugin that started it.
     fn take(&self, plugin_id: &str, id: &str) -> Option<Upload> {
         let mut uploads = self.by_id.lock();
-        if uploads.get(id).is_some_and(|upload| upload.plugin_id == plugin_id) {
+        if uploads
+            .get(id)
+            .is_some_and(|upload| upload.plugin_id == plugin_id)
+        {
             uploads.remove(id)
-        }
-        else {
+        } else {
             None
         }
     }
@@ -731,19 +788,23 @@ fn transfer_begin(
         .get("totalBytes")
         .and_then(serde_json::Value::as_u64)
         .ok_or_else(|| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"field": "totalBytes", "reason": "a transfer needs a size"}))
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"field": "totalBytes", "reason": "a transfer needs a size"}),
+            )
         })?;
     if total == 0 {
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": "totalBytes", "reason": "the file is empty"})));
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({"field": "totalBytes", "reason": "the file is empty"}),
+        ));
     }
     if total > MAX_PLUGIN_UPLOAD_BYTES {
-        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
-            "field": "totalBytes",
-            "bytes": total,
-            "maxBytes": MAX_PLUGIN_UPLOAD_BYTES,
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+                "field": "totalBytes",
+                "bytes": total,
+                "maxBytes": MAX_PLUGIN_UPLOAD_BYTES,
+            })),
+        );
     }
 
     let directory = state
@@ -758,8 +819,9 @@ fn transfer_begin(
     let path = directory.join(file_name);
     if let Err(error) = std::fs::File::create(&path) {
         let _ = std::fs::remove_dir(&directory);
-        return Err(IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": format!("could not create the transfer file: {error}")})));
+        return Err(IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"detail": format!("could not create the transfer file: {error}")}),
+        ));
     }
 
     let upload_id = uuid::Uuid::new_v4().to_string();
@@ -792,16 +854,20 @@ fn transfer_chunk(
     require_grant(session, "file:transfer:send", "transfer.chunk")?;
     let upload_id = string_arg(args, "uploadId")?;
     let data = string_arg(args, "data")?;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|error| {
-        IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": "data", "reason": error.to_string()}))
-    })?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"field": "data", "reason": error.to_string()}))
+        })?;
     if bytes.len() > MAX_PLUGIN_CHUNK_BYTES {
-        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
-            "field": "data",
-            "bytes": bytes.len(),
-            "maxBytes": MAX_PLUGIN_CHUNK_BYTES,
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+                "field": "data",
+                "bytes": bytes.len(),
+                "maxBytes": MAX_PLUGIN_CHUNK_BYTES,
+            })),
+        );
     }
 
     // ★ The lock is released before the file is written: a chunk is an IPC round trip and a write, and holding the map
@@ -810,21 +876,25 @@ fn transfer_chunk(
     let (path, total, next) = {
         let uploads = state.uploads.by_id.lock();
         let Some(upload) = uploads.get(upload_id) else {
-            return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"})));
+            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"}),
+            ));
         };
         if upload.plugin_id != session.plugin_id().to_string() {
-            return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"})));
+            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"}),
+            ));
         }
         let next = upload.written.saturating_add(bytes.len() as u64);
         if next > upload.total {
-            return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
-                "uploadId": upload_id,
-                "written": next,
-                "totalBytes": upload.total,
-                "reason": "the chunk is larger than the size the page declared",
-            })));
+            return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(
+                serde_json::json!({
+                    "uploadId": upload_id,
+                    "written": next,
+                    "totalBytes": upload.total,
+                    "reason": "the chunk is larger than the size the page declared",
+                }),
+            ));
         }
         (upload.path.clone(), upload.total, next)
     };
@@ -833,19 +903,22 @@ fn transfer_chunk(
         .append(true)
         .open(&path)
         .map_err(|error| {
-            IpcError::unknown(ErrorCode::Internal)
-                .with_params(serde_json::json!({"detail": format!("could not open the transfer file: {error}")}))
+            IpcError::unknown(ErrorCode::Internal).with_params(
+                serde_json::json!({"detail": format!("could not open the transfer file: {error}")}),
+            )
         })?;
     file.write_all(&bytes).map_err(|error| {
-        IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": format!("could not append the chunk: {error}")}))
+        IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"detail": format!("could not append the chunk: {error}")}),
+        )
     })?;
 
     {
         let mut uploads = state.uploads.by_id.lock();
         let Some(upload) = uploads.get_mut(upload_id) else {
-            return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"uploadId": upload_id, "reason": "the upload went away"})));
+            return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"uploadId": upload_id, "reason": "the upload went away"}),
+            ));
         };
         upload.written = next;
     }
@@ -862,17 +935,20 @@ fn transfer_finish(
     require_grant(session, "file:transfer:send", "transfer.finish")?;
     let upload_id = string_arg(args, "uploadId")?;
     let Some(upload) = state.uploads.take(session.plugin_id().as_str(), upload_id) else {
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"})));
+        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({"uploadId": upload_id, "reason": "no upload is waiting"}),
+        ));
     };
     if upload.written != upload.total {
         discard_upload(&upload);
-        return Err(IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-            "uploadId": upload_id,
-            "written": upload.written,
-            "totalBytes": upload.total,
-            "reason": "the file ended before the size the page declared",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "uploadId": upload_id,
+                "written": upload.written,
+                "totalBytes": upload.total,
+                "reason": "the file ended before the size the page declared",
+            })),
+        );
     }
 
     // ★ With the managed state, the send starts on a worker and this answers now — the same contract as the desktop's
@@ -972,9 +1048,11 @@ fn transfer_send(
 
     require_grant(session, "file:transfer:send", "transfer.send")?;
     if args.get("contextId").is_some() {
-        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "reason": "grouping a transfer by context is not implemented on this channel yet",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "reason": "grouping a transfer by context is not implemented on this channel yet",
+            })),
+        );
     }
     let to_text = string_arg(args, "to")?;
     let to = uuid::Uuid::parse_str(to_text)
@@ -986,21 +1064,29 @@ fn transfer_send(
     let file_name = string_arg(args, "fileName")?;
     transfer_file_name(file_name)?;
     let data = string_arg(args, "data")?;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|error| {
-        IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": "data", "reason": error.to_string()}))
-    })?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|error| {
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"field": "data", "reason": error.to_string()}))
+        })?;
     if bytes.len() > MAX_PLUGIN_TRANSFER_BYTES {
-        return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
-            "field": "data",
-            "bytes": bytes.len(),
-            "maxBytes": MAX_PLUGIN_TRANSFER_BYTES,
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(serde_json::json!({
+                "field": "data",
+                "bytes": bytes.len(),
+                "maxBytes": MAX_PLUGIN_TRANSFER_BYTES,
+            })),
+        );
     }
 
     // One directory per transfer: the file keeps the name the page chose, two sends cannot collide, and the cleanup
     // removes exactly what this call created.
-    let directory = state.paths.cache_dir().join("plugin-transfers").join(uuid::Uuid::new_v4().to_string());
+    let directory = state
+        .paths
+        .cache_dir()
+        .join("plugin-transfers")
+        .join(uuid::Uuid::new_v4().to_string());
     std::fs::create_dir_all(&directory).map_err(|error| {
         IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"detail": format!("could not make the transfer directory: {error}")}))
@@ -1008,8 +1094,9 @@ fn transfer_send(
     let path = directory.join(file_name);
     if let Err(error) = std::fs::write(&path, &bytes) {
         let _ = std::fs::remove_dir(&directory);
-        return Err(IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": format!("could not write the transfer file: {error}")})));
+        return Err(IpcError::unknown(ErrorCode::Internal).with_params(
+            serde_json::json!({"detail": format!("could not write the transfer file: {error}")}),
+        ));
     }
 
     let outcome = super::transfers::transfer_send_file(
@@ -1027,23 +1114,34 @@ fn transfer_send(
 }
 
 /// The state of a transfer this shell still has a row for.
-fn transfer_status(state: &AppState, args: &serde_json::Value) -> Result<serde_json::Value, IpcError> {
+fn transfer_status(
+    state: &AppState,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, IpcError> {
     use synra_protocol::ids::TransferId;
 
     let id_text = string_arg(args, "transferId")?;
     let id = uuid::Uuid::parse_str(id_text)
         .map(TransferId::from_uuid)
         .map_err(|error| {
-            IpcError::unknown(ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"field": "transferId", "reason": error.to_string()}))
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"field": "transferId", "reason": error.to_string()}),
+            )
         })?;
-    let Some(snapshot) = state.transfers.list().into_iter().find(|transfer| transfer.transfer_id == id) else {
+    let Some(snapshot) = state
+        .transfers
+        .list()
+        .into_iter()
+        .find(|transfer| transfer.transfer_id == id)
+    else {
         // A completed transfer is removed from the registry by `finish_transfer`; the façade keeps the final state of
         // the transfers it started, so an unknown id here is usually "it is over" rather than "it never existed".
-        return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "transferId": id_text,
-            "reason": "no transfer by that id is in flight",
-        })));
+        return Err(
+            IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                "transferId": id_text,
+                "reason": "no transfer by that id is in flight",
+            })),
+        );
     };
     Ok(serde_json::json!({
         "transferId": snapshot.transfer_id.to_string(),
@@ -1172,10 +1270,12 @@ fn platform_name() -> Result<&'static str, IpcError> {
         "android" => "android",
         "ios" => "ios",
         other => {
-            return Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-                "platform": other,
-                "reason": "the plugin contract has no name for this platform",
-            })))
+            return Err(
+                IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
+                    "platform": other,
+                    "reason": "the plugin contract has no name for this platform",
+                })),
+            );
         }
     })
 }
@@ -1297,14 +1397,15 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
         .filter(|row| !row.granted)
         .map(|row| row.capability.clone())
         .collect();
-    let grants = synra_capability::CapabilitySet::parse_all(granted.iter().map(String::as_str)).map_err(|error| {
-        // A decision the user made names a capability this build cannot parse, so the page's permissions are unknown.
-        // Opening it with a guessed set would be worse than refusing: the plugin would run with permissions nobody chose.
-        IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({
-            "pluginId": plugin_id,
-            "reason": format!("a recorded grant is not a capability this build knows: {error}"),
-        }))
-    })?;
+    let grants = synra_capability::CapabilitySet::parse_all(granted.iter().map(String::as_str))
+        .map_err(|error| {
+            // A decision the user made names a capability this build cannot parse, so the page's permissions are unknown.
+            // Opening it with a guessed set would be worse than refusing: the plugin would run with permissions nobody chose.
+            IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({
+                "pluginId": plugin_id,
+                "reason": format!("a recorded grant is not a capability this build knows: {error}"),
+            }))
+        })?;
     // ★ The environment the page's façade answers from. These are the host's facts, decided once, before the page
     // loads: a round trip to learn something the shell already holds is a round trip that can fail, and a render that has
     // to await `env.platform()` is a render that cannot branch synchronously.
@@ -1326,8 +1427,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
     let platform = platform_name()?;
     let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
         "mobile"
-    }
-    else {
+    } else {
         "desktop"
     };
     // ★ The platform's own answer, taken once. `supported_actions` is the askable list rather than a guess: it leaves
@@ -1338,6 +1438,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
         .supported_actions()
         .into_iter()
         .filter_map(|action| platform_capability(action).map(str::to_owned))
+        .chain(synra_platform::pointer::supported().then(|| "control_pointer".to_owned()))
         .collect();
 
     let seed = InjectionSeed {
@@ -1436,13 +1537,17 @@ pub fn ui_file(root: &std::path::Path, path: &str) -> Result<(Vec<u8>, &'static 
     })?;
     // A file nobody said the type of is still a file: `application/octet-stream` makes the WebView download it rather than
     // guess, which is the honest default.
-    let content_type = synra_plugin_ui::artifact::content_type_for(path).unwrap_or("application/octet-stream");
+    let content_type =
+        synra_plugin_ui::artifact::content_type_for(path).unwrap_or("application/octet-stream");
     Ok((bytes, content_type))
 }
 
 /// Resolves a package's URL-safe origin and a validated path inside its UI bundle.
 #[must_use]
-pub fn split_ui_url<'a>(url: &str, known: &'a [synra_protocol::ids::PluginId]) -> Option<(&'a synra_protocol::ids::PluginId, String)> {
+pub fn split_ui_url<'a>(
+    url: &str,
+    known: &'a [synra_protocol::ids::PluginId],
+) -> Option<(&'a synra_protocol::ids::PluginId, String)> {
     origin::split(url, known)
 }
 
@@ -1483,6 +1588,7 @@ pub(crate) fn document_response(
 pub fn forget_window(state: &AppState, label: &str) {
     let entry = state.hosted_ui.lock().remove(label);
     if let Some(entry) = entry {
+        state.input.controller.close_plugin(&entry.plugin_id);
         let _ = state.ui_sessions.revoke(entry.nonce);
     }
 }
@@ -1543,9 +1649,14 @@ pub fn serve(
     fn answer(status: u16, body: &'static str) -> tauri::http::Response<Cow<'static, [u8]>> {
         tauri::http::Response::builder()
             .status(status)
-            .header(tauri::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .header(
+                tauri::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            )
             .body(Cow::Borrowed(body.as_bytes()))
-            .unwrap_or_else(|_| tauri::http::Response::new(Cow::Borrowed(b"the response could not be built")))
+            .unwrap_or_else(|_| {
+                tauri::http::Response::new(Cow::Borrowed(b"the response could not be built"))
+            })
     }
 
     let state = app.state::<std::sync::Arc<AppState>>();

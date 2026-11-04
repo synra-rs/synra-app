@@ -81,6 +81,7 @@ required-features = [ "tauri-shell" ]
 
 [features]
 official-plugin-tests = []
+touchpad-plugin-tests = []
 default = [ "tauri-shell" ]
 # ★ 外壳是可选的，这样 `cargo test --no-default-features` 不编译 Tauri。
 #

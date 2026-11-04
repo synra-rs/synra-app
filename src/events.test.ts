@@ -73,7 +73,9 @@ describe('the event stream', () => {
     const client = new KernelClient({
       invoke: async command => command === 'devices_pairing_snapshot'
         ? { phase: 'idle' }
-        : new Promise<DevicesSnapshot>((resolve) => { pending.push(resolve) }),
+        : command === 'devices_input_snapshot'
+          ? {}
+          : new Promise<DevicesSnapshot>((resolve) => { pending.push(resolve) }),
       listen: async (_channel, handler) => {
         deliver = handler
         return () => {}

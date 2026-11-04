@@ -9,6 +9,7 @@
   <ConfigProvider :theme="componentTheme" :locale="componentLocale" :auto-insert-space-in-button="false">
     <TransferPrompt />
     <PairingPrompt />
+    <InputPrompt />
     <DebugConsole />
     <SearchPalette ref="searchPalette" />
     <div class="fixed inset-0 grid grid-rows-[minmax(0,1fr)_auto] overflow-hidden screen md:grid-rows-[minmax(0,1fr)]" :class="rail ? 'md:grid-cols-[6rem_minmax(0,1fr)]' : 'md:grid-cols-[15rem_minmax(0,1fr)]'">
@@ -40,6 +41,7 @@ import { useRoute } from 'vue-router'
 import AppNavigation from './components/AppNavigation.vue'
 import CrashNotice from './components/CrashNotice.vue'
 import DebugConsole from './components/DebugConsole.vue'
+import InputPrompt from './components/InputPrompt.vue'
 import NoticeHost from './components/NoticeHost.vue'
 import PairingPrompt from './components/PairingPrompt.vue'
 import SearchPalette from './components/SearchPalette.vue'

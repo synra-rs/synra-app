@@ -4,10 +4,11 @@ import { common } from './common'
 import { debug } from './debug'
 import { devices } from './devices'
 import { home } from './home'
+import { input } from './input'
 import { workflow } from './plugin-workflow'
 import { plugins } from './plugins'
 import { search } from './search'
 import { settings } from './settings'
 
-export const chineseEntries = { ...common, ...debug, ...devices, ...home, ...plugins, ...workflow, ...search, ...settings } satisfies LocaleEntries
+export const chineseEntries = { ...common, ...debug, ...devices, ...home, ...input, ...plugins, ...workflow, ...search, ...settings } satisfies LocaleEntries
 export const chineseMessages = buildLocale(chineseEntries)

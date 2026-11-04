@@ -4,6 +4,7 @@ coverage/
 src-tauri/target/
 *.tsbuildinfo
 .vite/
-# Written by 	auri-build on every compile of the shell: the capability and permission schemas.
-src-tauri/gen/
+# Generated schemas stay ignored; the native Android project is versioned.
+src-tauri/gen/*
+!src-tauri/gen/android/
 

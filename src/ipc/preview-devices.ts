@@ -29,6 +29,9 @@ export class PreviewDevices {
         this.#scanCancelled = true
         return null
       case 'devices_pairing_snapshot': return this.#pairing
+      case 'devices_input_snapshot': return {}
+      case 'devices_input_respond':
+      case 'devices_input_stop': return null
       case 'devices_pair': {
         const device = this.#devices.find(device => device.deviceId === args.deviceId)
         if (!device || device.paired || device.blocked)

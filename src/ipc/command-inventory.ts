@@ -25,6 +25,9 @@ export const REGISTERED = [
   'devices_pairing_respond',
   'devices_pairing_cancel',
   'devices_pairing_snapshot',
+  'devices_input_snapshot',
+  'devices_input_respond',
+  'devices_input_stop',
   // Pairing uses the shared restricted service with explicit certificate imports and a readable task snapshot.
   'plugins_list',
   'plugins_preview',

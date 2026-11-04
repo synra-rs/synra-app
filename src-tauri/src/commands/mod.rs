@@ -19,13 +19,14 @@ mod consent_tests;
 pub mod devices;
 pub mod diag;
 pub mod identity;
+pub mod input;
 pub mod intent;
 /// Sending an intent's envelope to the device that has to run it, and reading the answer on the same link.
 pub mod intent_remote;
 /// Sending again the dispatches a restart left waiting, keyed by the identifier the receiver deduplicates on.
 pub mod intent_resume;
 pub mod pairing;
-mod peers;
+pub(crate) mod peers;
 pub mod plugin_ui;
 pub mod plugin_updates;
 pub mod plugins;
