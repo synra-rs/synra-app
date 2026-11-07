@@ -4437,9 +4437,9 @@ dependencies = [
  "synra-observe",
  "synra-plugin-api",
  "synra-protocol",
+ "synra-wit-codegen",
  "thiserror 2.0.21",
  "wasmtime",
- "wit-codegen",
  "wit-component",
  "wit-parser 0.247.0",
 ]
@@ -4523,6 +4523,13 @@ dependencies = [
 [[package]]
 name = "synra-testkit-alloc"
 version = "0.1.0"
+
+[[package]]
+name = "synra-wit-codegen"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "synstructure"
@@ -6668,13 +6675,6 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
-
-[[package]]
-name = "wit-codegen"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.21",
-]
 
 [[package]]
 name = "wit-component"
