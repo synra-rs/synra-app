@@ -28,7 +28,11 @@ your machine — the second command works here.
 so it is run from `synra-rust-core/`, not from here. `cargo run -p guards` in this repository fails with "package not found in
 workspace", which reads like a broken guard and is really a wrong directory.
 
-## 2. Facts to hold while editing
+## 2. Mobile Android build order
+
+The Android APK bundles the files currently present in `dist/`. When using a Tauri build override with an empty `beforeBuildCommand`, Tauri does not rebuild the frontend. Always run `pnpm run build` first, verify the changed strings or chunks are present under `dist/`, and only then run `pnpm exec tauri android build --apk`. A changed APK size alone does not prove that the Vue frontend changed.
+
+## 3. Facts to hold while editing
 
 | Fact | Why it matters |
 | --- | --- |

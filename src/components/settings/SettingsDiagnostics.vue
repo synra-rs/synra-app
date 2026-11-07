@@ -4,6 +4,17 @@
       <template #expandIcon="panel">
         <CollapseArrow :panel="panel" />
       </template>
+      <ACollapse.Panel key="device" :header="`设备信息 · ${deviceDetails[0]?.value ?? ''}`" force-render>
+        <div class="stack gap-2 text-sm">
+          <p class="m-0 text-ink-dim">{{ messages.settings.diagnostics.deviceDetail }}</p>
+          <AList size="small" bordered>
+            <AList.Item v-for="item in deviceDetails" :key="item.label">
+              <span class="text-ink-dim">{{ item.label }}</span>
+              <span class="ms-auto max-w-[65%] break-all text-end font-mono">{{ item.value }}</span>
+            </AList.Item>
+          </AList>
+        </div>
+      </ACollapse.Panel>
       <ACollapse.Panel key="metrics" :header="messages.settings.metrics.title">
         <div class="min-w-0 stack gap-3">
           <div class="row-between flex-wrap gap-2">
@@ -176,7 +187,7 @@
 
 <script setup lang="ts">
 import { Button as AButton, Checkbox as ACheckbox, Collapse as ACollapse, Empty as AEmpty, InputNumber as AInputNumber, List as AList, Modal as AModal, Tag as ATag } from 'ant-design-vue'
-import { toRef } from 'vue'
+import { computed, toRef } from 'vue'
 import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
 import { useDialogVisibility } from '../../stores/dialogs'
@@ -186,5 +197,19 @@ import { useDiagnostics } from './use-diagnostics'
 
 const props = defineProps<{ active: boolean }>()
 const { openPanels, errors, metrics, metricsAt, refreshing, metricsEnabled, loadMetrics, startup, seriesKey, seriesValue, exportAudit, exportDebug, exportLines, exporting, exported, exportDiagnostics, confirmDismiss, crashesDismissed, dismissing, crashes, loadingCrashes, dismissCrashes, showCrashes, probeReport, probing, onlyProblems, probesSummary, visibleProbes, probeColor, runProbes, logLines, logAsked, loadingLogs, loadLogs } = useDiagnostics(toRef(props, 'active'))
+const deviceDetails = computed(() => {
+  const nav = navigator
+  const screen = window.screen
+  return [
+    { label: 'User agent', value: nav.userAgent },
+    { label: 'Platform', value: nav.platform || '—' },
+    { label: 'Language', value: nav.language || '—' },
+    { label: 'Viewport', value: `${window.innerWidth} × ${window.innerHeight}` },
+    { label: 'Screen', value: `${screen.width} × ${screen.height} @ ${window.devicePixelRatio}x` },
+    { label: 'Touch points', value: String(nav.maxTouchPoints) },
+    { label: 'Tauri runtime', value: '__TAURI_INTERNALS__' in window ? 'yes' : 'no' },
+    { label: 'Online', value: navigator.onLine ? 'yes' : 'no' }
+  ]
+})
 const confirmVisible = useDialogVisibility(confirmDismiss, 60)
 </script>

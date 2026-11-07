@@ -101,6 +101,8 @@ export const settings = {
   /** What a user sends when something is wrong, and the two optional sections that need a decision. */
   diagnostics: {
     title: 'Diagnostics',
+    deviceTitle: 'Device information',
+    deviceDetail: 'Runtime and display information collected from this app session.',
     probesTitle: 'Environment checks',
     crashesTitle: 'Crash reports',
     detail: 'Export a troubleshooting report. Extra logs are optional.',

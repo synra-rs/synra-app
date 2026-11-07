@@ -7,6 +7,7 @@
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: pan-x pan-y;
+  -ms-touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   -webkit-user-select: none;
   user-select: none;
@@ -58,9 +59,55 @@
   min-width: 0;
 }
 
+.mobile-shell > .desktop-shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.mobile-shell > .desktop-shell > :first-child {
+  display: none;
+}
+
+.mobile-shell > .desktop-shell > main {
+  grid-column: 1;
+  grid-row: 1;
+  padding: 1rem;
+  font-size: 1rem;
+}
+
+.mobile-shell > .desktop-shell > nav {
+  display: flex;
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 4rem;
+}
+
+.mobile-shell > .desktop-shell > nav button {
+  min-height: 4rem;
+  font-size: 0.875rem;
+}
+
 @media (max-width: 63.99rem) {
   .screen {
     padding-top: env(safe-area-inset-top);
+  }
+}
+
+@media (min-width: 64rem) {
+  .mobile-shell {
+    padding-top: 0;
+  }
+
+  .mobile-shell > .desktop-shell > nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 20;
+    background: var(--synra-surface, #151022);
+  }
+
+  .mobile-shell > .desktop-shell > main {
+    padding-bottom: 5.5rem;
   }
 }
 </style>
@@ -72,7 +119,7 @@
     <InputPrompt />
     <DebugConsole />
     <SearchPalette ref="searchPalette" />
-    <div class="screen grid-rows-[auto_minmax(0,1fr)]">
+    <div class="screen grid-rows-[auto_minmax(0,1fr)]" :class="{ 'mobile-shell': isMobile }">
       <WindowTitleBar />
       <div class="desktop-shell grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[15rem_minmax(0,1fr)]">
         <AppNavigation :rail="rail" @search="searchPalette?.show()" />
@@ -145,23 +192,41 @@ function apply(event: MediaQueryList | MediaQueryListEvent): void {
   rail.value = !event.matches
 }
 
+function isPrimaryRoute(path: string): boolean {
+  return path === '/' || path === '/devices' || path === '/plugins' || path === '/settings'
+}
+
 onMounted(async () => {
   stopLocaleSync = watchSystemLocale()
   query = window.matchMedia('(min-width: 64rem)')
-  apply(query)
-  isMobile.value = !query.matches
+  isMobile.value = isTauri ? true : !query.matches
+  rail.value = !isMobile.value && !query.matches
   query.addEventListener('change', (event) => {
-    apply(event)
-    isMobile.value = !event.matches
+    if (!isTauri) {
+      apply(event)
+      isMobile.value = !event.matches
+    }
   })
   const preventContextMenu = (event: MouseEvent): void => event.preventDefault()
   document.addEventListener('contextmenu', preventContextMenu)
   removeContextMenu = () => document.removeEventListener('contextmenu', preventContextMenu)
+  const preventZoom = (event: TouchEvent): void => {
+    if (event.touches.length > 1)
+      event.preventDefault()
+  }
+  document.addEventListener('touchstart', preventZoom, { passive: false })
+  document.addEventListener('touchmove', preventZoom, { passive: false })
+  removeGestureListeners = () => {
+    document.removeEventListener('touchstart', preventZoom)
+    document.removeEventListener('touchmove', preventZoom)
+  }
   if ('ontouchstart' in window) {
     const preventGesture = (event: Event): void => event.preventDefault()
     for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
       document.addEventListener(type, preventGesture, { passive: false })
+    const removeGestureEvents = removeGestureListeners
     removeGestureListeners = () => {
+      removeGestureEvents?.()
       for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
         document.removeEventListener(type, preventGesture)
     }
@@ -175,16 +240,23 @@ onMounted(async () => {
       // Mobile builds may not expose the desktop window API; safe-area CSS remains the fallback.
     }
   }
-  if (isMobile.value) {
-    const onBack = (): void => {
-      if (route.path !== '/') {
-        void router.back()
+  if (isMobile.value && isTauri) {
+    const windowHandle = getCurrentWindow()
+    let allowClose = false
+    stopBack = await windowHandle.onCloseRequested(async (event) => {
+      if (allowClose) {
+        allowClose = false
+        return
+      }
+      event.preventDefault()
+      if (!isPrimaryRoute(route.path)) {
+        await router.back()
         return
       }
       const now = Date.now()
       if (now - lastBackAt < 1800) {
-        if (isTauri)
-          void getCurrentWindow().close()
+        allowClose = true
+        await windowHandle.close()
         return
       }
       lastBackAt = now
@@ -194,13 +266,12 @@ onMounted(async () => {
       backResetTimer = setTimeout(() => {
         lastBackAt = 0
       }, 1800)
-    }
-    window.addEventListener('popstate', onBack)
-    stopBack = () => window.removeEventListener('popstate', onBack)
+    })
   }
-  const [answer] = await Promise.all([kernel.call<DevicesSnapshot>('devices_snapshot'), settings.read(kernel)])
+  const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
   if (answer.ok)
     devices.applySnapshot(answer.value)
+  await settings.read(kernel)
 })
 
 onUnmounted(() => {

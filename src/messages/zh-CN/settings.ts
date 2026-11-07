@@ -58,6 +58,8 @@ export const settings = {
   'settings.audit.detail': '下次启动应用时清理过期的插件活动记录。',
   'settings.audit.save': '保存',
   'settings.diagnostics.title': '诊断',
+  'settings.diagnostics.deviceTitle': '设备信息',
+  'settings.diagnostics.deviceDetail': '显示本次应用运行时采集到的设备和显示环境信息。',
   'settings.diagnostics.probesTitle': '环境检查',
   'settings.diagnostics.crashesTitle': '崩溃报告',
   'settings.diagnostics.detail': '导出故障排查报告，可选附加日志。',

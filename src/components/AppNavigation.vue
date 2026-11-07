@@ -56,9 +56,9 @@ const route = useRoute()
 const router = useRouter()
 const devices = useDevicesStore()
 function navigate(info: { key: string | number }): void {
-  void router.push(String(info.key))
+  void router.replace(String(info.key))
 }
 function navigateTab(path: string): void {
-  void router.replace(path)
+  void router.replace({ path, query: {}, hash: '' })
 }
 </script>
