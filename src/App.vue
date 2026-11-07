@@ -107,7 +107,34 @@
   }
 
   .mobile-shell > .desktop-shell > main {
+    padding: 1.25rem;
     padding-bottom: 5.5rem;
+    font-size: 1.125rem;
+  }
+
+  .mobile-shell > .desktop-shell > main > div {
+    max-width: none;
+  }
+
+  .mobile-shell :deep(.ant-collapse-header),
+  .mobile-shell :deep(.ant-collapse-content-box) {
+    font-size: 1.125rem;
+  }
+
+  .mobile-shell :deep(.ant-collapse-header) {
+    min-height: 3.5rem;
+    padding-block: 1rem;
+  }
+
+  .mobile-shell :deep(.ant-btn),
+  .mobile-shell :deep(.ant-input),
+  .mobile-shell :deep(.ant-select-selector) {
+    min-height: 3rem;
+    font-size: 1.0625rem;
+  }
+
+  .mobile-shell :deep(.ant-list-item) {
+    padding-block: 0.9rem;
   }
 }
 </style>
