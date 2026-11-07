@@ -33,7 +33,13 @@ export const englishMessages = {
      *   destinations — a screen reader offers "Home", "Devices" out of nowhere without a name saying these are the
      *   pages of this window. Same reason `content` exists one line up.
      */
-    navigation: 'Pages'
+    navigation: 'Pages',
+    backAgainToExit: 'Press back again to exit Synra.'
+  },
+  window: {
+    minimize: 'Minimize',
+    maximize: 'Maximize',
+    close: 'Close'
   },
 
   nav,

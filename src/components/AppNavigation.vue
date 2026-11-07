@@ -1,20 +1,18 @@
 <template>
   <nav v-if="bottom" :aria-label="messages.app.navigation" class="flex border-t border-line bg-glass pb-[env(safe-area-inset-bottom)] md:hidden">
-    <RouterLink v-for="page in PAGES" :key="page.path" v-slot="{ isExactActive }" :to="page.path" class="relative min-h-11 row flex-1 flex-col justify-center gap-0.5 text-sm text-ink-dim focusable hover:text-ink" active-class="text-primary-ink">
-      <span class="absolute inset-x-3 top-0 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': isExactActive }" aria-hidden="true" />
+    <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
+      <span class="absolute inset-x-3 top-0 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': route.path === page.path }" aria-hidden="true" />
       <span :class="page.icon" class="text-lg" aria-hidden="true" />
       <span>{{ page.label }}</span>
-    </RouterLink>
+    </button>
   </nav>
   <aside v-else class="hidden min-h-0 min-w-0 flex-col overflow-hidden border-e border-line bg-glass px-2 py-3 md:flex">
-    <div class="row shrink-0 gap-2 px-2 pb-3" :class="{ 'justify-center': rail }">
-      <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
-      <span v-if="!rail" class="text-lg font-semibold">Synra</span>
+    <div class="row shrink-0 justify-end gap-2 px-2 pb-3">
       <ATooltip placement="right">
         <template #title>
           {{ messages.search.shortcutHint }}<code>{{ messages.search.shortcut }}</code>
         </template>
-        <AButton type="text" class="synra-icon-button ms-auto shrink-0" :class="{ 'ms-0': rail }" :aria-label="messages.search.title" data-testid="search-entry" @click="$emit('search')">
+        <AButton type="text" class="synra-icon-button shrink-0" :aria-label="messages.search.title" data-testid="search-entry" @click="$emit('search')">
           <span class="i-carbon-search" aria-hidden="true" />
         </AButton>
       </ATooltip>
@@ -59,5 +57,8 @@ const router = useRouter()
 const devices = useDevicesStore()
 function navigate(info: { key: string | number }): void {
   void router.push(String(info.key))
+}
+function navigateTab(path: string): void {
+  void router.replace(path)
 }
 </script>

@@ -4,5 +4,5 @@
   "description": "Main window permissions with host commands derived from the shared command registry.",
   "windows": ["main"],
   "platforms": ["linux", "macOS", "windows"],
-  "permissions": ["core:default", "dialog:default", "autostart:default", "host-commands"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-maximize", "core:window:allow-unmaximize", "core:window:allow-close", "core:window:allow-is-maximized", "dialog:default", "autostart:default", "host-commands"]
 }
