@@ -226,10 +226,11 @@ function isPrimaryRoute(path: string): boolean {
 onMounted(async () => {
   stopLocaleSync = watchSystemLocale()
   query = window.matchMedia('(min-width: 64rem)')
-  isMobile.value = isTauri ? true : !query.matches
+  const phoneLike = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || navigator.maxTouchPoints > 0
+  isMobile.value = isTauri && phoneLike ? true : !query.matches
   rail.value = !isMobile.value && !query.matches
   query.addEventListener('change', (event) => {
-    if (!isTauri) {
+    if (!isTauri || !phoneLike) {
       apply(event)
       isMobile.value = !event.matches
     }

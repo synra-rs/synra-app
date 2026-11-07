@@ -28,8 +28,10 @@ class MainActivity : TauriActivity() {
     webView.settings.builtInZoomControls = false
     webView.settings.displayZoomControls = false
     webView.settings.textZoom = 100
+    webView.settings.useWideViewPort = false
+    webView.settings.loadWithOverviewMode = false
     webView.isHapticFeedbackEnabled = false
-    webView.setInitialScale(100)
+    webView.setInitialScale(0)
     webView.setOnTouchListener { _, event ->
       event.pointerCount > 1 || event.actionMasked == android.view.MotionEvent.ACTION_POINTER_DOWN
     }
