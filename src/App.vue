@@ -60,8 +60,9 @@
 }
 
 .mobile-shell > .desktop-shell {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  position: relative;
+  display: block;
+  height: 100%;
 }
 
 .mobile-shell > .desktop-shell > :first-child {
@@ -69,17 +70,26 @@
 }
 
 .mobile-shell > .desktop-shell > main {
-  grid-column: 1;
-  grid-row: 1;
-  padding: 1rem;
-  font-size: 1rem;
+  position: absolute;
+  inset: 0;
+  padding: 1.25rem;
+  padding-bottom: calc(1.5rem + 4rem + env(safe-area-inset-bottom));
+  font-size: 1.125rem;
 }
 
 .mobile-shell > .desktop-shell > nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
   display: flex;
-  grid-column: 1;
-  grid-row: 2;
+  box-sizing: border-box;
+  height: calc(4rem + env(safe-area-inset-bottom));
   min-height: 4rem;
+  border-top: 1px solid color-mix(in oklab, var(--synra-line) 70%, transparent);
+  background-color: var(--synra-glass);
+  -webkit-backdrop-filter: blur(var(--synra-blur)) saturate(var(--synra-saturate));
+  backdrop-filter: blur(var(--synra-blur)) saturate(var(--synra-saturate));
 }
 
 .mobile-shell > .desktop-shell > nav button {
@@ -87,79 +97,49 @@
   font-size: 0.875rem;
 }
 
-@media (max-width: 63.99rem) {
-  .screen {
-    padding-top: env(safe-area-inset-top);
-  }
+.mobile-shell {
+  padding-top: env(safe-area-inset-top);
 }
 
-@media (min-width: 64rem) {
-  .mobile-shell {
-    padding-top: 0;
-  }
+.mobile-shell > .desktop-shell > nav button,
+.mobile-shell .mobile-tabbar,
+.mobile-shell .mobile-tabbar button {
+  border-radius: 0;
+}
 
-  .mobile-shell > .desktop-shell {
-    position: relative;
-    display: block;
-    height: 100%;
-  }
+.mobile-shell > .desktop-shell > nav button::before,
+.mobile-shell > .desktop-shell > nav button::after {
+  border-radius: 0;
+}
 
+.mobile-shell > .desktop-shell > main > div {
+  max-width: none;
+}
+
+.mobile-shell :deep(.ant-collapse-header),
+.mobile-shell :deep(.ant-collapse-content-box) {
+  font-size: 1.125rem;
+}
+
+.mobile-shell :deep(.ant-collapse-header) {
+  min-height: 3.5rem;
+  padding-block: 1rem;
+}
+
+.mobile-shell :deep(.ant-btn),
+.mobile-shell :deep(.ant-input),
+.mobile-shell :deep(.ant-select-selector) {
+  min-height: 3rem;
+  font-size: 1.0625rem;
+}
+
+.mobile-shell :deep(.ant-list-item) {
+  padding-block: 0.9rem;
+}
+
+@supports not (backdrop-filter: blur(0)) {
   .mobile-shell > .desktop-shell > nav {
-    position: fixed;
-    inset-inline: 0;
-    bottom: 0;
-    z-index: 20;
-    display: flex;
-    height: calc(4rem + env(safe-area-inset-bottom));
-    background: color-mix(in oklab, var(--synra-screen) 72%, transparent);
-    -webkit-backdrop-filter: blur(24px) saturate(150%);
-    backdrop-filter: blur(24px) saturate(150%);
-    border-top: 1px solid color-mix(in oklab, var(--synra-line) 70%, transparent);
-  }
-
-  .mobile-shell > .desktop-shell > nav button,
-  .mobile-shell .mobile-tabbar,
-  .mobile-shell .mobile-tabbar button {
-    border-radius: 0;
-  }
-
-  .mobile-shell > .desktop-shell > nav button::before,
-  .mobile-shell > .desktop-shell > nav button::after {
-    border-radius: 0;
-  }
-
-  .mobile-shell > .desktop-shell > main {
-    position: absolute;
-    inset: 0;
-    height: calc(100% - 4rem - env(safe-area-inset-bottom));
-    padding: 1.25rem;
-    padding-bottom: 1.5rem;
-    font-size: 1.125rem;
-  }
-
-  .mobile-shell > .desktop-shell > main > div {
-    max-width: none;
-  }
-
-  .mobile-shell :deep(.ant-collapse-header),
-  .mobile-shell :deep(.ant-collapse-content-box) {
-    font-size: 1.125rem;
-  }
-
-  .mobile-shell :deep(.ant-collapse-header) {
-    min-height: 3.5rem;
-    padding-block: 1rem;
-  }
-
-  .mobile-shell :deep(.ant-btn),
-  .mobile-shell :deep(.ant-input),
-  .mobile-shell :deep(.ant-select-selector) {
-    min-height: 3rem;
-    font-size: 1.0625rem;
-  }
-
-  .mobile-shell :deep(.ant-list-item) {
-    padding-block: 0.9rem;
+    background-color: var(--synra-glass-base);
   }
 }
 </style>

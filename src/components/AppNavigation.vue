@@ -1,5 +1,5 @@
 <template>
-  <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line bg-glass pb-[env(safe-area-inset-bottom)] md:hidden">
+  <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line pb-[env(safe-area-inset-bottom)] md:hidden">
     <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
       <span class="absolute inset-x-3 top-0 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': route.path === page.path }" aria-hidden="true" />
       <span :class="page.icon" class="text-lg" aria-hidden="true" />
