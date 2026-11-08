@@ -1,3 +1,5 @@
+/// <reference types="unplugin-build-stamp/client" />
+
 /**
  * Ambient declarations for things the bundler resolves that TypeScript cannot.
  *

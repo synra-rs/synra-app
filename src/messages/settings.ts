@@ -38,7 +38,9 @@ export const settings = {
     cancel: 'Cancel',
     platform: 'Platform',
     kernel: 'Version',
-    deviceId: 'Device id'
+    deviceId: 'Device id',
+    frontendVersion: 'Frontend version',
+    frontendHash: 'Frontend build hash'
   },
   preferences: 'Preferences',
   language: {

@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
+import buildStamp from 'unplugin-build-stamp/vite'
 import { defineConfig } from 'vite'
 
 /**
@@ -15,7 +16,7 @@ import { defineConfig } from 'vite'
  * devDependency rather than a dependency.
  */
 export default defineConfig({
-  plugins: [vue(), UnoCSS()],
+  plugins: [buildStamp(), vue(), UnoCSS()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))

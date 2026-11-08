@@ -164,6 +164,12 @@
             <SettingsRow :label="messages.settings.field.kernel">
               <span v-if="identity" class="text-base font-mono">v{{ identity.kernelVersion }}</span>
             </SettingsRow>
+            <SettingsRow :label="messages.settings.field.frontendVersion">
+              <span class="text-base font-mono">v{{ buildStamp.version }}</span>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.field.frontendHash">
+              <span class="max-w-full break-all text-sm text-ink-dim font-mono" :title="buildStamp.hash || undefined">{{ buildStamp.shortHash || '—' }}</span>
+            </SettingsRow>
             <SettingsRow :label="messages.settings.field.deviceId">
               <span class="max-w-full break-all text-sm text-ink-dim font-mono">{{ identity?.deviceId }}</span>
             </SettingsRow>
@@ -193,6 +199,7 @@
 
 <script setup lang="ts">
 import { Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
+import { buildStamp } from '../build-stamp'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'

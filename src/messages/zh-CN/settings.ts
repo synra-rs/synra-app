@@ -29,6 +29,8 @@ export const settings = {
   'settings.field.platform': '平台',
   'settings.field.kernel': '版本',
   'settings.field.deviceId': '设备标识',
+  'settings.field.frontendVersion': '前端版本',
+  'settings.field.frontendHash': '前端构建 hash',
   'settings.preferences': '常规',
   'settings.language.title': '语言',
   'settings.language.system': '跟随系统',

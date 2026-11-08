@@ -89,6 +89,9 @@ importers:
       unocss:
         specifier: ^66.11.0
         version: 66.11.0(@oxc-project/types@0.153.0)(cac@7.1.0)(rolldown@1.2.13)(srvx@1.0.5)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+      unplugin-build-stamp:
+        specifier: 0.1.0
+        version: 0.1.0(unplugin@3.4.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       vite:
         specifier: ^8.3.4
         version: 8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -2683,6 +2686,12 @@ packages:
         optional: true
       '@unocss/webpack':
         optional: true
+
+  unplugin-build-stamp@0.1.0:
+    resolution: {integrity: sha512-nhjxBYKpahaTnAe61hJYohYFBEZL6EG5IY9NWY/nNuezt5BFIEzgDce9PaGpIdaSRq/ICbJR6IHMJc6k+CXnww==}
+    engines: {node: ^20.0.0 || >=22.0.0}
+    peerDependencies:
+      unplugin: ^2.0.0 || ^3.0.0
 
   unplugin-utils@0.3.2:
     resolution: {integrity: sha512-xVToRh2CTmLk2HnEG7ac4rl1MJTT3RFkpS8B++/SnB0kXvuaavD+n3m/vrzyWQOdJNSZQACnbz01pnppbwV5BA==}
@@ -5669,6 +5678,10 @@ snapshots:
       - rollup
       - srvx
       - vite
+
+  unplugin-build-stamp@0.1.0(unplugin@3.4.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))):
+    dependencies:
+      unplugin: 3.4.0(esbuild@0.28.2)(rolldown@1.2.13)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   unplugin-utils@0.3.2:
     dependencies:

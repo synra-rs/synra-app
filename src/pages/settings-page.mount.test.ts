@@ -1,6 +1,7 @@
 import { flushPromises } from '@vue/test-utils'
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
+import { buildStamp } from '../build-stamp'
 import { localePreference, setLocalePreference } from '../locale'
 import { answer, IDENTITY, messages, mocks, mountPage, NO_METRICS, openCategory } from './settings-page.testkit'
 
@@ -224,6 +225,17 @@ describe('the settings page', () => {
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
       patch: { unset: ['plugins.registry'] }
     })
+    wrapper.unmount()
+  })
+  it('shows the frontend version and build hash in About', async () => {
+    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    const wrapper = await mountPage()
+    await flushPromises()
+    await openCategory(wrapper, 'about')
+    expect(wrapper.text()).toContain(messages.settings.field.frontendVersion)
+    expect(wrapper.text()).toContain(`v${buildStamp.version}`)
+    expect(wrapper.text()).toContain(messages.settings.field.frontendHash)
+    expect(wrapper.text()).toContain(buildStamp.shortHash || '—')
     wrapper.unmount()
   })
 })
