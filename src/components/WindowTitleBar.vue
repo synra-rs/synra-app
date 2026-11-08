@@ -5,9 +5,9 @@
       <span class="truncate text-sm font-semibold">{{ messages.app.name }}</span>
     </div>
     <div class="row gap-1" @mousedown.stop @dblclick.stop>
-      <AButton type="ghost" size="small" :aria-label="messages.window.minimize" @click="minimize"><span class="i-carbon-subtract" aria-hidden="true" /></AButton>
-      <AButton type="ghost" size="small" :aria-label="messages.window.maximize" @click="toggleMaximize"><span :class="maximized ? 'i-carbon-collapse-all' : 'i-carbon-maximize'" aria-hidden="true" /></AButton>
-      <AButton type="ghost" size="small" danger :aria-label="messages.window.close" @click="close"><span class="i-carbon-close" aria-hidden="true" /></AButton>
+      <AButton ghost type="default" size="small" :aria-label="messages.window.minimize" @click="minimize"><span class="i-carbon-minimize" aria-hidden="true" /></AButton>
+      <AButton ghost type="default" size="small" :aria-label="messages.window.maximize" @click="toggleMaximize"><span :class="maximized ? 'i-carbon-window-auto' : 'i-carbon-maximize'" aria-hidden="true" /></AButton>
+      <AButton ghost type="default" size="small" danger :aria-label="messages.window.close" @click="close"><span class="i-carbon-close" aria-hidden="true" /></AButton>
     </div>
   </header>
 </template>

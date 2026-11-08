@@ -165,7 +165,7 @@
 </style>
 
 <template>
-  <ConfigProvider :theme="componentTheme" :locale="componentLocale" :auto-insert-space-in-button="false">
+  <ConfigProvider :theme="componentTheme" :locale="componentLocale" :auto-insert-space-in-button="false" :wave="{ disabled: false }">
     <TransferPrompt />
     <PairingPrompt />
     <InputPrompt />
