@@ -1,6 +1,6 @@
 import type { DevicesSnapshot, IpcError, ScanOptions } from '@synra/protocol'
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { kernel } from '../../kernel'
+import { kernel } from '../../app/kernel'
 import { messages } from '../../messages'
 import { useDevicesStore } from '../../stores/devices'
 

@@ -4,7 +4,7 @@
  * # Why this file exists
  *
  * `KernelClient` takes a `Bridge`, and there is exactly one implementation that will ever be real: the Tauri one, which
- * needs a WebView and therefore `src-tauri`. The decision between that and [`FakeKernel`](./ipc/fake-kernel.ts) is made
+ * needs a WebView and therefore `src-tauri`. The decision between that and [`FakeKernel`](../ipc/fake-kernel.ts) is made
  * **here and nowhere else** on purpose. A component that reached for the fake directly would keep working after the real
  * bridge exists, and would keep working in the one place it must not: a test.
  *
@@ -16,13 +16,13 @@
  * render, and every number in them is invented.
  *
  * ★ This was a promise for several rounds: the comment above said the Tauri bridge "is not written yet", and the file
- * built the client over the fake unconditionally. [`TauriKernel`](./ipc/tauri.ts) is that bridge, so the choice is now
+ * built the client over the fake unconditionally. [`TauriKernel`](../ipc/tauri.ts) is that bridge, so the choice is now
  * real rather than aspirational.
  */
 
-import { KernelClient } from './ipc/client'
-import { FakeKernel } from './ipc/fake-kernel'
-import { hasTauriInternals, TauriKernel } from './ipc/tauri'
+import { KernelClient } from '../ipc/client'
+import { FakeKernel } from '../ipc/fake-kernel'
+import { hasTauriInternals, TauriKernel } from '../ipc/tauri'
 
 /**
  * The bridge this process can actually use.

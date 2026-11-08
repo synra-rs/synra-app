@@ -1,6 +1,6 @@
 import type { ConfigPatch, IpcError } from '@synra/protocol'
 import { computed, reactive, ref } from 'vue'
-import { kernel } from '../../kernel'
+import { kernel } from '../../app/kernel'
 import { useSettingsStore } from '../../stores/settings'
 
 export type Operation = 'name' | 'language' | 'startup' | 'wire' | 'cancel' | 'notify' | 'trusted' | 'registry' | 'policy' | 'retention'

@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
-import { localePreference, setLocalePreference } from '../locale'
+import { localePreference, setLocalePreference } from '../app/locale'
 import { installBrowserApis } from '../testing/browser'
 
 const mocks = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ const autostart = vi.hoisted(() => ({
   enable: vi.fn(),
   disable: vi.fn()
 }))
-vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('../app/kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
 vi.mock('@tauri-apps/plugin-autostart', () => ({
   isEnabled: autostart.isEnabled,
   enable: autostart.enable,

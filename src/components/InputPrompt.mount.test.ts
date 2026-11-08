@@ -8,7 +8,7 @@ import { useInputStore } from '../stores/input'
 import InputPrompt from './InputPrompt.vue'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('../kernel', () => ({ kernel: { call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call } }))
 let wrapper: VueWrapper | undefined
 const session = { sessionId: 'session', deviceId: 'phone', displayName: '安卓', pluginId: '@synra-plugin/touchpad', phase: 'pending' as const }
 beforeEach(() => {

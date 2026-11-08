@@ -2,7 +2,7 @@ import type { InputSnapshot, IpcError, KernelEvent } from '@synra/protocol'
 import type { KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { kernel } from '../kernel'
+import { kernel } from '../app/kernel'
 
 /** One host-only receiver prompt, updated by the central sequenced event stream. */
 export const useInputStore = defineStore('input', () => {

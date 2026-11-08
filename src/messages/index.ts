@@ -1,5 +1,5 @@
 import type { Messages } from './types'
-import { locale } from '../locale'
+import { locale } from '../app/locale'
 import { englishMessages } from './english'
 import { chineseMessages } from './zh-CN'
 

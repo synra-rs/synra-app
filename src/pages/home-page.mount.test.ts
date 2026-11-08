@@ -2,8 +2,8 @@ import type { DeviceCard } from '@synra/protocol'
 import { flushPromises, mount } from '@vue/test-utils'
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { setLocalePreference } from '../locale'
-import { formatTime } from '../locale-format'
+import { setLocalePreference } from '../app/locale'
+import { formatTime } from '../utils/locale-format'
 import { answer, DEVICES, HomePage, IDENTITY, INTENT, messages, mocks, router, useDevicesStore } from './home-page.testkit'
 
 describe('the home page', () => {

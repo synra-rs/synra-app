@@ -174,7 +174,7 @@ export async function checkCommandNames(): Promise<ReadonlySet<string>> {
 
 export async function checkFakeIsQuarantined(): Promise<void> {
   const root = join(here, 'src')
-  const allowed = new Set(['kernel.ts'])
+  const allowed = new Set(['kernel.ts', 'app/kernel.ts'])
   let importers = 0
   // ★ The rule is about the *kind* of file, not the one name that happened to break it first. `fake-kernel` was the
   //   import that reached production, but the same mistake is available from any fixture: `client-test-helpers`,
@@ -201,13 +201,13 @@ export async function checkFakeIsQuarantined(): Promise<void> {
       importers += 1
       failures.push({
         check: 'fake-quarantine',
-        detail: `${name} imports \`${specifier}\`; only kernel.ts may choose the fake`
+        detail: `${name} imports \`${specifier}\`; only the application kernel adapter may choose the fake`
       })
     }
   }
   notes.push(
     importers === 0
-      ? 'fake-quarantine: only kernel.ts names the fake kernel'
+      ? 'fake-quarantine: only the application kernel adapter names the fake kernel'
       : `fake-quarantine: ${String(importers)} production file(s) import the fake`
   )
 }

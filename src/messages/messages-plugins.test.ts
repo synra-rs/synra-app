@@ -12,8 +12,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { setLocalePreference } from './locale'
-import { messages } from './messages'
+import { setLocalePreference } from '../app/locale'
+import { messages } from './index'
 
 /** The strings `Health::as_str` produces, in `budget.rs`. */
 const HEALTH_RUNGS = ['good', 'overreaching', 'degraded', 'faulted'] as const

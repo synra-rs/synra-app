@@ -2,7 +2,7 @@ import type { DeviceCard, IpcError, KernelEvent, PairingSnapshot } from '@synra/
 import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { kernel } from '../kernel'
+import { kernel } from '../app/kernel'
 
 /** One pairing prompt for the whole application, fed by the central event subscriber. */
 export const usePairingStore = defineStore('pairing', () => {

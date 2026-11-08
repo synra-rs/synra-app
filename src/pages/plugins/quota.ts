@@ -1,6 +1,6 @@
 import type { PluginSnapshot } from '@synra/protocol'
-import { formatBytes } from '../../format'
 import { messages } from '../../messages'
+import { formatBytes } from '../../utils/format'
 
 function quotaNumber(health: PluginSnapshot['health'], key: string): number | undefined {
   if (health === undefined)

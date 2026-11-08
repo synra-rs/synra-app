@@ -202,14 +202,14 @@
 
 <script setup lang="ts">
 import { Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
-import { buildStamp, coreBuildStamp } from '../build-stamp'
+import { localePreference } from '../app/locale'
+import { buildStamp, coreBuildStamp } from '../auto-generated/build-stamp'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'
 import SettingsFeedback from '../components/settings/SettingsFeedback.vue'
 import SettingsGroup from '../components/settings/SettingsGroup.vue'
 import SettingsRow from '../components/settings/SettingsRow.vue'
-import { localePreference } from '../locale'
 import { messages } from '../messages'
 import { useDialogVisibility } from '../stores/dialogs'
 import { useSettingsPage } from './settings/use-settings-page'

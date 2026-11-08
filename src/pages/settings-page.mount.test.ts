@@ -1,8 +1,8 @@
 import { flushPromises } from '@vue/test-utils'
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildStamp, coreBuildStamp } from '../build-stamp'
-import { localePreference, setLocalePreference } from '../locale'
+import { localePreference, setLocalePreference } from '../app/locale'
+import { buildStamp, coreBuildStamp } from '../auto-generated/build-stamp'
 import { answer, IDENTITY, messages, mocks, mountPage, NO_METRICS, openCategory } from './settings-page.testkit'
 
 describe('the settings page', () => {

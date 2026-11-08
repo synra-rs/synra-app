@@ -67,7 +67,7 @@
 import type { IpcError, SuggestedAction } from '@synra/protocol'
 import { Button as AButton, Checkbox as ACheckbox } from 'ant-design-vue'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
-import { kernel } from '../kernel'
+import { kernel } from '../app/kernel'
 import { messages } from '../messages'
 import { useDialogVisibility } from '../stores/dialogs'
 import { useIntentsStore } from '../stores/intents'

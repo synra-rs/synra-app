@@ -1,6 +1,6 @@
 <template>
   <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line md:hidden">
-    <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
+    <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 border-0 bg-transparent text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
       <span class="absolute inset-x-4 bottom-1 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': route.path === page.path }" aria-hidden="true" />
       <span :class="page.icon" class="text-lg" aria-hidden="true" />
       <span>{{ page.label }}</span>
@@ -46,8 +46,8 @@
 <script setup lang="ts">
 import { Avatar as AAvatar, Button as AButton, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, Tooltip as ATooltip } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
+import { PAGES } from '../app/router'
 import { messages } from '../messages'
-import { PAGES } from '../router'
 import { useDevicesStore } from '../stores/devices'
 
 defineProps<{ rail: boolean, bottom?: boolean }>()

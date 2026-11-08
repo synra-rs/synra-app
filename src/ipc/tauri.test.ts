@@ -83,7 +83,7 @@ describe('telling a shell from a browser', () => {
 
 describe('the bridge the interface actually gets', () => {
   it('is the Tauri one in a shell and the fake one in a browser', async () => {
-    const { bridgeFor } = await import('../kernel')
+    const { bridgeFor } = await import('../app/kernel')
     expect(bridgeFor(aTauriPage())).toBeInstanceOf(TauriKernel)
     expect(bridgeFor(aBrowserPage())).toBeInstanceOf(FakeKernel)
   })

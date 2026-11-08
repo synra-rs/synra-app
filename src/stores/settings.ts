@@ -17,7 +17,7 @@ import type { ConfigSnapshot, KernelEvent } from '@synra/protocol'
 import type { CallResult, KernelClient } from '../ipc/client'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { setLocalePreference } from '../locale'
+import { setLocalePreference } from '../app/locale'
 
 export const useSettingsStore = defineStore('settings', () => {
   let revision = 0

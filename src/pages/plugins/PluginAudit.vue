@@ -59,10 +59,10 @@
 <script setup lang="ts">
 import { Button as AButton } from 'ant-design-vue'
 import { nextTick, ref, toRef, watch } from 'vue'
+import { kernel } from '../../app/kernel'
 import ErrorNotice from '../../components/ErrorNotice.vue'
-import { kernel } from '../../kernel'
-import { formatTime } from '../../locale-format'
 import { messages } from '../../messages'
+import { formatTime } from '../../utils/locale-format'
 import { usePluginAudit } from './audit-state'
 
 const props = defineProps<{ pluginId: string, active: boolean }>()

@@ -2,15 +2,15 @@ import type { IntentCandidate, IntentRetry, IntentSnapshot, ReceivedFile, Sugges
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatBytes } from '../../format'
-import { kernel } from '../../kernel'
-import { formatTime } from '../../locale-format'
+import { kernel } from '../../app/kernel'
 import { messages } from '../../messages'
 import { errorSentence } from '../../messages/errors'
 import { useDevicesStore } from '../../stores/devices'
 import { useIntentsStore } from '../../stores/intents'
 import { useNoticesStore } from '../../stores/notices'
 import { useSettingsStore } from '../../stores/settings'
+import { formatBytes } from '../../utils/format'
+import { formatTime } from '../../utils/locale-format'
 
 export function useHomePage() {
   const router = useRouter()

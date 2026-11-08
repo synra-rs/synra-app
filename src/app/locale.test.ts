@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
 import { computed } from 'vue'
+import { messages } from '../messages'
+import { englishMessages } from '../messages/english'
+import { chineseEntries } from '../messages/zh-CN'
+import { formatDateTime, formatTime } from '../utils/locale-format'
 import { locale, localePreference, normalizePreference, resolveLocale, setLocalePreference, watchSystemLocale } from './locale'
-import { formatDateTime, formatTime } from './locale-format'
-import { messages } from './messages'
-import { englishMessages } from './messages/english'
-import { chineseEntries } from './messages/zh-CN'
 
 afterEach(() => {
   vi.restoreAllMocks()

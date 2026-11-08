@@ -194,9 +194,9 @@
 import { Button as AButton, List as AList, Popconfirm as APopconfirm, Progress as AProgress, Tag as ATag } from 'ant-design-vue'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
-import { formatBytes } from '../format'
-import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
+import { formatBytes } from '../utils/format'
+import { formatDateTime } from '../utils/locale-format'
 import { useHomePage } from './home/use-home-page'
 
 const { router, devices, askBeforeCancel, error, received, cancelling, percentOf, progressLabel, directionOf, stateLabel, cancelTransfer, wire, state, wirePeerName, wireWidth, wireLive, load, expanded, copiedTrace, selectedTrace, toggleExpanded, copyTrace, deciding, accept, decline, canDecline, deviceName, intentStateLabel, intentStateColor, retryLabel, formatClock, intentError, intents, transfers } = useHomePage()

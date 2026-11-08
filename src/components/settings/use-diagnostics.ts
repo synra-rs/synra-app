@@ -1,7 +1,7 @@
 import type { CrashReport, DiagExportResult, IpcError, MetricsSnapshot, MetricValue, ProbeReportDto, SeriesKey } from '@synra/protocol'
 import type { Ref } from 'vue'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { kernel } from '../../kernel'
+import { kernel } from '../../app/kernel'
 import { messages } from '../../messages'
 
 export function useDiagnostics(active: Ref<boolean>) {

@@ -74,10 +74,10 @@
 import type { CrashReport, DiagExportResult } from '@synra/protocol'
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { onMounted, ref } from 'vue'
-import { kernel } from '../kernel'
+import { kernel } from '../app/kernel'
 
-import { formatDateTime } from '../locale-format'
 import { messages } from '../messages'
+import { formatDateTime } from '../utils/locale-format'
 
 /** The same window `StartupVerdict` uses: a crash older than this is history, not the last run. */
 const RECENT_MS = 5 * 60 * 1000

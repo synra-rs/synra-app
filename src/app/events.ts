@@ -22,18 +22,18 @@
 
 import type { DevicesSnapshot, SequencedKernelEvent } from '@synra/protocol'
 
-import type { KernelClient } from './ipc/client'
-import { publishWireLine } from './debug/wire-stream'
-import { KERNEL_EVENT_CHANNEL } from './ipc/channel'
-import { EventDispatcher } from './ipc/dispatcher'
+import type { KernelClient } from '../ipc/client'
+import { publishWireLine } from '../debug/wire-stream'
+import { KERNEL_EVENT_CHANNEL } from '../ipc/channel'
+import { EventDispatcher } from '../ipc/dispatcher'
+import { useDevicesStore } from '../stores/devices'
+import { useInputStore } from '../stores/input'
+import { useIntentsStore } from '../stores/intents'
+import { useNoticesStore } from '../stores/notices'
+import { usePairingStore } from '../stores/pairing'
+import { usePluginsStore } from '../stores/plugins'
+import { useSettingsStore } from '../stores/settings'
 import { kernel } from './kernel'
-import { useDevicesStore } from './stores/devices'
-import { useInputStore } from './stores/input'
-import { useIntentsStore } from './stores/intents'
-import { useNoticesStore } from './stores/notices'
-import { usePairingStore } from './stores/pairing'
-import { usePluginsStore } from './stores/plugins'
-import { useSettingsStore } from './stores/settings'
 
 /** What the caller keeps, so a test — or a future hot-reload — can stop the stream. */
 export interface StartedEvents {

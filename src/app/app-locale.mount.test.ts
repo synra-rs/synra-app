@@ -4,11 +4,11 @@ import { ConfigProvider } from 'ant-design-vue'
 import { createPinia } from 'pinia'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import App from './App.vue'
-import { IDENTITY } from './ipc/fake-kernel-fixtures'
+import App from '../App.vue'
+import { IDENTITY } from '../ipc/fake-kernel-fixtures'
+import { messages } from '../messages'
+import { useSettingsStore } from '../stores/settings'
 import { setLocalePreference } from './locale'
-import { messages } from './messages'
-import { useSettingsStore } from './stores/settings'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
 vi.mock('./kernel', () => ({ kernel: { call } }))

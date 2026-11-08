@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { locale } from './locale'
+import { locale } from '../app/locale'
 
 const dates = computed(() => new Intl.DateTimeFormat(locale.value, {
   year: 'numeric',

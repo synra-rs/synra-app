@@ -71,8 +71,8 @@
 import type { DeviceCard } from '@synra/protocol'
 import { Button as AButton, Tag as ATag } from 'ant-design-vue'
 import { ref, useId } from 'vue'
-import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
+import { formatDateTime } from '../../utils/locale-format'
 
 defineProps<{ card: DeviceCard }>()
 const emit = defineEmits<{ forget: [card: DeviceCard], pair: [card: DeviceCard] }>()

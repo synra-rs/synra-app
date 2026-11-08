@@ -55,8 +55,8 @@
 
 <script setup lang="ts">
 import type { PluginSnapshot } from '@synra/protocol'
-import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
+import { formatDateTime } from '../../utils/locale-format'
 import { quotaRows } from './quota'
 
 defineProps<{ plugin: PluginSnapshot }>()

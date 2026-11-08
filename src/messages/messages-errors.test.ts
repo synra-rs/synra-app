@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { actions, errors } from './messages/errors'
+import { actions, errors } from './errors'
 
 /**
  * The codes `synra_protocol::ErrorCode` serializes, minus the ones the interface has nothing honest to say about yet.

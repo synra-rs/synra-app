@@ -8,7 +8,7 @@ import { usePairingStore } from '../stores/pairing'
 import PairingPrompt from './PairingPrompt.vue'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('../kernel', () => ({ kernel: { call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call } }))
 
 let wrapper: VueWrapper | undefined
 const peer = { code: '000123', deviceId: 'peer', displayName: '安卓', platform: 'android' }

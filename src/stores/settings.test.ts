@@ -9,7 +9,7 @@ import type { ConfigSnapshot } from '@synra/protocol'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { localePreference, setLocalePreference } from '../locale'
+import { localePreference, setLocalePreference } from '../app/locale'
 import { useSettingsStore } from './settings'
 
 function snapshot(values: Record<string, unknown>): ConfigSnapshot {

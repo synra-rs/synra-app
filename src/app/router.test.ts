@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest'
+import { messages } from '../messages'
 import { setLocalePreference } from './locale'
-import { messages } from './messages'
 import { PAGES, router } from './router'
 
 /**

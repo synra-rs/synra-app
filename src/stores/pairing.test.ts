@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePairingStore } from './pairing'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('../kernel', () => ({ kernel: { call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call } }))
 
 const peer = { deviceId: 'peer', displayName: '安卓', platform: 'android', code: '000123' }
 const waiting: PairingSnapshot = { phase: 'waiting', offer: peer }

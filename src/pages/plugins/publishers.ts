@@ -1,7 +1,7 @@
 import type { PublisherDto } from '@synra/protocol'
 import type { Failure } from './actions'
 import { onScopeDispose, reactive, ref } from 'vue'
-import { kernel } from '../../kernel'
+import { kernel } from '../../app/kernel'
 import { failureOf } from './actions'
 
 export function usePublishers() {

@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { useInputStore } from './input'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('../kernel', () => ({ kernel: { call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call } }))
 const session: InputSession = { sessionId: 'session', deviceId: 'phone', displayName: '安卓', pluginId: '@synra-plugin/touchpad', phase: 'pending' }
 beforeEach(() => {
   setActivePinia(createPinia())

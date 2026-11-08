@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn()
 }))
 
-vi.mock('../kernel', () => ({ kernel: { call: mocks.call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call: mocks.call } }))
 
 const CrashNotice = (await import('./CrashNotice.vue')).default
 const { messages } = await import('../messages')

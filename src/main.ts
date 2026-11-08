@@ -10,9 +10,9 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
 import App from './App.vue'
-import { startEvents } from './events'
+import { startEvents } from './app/events'
 
-import { router } from './router'
+import { router } from './app/router'
 // ★ `uno.css` is the stylesheet `@synra/theme` produces: the tokens as custom properties, the reset, and the utilities
 // the templates actually use. It is imported **explicitly** rather than relying on the plugin to inject it, so that the
 // one line that brings in every colour and every utility is visible in the entry point — an injected stylesheet is a

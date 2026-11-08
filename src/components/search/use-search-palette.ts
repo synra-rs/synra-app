@@ -1,11 +1,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { guardCompositionEscape, isComposing } from '../../keyboard'
+import { PAGES } from '../../app/router'
 import { messages } from '../../messages'
-import { PAGES } from '../../router'
 import { useDevicesStore } from '../../stores/devices'
 import { usePluginsStore } from '../../stores/plugins'
+import { guardCompositionEscape, isComposing } from '../../utils/keyboard'
 
 export function useSearchPalette() {
   interface Item {

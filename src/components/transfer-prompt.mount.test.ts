@@ -11,7 +11,7 @@ import ErrorNotice from './ErrorNotice.vue'
 import TransferPrompt from './TransferPrompt.vue'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('../kernel', () => ({ kernel: { call } }))
+vi.mock('../app/kernel', () => ({ kernel: { call } }))
 
 function transfer(id: string, overrides: Partial<TransferSnapshot> = {}): TransferSnapshot {
   return { transferId: id, peerDevice: `peer-${id}`, peerName: `Peer ${id}`, direction: 'receive', kind: 'file', state: 'offered', fileName: `${id}.txt`, receivedBytes: 0, totalBytes: 10, blocksDone: 0, blocksTotal: 1, startedAtMs: 1, ...overrides }

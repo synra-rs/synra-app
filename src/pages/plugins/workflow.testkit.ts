@@ -5,12 +5,12 @@ import { Button } from 'ant-design-vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { setLocalePreference } from '../../locale'
+import { setLocalePreference } from '../../app/locale'
 import { installBrowserApis } from '../../testing/browser'
 
 const mocks = vi.hoisted(() => ({ call: vi.fn(), open: vi.fn() }))
 export { mocks }
-vi.mock('../../kernel', () => ({ kernel: { call: mocks.call } }))
+vi.mock('../../app/kernel', () => ({ kernel: { call: mocks.call } }))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 export const PluginsPage = (await import('../PluginsPage.vue')).default
 export const PluginRow = (await import('./PluginRow.vue')).default

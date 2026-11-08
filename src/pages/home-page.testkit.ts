@@ -3,15 +3,15 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { setLocalePreference } from '../locale'
-import { formatTime } from '../locale-format'
+import { setLocalePreference } from '../app/locale'
 import { installBrowserApis } from '../testing/browser'
+import { formatTime } from '../utils/locale-format'
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   subscribe: vi.fn()
 }))
-vi.mock('../kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('../app/kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
 const HomePage = (await import('./HomePage.vue')).default
 const { useIntentsStore } = await import('../stores/intents')
 const { useDevicesStore } = await import('../stores/devices')

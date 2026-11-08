@@ -188,9 +188,9 @@
 <script setup lang="ts">
 import { Button as AButton, Checkbox as ACheckbox, Collapse as ACollapse, Empty as AEmpty, InputNumber as AInputNumber, List as AList, Modal as AModal, Tag as ATag } from 'ant-design-vue'
 import { computed, toRef } from 'vue'
-import { formatDateTime } from '../../locale-format'
 import { messages } from '../../messages'
 import { useDialogVisibility } from '../../stores/dialogs'
+import { formatDateTime } from '../../utils/locale-format'
 import CollapseArrow from '../CollapseArrow.vue'
 import SettingsFeedback from './SettingsFeedback.vue'
 import { useDiagnostics } from './use-diagnostics'

@@ -1,10 +1,10 @@
 import type { InstallReport, PluginSnapshot, UpdateInfo } from '@synra/protocol'
 import type { Failure } from './actions'
 import { onScopeDispose, reactive, ref } from 'vue'
-import { formatBytes } from '../../format'
-import { kernel } from '../../kernel'
+import { kernel } from '../../app/kernel'
 import { messages } from '../../messages'
 import { usePluginsStore } from '../../stores/plugins'
+import { formatBytes } from '../../utils/format'
 import { failureOf, setEnabled, uninstall } from './actions'
 import { usePluginOperations } from './operations'
 

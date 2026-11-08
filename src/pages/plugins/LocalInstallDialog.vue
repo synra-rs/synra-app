@@ -39,11 +39,11 @@ import type { InstallReport } from '@synra/protocol'
 import type { Failure } from './actions'
 import { Button as AButton, Input as AInput, Modal as AModal } from 'ant-design-vue'
 import { onScopeDispose, ref } from 'vue'
+import { kernel } from '../../app/kernel'
 import ErrorNotice from '../../components/ErrorNotice.vue'
-import { kernel } from '../../kernel'
-import { guardCompositionEscape, isComposing } from '../../keyboard'
 import { messages } from '../../messages'
 import { useDialogVisibility } from '../../stores/dialogs'
+import { guardCompositionEscape, isComposing } from '../../utils/keyboard'
 import { installFrom } from './actions'
 
 const emit = defineEmits<{ close: [], installed: [report: InstallReport] }>()
