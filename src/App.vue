@@ -111,11 +111,24 @@
 }
 
 .mobile-shell .mobile-tabbar button {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.25rem;
+  border: 0;
   border-radius: var(--synra-radius-control);
+  background: transparent;
+  color: var(--synra-ink-dim);
+  font: inherit;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
   transition: color var(--synra-duration-fast), background-color var(--synra-duration-fast);
 }
 
 .mobile-shell .mobile-tabbar button[aria-current="page"] {
+  color: var(--synra-primary-ink);
   background-color: color-mix(in oklab, var(--synra-primary) 14%, transparent);
 }
 
