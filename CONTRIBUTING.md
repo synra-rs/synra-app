@@ -38,7 +38,7 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 ### IPC 清单
 
-注册 57 条命令，被调用 46 条。守卫将这里的数量与实际壳注册、前端调用对照。
+注册 57 条命令，被调用 44 条。守卫将这里的数量与实际壳注册、前端调用对照。
 具体清单见 [command-inventory.ts](./src/ipc/command-inventory.ts)，不要在产品介绍中复制实现数量。
 
 ## 构建

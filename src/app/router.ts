@@ -20,7 +20,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
 import { messages } from '../messages'
-import HomePage from '../pages/HomePage.vue'
+import HomePage from '../pages/index.vue'
 
 /**
  * A page, fetched when its route is entered rather than shipped with the shell.
@@ -76,19 +76,19 @@ export const PAGES: readonly PageRoute[] = [
     path: '/devices',
     get label() { return messages.nav.devices.label },
     icon: messages.nav.devices.icon,
-    component: () => import('../pages/DevicesPage.vue')
+    component: () => import('../pages/devices.vue')
   },
   {
     path: '/plugins',
     get label() { return messages.nav.plugins.label },
     icon: messages.nav.plugins.icon,
-    component: () => import('../pages/PluginsPage.vue')
+    component: () => import('../pages/plugins.vue')
   },
   {
     path: '/settings',
     get label() { return messages.nav.settings.label },
     icon: messages.nav.settings.icon,
-    component: () => import('../pages/SettingsPage.vue')
+    component: () => import('../pages/settings.vue')
   }
 ]
 
