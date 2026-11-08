@@ -59,10 +59,18 @@
   min-width: 0;
 }
 
+.screen.mobile-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
 .mobile-shell > .desktop-shell {
-  position: relative;
-  display: block;
-  height: 100%;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  height: auto;
 }
 
 .mobile-shell > .desktop-shell > :first-child {
@@ -70,22 +78,23 @@
 }
 
 .mobile-shell > .desktop-shell > main {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
   padding: 1.25rem;
-  padding-bottom: calc(1.5rem + 4rem + env(safe-area-inset-bottom));
+  padding-bottom: 1.5rem;
   font-size: 1.125rem;
 }
 
 .mobile-shell > .desktop-shell > nav {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 20;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   box-sizing: border-box;
-  height: calc(4rem + env(safe-area-inset-bottom));
-  min-height: 4rem;
+  min-height: calc(4.25rem + env(safe-area-inset-bottom));
+  padding: 0.35rem max(0.5rem, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(0.5rem, env(safe-area-inset-right));
+  gap: 0.25rem;
   border-top: 1px solid color-mix(in oklab, var(--synra-line) 70%, transparent);
   background-color: var(--synra-glass);
   -webkit-backdrop-filter: blur(var(--synra-blur)) saturate(var(--synra-saturate));
@@ -93,7 +102,7 @@
 }
 
 .mobile-shell > .desktop-shell > nav button {
-  min-height: 4rem;
+  min-height: 3.5rem;
   font-size: 0.875rem;
 }
 
@@ -101,15 +110,13 @@
   padding-top: env(safe-area-inset-top);
 }
 
-.mobile-shell > .desktop-shell > nav button,
-.mobile-shell .mobile-tabbar,
 .mobile-shell .mobile-tabbar button {
-  border-radius: 0;
+  border-radius: var(--synra-radius-control);
+  transition: color var(--synra-duration-fast), background-color var(--synra-duration-fast);
 }
 
-.mobile-shell > .desktop-shell > nav button::before,
-.mobile-shell > .desktop-shell > nav button::after {
-  border-radius: 0;
+.mobile-shell .mobile-tabbar button[aria-current="page"] {
+  background-color: color-mix(in oklab, var(--synra-primary) 14%, transparent);
 }
 
 .mobile-shell > .desktop-shell > main > div {
