@@ -49,6 +49,13 @@ authors = [ "Synra contributors" ]
 
 [workspace.dependencies]
 
+# The Windows development environment has a small commit limit. Keep the debug profile lean enough for Tauri's large
+# dependency graph to compile without leaving truncated `.rmeta` files behind after an allocator failure.
+[profile.dev]
+debug = 0
+codegen-units = 1
+incremental = false
+
 [lib]
 # ★ **这个名字与 bin 的产物名撞车，这是已知的，而修它的时机是有代价的。**
 #
