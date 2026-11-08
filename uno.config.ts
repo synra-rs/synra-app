@@ -1,7 +1,7 @@
 import { synraAntdFloatingCss } from '@synra/theme/antd'
 import { synraConfig } from '@synra/theme/unocss'
 
-import { defineConfig } from 'unocss'
+import { defineConfig, presetWind4 } from 'unocss'
 
 import { nav } from './src/messages/nav'
 
@@ -11,8 +11,8 @@ import { nav } from './src/messages/nav'
  * # Why there is almost nothing here
  *
  * Everything the interface is allowed to say about colour, type, spacing, radius, motion and z-order lives in
- * `@synra/theme` — this file only says *which tier of preflight* to emit, and adds the one piece of CSS that comes from
- * the component library's adapter. `synraConfig()` also carries the `blocklist`, so the utilities that would drift
+ * `@synra/theme` — this file selects the Wind4 base preset, chooses the Synra preflight tier, and adds the one piece of
+ * CSS that comes from the component library's adapter. `synraConfig()` also carries the `blocklist`, so the utilities that would drift
  * (`text-[#fff]`, `z-[99]`, `uppercase`, `ml-4`) are rejected by both the build and `pnpm run lint`
  * (`unocss/blocklist`, §13.1 guard 1).
  *
@@ -26,8 +26,20 @@ import { nav } from './src/messages/nav'
  *   of the component library's appearance that tokens cannot express (`backdrop-filter`, R52/R53), and the stylesheet
  *   UnoCSS already emits is where "our CSS" can be found. It also keeps `main.ts` as mount code.
  */
+const synra = synraConfig({ preflight: 'app' })
+
 export default defineConfig({
-  ...synraConfig({ preflight: 'app' }),
+  ...synra,
+  presets: [
+    presetWind4({
+      dark: 'class',
+      preflights: {
+        reset: true,
+        theme: true
+      }
+    }),
+    ...(synra.presets ?? [])
+  ],
 
   /**
    * ★ **The navigation's icons, named in data rather than in markup.**
