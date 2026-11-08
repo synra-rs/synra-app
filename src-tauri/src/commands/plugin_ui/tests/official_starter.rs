@@ -8,6 +8,24 @@ use synra_plugin_host::{
 };
 use synra_protocol::{ErrorCode, PluginId};
 
+const FULL_GRANTS: [&str; 7] = [
+    "device:list",
+    "device:send:*",
+    "platform:open-url",
+    "platform:read-clipboard",
+    "platform:write-clipboard",
+    "action:declare:*",
+    "event:subscribe:_plugin.@synra-plugin/starter.*",
+];
+const WITHOUT_DEVICE_LIST: [&str; 6] = [
+    "device:send:*",
+    "platform:open-url",
+    "platform:read-clipboard",
+    "platform:write-clipboard",
+    "action:declare:*",
+    "event:subscribe:_plugin.@synra-plugin/starter.*",
+];
+
 #[test]
 fn official_starter_installs_activates_and_answers_its_own_page() {
     std::thread::Builder::new()
@@ -38,12 +56,8 @@ fn exercise_starter() {
     let installed =
         crate::commands::plugins::install_directory(&state, &package).expect("production install");
     assert_eq!(installed.plugin_id.as_str(), ID);
-    crate::commands::plugins::plugins_consent_respond(
-        &state,
-        ID,
-        &["action:declare:debug".to_owned(), "device:list".to_owned()],
-    )
-    .expect("explicit scoped grant");
+    crate::commands::plugins::plugins_consent_respond(&state, ID, &FULL_GRANTS.map(str::to_owned))
+        .expect("explicit scoped grant");
     crate::commands::plugins::plugins_enable(&state, ID)
         .expect("activate the real guest and register debug");
     let request = super::opened(&state, ID);
@@ -96,7 +110,10 @@ fn exercise_starter() {
     assert_eq!(report["pluginId"], ID);
     assert_eq!(report["hostSdkVersion"], synra_plugin_host::SDK_VERSION);
     assert_eq!(report["hostKind"], "desktop");
-    assert_eq!(report["locale"], "en");
+    assert_eq!(
+        report["locale"],
+        crate::locale::from_preference(None).code()
+    );
     assert_eq!(report["darkMode"], false);
     assert!(call(&state, &token, "undeclared", serde_json::json!({})).is_err());
     assert!(call(&state, &token, "debug", serde_json::Value::Null).is_err());
@@ -194,7 +211,7 @@ fn exercise_lifecycle(
     crate::commands::plugins::plugins_consent_respond(
         state,
         ID,
-        &["action:declare:debug".to_owned()],
+        &WITHOUT_DEVICE_LIST.map(str::to_owned),
     )
     .unwrap();
     let restored = super::opened(state, ID);
@@ -220,12 +237,8 @@ fn exercise_lifecycle(
     );
     crate::commands::plugins::install_directory(state, package)
         .expect("reinstall identical version");
-    crate::commands::plugins::plugins_consent_respond(
-        state,
-        ID,
-        &["action:declare:debug".to_owned()],
-    )
-    .unwrap();
+    crate::commands::plugins::plugins_consent_respond(state, ID, &FULL_GRANTS.map(str::to_owned))
+        .unwrap();
     crate::commands::plugins::plugins_enable(state, ID).unwrap();
     assert_eq!(
         call(state, &fourth, "debug", serde_json::json!({}))

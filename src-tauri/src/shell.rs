@@ -1457,6 +1457,7 @@ fn with_plugins_or_refuse(
                     Arc::clone(&state.db),
                     Arc::clone(&state.platform),
                 )
+                .with_network(&state.host)
                 .with_input_controller(Arc::clone(&state.input.controller)),
             );
             let event_delivery = host.events();

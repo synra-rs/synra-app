@@ -18,19 +18,24 @@
 //! notification for real. The daemon is headless and refuses the same calls; `synra-platform` had the desktop
 //! implementation, tested, and **no caller** until this file.
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use parking_lot::Mutex;
 
 use synra_capability::CapabilitySet;
 use synra_platform::Platform as _;
 use synra_plugin_host::host_calls::{CallError, Host, PlatformAction};
-use synra_protocol::ids::PluginId;
+use synra_protocol::{
+    DeviceId, PluginId,
+    envelope::{Envelope, OutboundSpec},
+    event::EventName,
+};
 use synra_store::SynraDb;
 
 /// The desktop shell's answer to a plugin's host calls.
 pub struct DesktopHost {
     input: Option<Arc<synra_core::input::Controller>>,
+    network: Option<Weak<parking_lot::Mutex<synra_core::Host>>>,
     events: Arc<synra_core::plugin_events::EventService>,
     /// The database, for the questions answered from what is recorded: which capabilities the user granted, and the
     /// devices this machine knows.
@@ -81,6 +86,7 @@ impl DesktopHost {
         let events = synra_core::plugin_events::EventService::new(Arc::clone(&db));
         Self {
             input: None,
+            network: None,
             events,
             db,
             platform,
@@ -91,6 +97,12 @@ impl DesktopHost {
     /// Attach the shared gated input controller, without creating another host or database.
     pub fn with_input_controller(mut self, controller: Arc<synra_core::input::Controller>) -> Self {
         self.input = Some(controller);
+        self
+    }
+
+    /// Attach the shell's shared peer host so plugin events can use the same authenticated short connection path as transfers.
+    pub fn with_network(mut self, host: &synra_core::SharedHost) -> Self {
+        self.network = Some(Arc::downgrade(host));
         self
     }
 
@@ -394,8 +406,73 @@ impl Host for DesktopHost {
         self.events.emit_call(plugin, event, payload)
     }
 
-    fn device_send(&self, _p: &PluginId, _t: &str, _e: &str, _pl: &str) -> Result<(), CallError> {
-        Err(not_implemented("device sends"))
+    fn device_send(
+        &self,
+        _p: &PluginId,
+        target: &str,
+        event: &str,
+        payload: &str,
+    ) -> Result<(), CallError> {
+        let Some(host) = self.network.as_ref().and_then(Weak::upgrade) else {
+            return Err(not_implemented("device sends"));
+        };
+        let target = target
+            .parse::<DeviceId>()
+            .map_err(|error| CallError::new(CallError::BAD_ARGUMENT, error.to_string()))?;
+        let event = EventName::parse(event)
+            .map_err(|error| CallError::new(CallError::BAD_ARGUMENT, error.to_string()))?;
+        let payload = serde_json::value::RawValue::from_string(payload.to_owned())
+            .map_err(|error| CallError::new(CallError::BAD_ARGUMENT, error.to_string()))?;
+        let trace_id = synra_observe::trace_scope::current().unwrap_or_default();
+        let address = crate::commands::peers::resolve(&self.db, &host, target)
+            .map_err(|error| CallError::new(CallError::HOST_FAILED, format!("{error:?}")))?;
+        let (dial, from) = {
+            let guard = host.lock();
+            (guard.dialling_parts(), guard.device_id())
+        };
+        let spawned = std::thread::Builder::new()
+            .name("synra-plugin-device-send".to_owned())
+            .spawn(move || {
+                let now = synra_store::sqlite::now_ms();
+                let result = (|| -> Result<(), String> {
+                    let dialled = synra_core::dial_peer(
+                        &dial.0,
+                        dial.1,
+                        address,
+                        target,
+                        synra_core::reading_millis(now),
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let mut guard = host.lock();
+                    let mut link = guard
+                        .adopt(dialled, synra_core::reading_millis(now))
+                        .map_err(|error| error.to_string())?;
+                    guard.may_send(&link).map_err(|error| error.to_string())?;
+                    drop(guard);
+                    let envelope = Envelope::outbound(
+                        OutboundSpec {
+                            event,
+                            target,
+                            from,
+                            trace_id,
+                            sent_at_ms: now,
+                            ttl_ms: None,
+                        },
+                        Some(&payload),
+                    )
+                    .map_err(|error| error.to_string())?;
+                    link.send(&envelope).map_err(|error| error.to_string())?;
+                    host.lock().count_sent();
+                    let _ = link.bye("plugin event delivered");
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    eprintln!("synra: plugin device send failed: {error}");
+                }
+            })
+            .map_err(|error| CallError::new(CallError::HOST_FAILED, error.to_string()))?;
+        drop(spawned);
+        Ok(())
     }
 
     fn device_broadcast(&self, _p: &PluginId, _e: &str, _pl: &str) -> Result<(), CallError> {
