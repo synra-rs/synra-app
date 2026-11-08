@@ -98,17 +98,42 @@
     padding-top: 0;
   }
 
+  .mobile-shell > .desktop-shell {
+    position: relative;
+    display: block;
+    height: 100%;
+  }
+
   .mobile-shell > .desktop-shell > nav {
     position: fixed;
     inset-inline: 0;
     bottom: 0;
     z-index: 20;
-    background: var(--synra-surface, #151022);
+    display: flex;
+    height: calc(4rem + env(safe-area-inset-bottom));
+    background: color-mix(in oklab, var(--synra-screen) 72%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+    border-top: 1px solid color-mix(in oklab, var(--synra-line) 70%, transparent);
+  }
+
+  .mobile-shell > .desktop-shell > nav button,
+  .mobile-shell .mobile-tabbar,
+  .mobile-shell .mobile-tabbar button {
+    border-radius: 0;
+  }
+
+  .mobile-shell > .desktop-shell > nav button::before,
+  .mobile-shell > .desktop-shell > nav button::after {
+    border-radius: 0;
   }
 
   .mobile-shell > .desktop-shell > main {
+    position: absolute;
+    inset: 0;
+    height: calc(100% - 4rem - env(safe-area-inset-bottom));
     padding: 1.25rem;
-    padding-bottom: 5.5rem;
+    padding-bottom: 1.5rem;
     font-size: 1.125rem;
   }
 
