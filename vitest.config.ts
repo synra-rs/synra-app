@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
 import buildStamp from 'unplugin-build-stamp/vite'
 import { defineConfig } from 'vitest/config'
+
+const coreRoot = fileURLToPath(new URL('../synra-rust-core', import.meta.url))
+const buildStampModule = fileURLToPath(new URL('./src/build-stamp.ts', import.meta.url))
+const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synra-rust-core/Cargo.toml', import.meta.url), 'utf8'))?.[1] ?? '0.0.0'
 
 /**
  * The test run.
@@ -14,7 +19,11 @@ import { defineConfig } from 'vitest/config'
  * on a component rendering — which is a different kind of test and not the one this run is for.
  */
 export default defineConfig({
-  plugins: [buildStamp({ log: false }), vue()],
+  plugins: [
+    buildStamp({ include: [buildStampModule], log: false }),
+    buildStamp({ cwd: coreRoot, include: [buildStampModule], name: '__CORE_BUILD_STAMP__', log: false, extra: { name: 'synra-core', version: coreVersion } }),
+    vue()
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

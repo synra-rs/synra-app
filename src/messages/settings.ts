@@ -37,10 +37,10 @@ export const settings = {
     save: 'Save',
     cancel: 'Cancel',
     platform: 'Platform',
-    kernel: 'Version',
+    version: 'Version',
     deviceId: 'Device id',
-    frontendVersion: 'Frontend version',
-    frontendHash: 'Frontend build hash'
+    frontend: 'Frontend',
+    core: 'Core'
   },
   preferences: 'Preferences',
   language: {

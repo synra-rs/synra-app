@@ -161,20 +161,19 @@
             <SettingsRow :label="messages.settings.field.platform">
               <span class="text-base">{{ identity?.platform }}</span>
             </SettingsRow>
-            <SettingsRow :label="messages.settings.field.kernel">
-              <span v-if="identity" class="text-base font-mono">v{{ identity.kernelVersion }}</span>
-            </SettingsRow>
-            <SettingsRow :label="messages.settings.field.frontendVersion">
-              <span class="text-base font-mono">v{{ buildStamp.version }}</span>
-            </SettingsRow>
-            <SettingsRow :label="messages.settings.field.frontendHash">
-              <span class="max-w-full break-all text-sm text-ink-dim font-mono" :title="buildStamp.hash || undefined">{{ buildStamp.shortHash || '—' }}</span>
-            </SettingsRow>
             <SettingsRow :label="messages.settings.field.deviceId">
               <span class="max-w-full break-all text-sm text-ink-dim font-mono">{{ identity?.deviceId }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.preference.theme">
               <span class="text-base text-ink-dim">{{ messages.settings.themeFixed }}</span>
+            </SettingsRow>
+          </SettingsGroup>
+          <SettingsGroup :title="messages.settings.field.version">
+            <SettingsRow :label="messages.settings.field.frontend">
+              <span class="text-base font-mono">- v{{ buildStamp.version }}({{ buildStamp.shortHash || '—' }})</span>
+            </SettingsRow>
+            <SettingsRow :label="messages.settings.field.core">
+              <span class="text-base font-mono" :title="coreBuildStamp.hash || undefined">- v{{ coreBuildStamp.version }}({{ coreBuildStamp.shortHash || '—' }})</span>
             </SettingsRow>
           </SettingsGroup>
         </div>
@@ -199,7 +198,7 @@
 
 <script setup lang="ts">
 import { Button as AButton, Input as AInput, InputNumber as AInputNumber, Menu as AMenu, Modal as AModal, Select as ASelect, Switch as ASwitch } from 'ant-design-vue'
-import { buildStamp } from '../build-stamp'
+import { buildStamp, coreBuildStamp } from '../build-stamp'
 import HelpText from '../components/HelpText.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SettingsDiagnostics from '../components/settings/SettingsDiagnostics.vue'

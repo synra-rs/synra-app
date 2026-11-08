@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import buildStamp from 'unplugin-build-stamp/vite'
 import { defineConfig } from 'vite'
+
+const coreRoot = fileURLToPath(new URL('../synra-rust-core', import.meta.url))
+const buildStampModule = fileURLToPath(new URL('./src/build-stamp.ts', import.meta.url))
+const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synra-rust-core/Cargo.toml', import.meta.url), 'utf8'))?.[1] ?? '0.0.0'
 
 /**
  * The host interface's build.
@@ -16,7 +21,17 @@ import { defineConfig } from 'vite'
  * devDependency rather than a dependency.
  */
 export default defineConfig({
-  plugins: [buildStamp(), vue(), UnoCSS()],
+  plugins: [
+    buildStamp({ include: [buildStampModule] }),
+    buildStamp({
+      cwd: coreRoot,
+      include: [buildStampModule],
+      name: '__CORE_BUILD_STAMP__',
+      extra: { name: 'synra-core', version: coreVersion }
+    }),
+    vue(),
+    UnoCSS()
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
