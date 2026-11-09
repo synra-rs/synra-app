@@ -490,6 +490,15 @@ pub(crate) fn install_package(
     outcome.map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
 }
 
+/// Reconciles the live plugin runtime with a package installed by device sync.
+///
+/// A transfer writes the database and plugin directory on a listener thread. The loaded runtime must be replaced in the
+/// same pass, otherwise it can keep answering with the old artifact while the database already reflects the new consent.
+pub(crate) fn reconcile_after_install(state: &AppState, plugin_id: &str) -> Result<(), String> {
+    let id = parse(plugin_id).map_err(|_| "the synced plugin id is invalid".to_owned())?;
+    apply_lifecycle(state, &id)
+}
+
 /// Tries one plugin's load again without touching its flags.
 ///
 /// # Why this exists

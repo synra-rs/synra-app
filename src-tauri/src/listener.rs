@@ -233,30 +233,48 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     // install command runs, over the archive the peer sent. `record_received` then writes the history and
                     // the sync state — and its plugin-row insert fails harmlessly, because the installer already made one
                     // with a version attached.
-                    let outcome = {
+                    let (outcome, reconcile) = {
                         let mut db = finished_state.db();
                         match &transfer.bundle {
-                            Some(plugin_id) => match crate::commands::plugins::install_package(
-                                &finished_state,
-                                &mut db,
-                                &transfer.path,
-                            ) {
-                                Ok(_) => synra_core::plugin_sync::record_received(&db, transfer),
-                                Err(error) => Some(synra_core::plugin_sync::SyncOutcome::refused(
-                                    plugin_id.clone(),
-                                    synra_core::plugin_sync::SyncSessionId::new(
-                                        transfer
-                                            .sync_session_id
-                                            .map_or_else(String::new, |session| {
-                                                session.to_string()
-                                            }),
+                            Some(plugin_id) => {
+                                match crate::commands::plugins::install_package(
+                                    &finished_state,
+                                    &mut db,
+                                    &transfer.path,
+                                ) {
+                                    Ok(installed) => (
+                                        synra_core::plugin_sync::record_received(&db, transfer),
+                                        Some(installed.plugin_id),
                                     ),
-                                    error,
-                                )),
-                            },
-                            None => synra_core::plugin_sync::record_received(&db, transfer),
+                                    Err(error) => (
+                                        Some(synra_core::plugin_sync::SyncOutcome::refused(
+                                            plugin_id.clone(),
+                                            synra_core::plugin_sync::SyncSessionId::new(
+                                                transfer
+                                                    .sync_session_id
+                                                    .map_or_else(String::new, |session| {
+                                                        session.to_string()
+                                                    }),
+                                            ),
+                                            error,
+                                        )),
+                                        None,
+                                    ),
+                                }
+                            }
+                            None => (synra_core::plugin_sync::record_received(&db, transfer), None),
                         }
                     };
+                    if let Some(plugin_id) = reconcile
+                        && let Err(error) = crate::commands::plugins::reconcile_after_install(
+                            &finished_state,
+                            &plugin_id,
+                        )
+                    {
+                        eprintln!(
+                            "synra: synced plugin {plugin_id} was installed but could not refresh its runtime: {error}"
+                        );
+                    }
                     // ★ And the row this side opened when the proposal arrived. The receiving half of a transfer has no
                     // worker to remove it; without this the panel would show a transfer as arriving for ever.
                     if let Some(transfer_id) = transfer.transfer_id {
@@ -429,9 +447,34 @@ pub fn spawn(app: &tauri::AppHandle) -> Option<synra_core::supervisor::Cancellat
                     let now = synra_store::sqlite::now_ms();
                     let local = kernel_state.identity.lock().device_id;
                     if envelope.event.is_plugin() {
-                        return match synra_core::plugin_events::answer_remote_event(plugin_events.as_ref(), envelope, peer, local, now) {
-                            Ok(receipt) => KernelEventOutcome::Receipt(Box::new(receipt)),
-                            Err(error) => KernelEventOutcome::Refused(error.to_string()),
+                        eprintln!(
+                            "synra: plugin event received from={peer} event={} request={}",
+                            envelope.event,
+                            envelope.request_id
+                        );
+                        return match synra_core::plugin_events::answer_remote_event(
+                            plugin_events.as_ref(),
+                            envelope,
+                            peer,
+                            local,
+                            now,
+                        ) {
+                            Ok(receipt) => {
+                                eprintln!(
+                                    "synra: plugin event admitted from={peer} event={} request={}",
+                                    envelope.event,
+                                    envelope.request_id
+                                );
+                                KernelEventOutcome::Receipt(Box::new(receipt))
+                            }
+                            Err(error) => {
+                                eprintln!(
+                                    "synra: plugin event refused from={peer} event={} request={} error={error}",
+                                    envelope.event,
+                                    envelope.request_id
+                                );
+                                KernelEventOutcome::Refused(error.to_string())
+                            }
                         };
                     }
                     match envelope.event.as_str() {
