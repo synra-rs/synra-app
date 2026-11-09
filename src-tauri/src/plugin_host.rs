@@ -491,6 +491,15 @@ impl Host for DesktopHost {
         if action == PlatformAction::OpenPath && argument.starts_with("synra-app://") {
             return open_registered_app(argument.trim_start_matches("synra-app://")).map(|()| None);
         }
+        if action == PlatformAction::OpenPath && argument == "synra-selection://copy" {
+            let selected = self
+                .platform
+                .read_selected_clipboard()
+                .map_err(|error| platform_refusal(&error))?;
+            return serde_json::to_string(&selected)
+                .map(Some)
+                .map_err(|error| CallError::new(CallError::HOST_FAILED, error.to_string()));
+        }
         // A notification carries a title and a body separated by the contract's own delimiter, which is the shape
         // `host_calls` builds when it sends one.
         let outcome = match action {
