@@ -464,15 +464,30 @@ pub(crate) fn install_package(
     let Some(backend) = backend else {
         return Err("this shell has no plugin engine, so it cannot install a package".to_owned());
     };
-    synra_core::install::from_package(
-        db,
-        &backend,
-        &state.paths.plugins_dir(),
-        archive,
-        synra_store::sqlite::now_ms(),
-        synra_plugin_host::verify::HostFacts::desktop(),
-    )
-    .map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
+    let replace = synra_core::install::package_manifest(archive)
+        .ok()
+        .and_then(|manifest| db.plugin_is_installed(manifest.id.as_str()).ok())
+        .unwrap_or(false);
+    let outcome = if replace {
+        synra_core::install::update_from_package(
+            db,
+            &backend,
+            &state.paths.plugins_dir(),
+            archive,
+            synra_store::sqlite::now_ms(),
+            synra_plugin_host::verify::HostFacts::desktop(),
+        )
+    } else {
+        synra_core::install::from_package(
+            db,
+            &backend,
+            &state.paths.plugins_dir(),
+            archive,
+            synra_store::sqlite::now_ms(),
+            synra_plugin_host::verify::HostFacts::desktop(),
+        )
+    };
+    outcome.map_err(|refusal| format!("{}: {}", refusal.stage, refusal.reason))
 }
 
 /// Tries one plugin's load again without touching its flags.
