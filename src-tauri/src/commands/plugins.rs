@@ -19,11 +19,12 @@
 //! about it having vanished.
 
 use synra_ipc::{
-    AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto, IpcError,
-    PluginHealthDto, PluginSnapshot, RemoveReport, UpdateInfo,
+    AuditEntryDto, CatalogItem, CatalogQuery, InstallPreviewDto, InstallReport, InstallSourceDto,
+    IpcError, PluginHealthDto, PluginSnapshot, RemoveReport, UpdateInfo,
 };
 use synra_plugin_api::Manifest;
 use synra_protocol::PluginId;
+use synra_store::PluginUpdateCheck;
 
 use crate::state::{AppState, internal};
 
@@ -82,12 +83,23 @@ pub fn plugins_consent_respond(
 
     state
         .db()
-        .record_grants(&id.to_string(), &decision.pairs(), state.started_at_ms, decision.digest())
+        .record_grants(
+            &id.to_string(),
+            &decision.pairs(),
+            state.started_at_ms,
+            decision.digest(),
+        )
         .map_err(internal)?;
 
-    if !state.db().set_plugin_trusted(&id.to_string(), decision.trusted(), state.started_at_ms).map_err(internal)? {
-        return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
-            .with_params(serde_json::json!({"pluginId": plugin_id})));
+    if !state
+        .db()
+        .set_plugin_trusted(&id.to_string(), decision.trusted(), state.started_at_ms)
+        .map_err(internal)?
+    {
+        return Err(
+            IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+                .with_params(serde_json::json!({"pluginId": plugin_id})),
+        );
     }
 
     // ★ A plugin can be enabled *before* it is trusted — the switch is a preference and consent is the gate — so
@@ -108,7 +120,9 @@ pub fn plugins_consent_respond(
         })?;
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
     let card = snapshot(state, &row, &id, loaded.as_deref())?;
-    state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(card.clone())));
+    state.publish(synra_ipc::event::KernelEvent::PluginUpdated(Box::new(
+        card.clone(),
+    )));
     Ok(card)
 }
 
@@ -137,9 +151,15 @@ pub(crate) fn discover_plugins(
     for discovered in &found {
         match &discovered.problem {
             Some(problem) => {
-                eprintln!("synra-app: {} was not recorded as a plugin: {problem}", discovered.plugin_id);
+                eprintln!(
+                    "synra-app: {} was not recorded as a plugin: {problem}",
+                    discovered.plugin_id
+                );
             }
-            None => eprintln!("synra-app: {} was found and recorded as installed, switched off", discovered.plugin_id),
+            None => eprintln!(
+                "synra-app: {} was found and recorded as installed, switched off",
+                discovered.plugin_id
+            ),
         }
     }
     found
@@ -190,7 +210,10 @@ pub(crate) fn load_installed_plugins(
     for refused in &summary.refused {
         // Printed, because a plugin that failed to load is invisible otherwise and a silent skip is how a broken plugin
         // becomes a support question months later.
-        eprintln!("synra-app: {} was not loaded: {}", refused.plugin_id, refused.reason);
+        eprintln!(
+            "synra-app: {} was not loaded: {}",
+            refused.plugin_id, refused.reason
+        );
     }
     summary
 }
@@ -211,7 +234,11 @@ pub(crate) fn revocations(state: &AppState) -> synra_plugin_api::revocation::Rev
     match synra_plugin_api::revocation::RevocationList::parse(&text) {
         Ok(list) => {
             if !list.is_empty() {
-                eprintln!("synra: {} revocation entries read from {}", list.len(), path.display());
+                eprintln!(
+                    "synra: {} revocation entries read from {}",
+                    list.len(),
+                    path.display()
+                );
             }
             list
         }
@@ -247,11 +274,15 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
     };
     let should_run = {
         let db = state.db();
-        let rows = db.plugins().map_err(|error| format!("the plugin rows could not be read: {error}"))?;
+        let rows = db
+            .plugins()
+            .map_err(|error| format!("the plugin rows could not be read: {error}"))?;
         // The database lock is released before the set is taken: the two locks are never held in one order here, so
         // there is no second order for another command to deadlock on.
         drop(db);
-        rows.into_iter().find(|row| row.plugin_id == id.as_str()).is_some_and(|row| row.should_run())
+        rows.into_iter()
+            .find(|row| row.plugin_id == id.as_str())
+            .is_some_and(|row| row.should_run())
     };
     if !should_run {
         apply_unload(state, id);
@@ -272,7 +303,14 @@ fn apply_lifecycle(state: &AppState, id: &PluginId) -> Result<(), String> {
         set.lifecycle(id).map(synra_plugin_host::Lifecycle::state),
         Some(synra_plugin_host::State::Faulted { .. })
     );
-    if faulted && set.clear_fault(id, u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0)).unwrap_or(false) {
+    if faulted
+        && set
+            .clear_fault(
+                id,
+                u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0),
+            )
+            .unwrap_or(false)
+    {
         let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or(0);
         let outcome = synra_core::plugin::reactivate_loaded(&mut set, id, &activation, now);
         drop(set);
@@ -391,7 +429,9 @@ fn stop_signer_plugins(state: &AppState, fingerprint: &str) {
         return;
     };
     for plugin_id in plugins {
-        let _ = state.db().set_plugin_trusted(&plugin_id, false, synra_store::sqlite::now_ms());
+        let _ = state
+            .db()
+            .set_plugin_trusted(&plugin_id, false, synra_store::sqlite::now_ms());
         if let Err(error) = set_enabled(state, &plugin_id, false) {
             eprintln!("synra: the revoked plugin {plugin_id} could not be stopped: {error:?}");
         }
@@ -417,7 +457,10 @@ pub(crate) fn install_package(
     db: &mut synra_store::SynraDb,
     archive: &std::path::Path,
 ) -> Result<synra_core::install::Installed, String> {
-    let backend = state.plugins.as_ref().map(|set| set.lock().backend().clone());
+    let backend = state
+        .plugins
+        .as_ref()
+        .map(|set| set.lock().backend().clone());
     let Some(backend) = backend else {
         return Err("this shell has no plugin engine, so it cannot install a package".to_owned());
     };
@@ -482,6 +525,9 @@ pub fn plugins_check_update(
     state: &AppState,
     plugin_id: &str,
 ) -> Result<Option<UpdateInfo>, IpcError> {
+    if let Some(source) = local_directory_source(state, plugin_id) {
+        return check_local_update(state, plugin_id, &source, synra_store::sqlite::now_ms());
+    }
     crate::commands::registry::check_update(state, plugin_id)
 }
 
@@ -530,6 +576,11 @@ pub fn plugins_preview(
 /// `PluginNotInstalled` when no active version exists, `Unsupported` when no registry is configured, and the install
 /// pipeline's refusals when the package cannot be fetched or verified.
 pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport, IpcError> {
+    if let Some(source) = local_directory_source(state, plugin_id) {
+        let report = update_directory(state, plugin_id, &source)?;
+        announce_updated(state, &report);
+        return Ok(report);
+    }
     let report = crate::commands::registry::update(state, plugin_id)?;
     // The stored check belongs to the old version and is no longer returned after the installer changes the active row.
     announce_updated(state, &report);
@@ -542,7 +593,10 @@ pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport
 ///
 /// `Internal` when a saved check cannot be read.
 pub fn plugins_updates(state: &AppState) -> Result<Vec<UpdateInfo>, IpcError> {
-    state.db().plugin_update_checks().map_err(internal)?
+    state
+        .db()
+        .plugin_update_checks()
+        .map_err(internal)?
         .iter()
         .filter_map(super::plugin_updates::info)
         .collect()
@@ -578,14 +632,22 @@ pub(super) fn announce_updated(state: &AppState, report: &InstallReport) {
 ///
 /// * `Unsupported` when this shell has no plugin engine at all, or no registry is configured for a registry source.
 /// * `InvalidArgument` when a check refused the package; the params carry the stage and the reason.
-pub fn plugins_install(state: &AppState, source: &InstallSourceDto) -> Result<InstallReport, IpcError> {
+pub fn plugins_install(
+    state: &AppState,
+    source: &InstallSourceDto,
+) -> Result<InstallReport, IpcError> {
     match source {
         InstallSourceDto::Path { path } => install_directory(state, std::path::Path::new(path)),
-        InstallSourceDto::Registry { .. } => crate::commands::registry::install_from_source(state, source),
+        InstallSourceDto::Registry { .. } => {
+            crate::commands::registry::install_from_source(state, source)
+        }
         // A source a newer build added is not one this build can fetch; refusing it by name is the same answer the
         // variant got before there was a fetcher.
-        _ => Err(IpcError::unknown(synra_protocol::ErrorCode::Unsupported)
-            .with_params(serde_json::json!({"why": "this build does not know that install source"}))),
+        _ => Err(
+            IpcError::unknown(synra_protocol::ErrorCode::Unsupported).with_params(
+                serde_json::json!({"why": "this build does not know that install source"}),
+            ),
+        ),
     }
 }
 
@@ -612,8 +674,14 @@ fn report_of(installed: synra_core::install::Installed) -> Result<InstallReport,
         version: installed.version,
         warnings: installed.warnings,
         enabled: false,
-        publisher_id: installed.signed_by.as_ref().map(|publisher| publisher.publisher_id.clone()),
-        fingerprint: installed.signed_by.as_ref().map(|publisher| publisher.fingerprint.clone()),
+        publisher_id: installed
+            .signed_by
+            .as_ref()
+            .map(|publisher| publisher.publisher_id.clone()),
+        fingerprint: installed
+            .signed_by
+            .as_ref()
+            .map(|publisher| publisher.fingerprint.clone()),
     })
 }
 
@@ -633,12 +701,18 @@ pub(crate) fn update_directory(
 }
 
 /// Migrates the old instance before replacing its files, then stops it.
-pub(super) fn migrate_and_unload(state: &AppState, id: &PluginId, new_version: Option<&str>) -> Result<(), IpcError> {
+pub(super) fn migrate_and_unload(
+    state: &AppState,
+    id: &PluginId,
+    new_version: Option<&str>,
+) -> Result<(), IpcError> {
     // ★ The old instance is asked to migrate **before** its bytes are replaced. Only the old code knows what it wrote,
     // and a migration failure has to leave a working version installed — after the replacement there would be nothing
     // to fall back to.
-    let old_version =
-        state.plugin_set().ok().and_then(|set| set.lock().version(id).map(str::to_owned));
+    let old_version = state
+        .plugin_set()
+        .ok()
+        .and_then(|set| set.lock().version(id).map(str::to_owned));
     if let Some(old) = old_version {
         if let Some(new) = new_version
             && new != old
@@ -692,11 +766,107 @@ pub(super) fn complete_update(
 /// are replaced.
 fn source_version(path: &std::path::Path) -> Option<String> {
     if path.is_file() {
-        return synra_core::install::package_manifest(path).ok().map(|manifest| manifest.version);
+        return synra_core::install::package_manifest(path)
+            .ok()
+            .map(|manifest| manifest.version);
     }
     let text = std::fs::read_to_string(path.join("manifest.json")).ok()?;
     let manifest = synra_plugin_api::Manifest::from_json(&text).ok()?;
     Some(manifest.version)
+}
+
+/// Reads the original local directory recorded by the installer, when this plugin came from one.
+///
+/// Registry installs also carry a source note, but it points at a downloaded archive rather than a directory. Keeping
+/// this branch directory-only lets registry packages continue through their configured registry while local development
+/// packages compare against the files the author is editing.
+fn local_directory_source(state: &AppState, plugin_id: &str) -> Option<std::path::PathBuf> {
+    let registry_configured = state
+        .db()
+        .config()
+        .ok()?
+        .into_iter()
+        .find(|row| row.key == crate::commands::registry::REGISTRY_KEY)
+        .and_then(|row| serde_json::from_str::<String>(&row.value).ok())
+        .is_some_and(|value| !value.trim().is_empty());
+    if registry_configured {
+        return None;
+    }
+    let note = state.paths.plugin_dir(plugin_id).join("source.json");
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(note).ok()?).ok()?;
+    let path = std::path::PathBuf::from(value.get("path")?.as_str()?);
+    path.is_dir().then_some(path)
+}
+
+fn manifest_at(path: &std::path::Path) -> Option<Manifest> {
+    if path.is_file() {
+        return synra_core::install::package_manifest(path).ok();
+    }
+    let text = std::fs::read_to_string(path.join("manifest.json")).ok()?;
+    Manifest::from_json(&text).ok()
+}
+
+fn installed_manifest(state: &AppState, plugin_id: &str) -> Option<Manifest> {
+    manifest_at(&state.paths.plugin_dir(plugin_id))
+}
+
+fn check_local_update(
+    state: &AppState,
+    plugin_id: &str,
+    source: &std::path::Path,
+    now_ms: i64,
+) -> Result<Option<UpdateInfo>, IpcError> {
+    let id = parse(plugin_id)?;
+    let active = state
+        .db()
+        .active_plugin(plugin_id)
+        .map_err(internal)?
+        .ok_or_else(|| {
+            IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+                .with_params(serde_json::json!({"pluginId": plugin_id}))
+        })?;
+    let candidate = manifest_at(source).ok_or_else(|| {
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({
+                "pluginId": plugin_id,
+                "reason": "the recorded local plugin directory has no readable manifest",
+            }),
+        )
+    })?;
+    let available = synra_registry::is_newer(&candidate.version, &active.version);
+    let added_capabilities = if available {
+        let installed = installed_manifest(state, plugin_id)
+            .map(|manifest| {
+                manifest
+                    .capabilities
+                    .into_iter()
+                    .map(|capability| capability.cap)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        candidate
+            .capabilities
+            .iter()
+            .map(|capability| capability.cap.clone())
+            .filter(|capability| !installed.contains(capability))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    crate::commands::plugin_updates::record(
+        state,
+        &PluginUpdateCheck {
+            plugin_id: id.to_string(),
+            current_version: active.version,
+            checked_at_ms: now_ms,
+            registry: None,
+            available_version: available.then_some(candidate.version),
+            added_capabilities,
+            attempts: 0,
+            retry_at_ms: None,
+        },
+    )
 }
 
 /// The pipeline both install and update run: verify, stage, move, record.
@@ -787,12 +957,21 @@ fn run_install(
 /// # Errors
 ///
 /// `PluginNotInstalled` when no row has that identifier, and `Internal` when the store or the filesystem refuses.
-pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -> Result<RemoveReport, IpcError> {
+pub fn plugins_uninstall(
+    state: &AppState,
+    plugin_id: &str,
+    remove_data: bool,
+) -> Result<RemoveReport, IpcError> {
     let id = parse(plugin_id)?;
-    let removed = state.db().remove_plugin(&id.to_string()).map_err(internal)?;
+    let removed = state
+        .db()
+        .remove_plugin(&id.to_string())
+        .map_err(internal)?;
     if !removed {
-        return Err(IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
-            .with_params(serde_json::json!({"pluginId": plugin_id})));
+        return Err(
+            IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
+                .with_params(serde_json::json!({"pluginId": plugin_id})),
+        );
     }
     // ★ The compiled form goes with the row. A plugin whose files are gone but whose instance is still in the set can
     // still match a share and run — from an artifact the user just deleted.
@@ -807,10 +986,13 @@ pub fn plugins_uninstall(state: &AppState, plugin_id: &str, remove_data: bool) -
         data_kept: !remove_data,
         // ★ What the operating system would not let go. The row is already gone, so the command cannot fail on a locked
         // file — it reports the path. The page says so beside the freed size; a user who is not told goes looking.
-        leftovers: removal.leftovers.iter().map(|path| path.display().to_string()).collect(),
+        leftovers: removal
+            .leftovers
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect(),
     })
 }
-
 
 /// The plugins this device has, as cards.
 ///
@@ -827,12 +1009,14 @@ pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
     // user says otherwise.
     let installed = i64::try_from(rows.len()).unwrap_or(i64::MAX);
     let active = i64::try_from(rows.iter().filter(|row| row.enabled).count()).unwrap_or(i64::MAX);
-    state
-        .metrics
-        .gauge_set(&synra_observe::metrics::SeriesKey::new("plugins_installed", []), installed);
-    state
-        .metrics
-        .gauge_set(&synra_observe::metrics::SeriesKey::new("plugins_active", []), active);
+    state.metrics.gauge_set(
+        &synra_observe::metrics::SeriesKey::new("plugins_installed", []),
+        installed,
+    );
+    state.metrics.gauge_set(
+        &synra_observe::metrics::SeriesKey::new("plugins_active", []),
+        active,
+    );
 
     // ★ Each plugin's sandbox size, as a gauge per plugin. Sampled where the list is read, because the directory grows
     // while the process runs and there is no single write to hook: a plugin's data is whatever it left on disk.
@@ -857,8 +1041,9 @@ pub fn plugins_list(state: &AppState) -> Result<Vec<PluginSnapshot>, IpcError> {
     let mut snapshots = Vec::with_capacity(rows.len());
     for row in rows {
         let plugin_id = PluginId::try_from(row.plugin_id.clone()).map_err(|error| {
-            IpcError::unknown(synra_protocol::ErrorCode::Internal)
-                .with_params(serde_json::json!({"pluginId": row.plugin_id, "detail": error.to_string()}))
+            IpcError::unknown(synra_protocol::ErrorCode::Internal).with_params(
+                serde_json::json!({"pluginId": row.plugin_id, "detail": error.to_string()}),
+            )
         })?;
         snapshots.push(snapshot(state, &row, &plugin_id, loaded.as_deref())?);
     }
@@ -893,7 +1078,11 @@ pub fn plugins_disable(state: &AppState, plugin_id: &str) -> Result<(), IpcError
 /// still off.
 fn set_enabled(state: &AppState, plugin_id: &str, enabled: bool) -> Result<(), IpcError> {
     let id = parse(plugin_id)?;
-    if !state.db().set_plugin_enabled(&id.to_string(), enabled, state.started_at_ms).map_err(internal)? {
+    if !state
+        .db()
+        .set_plugin_enabled(&id.to_string(), enabled, state.started_at_ms)
+        .map_err(internal)?
+    {
         return Err(
             IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
                 .with_params(serde_json::json!({"pluginId": plugin_id})),
@@ -923,7 +1112,10 @@ pub(super) fn announce(state: &AppState, plugin_id: &PluginId) {
     let Ok(rows) = state.db().plugins() else {
         return;
     };
-    let Some(row) = rows.into_iter().find(|row| row.plugin_id == plugin_id.to_string()) else {
+    let Some(row) = rows
+        .into_iter()
+        .find(|row| row.plugin_id == plugin_id.to_string())
+    else {
         return;
     };
     let loaded: Option<Vec<PluginId>> = state.plugin_set().ok().map(|set| set.lock().ids());
@@ -954,7 +1146,10 @@ fn snapshot(
     // derived from "is it in the map" rather than from what the map says.
     let fault_reason: Option<String> = state.plugin_set().ok().and_then(|set| {
         let set = set.lock();
-        match set.lifecycle(plugin_id).map(synra_plugin_host::Lifecycle::state) {
+        match set
+            .lifecycle(plugin_id)
+            .map(synra_plugin_host::Lifecycle::state)
+        {
             Some(synra_plugin_host::State::Faulted { reason, .. }) => Some(reason.clone()),
             _ => None,
         }
@@ -964,20 +1159,47 @@ fn snapshot(
     // cloned out, and neither helper needs the guard — a second acquisition under the first would be a deadlock.
     let (refused, safe_mode) = {
         let loads = state.plugin_loads();
-        (loads.refusal_for(&row.plugin_id).map(str::to_owned), loads.safe_mode.clone())
+        (
+            loads.refusal_for(&row.plugin_id).map(str::to_owned),
+            loads.safe_mode.clone(),
+        )
     };
-    let state_word = life_state(row, is_loaded, fault_reason.is_some(), manifest.is_some(), refused.is_some());
-    let update_check = state.db().plugin_update_check(&row.plugin_id).map_err(internal)?;
-    let update = update_check.as_ref().and_then(super::plugin_updates::info).transpose()?;
+    let state_word = life_state(
+        row,
+        is_loaded,
+        fault_reason.is_some(),
+        manifest.is_some(),
+        refused.is_some(),
+    );
+    let update_check = state
+        .db()
+        .plugin_update_check(&row.plugin_id)
+        .map_err(internal)?;
+    let update = update_check
+        .as_ref()
+        .and_then(super::plugin_updates::info)
+        .transpose()?;
 
     Ok(PluginSnapshot {
         plugin_id: plugin_id.clone(),
         // ★ The same function the removal uses, so the path in the dialog is the directory that will be deleted.
-        data_path: state.paths.plugin_sandbox_dir(&row.plugin_id).display().to_string(),
-        title: manifest.as_ref().map_or_else(|| row.plugin_id.clone(), |manifest| manifest.title.clone()),
-        description: manifest.as_ref().and_then(|manifest| manifest.description.clone()),
-        version: manifest.as_ref().map_or_else(String::new, |manifest| manifest.version.clone()),
-        publisher: manifest.as_ref().map_or_else(String::new, |manifest| manifest.publisher.id.clone()),
+        data_path: state
+            .paths
+            .plugin_sandbox_dir(&row.plugin_id)
+            .display()
+            .to_string(),
+        title: manifest
+            .as_ref()
+            .map_or_else(|| row.plugin_id.clone(), |manifest| manifest.title.clone()),
+        description: manifest
+            .as_ref()
+            .and_then(|manifest| manifest.description.clone()),
+        version: manifest
+            .as_ref()
+            .map_or_else(String::new, |manifest| manifest.version.clone()),
+        publisher: manifest
+            .as_ref()
+            .map_or_else(String::new, |manifest| manifest.publisher.id.clone()),
         enabled: row.enabled,
         state: state_word.to_owned(),
         // ★ The sentence behind the state word, from the layer that decided. Without it `unavailable` covers a crash
@@ -994,7 +1216,9 @@ fn snapshot(
         }),
         // ★ Read from the manifest's page entry rather than from `hybrid`: a UI-only plugin has a page and no headless
         // half, and `plugin_ui_open` can open it — the card has to know that before it draws the button.
-        has_ui: manifest.as_ref().is_some_and(|manifest| manifest.runtime.ui.is_some()),
+        has_ui: manifest
+            .as_ref()
+            .is_some_and(|manifest| manifest.runtime.ui.is_some()),
         // ★ `None` for a plugin this process has not loaded, and the real report for one it has. A zeroed reading would be
         // indistinguishable from a plugin that genuinely never uses anything — and those two need different reactions from
         // a user deciding whether to keep it. Until this line, the field was `None` for *every* card: the contract had a
@@ -1005,14 +1229,28 @@ fn snapshot(
         // show — which is why this field exists rather than the interface reading the manifest itself.
         requested: manifest
             .as_ref()
-            .map(|manifest| manifest.capabilities.iter().map(|declared| declared.cap.clone()).collect())
+            .map(|manifest| {
+                manifest
+                    .capabilities
+                    .iter()
+                    .map(|declared| declared.cap.clone())
+                    .collect()
+            })
             .unwrap_or_default(),
         // ★ Granted and denied are both listed, and both are sorted.
         //
         // Listing only the granted ones makes a refusal invisible, which is how a user ends up re-granting something
         // they deliberately refused — and being unable to see what they refused is what makes them do it.
-        granted: decisions.iter().filter(|d| d.granted).map(|d| d.capability.clone()).collect(),
-        denied: decisions.iter().filter(|d| !d.granted).map(|d| d.capability.clone()).collect(),
+        granted: decisions
+            .iter()
+            .filter(|d| d.granted)
+            .map(|d| d.capability.clone())
+            .collect(),
+        denied: decisions
+            .iter()
+            .filter(|d| !d.granted)
+            .map(|d| d.capability.clone())
+            .collect(),
         // Read the saved answer, never the registry. Only a check of the current installed version is returned.
         update,
         update_checked_at_ms: update_check.as_ref().map(|check| check.checked_at_ms),
@@ -1238,7 +1476,10 @@ pub fn plugins_audit_clear(state: &AppState, plugin_id: &PluginId) -> Result<(),
     if let Ok(set) = state.plugin_set() {
         set.lock().clear_audit(plugin_id);
     }
-    state.db().forget_audit_for(plugin_id.as_str()).map_err(internal)?;
+    state
+        .db()
+        .forget_audit_for(plugin_id.as_str())
+        .map_err(internal)?;
     Ok(())
 }
 
@@ -1277,7 +1518,9 @@ fn audit_retention_days(state: &AppState) -> u32 {
         })
     };
     match stored {
-        Some(days) => u32::try_from(days).unwrap_or(u32::MAX).clamp(MIN_AUDIT_RETENTION_DAYS, MAX_AUDIT_RETENTION_DAYS),
+        Some(days) => u32::try_from(days)
+            .unwrap_or(u32::MAX)
+            .clamp(MIN_AUDIT_RETENTION_DAYS, MAX_AUDIT_RETENTION_DAYS),
         None => DEFAULT_AUDIT_RETENTION_DAYS,
     }
 }
@@ -1289,7 +1532,10 @@ fn audit_retention_days(state: &AppState) -> u32 {
 pub(crate) fn prune_audit(state: &AppState, now_ms: i64) -> usize {
     let days = audit_retention_days(state);
     let window_ms = i64::from(days) * 24 * 60 * 60 * 1_000;
-    match state.db().forget_audit_before(now_ms.saturating_sub(window_ms)) {
+    match state
+        .db()
+        .forget_audit_before(now_ms.saturating_sub(window_ms))
+    {
         Ok(removed) => removed,
         Err(error) => {
             // A failure to prune is a diagnostic, not a reason to refuse to start.
@@ -1322,7 +1568,9 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
             Some(_) => None,
             None => Some(record.outcome.clone()),
         },
-        elapsed_ms: record.elapsed_ms.and_then(|elapsed| u64::try_from(elapsed).ok()),
+        elapsed_ms: record
+            .elapsed_ms
+            .and_then(|elapsed| u64::try_from(elapsed).ok()),
         trace_id: record.trace_id.clone(),
     }
 }
@@ -1333,13 +1581,15 @@ fn record_card(record: &synra_store::records::AuditRecord) -> AuditEntryDto {
 /// `refused`. One sample per attempt, not per step: what the counter answers is "where do installs stop", and a step
 /// that succeeded before a later one refused would otherwise make every attempt look like a pass.
 fn record_install(state: &AppState, stage: &str, result: &str) {
-    state.metrics.counter_inc(&synra_observe::metrics::SeriesKey::new(
-        "plugin_install_total",
-        [
-            ("result".to_owned(), result.to_owned()),
-            ("stage".to_owned(), stage.to_owned()),
-        ],
-    ));
+    state
+        .metrics
+        .counter_inc(&synra_observe::metrics::SeriesKey::new(
+            "plugin_install_total",
+            [
+                ("result".to_owned(), result.to_owned()),
+                ("stage".to_owned(), stage.to_owned()),
+            ],
+        ));
 }
 
 /// The bytes under a directory, or zero when it cannot be read.
@@ -1364,13 +1614,14 @@ fn directory_size(root: &std::path::Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_RETENTION_KEY, announce_updated, discover_plugins, install_directory, load_installed_plugins, plugins_audit,
-        plugins_audit_clear, plugins_catalog_search, plugins_check_update, plugins_consent_respond, plugins_install,
-        plugins_list, plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
+        AUDIT_RETENTION_KEY, announce_updated, discover_plugins, install_directory,
+        load_installed_plugins, plugins_audit, plugins_audit_clear, plugins_catalog_search,
+        plugins_check_update, plugins_consent_respond, plugins_install, plugins_list,
+        plugins_preview, plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
     };
+    use crate::testing;
     use synra_ipc::{CatalogQuery, InstallSourceDto};
     use synra_protocol::PluginId;
-    use crate::testing;
 
     const ID: &str = "@synra-plugin/chat";
 
@@ -1410,16 +1661,40 @@ mod tests {
             installed_at_ms: 0,
             updated_at_ms: 0,
         };
-        let off = synra_store::PluginRow { enabled: false, ..plugin.clone() };
-        let untrusted = synra_store::PluginRow { trusted: false, ..plugin.clone() };
+        let off = synra_store::PluginRow {
+            enabled: false,
+            ..plugin.clone()
+        };
+        let untrusted = synra_store::PluginRow {
+            trusted: false,
+            ..plugin.clone()
+        };
 
         // Arguments after the row: loaded, faulted, manifest readable, load refused.
-        assert_eq!(super::life_state(&off, true, false, true, false), "disabled");
-        assert_eq!(super::life_state(&untrusted, true, false, true, false), "awaiting_consent");
-        assert_eq!(super::life_state(&plugin, true, false, false, false), "unreadable");
-        assert_eq!(super::life_state(&plugin, true, true, true, false), "faulted");
-        assert_eq!(super::life_state(&plugin, true, false, true, false), "active");
-        assert_eq!(super::life_state(&plugin, false, false, true, false), "unavailable");
+        assert_eq!(
+            super::life_state(&off, true, false, true, false),
+            "disabled"
+        );
+        assert_eq!(
+            super::life_state(&untrusted, true, false, true, false),
+            "awaiting_consent"
+        );
+        assert_eq!(
+            super::life_state(&plugin, true, false, false, false),
+            "unreadable"
+        );
+        assert_eq!(
+            super::life_state(&plugin, true, true, true, false),
+            "faulted"
+        );
+        assert_eq!(
+            super::life_state(&plugin, true, false, true, false),
+            "active"
+        );
+        assert_eq!(
+            super::life_state(&plugin, false, false, true, false),
+            "unavailable"
+        );
     }
 
     /// A state with a scripted engine, because installing needs one and the fixture builds a shell without.
@@ -1481,9 +1756,15 @@ mod tests {
             header.set_mode(0o644);
             header.set_entry_type(tar::EntryType::Regular);
             header.set_cksum();
-            builder.append_data(&mut header, name, *bytes).expect("an entry");
+            builder
+                .append_data(&mut header, name, *bytes)
+                .expect("an entry");
         }
-        builder.into_inner().expect("the encoder").finish().expect("a gzip tail")
+        builder
+            .into_inner()
+            .expect("the encoder")
+            .finish()
+            .expect("a gzip tail")
     }
 
     #[test]
@@ -1496,7 +1777,8 @@ mod tests {
         let state = with_engine(state);
         let source = package(root.path());
         let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
-        let manifest_json: serde_json::Value = serde_json::from_slice(&manifest).expect("a manifest document");
+        let manifest_json: serde_json::Value =
+            serde_json::from_slice(&manifest).expect("a manifest document");
 
         let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port");
         let address = listener.local_addr().expect("an address");
@@ -1529,14 +1811,15 @@ mod tests {
         .to_string();
         std::thread::spawn(move || {
             for _ in 0..3 {
-                let Ok(mut stream) = listener.accept().map(|(stream, _)| stream) else { return };
+                let Ok(mut stream) = listener.accept().map(|(stream, _)| stream) else {
+                    return;
+                };
                 let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
                 let mut first = String::new();
                 let _ = reader.read_line(&mut first);
                 let body: &[u8] = if first.contains("pkg.tgz") {
                     &archive
-                }
-                else {
+                } else {
                     document.as_bytes()
                 };
                 let head = format!(
@@ -1572,11 +1855,21 @@ mod tests {
 
         assert_eq!(report.plugin_id.as_str(), "@acme/hello");
         assert_eq!(report.version, "1.0.0");
-        assert!(state.db().plugins().expect("rows").iter().any(|row| row.plugin_id == "@acme/hello"));
+        assert!(
+            state
+                .db()
+                .plugins()
+                .expect("rows")
+                .iter()
+                .any(|row| row.plugin_id == "@acme/hello")
+        );
         // The cache directory the tarball was opened in is gone, not left for the next run to find.
         let cache = state.paths.cache_dir().join("registry");
         assert!(
-            !cache.read_dir().map(|entries| entries.count() > 0).unwrap_or(false),
+            !cache
+                .read_dir()
+                .map(|entries| entries.count() > 0)
+                .unwrap_or(false),
             "the extracted package was left in the cache"
         );
     }
@@ -1591,7 +1884,9 @@ mod tests {
 
         let report = plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("it installs");
 
@@ -1612,7 +1907,10 @@ mod tests {
         // ★ And the pipeline's one counter: the report says it worked, the recorder says the same. A success is the
         // `complete` stage — the refusal stages only appear when something stopped.
         assert_eq!(
-            state.metrics.snapshot().get("plugin_install_total{result=ok,stage=complete}"),
+            state
+                .metrics
+                .snapshot()
+                .get("plugin_install_total{result=ok,stage=complete}"),
             Some(&synra_observe::metrics::Value::Counter(1))
         );
     }
@@ -1630,7 +1928,9 @@ mod tests {
 
         let report = plugins_install(
             &state,
-            &InstallSourceDto::Path { path: archive.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: archive.to_string_lossy().into_owned(),
+            },
         )
         .expect("the package installs");
 
@@ -1645,9 +1945,10 @@ mod tests {
                 .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
                 .collect::<Vec<_>>())
         );
-        let note: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(installed.join("source.json")).expect("the note"))
-                .expect("JSON");
+        let note: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(installed.join("source.json")).expect("the note"),
+        )
+        .expect("JSON");
         assert_eq!(
             std::fs::canonicalize(note["path"].as_str().expect("a path")).expect("canonical"),
             std::fs::canonicalize(&archive).expect("a canonical archive"),
@@ -1662,11 +1963,15 @@ mod tests {
         let (root, state) = testing::file_state();
         let state = with_engine(state);
 
-        let error = install_directory(&state, &root.path().join("not-a-package")).expect_err("refused");
+        let error =
+            install_directory(&state, &root.path().join("not-a-package")).expect_err("refused");
 
         assert_eq!(error.params["stage"], "source");
         assert_eq!(
-            state.metrics.snapshot().get("plugin_install_total{result=refused,stage=source}"),
+            state
+                .metrics
+                .snapshot()
+                .get("plugin_install_total{result=refused,stage=source}"),
             Some(&synra_observe::metrics::Value::Counter(1))
         );
     }
@@ -1686,7 +1991,10 @@ mod tests {
         match delivery.events().first() {
             Some(synra_ipc::event::KernelEvent::PluginUpdated(card)) => {
                 assert_eq!(card.plugin_id.as_str(), ID);
-                assert!(!card.granted.is_empty(), "the card carries the decision that was just recorded");
+                assert!(
+                    !card.granted.is_empty(),
+                    "the card carries the decision that was just recorded"
+                );
             }
             other => panic!("expected a plugin card, got {other:?}"),
         }
@@ -1701,7 +2009,11 @@ mod tests {
         super::plugins_enable(&state, ID).expect("the plugin is enabled");
 
         let delivery = state.events.take(subscriber).expect("one event");
-        assert_eq!(delivery.first_seq(), 1, "the bus numbers it, not this command");
+        assert_eq!(
+            delivery.first_seq(),
+            1,
+            "the bus numbers it, not this command"
+        );
         match delivery.events().first() {
             Some(synra_ipc::event::KernelEvent::PluginUpdated(card)) => {
                 assert_eq!(card.plugin_id.as_str(), ID);
@@ -1741,7 +2053,9 @@ mod tests {
         let source = package(root.path());
         plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("the fixture installs");
 
@@ -1754,7 +2068,9 @@ mod tests {
             {"package":{"name":"not a plugin","version":"1.0.0"}}
         ]}"#;
         std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else { return };
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
             let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
             let mut first = String::new();
             let _ = reader.read_line(&mut first);
@@ -1784,8 +2100,16 @@ mod tests {
         )
         .expect("a search");
 
-        assert_eq!(found.len(), 2, "a name that is not a plugin id is filtered out");
-        assert_eq!(found[0].plugin_id.as_str(), "@acme/hello", "name sort puts hello before zeta");
+        assert_eq!(
+            found.len(),
+            2,
+            "a name that is not a plugin id is filtered out"
+        );
+        assert_eq!(
+            found[0].plugin_id.as_str(),
+            "@acme/hello",
+            "name sort puts hello before zeta"
+        );
         assert_eq!(found[1].plugin_id.as_str(), "@acme/zeta");
         assert_eq!(found[0].version, "1.0.0");
         assert_eq!(found[0].publisher, "acme");
@@ -1801,7 +2125,9 @@ mod tests {
         let source = package(root.path());
         plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("the fixture installs");
 
@@ -1839,7 +2165,10 @@ mod tests {
             .expect("a newer version exists");
 
         assert_eq!(update.version, "2.0.0");
-        assert!(update.needs_new_consent, "the new manifest asks for a device permission");
+        assert!(
+            update.needs_new_consent,
+            "the new manifest asks for a device permission"
+        );
         assert_eq!(update.added_capabilities, ["device:send:*"]);
         // The installed version is not in the document, so the same check against itself cannot be exercised here; the
         // equal-version branch is a string comparison and fails closed (no update) rather than inventing one.
@@ -1899,8 +2228,7 @@ mod tests {
         let (second, second_count) = serve(move |line: &str| {
             if line.contains("pkg.tgz") {
                 (200, archive.clone())
-            }
-            else {
+            } else {
                 (404, Vec::new())
             }
         });
@@ -1908,9 +2236,15 @@ mod tests {
         let served_document = Arc::clone(&document);
         let (first, first_count) = serve(move |line: &str| {
             if line.contains("%2F") {
-                (200, served_document.lock().expect("the document").clone().into_bytes())
-            }
-            else {
+                (
+                    200,
+                    served_document
+                        .lock()
+                        .expect("the document")
+                        .clone()
+                        .into_bytes(),
+                )
+            } else {
                 (404, Vec::new())
             }
         });
@@ -1930,7 +2264,11 @@ mod tests {
 
         state
             .db()
-            .set_config("plugins.registry", &serde_json::json!([first, second]), 1_000)
+            .set_config(
+                "plugins.registry",
+                &serde_json::json!([first, second]),
+                1_000,
+            )
             .expect("the mirrors are configured");
 
         let report = plugins_install(
@@ -1943,7 +2281,10 @@ mod tests {
         .expect("the second mirror completes the install");
 
         assert_eq!(report.version, "1.0.0");
-        assert!(first_count.load(std::sync::atomic::Ordering::Relaxed) >= 1, "the first mirror was not asked");
+        assert!(
+            first_count.load(std::sync::atomic::Ordering::Relaxed) >= 1,
+            "the first mirror was not asked"
+        );
         assert!(
             second_count.load(std::sync::atomic::Ordering::Relaxed) >= 1,
             "the second mirror was never asked"
@@ -1973,7 +2314,14 @@ mod tests {
         std::fs::write(directory.join("manifest.json"), MANIFEST).expect("a manifest");
         state
             .db()
-            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .insert_plugin(
+                ID,
+                true,
+                false,
+                "installed",
+                testing::FIXED_NOW_MS,
+                testing::FIXED_NOW_MS,
+            )
             .expect("a plugin row");
         (root, state)
     }
@@ -1998,7 +2346,8 @@ mod tests {
         let state = with_engine(state);
         let source = package(root.path());
         let manifest = std::fs::read(source.join("manifest.json")).expect("the manifest");
-        let manifest_json: serde_json::Value = serde_json::from_slice(&manifest).expect("a manifest document");
+        let manifest_json: serde_json::Value =
+            serde_json::from_slice(&manifest).expect("a manifest document");
         let archive = tgz(&[
             ("package/manifest.json", manifest.as_slice()),
             (
@@ -2014,12 +2363,13 @@ mod tests {
         let served = Arc::clone(&document);
         let (base, _served) = serve(move |line: &str| {
             if line.contains("hello.json") {
-                (200, served.lock().expect("the document").clone().into_bytes())
-            }
-            else if line.contains("pkg.tgz") {
+                (
+                    200,
+                    served.lock().expect("the document").clone().into_bytes(),
+                )
+            } else if line.contains("pkg.tgz") {
                 (200, archive.clone())
-            }
-            else {
+            } else {
                 (404, Vec::new())
             }
         });
@@ -2039,13 +2389,20 @@ mod tests {
         .to_string();
         state
             .db()
-            .set_config("plugins.registry", &serde_json::json!(format!("static:{base}")), 1_000)
+            .set_config(
+                "plugins.registry",
+                &serde_json::json!(format!("static:{base}")),
+                1_000,
+            )
             .expect("the static index is configured");
 
         // ★ The directory's fingerprint is shown before the tarball is downloaded; the signature is still checked on the
         // bytes after it arrives.
         let preview = plugins_preview(&state, "@acme/hello", None).expect("a preview");
-        assert_eq!(preview.publisher_key.as_deref(), Some("AB12 CD34 EF56 7890"));
+        assert_eq!(
+            preview.publisher_key.as_deref(),
+            Some("AB12 CD34 EF56 7890")
+        );
 
         let report = plugins_install(
             &state,
@@ -2072,7 +2429,9 @@ mod tests {
         let source = package(root.path());
         plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("the fixture installs");
 
@@ -2105,25 +2464,32 @@ mod tests {
         let base_in_thread = base.clone();
         std::thread::spawn(move || {
             for _ in 0..2 {
-                let Ok((mut stream, _)) = listener.accept() else { return };
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
                 let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
                 let mut first = String::new();
                 let _ = reader.read_line(&mut first);
                 let mut headers = String::new();
                 loop {
                     let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                    if reader.read_line(&mut line).unwrap_or(0) == 0
+                        || line == "\r\n"
+                        || line == "\n"
+                    {
                         break;
                     }
                     headers.push_str(&line);
                 }
                 let _ = counted.fetch_add(1, Ordering::Relaxed);
-                if headers.to_ascii_lowercase().contains("if-none-match: \"v1\"") {
+                if headers
+                    .to_ascii_lowercase()
+                    .contains("if-none-match: \"v1\"")
+                {
                     let _ = stream.write_all(
                         b"HTTP/1.1 304 Not Modified\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
                     );
-                }
-                else {
+                } else {
                     // A document that is deliberately different, so a caller that skipped the cache would see it.
                     let body = first_body(&base_in_thread, "3.0.0");
                     let head = format!(
@@ -2137,14 +2503,25 @@ mod tests {
         });
         state
             .db()
-            .set_config("plugins.registry", &serde_json::json!(format!("static:{base}")), 1_000)
+            .set_config(
+                "plugins.registry",
+                &serde_json::json!(format!("static:{base}")),
+                1_000,
+            )
             .expect("the static index is configured");
 
-        let first = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
-        let second = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
+        let first = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
+        let second = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
 
         assert_eq!(first.version, "3.0.0");
-        assert_eq!(second.version, "3.0.0", "the 304 answered from the cache, not from a second body");
+        assert_eq!(
+            second.version, "3.0.0",
+            "the 304 answered from the cache, not from a second body"
+        );
         assert_eq!(requests.load(Ordering::Relaxed), 2);
     }
 
@@ -2160,7 +2537,9 @@ mod tests {
         let source = package(root.path());
         plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("the fixture installs");
 
@@ -2193,25 +2572,32 @@ mod tests {
         let counted = std::sync::Arc::clone(&requests);
         std::thread::spawn(move || {
             for _ in 0..2 {
-                let Ok((mut stream, _)) = listener.accept() else { return };
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
                 let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
                 let mut first = String::new();
                 let _ = reader.read_line(&mut first);
                 let mut headers = String::new();
                 loop {
                     let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                    if reader.read_line(&mut line).unwrap_or(0) == 0
+                        || line == "\r\n"
+                        || line == "\n"
+                    {
                         break;
                     }
                     headers.push_str(&line);
                 }
                 let _ = counted.fetch_add(1, Ordering::Relaxed);
-                if headers.to_ascii_lowercase().contains("if-none-match: \"p1\"") {
+                if headers
+                    .to_ascii_lowercase()
+                    .contains("if-none-match: \"p1\"")
+                {
                     let _ = stream.write_all(
                         b"HTTP/1.1 304 Not Modified\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
                     );
-                }
-                else {
+                } else {
                     let head = format!(
                         "HTTP/1.1 200 OK\r\ncontent-length: {}\r\netag: \"p1\"\r\nconnection: close\r\n\r\n",
                         body.len()
@@ -2226,8 +2612,12 @@ mod tests {
             .set_config("plugins.registry", &serde_json::json!(base), 1_000)
             .expect("the registry is configured");
 
-        let first = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
-        let second = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
+        let first = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
+        let second = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
 
         assert_eq!(first.version, "2.0.0");
         assert_eq!(second.version, "2.0.0", "the 304 answered from the cache");
@@ -2246,7 +2636,9 @@ mod tests {
         let source = package(root.path());
         plugins_install(
             &state,
-            &InstallSourceDto::Path { path: source.to_string_lossy().into_owned() },
+            &InstallSourceDto::Path {
+                path: source.to_string_lossy().into_owned(),
+            },
         )
         .expect("the fixture installs");
 
@@ -2279,14 +2671,19 @@ mod tests {
         };
         std::thread::spawn(move || {
             for _ in 0..2 {
-                let Ok((mut stream, _)) = listener.accept() else { return };
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
                 let mut reader = BufReader::new(stream.try_clone().expect("a clone"));
                 let mut first = String::new();
                 let _ = reader.read_line(&mut first);
                 let mut headers = String::new();
                 loop {
                     let mut line = String::new();
-                    if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                    if reader.read_line(&mut line).unwrap_or(0) == 0
+                        || line == "\r\n"
+                        || line == "\n"
+                    {
                         break;
                     }
                     headers.push_str(&line);
@@ -2296,9 +2693,12 @@ mod tests {
                     let _ = stream.write_all(
                         b"HTTP/1.1 304 Not Modified\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
                     );
-                }
-                else {
-                    let document = if seen == 0 { body("3.0.0") } else { body("4.0.0") };
+                } else {
+                    let document = if seen == 0 {
+                        body("3.0.0")
+                    } else {
+                        body("4.0.0")
+                    };
                     let head = format!(
                         "HTTP/1.1 200 OK\r\ncontent-length: {}\r\ncache-control: max-age=0\r\netag: \"v1\"\r\nconnection: close\r\n\r\n",
                         document.len()
@@ -2310,14 +2710,25 @@ mod tests {
         });
         state
             .db()
-            .set_config("plugins.registry", &serde_json::json!(format!("static:{base}")), 1_000)
+            .set_config(
+                "plugins.registry",
+                &serde_json::json!(format!("static:{base}")),
+                1_000,
+            )
             .expect("the static index is configured");
 
-        let first = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
-        let second = plugins_check_update(&state, "@acme/hello").expect("a check").expect("an update");
+        let first = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
+        let second = plugins_check_update(&state, "@acme/hello")
+            .expect("a check")
+            .expect("an update");
 
         assert_eq!(first.version, "3.0.0");
-        assert_eq!(second.version, "4.0.0", "the expired document was read again");
+        assert_eq!(
+            second.version, "4.0.0",
+            "the expired document was read again"
+        );
         assert_eq!(requests.load(Ordering::Relaxed), 2);
     }
 
@@ -2327,16 +2738,30 @@ mod tests {
         let state = with_engine(state);
         state
             .db()
-            .set_config("plugins.registry", &serde_json::json!("static:https://static.example.com"), 1_000)
+            .set_config(
+                "plugins.registry",
+                &serde_json::json!("static:https://static.example.com"),
+                1_000,
+            )
             .expect("the static index is configured");
 
         let refused = plugins_catalog_search(
             &state,
-            &CatalogQuery { query: "hello".to_owned(), registry: None, limit: None, offset: None, sort: None },
+            &CatalogQuery {
+                query: "hello".to_owned(),
+                registry: None,
+                limit: None,
+                offset: None,
+                sort: None,
+            },
         )
         .expect_err("there is no index to search");
 
-        assert_eq!(refused.code, synra_protocol::ErrorCode::Unsupported, "{refused:?}");
+        assert_eq!(
+            refused.code,
+            synra_protocol::ErrorCode::Unsupported,
+            "{refused:?}"
+        );
     }
 
     #[test]
@@ -2346,7 +2771,10 @@ mod tests {
         let (_root, state) = installed();
 
         let headless_only = plugins_list(&state).expect("the list").remove(0);
-        assert!(!headless_only.has_ui, "a headless-only manifest has no page");
+        assert!(
+            !headless_only.has_ui,
+            "a headless-only manifest has no page"
+        );
         assert!(!headless_only.hybrid);
 
         // The same plugin with a UI half written over its manifest. The entry is what `plugin_ui_open` resolves, so a
@@ -2356,7 +2784,8 @@ mod tests {
             r#""runtime": { "headless": { "artifact": "dist/plugin.wasm", "stateful": false },
                 "ui": { "artifact": "dist/ui", "entry": "index.html" } }"#,
         );
-        std::fs::write(state.paths.plugin_dir(ID).join("manifest.json"), manifest).expect("a manifest with a page");
+        std::fs::write(state.paths.plugin_dir(ID).join("manifest.json"), manifest)
+            .expect("a manifest with a page");
 
         let with_page = plugins_list(&state).expect("the list").remove(0);
         assert!(with_page.has_ui, "the page entry is not reported");
@@ -2364,7 +2793,12 @@ mod tests {
     }
 
     /// A recorded row, filled in with the fields the mapping reads.
-    fn row(plugin: &str, capability: &str, outcome: &str, at_ms: i64) -> synra_store::records::AuditRecord {
+    fn row(
+        plugin: &str,
+        capability: &str,
+        outcome: &str,
+        at_ms: i64,
+    ) -> synra_store::records::AuditRecord {
         synra_store::records::AuditRecord {
             plugin_id: plugin.to_owned(),
             capability: capability.to_owned(),
@@ -2384,7 +2818,10 @@ mod tests {
         assert_eq!(allowed.capability, "log:info");
         assert!(allowed.allowed);
         assert_eq!(allowed.elapsed_ms, Some(7));
-        assert_eq!(allowed.reason, None, "an allowed call has no reason to give");
+        assert_eq!(
+            allowed.reason, None,
+            "an allowed call has no reason to give"
+        );
 
         let denied = record_card(&row(ID, "device:list", "denied", 1_700_000_000_001));
         assert!(!denied.allowed);
@@ -2410,7 +2847,12 @@ mod tests {
         assert_eq!(failed.reason, None);
 
         // A name from a newer build is reported rather than guessed at: presenting it as allowed could hide a refusal.
-        let unknown = record_card(&row(ID, "device:list", "from-a-newer-build", 1_700_000_000_003));
+        let unknown = record_card(&row(
+            ID,
+            "device:list",
+            "from-a-newer-build",
+            1_700_000_000_003,
+        ));
         assert!(!unknown.allowed);
         assert_eq!(unknown.reason.as_deref(), Some("from-a-newer-build"));
     }
@@ -2421,9 +2863,13 @@ mod tests {
         // build that cannot run plugins can still answer what this database recorded. The old `Unsupported` answer was
         // true only while the in-memory ring was the whole trail.
         let state = crate::testing::state();
-        state.db().record_audit(&row(ID, "device:list", "allowed", 5_000)).expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", 5_000))
+            .expect("recorded");
 
-        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
+        let rows =
+            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].capability, "device:list");
@@ -2436,21 +2882,34 @@ mod tests {
         // the one failure a list that appends rather than replaces would show as duplicated rows rather than as nothing.
         let state = crate::testing::state();
         for at in [1_000, 2_000, 3_000] {
-            state.db().record_audit(&row(ID, "device:list", "allowed", at)).expect("recorded");
+            state
+                .db()
+                .record_audit(&row(ID, "device:list", "allowed", at))
+                .expect("recorded");
         }
 
-        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 1, 1).expect("read");
+        let rows =
+            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 1, 1).expect("read");
 
         assert_eq!(rows.len(), 1, "one row asked for, one row answered");
-        assert_eq!(rows[0].at_ms, 2_000, "and it is the second-newest, not the newest again");
+        assert_eq!(
+            rows[0].at_ms, 2_000,
+            "and it is the second-newest, not the newest again"
+        );
     }
 
     #[test]
     fn clearing_forgets_the_durable_rows_and_leaves_another_plugin() {
         // The same rule as the ring, now on the copy that survives a restart.
         let state = crate::testing::state();
-        state.db().record_audit(&row(ID, "device:list", "allowed", 5_000)).expect("recorded");
-        state.db().record_audit(&row("@acme/other", "log:info", "allowed", 6_000)).expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", 5_000))
+            .expect("recorded");
+        state
+            .db()
+            .record_audit(&row("@acme/other", "log:info", "allowed", 6_000))
+            .expect("recorded");
 
         plugins_audit_clear(&state, &PluginId::parse(ID).expect("a plugin id")).expect("cleared");
 
@@ -2469,12 +2928,19 @@ mod tests {
         let state = crate::testing::state();
         let day = 24 * 60 * 60 * 1_000;
         let now = 30 * day;
-        state.db().record_audit(&row(ID, "device:list", "allowed", now - 10 * day)).expect("recorded");
-        state.db().record_audit(&row(ID, "device:list", "allowed", now - 2 * day)).expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", now - 10 * day))
+            .expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", now - 2 * day))
+            .expect("recorded");
 
         assert_eq!(prune_audit(&state, now), 1);
 
-        let rows = plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
+        let rows =
+            plugins_audit(&state, &PluginId::parse(ID).expect("a plugin id"), 10, 0).expect("read");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].at_ms, now - 2 * day, "the recent call stayed");
     }
@@ -2488,8 +2954,14 @@ mod tests {
         let state = crate::testing::state();
         let day = 24 * 60 * 60 * 1_000;
         let now = 30 * day;
-        state.db().record_audit(&row(ID, "device:list", "allowed", now - 10 * day)).expect("recorded");
-        state.db().record_audit(&row(ID, "device:list", "allowed", now - 2 * day)).expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", now - 10 * day))
+            .expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", now - 2 * day))
+            .expect("recorded");
         state
             .db()
             .apply_config(
@@ -2501,7 +2973,11 @@ mod tests {
             )
             .expect("the setting is written");
 
-        assert_eq!(prune_audit(&state, now), 2, "a one-day window removes both calls");
+        assert_eq!(
+            prune_audit(&state, now),
+            2,
+            "a one-day window removes both calls"
+        );
     }
 
     #[test]
@@ -2513,7 +2989,10 @@ mod tests {
         let state = crate::testing::state();
         let day = 24 * 60 * 60 * 1_000;
         let now = 30 * day;
-        state.db().record_audit(&row(ID, "device:list", "allowed", now)).expect("recorded");
+        state
+            .db()
+            .record_audit(&row(ID, "device:list", "allowed", now))
+            .expect("recorded");
         state
             .db()
             .apply_config(
@@ -2525,7 +3004,11 @@ mod tests {
             )
             .expect("the setting is written");
 
-        assert_eq!(prune_audit(&state, now), 0, "zero becomes the one-day minimum, and today's call stays");
+        assert_eq!(
+            prune_audit(&state, now),
+            0,
+            "zero becomes the one-day minimum, and today's call stays"
+        );
     }
 
     #[test]
@@ -2538,14 +3021,25 @@ mod tests {
         let (_root, state) = installed();
         state
             .db()
-            .insert_plugin("@acme/other", false, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .insert_plugin(
+                "@acme/other",
+                false,
+                false,
+                "installed",
+                testing::FIXED_NOW_MS,
+                testing::FIXED_NOW_MS,
+            )
             .expect("a second row");
 
         let _ = plugins_list(&state).expect("the list");
 
         let snapshot = state.metrics.snapshot();
         assert_eq!(snapshot.get("plugins_installed"), Some(&Value::Gauge(2)));
-        assert_eq!(snapshot.get("plugins_active"), Some(&Value::Gauge(1)), "only the enabled one is active");
+        assert_eq!(
+            snapshot.get("plugins_active"),
+            Some(&Value::Gauge(1)),
+            "only the enabled one is active"
+        );
     }
 
     #[test]
@@ -2563,7 +3057,10 @@ mod tests {
         let _ = plugins_list(&state).expect("the list");
 
         assert_eq!(
-            state.metrics.snapshot().get("plugin_data_bytes{plugin=@synra-plugin/chat}"),
+            state
+                .metrics
+                .snapshot()
+                .get("plugin_data_bytes{plugin=@synra-plugin/chat}"),
             Some(&Value::Gauge(15))
         );
     }
@@ -2575,15 +3072,18 @@ mod tests {
         // grant and a plugin received exactly what it asked for.
         let (_root, state) = installed();
 
-        let card = plugins_consent_respond(
-            &state,
-            ID,
-            &["log:*".to_owned(), "device:list".to_owned()],
-        )
-        .expect("consent");
+        let card =
+            plugins_consent_respond(&state, ID, &["log:*".to_owned(), "device:list".to_owned()])
+                .expect("consent");
 
-        assert_ne!(card.state, "awaiting_consent", "the plugin is trusted now: {card:?}");
-        assert_eq!(card.granted, vec!["device:list".to_owned(), "log:*".to_owned()]);
+        assert_ne!(
+            card.state, "awaiting_consent",
+            "the plugin is trusted now: {card:?}"
+        );
+        assert_eq!(
+            card.granted,
+            vec!["device:list".to_owned(), "log:*".to_owned()]
+        );
         assert!(card.denied.is_empty());
         assert_eq!(
             grants(&state),
@@ -2609,10 +3109,16 @@ mod tests {
 
         assert_eq!(card.granted, vec!["log:*".to_owned()]);
         assert_eq!(card.denied, vec!["device:list".to_owned()]);
-        assert_ne!(card.state, "awaiting_consent", "one allowed capability is approval");
+        assert_ne!(
+            card.state, "awaiting_consent",
+            "one allowed capability is approval"
+        );
         assert_eq!(
             grants(&state),
-            vec![("device:list".to_owned(), false), ("log:*".to_owned(), true)],
+            vec![
+                ("device:list".to_owned(), false),
+                ("log:*".to_owned(), true)
+            ],
         );
     }
 
@@ -2643,7 +3149,11 @@ mod tests {
             .expect("a changed answer");
 
         let decisions = grants(&state);
-        assert_eq!(decisions.len(), 2, "still one row per capability: {decisions:?}");
+        assert_eq!(
+            decisions.len(),
+            2,
+            "still one row per capability: {decisions:?}"
+        );
         assert!(
             decisions.iter().all(|(_, granted)| *granted),
             "the second answer is the one that stands: {decisions:?}"
@@ -2658,7 +3168,14 @@ mod tests {
         let (root, state) = testing::file_state();
         state
             .db()
-            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .insert_plugin(
+                ID,
+                true,
+                false,
+                "installed",
+                testing::FIXED_NOW_MS,
+                testing::FIXED_NOW_MS,
+            )
             .expect("a plugin row");
         drop(root);
 
@@ -2701,16 +3218,31 @@ mod tests {
         let report = super::plugins_uninstall(&state, ID, false).expect("uninstalls");
 
         assert!(
-            state.db().plugins().expect("rows").iter().all(|row| row.plugin_id != ID),
+            state
+                .db()
+                .plugins()
+                .expect("rows")
+                .iter()
+                .all(|row| row.plugin_id != ID),
             "the row is gone"
         );
-        assert!(!state.paths.plugin_dir(ID).exists(), "and the artifacts with it");
+        assert!(
+            !state.paths.plugin_dir(ID).exists(),
+            "and the artifacts with it"
+        );
         assert!(data.exists(), "but the data stays unless asked for");
         // ★ The report the design names and nothing returned: the artifact's bytes were freed, and the five bytes in
         // the sandbox were **not** — `data_kept` is the same fact in a sentence the page can print.
         assert!(report.data_kept, "the data stayed");
-        assert_eq!(report.bytes_freed as usize, MANIFEST.len(), "only the artifact was freed");
-        assert!(report.leftovers.is_empty(), "a wholesale removal leaves nothing behind");
+        assert_eq!(
+            report.bytes_freed as usize,
+            MANIFEST.len(),
+            "only the artifact was freed"
+        );
+        assert!(
+            report.leftovers.is_empty(),
+            "a wholesale removal leaves nothing behind"
+        );
     }
 
     #[test]
@@ -2738,7 +3270,8 @@ mod tests {
         // A typo and a no-op are different answers, and this one names the identifier so the user can see their own.
         let (_root, state) = installed();
 
-        let refused = super::plugins_uninstall(&state, "@acme/typo", false).expect_err("nothing is there");
+        let refused =
+            super::plugins_uninstall(&state, "@acme/typo", false).expect_err("nothing is there");
 
         assert_eq!(refused.code, synra_protocol::ErrorCode::PluginNotInstalled);
     }
@@ -2752,8 +3285,14 @@ mod tests {
 
         let cards = plugins_list(&state).expect("the list");
 
-        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
-        assert_eq!(card.requested, vec!["log:*".to_owned(), "device:list".to_owned()]);
+        let card = cards
+            .iter()
+            .find(|card| card.plugin_id.as_str() == ID)
+            .expect("the card");
+        assert_eq!(
+            card.requested,
+            vec!["log:*".to_owned(), "device:list".to_owned()]
+        );
         assert!(card.granted.is_empty(), "nothing has been decided yet");
         // ★ The path the removal dialog shows is the directory the removal would delete: both come from
         // `plugin_sandbox_dir`, and this assertion is what keeps the card from inventing a second spelling of it.
@@ -2789,7 +3328,10 @@ mod tests {
         }
 
         let cards = plugins_list(&state).expect("the list");
-        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        let card = cards
+            .iter()
+            .find(|card| card.plugin_id.as_str() == ID)
+            .expect("the card");
         let health = card.health.as_ref().expect("a loaded plugin has a report");
         assert_eq!(health.health, "good");
         assert_eq!(health.calls_admitted, 0);
@@ -2807,7 +3349,10 @@ mod tests {
         let card = listed.first().expect("the installed plugin");
         assert_eq!(card.plugin_id.as_str(), ID);
         assert_eq!(card.state, "awaiting_consent");
-        assert!(card.granted.is_empty() && card.denied.is_empty(), "nothing has been decided yet");
+        assert!(
+            card.granted.is_empty() && card.denied.is_empty(),
+            "nothing has been decided yet"
+        );
     }
 
     #[test]
@@ -2817,7 +3362,8 @@ mod tests {
         let state = crate::testing::state();
 
         let fingerprint = "AB12 CD34 EF56 7890";
-        let refused = plugins_publisher_decide(&state, "@ghost", fingerprint, "trusted").expect_err("nobody has met it");
+        let refused = plugins_publisher_decide(&state, "@ghost", fingerprint, "trusted")
+            .expect_err("nobody has met it");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
 
         state
@@ -2828,12 +3374,14 @@ mod tests {
             .expect_err("a different key must not be trusted");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
         assert_eq!(plugins_publishers(&state).expect("rows")[0].trust, "seen");
-        plugins_publisher_decide(&state, "@acme", fingerprint, "trusted").expect("a known key can be trusted");
+        plugins_publisher_decide(&state, "@acme", fingerprint, "trusted")
+            .expect("a known key can be trusted");
         let listed = plugins_publishers(&state).expect("a list");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].trust, "trusted");
 
-        let refused = plugins_publisher_decide(&state, "@acme", fingerprint, "maybe").expect_err("not a decision");
+        let refused = plugins_publisher_decide(&state, "@acme", fingerprint, "maybe")
+            .expect_err("not a decision");
         assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
     }
 
@@ -2866,7 +3414,14 @@ mod tests {
         let manifest = write_loadable_files(state);
         state
             .db()
-            .insert_plugin(ID, true, true, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .insert_plugin(
+                ID,
+                true,
+                true,
+                "installed",
+                testing::FIXED_NOW_MS,
+                testing::FIXED_NOW_MS,
+            )
             .expect("a plugin row");
         state
             .db()
@@ -2919,7 +3474,10 @@ mod tests {
         assert!(state.plugin_set().expect("an engine").lock().contains(&id));
 
         let cards = plugins_list(&state).expect("the list");
-        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        let card = cards
+            .iter()
+            .find(|card| card.plugin_id.as_str() == ID)
+            .expect("the card");
         assert_eq!(card.state, "active");
         assert_eq!(card.state_reason, None, "a running plugin needs no excuse");
     }
@@ -2947,20 +3505,33 @@ mod tests {
                 .expect("the report is written");
         }
         let verdict = crashes.verdict(testing::FIXED_NOW_MS);
-        assert!(!verdict.allows_plugins(), "three crashes did not reach safe mode: {verdict:?}");
+        assert!(
+            !verdict.allows_plugins(),
+            "three crashes did not reach safe mode: {verdict:?}"
+        );
 
         let summary = load_installed_plugins(
             &state,
             &verdict,
             &synra_plugin_api::revocation::RevocationList::empty(),
         );
-        assert!(summary.is_empty(), "safe mode loaded something: {:?}", summary.loaded);
+        assert!(
+            summary.is_empty(),
+            "safe mode loaded something: {:?}",
+            summary.loaded
+        );
         let state = state.with_plugin_loads(summary);
 
         let cards = plugins_list(&state).expect("the list");
-        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        let card = cards
+            .iter()
+            .find(|card| card.plugin_id.as_str() == ID)
+            .expect("the card");
         assert_eq!(card.state, "unavailable");
-        let reason = card.state_reason.as_deref().expect("safe mode must say why");
+        let reason = card
+            .state_reason
+            .as_deref()
+            .expect("safe mode must say why");
         assert!(reason.contains("crashed 3 times"), "{reason}");
     }
 
@@ -2981,12 +3552,18 @@ mod tests {
         let state = state.with_plugin_loads(summary);
 
         let cards = plugins_list(&state).expect("the list");
-        let card = cards.iter().find(|card| card.plugin_id.as_str() == ID).expect("the card");
+        let card = cards
+            .iter()
+            .find(|card| card.plugin_id.as_str() == ID)
+            .expect("the card");
         // ★ A recorded refusal is `faulted`, which the design names and the page already colours red. It used to say
         // `unavailable`, leaving the page's faulted branch unreachable and making a broken plugin look like a build
         // without an engine.
         assert_eq!(card.state, "faulted");
-        let reason = card.state_reason.as_deref().expect("a refusal must say why");
+        let reason = card
+            .state_reason
+            .as_deref()
+            .expect("a refusal must say why");
         assert!(reason.contains("artifact"), "{reason}");
     }
 
@@ -2997,7 +3574,10 @@ mod tests {
         // and does not trust, so the card is `awaiting_consent` rather than running.
         let (_root, state) = testing::file_state();
         write_loadable_files(&state);
-        assert!(state.db().plugins().expect("rows").is_empty(), "nothing is recorded yet");
+        assert!(
+            state.db().plugins().expect("rows").is_empty(),
+            "nothing is recorded yet"
+        );
 
         let found = discover_plugins(&state, testing::FIXED_NOW_MS);
 
@@ -3009,7 +3589,10 @@ mod tests {
         // A discovered directory is written disabled and untrusted, and `disabled` is the first word: the user has not
         // switched it on, so the fact that consent has also not been answered is not the card's headline.
         assert_eq!(card.state, "disabled");
-        assert!(!card.enabled && card.granted.is_empty(), "a copied directory is not an approval");
+        assert!(
+            !card.enabled && card.granted.is_empty(),
+            "a copied directory is not an approval"
+        );
     }
 
     #[test]
@@ -3031,7 +3614,11 @@ mod tests {
         let source = write_update_source(root.path(), "2.0.0");
         super::update_directory(&state, ID, &source).expect("the update is applied");
 
-        let active = state.db().active_plugin(ID).expect("the version table").expect("an active version");
+        let active = state
+            .db()
+            .active_plugin(ID)
+            .expect("the version table")
+            .expect("an active version");
         assert_eq!(active.version, "2.0.0");
     }
 
@@ -3061,9 +3648,12 @@ mod tests {
         );
 
         let source = write_update_source(root.path(), "2.0.0");
-        let refused = super::update_directory(&state, ID, &source).expect_err("the migration refused");
+        let refused =
+            super::update_directory(&state, ID, &source).expect_err("the migration refused");
         assert_eq!(refused.code, synra_protocol::ErrorCode::PluginTrapped);
-        let reason = refused.params["reason"].as_str().expect("the refusal names the reason");
+        let reason = refused.params["reason"]
+            .as_str()
+            .expect("the refusal names the reason");
         assert!(
             reason.contains("this data cannot move"),
             "the plugin's own sentence is carried: {reason}"
@@ -3073,8 +3663,14 @@ mod tests {
         // evidence that the old compiled form is still the one answering.
         let manifest = std::fs::read_to_string(state.paths.plugin_dir(ID).join("manifest.json"))
             .expect("the old manifest");
-        assert!(manifest.contains("\"1.0.0\""), "the update wrote a new version despite the refusal: {manifest}");
-        assert_eq!(state.plugin_set().expect("an engine").lock().version(&id), Some("1.0.0"));
+        assert!(
+            manifest.contains("\"1.0.0\""),
+            "the update wrote a new version despite the refusal: {manifest}"
+        );
+        assert_eq!(
+            state.plugin_set().expect("an engine").lock().version(&id),
+            Some("1.0.0")
+        );
     }
 
     #[test]
@@ -3100,9 +3696,16 @@ mod tests {
         std::fs::write(&artifact, bytes).expect("the artifact is back");
         let card = super::plugins_reload(&state, ID).expect("the reload answers with the card");
 
-        assert_eq!(card.state, "active", "the retry did not load the plugin: {card:?}");
+        assert_eq!(
+            card.state, "active",
+            "the retry did not load the plugin: {card:?}"
+        );
         assert!(
-            state.plugin_set().expect("an engine").lock().contains(&PluginId::parse(ID).expect("an id")),
+            state
+                .plugin_set()
+                .expect("an engine")
+                .lock()
+                .contains(&PluginId::parse(ID).expect("an id")),
             "the card says active but the set is empty"
         );
     }
@@ -3120,12 +3723,18 @@ mod tests {
         // ★ "This build cannot run plugins" and "this plugin is broken" are different answers, and only one of them
         // sends the user to the right place. A shell built without an engine is a real configuration, not a failure.
         let (_root, state) = installed();
-        state.db().set_plugin_trusted(ID, true, testing::FIXED_NOW_MS).expect("trusted");
+        state
+            .db()
+            .set_plugin_trusted(ID, true, testing::FIXED_NOW_MS)
+            .expect("trusted");
 
         let cards = plugins_list(&state).expect("the list");
         let card = cards.first().expect("the installed plugin");
         assert!(card.state != "active");
-        assert_eq!(card.state_reason.as_deref(), Some("this build has no plugin engine"));
+        assert_eq!(
+            card.state_reason.as_deref(),
+            Some("this build has no plugin engine")
+        );
     }
 
     #[test]
@@ -3142,10 +3751,16 @@ mod tests {
         let id = PluginId::parse(ID).expect("an id");
 
         super::plugins_enable(&state, ID).expect("it enables and loads");
-        assert!(state.plugin_set().expect("an engine").lock().contains(&id), "enable did not load it");
+        assert!(
+            state.plugin_set().expect("an engine").lock().contains(&id),
+            "enable did not load it"
+        );
 
         super::plugins_disable(&state, ID).expect("it disables and unloads");
-        assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "disable did not unload it");
+        assert!(
+            !state.plugin_set().expect("an engine").lock().contains(&id),
+            "disable did not unload it"
+        );
     }
 
     #[test]
@@ -3157,13 +3772,29 @@ mod tests {
         write_loadable_files(&state);
         state
             .db()
-            .insert_plugin(ID, true, false, "installed", testing::FIXED_NOW_MS, testing::FIXED_NOW_MS)
+            .insert_plugin(
+                ID,
+                true,
+                false,
+                "installed",
+                testing::FIXED_NOW_MS,
+                testing::FIXED_NOW_MS,
+            )
             .expect("a plugin row");
 
         let card = super::plugins_consent_respond(&state, ID, &["log:*".to_owned()])
             .expect("the decision is recorded");
-        assert_eq!(card.state, "active", "the card the consent returns shows the plugin already loaded");
-        assert!(state.plugin_set().expect("an engine").lock().contains(&PluginId::parse(ID).expect("an id")));
+        assert_eq!(
+            card.state, "active",
+            "the card the consent returns shows the plugin already loaded"
+        );
+        assert!(
+            state
+                .plugin_set()
+                .expect("an engine")
+                .lock()
+                .contains(&PluginId::parse(ID).expect("an id"))
+        );
     }
 
     #[test]
@@ -3184,8 +3815,15 @@ mod tests {
         assert!(state.plugin_set().expect("an engine").lock().contains(&id));
 
         super::plugins_uninstall(&state, ID, false).expect("it is removed");
-        assert!(!state.plugin_set().expect("an engine").lock().contains(&id), "the compiled form stayed behind");
-        assert_eq!(state.plugin_loads().len(), 0, "the report still claims it is loaded");
+        assert!(
+            !state.plugin_set().expect("an engine").lock().contains(&id),
+            "the compiled form stayed behind"
+        );
+        assert_eq!(
+            state.plugin_loads().len(),
+            0,
+            "the report still claims it is loaded"
+        );
     }
 
     #[test]
@@ -3195,8 +3833,18 @@ mod tests {
         let (_root, state) = crate::testing::file_state();
         for (plugin, version) in [("@acme/two", "3.0.0"), ("@acme/one", "2.0.0")] {
             let db = state.db();
-            db.insert_plugin(plugin, false, false, "good", 1, 1).expect("plugin");
-            db.record_plugin_version(&synra_store::PluginVersionRecord { plugin_id: plugin, version: "1.0.0", artifact: "wasm", digest: "digest", manifest: "{}", installed_ms: 1, ..Default::default() }).expect("version");
+            db.insert_plugin(plugin, false, false, "good", 1, 1)
+                .expect("plugin");
+            db.record_plugin_version(&synra_store::PluginVersionRecord {
+                plugin_id: plugin,
+                version: "1.0.0",
+                artifact: "wasm",
+                digest: "digest",
+                manifest: "{}",
+                installed_ms: 1,
+                ..Default::default()
+            })
+            .expect("version");
             db.save_plugin_update_check(&synra_store::PluginUpdateCheck {
                 plugin_id: plugin.to_owned(),
                 current_version: "1.0.0".to_owned(),
@@ -3206,7 +3854,8 @@ mod tests {
                 added_capabilities: Vec::new(),
                 attempts: 0,
                 retry_at_ms: None,
-            }).expect("check");
+            })
+            .expect("check");
         }
         let restarted = crate::testing::reopen(&state);
         let updates = super::plugins_updates(&restarted).expect("saved updates");
