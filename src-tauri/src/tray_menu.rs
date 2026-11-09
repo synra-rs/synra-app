@@ -30,18 +30,16 @@ pub enum TrayAction {
 pub fn action_for(id: &str) -> Option<TrayAction> {
     if id == SHOW {
         Some(TrayAction::Show)
-    }
-    else if id == QUIT {
+    } else if id == QUIT {
         Some(TrayAction::Quit)
-    }
-    else {
+    } else {
         None
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{SHOW, TrayAction, QUIT, action_for};
+    use super::{QUIT, SHOW, TrayAction, action_for};
 
     #[test]
     fn the_two_menu_items_map_to_their_actions() {

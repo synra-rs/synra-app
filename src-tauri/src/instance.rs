@@ -79,7 +79,10 @@ pub fn claim(data_dir: &Path) -> io::Result<Start> {
             // ★ A request left by a **previous** run is not honoured now: it was written for a process that is gone, and
             // replaying it would pop the window on every start after the one that was asked to.
             let _ = std::fs::remove_file(&request);
-            Ok(Start::First(Guard { _file: file, request }))
+            Ok(Start::First(Guard {
+                _file: file,
+                request,
+            }))
         }
         Err(std::fs::TryLockError::WouldBlock) => {
             std::fs::write(data_dir.join(SHOW_REQUEST), std::process::id().to_string())?;
@@ -98,17 +101,20 @@ pub fn claim(data_dir: &Path) -> io::Result<Start> {
 pub fn watch(app: tauri::AppHandle, request: PathBuf) {
     let spawned = std::thread::Builder::new()
         .name("synra-instance".to_owned())
-        .spawn(move || loop {
-            if request.exists() {
-                // Removed before the show, so a request that arrives while the window is coming forward is a new one
-                // rather than the same one seen twice.
-                let _ = std::fs::remove_file(&request);
-                // Desktop only: `window::show_main` is not compiled on Android, where a second launch is not a thing.
-                #[cfg(desktop)]
-                crate::window::show_main(&app);
-                #[cfg(not(desktop))]
-                let _ = &app;            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
+        .spawn(move || {
+            loop {
+                if request.exists() {
+                    // Removed before the show, so a request that arrives while the window is coming forward is a new one
+                    // rather than the same one seen twice.
+                    let _ = std::fs::remove_file(&request);
+                    // Desktop only: `window::show_main` is not compiled on Android, where a second launch is not a thing.
+                    #[cfg(desktop)]
+                    crate::window::show_main(&app);
+                    #[cfg(not(desktop))]
+                    let _ = &app;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
         });
     if let Err(error) = spawned {
         eprintln!("synra: the single-instance watcher could not start: {error}");
@@ -127,10 +133,16 @@ mod tests {
     fn a_second_launch_is_told_the_first_is_running_and_asks_it_forward() {
         let directory = scratch();
         let first = claim(&directory).expect("the directory is writable");
-        assert!(matches!(first, Start::First(_)), "the first launch takes the lock");
+        assert!(
+            matches!(first, Start::First(_)),
+            "the first launch takes the lock"
+        );
 
         let second = claim(&directory).expect("contention is an answer, not an error");
-        assert!(matches!(second, Start::Second), "the second launch must not proceed");
+        assert!(
+            matches!(second, Start::Second),
+            "the second launch must not proceed"
+        );
         assert!(
             directory.join(SHOW_REQUEST).exists(),
             "the second launch did not ask the first to come forward"
@@ -138,7 +150,10 @@ mod tests {
 
         drop(first);
         let again = claim(&directory).expect("the lock was released with the guard");
-        assert!(matches!(again, Start::First(_)), "a restart can take the lock");
+        assert!(
+            matches!(again, Start::First(_)),
+            "a restart can take the lock"
+        );
         assert!(
             !directory.join(SHOW_REQUEST).exists(),
             "a request left by the previous run is replayed on start"

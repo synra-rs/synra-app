@@ -66,7 +66,9 @@ pub fn outstanding(state: &AppState) -> Vec<(IntentId, Outbound)> {
     board
         .all()
         .into_iter()
-        .filter_map(|intent| orchestrate::resume(intent, local, now).map(|outbound| (intent.id, outbound)))
+        .filter_map(|intent| {
+            orchestrate::resume(intent, local, now).map(|outbound| (intent.id, outbound))
+        })
         .collect()
 }
 
@@ -87,12 +89,7 @@ enum Outcome {
 ///
 /// Because the send needs a peer and the board does not: a memory link is the transport's test, and this function's subject
 /// is what happens to the board when an answer does or does not come back. The loop in [`run`] passes the real send.
-fn attempt_with<F>(
-    state: &AppState,
-    id: IntentId,
-    outbound: &Outbound,
-    deliver: &mut F,
-) -> Outcome
+fn attempt_with<F>(state: &AppState, id: IntentId, outbound: &Outbound, deliver: &mut F) -> Outcome
 where
     F: FnMut(&Outbound) -> Result<Option<Envelope>, IpcError>,
 {
@@ -104,8 +101,7 @@ where
                 if applied == id {
                     crate::commands::intent::announce(state, id);
                     crate::commands::intent::checkpoint(state, id);
-                }
-                else {
+                } else {
                     eprintln!("synra: an answer to {id} was applied to {applied}");
                 }
                 Outcome::Answered
@@ -152,7 +148,6 @@ pub fn resume(state: &AppState) -> Resumed {
         crate::commands::intent_remote::deliver_decided(state, outbound)
     })
 }
-
 
 /// Publishes one intent's retry status and tells the interface when it changed.
 ///
@@ -227,9 +222,8 @@ fn forget_row(state: &AppState, intent: &str) {
 /// answered stays `Dispatching` for the 24-hour expiry or a late answer. Giving up on retries is a decision about this
 /// process's effort, not about the action's outcome.
 pub fn run(state: &AppState, cancel: &Cancellation, policy: RetryPolicy) {
-    let mut deliver = |outbound: &Outbound| {
-        crate::commands::intent_remote::deliver_decided(state, outbound)
-    };
+    let mut deliver =
+        |outbound: &Outbound| crate::commands::intent_remote::deliver_decided(state, outbound);
 
     let first = resume_with(state, &mut deliver);
     if first.attempted > 0 {
@@ -278,11 +272,15 @@ impl RetryHost for ShellRetry<'_> {
 
     fn attempt(&mut self, id: IntentId) -> Attempt {
         // The intent may have ended between the snapshot and this moment.
-        let Some((_, outbound)) = outstanding(self.state).into_iter().find(|(candidate, _)| *candidate == id) else {
+        let Some((_, outbound)) = outstanding(self.state)
+            .into_iter()
+            .find(|(candidate, _)| *candidate == id)
+        else {
             return Attempt::Ended;
         };
-        let mut deliver =
-            |outbound: &Outbound| crate::commands::intent_remote::deliver_decided(self.state, outbound);
+        let mut deliver = |outbound: &Outbound| {
+            crate::commands::intent_remote::deliver_decided(self.state, outbound)
+        };
         match attempt_with(self.state, id, &outbound, &mut deliver) {
             Outcome::Answered => Attempt::Answered,
             Outcome::Unanswered => Attempt::Unanswered,
@@ -382,12 +380,23 @@ mod tests {
         let reply = answer(peer, local, trace, request);
 
         let report = resume_with(&state, |outbound| {
-            assert_eq!(outbound.request_id, request, "the idempotency key is the stored one");
+            assert_eq!(
+                outbound.request_id, request,
+                "the idempotency key is the stored one"
+            );
             assert_eq!(outbound.to, peer);
             Ok(Some(reply.clone()))
         });
 
-        assert_eq!(report, Resumed { attempted: 1, answered: 1, unanswered: 0, failed: 0 });
+        assert_eq!(
+            report,
+            Resumed {
+                attempted: 1,
+                answered: 1,
+                unanswered: 0,
+                failed: 0
+            }
+        );
         let card = crate::commands::intent::intent_list(&state)
             .expect("the board answers")
             .into_iter()
@@ -401,7 +410,10 @@ mod tests {
             .into_iter()
             .find(|row| row.intent_id == id.to_string())
             .expect("the intent was written down");
-        assert_eq!(row.state, "succeeded", "the next start reads the outcome, not another dispatch");
+        assert_eq!(
+            row.state, "succeeded",
+            "the next start reads the outcome, not another dispatch"
+        );
     }
 
     #[test]
@@ -415,7 +427,15 @@ mod tests {
             Err(IpcError::unknown(synra_protocol::ErrorCode::DeviceOffline))
         });
 
-        assert_eq!(report, Resumed { attempted: 1, answered: 0, unanswered: 0, failed: 1 });
+        assert_eq!(
+            report,
+            Resumed {
+                attempted: 1,
+                answered: 0,
+                unanswered: 0,
+                failed: 1
+            }
+        );
         let card = crate::commands::intent::intent_list(&state)
             .expect("the board answers")
             .into_iter()
@@ -431,7 +451,15 @@ mod tests {
 
         let report = resume_with(&state, |_| Ok(None));
 
-        assert_eq!(report, Resumed { attempted: 1, answered: 0, unanswered: 1, failed: 0 });
+        assert_eq!(
+            report,
+            Resumed {
+                attempted: 1,
+                answered: 0,
+                unanswered: 1,
+                failed: 0
+            }
+        );
     }
 
     #[test]
@@ -447,7 +475,11 @@ mod tests {
             Some(RequestId::new()),
             synra_store::sqlite::now_ms(),
         );
-        assert!(outstanding(&state).iter().all(|(outstanding, _)| *outstanding != id));
+        assert!(
+            outstanding(&state)
+                .iter()
+                .all(|(outstanding, _)| *outstanding != id)
+        );
     }
 
     #[test]
@@ -468,7 +500,12 @@ mod tests {
         assert_eq!(card.retry, Some(retry));
 
         publish(&state, id, None);
-        assert_eq!(crate::commands::intent::intent_snapshot(&state, id).expect("a card").retry, None);
+        assert_eq!(
+            crate::commands::intent::intent_snapshot(&state, id)
+                .expect("a card")
+                .retry,
+            None
+        );
     }
     #[test]
     fn the_loop_stops_when_it_is_cancelled() {
@@ -482,6 +519,8 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(30));
         cancel.cancel();
-        handle.join().expect("the loop returned after the cancellation");
+        handle
+            .join()
+            .expect("the loop returned after the cancellation");
     }
 }

@@ -109,7 +109,8 @@ pub fn state_in(root: &Root) -> AppState {
 ///
 /// Named rather than random so that a directory found on disk after a crashed run says which test it belongs to — which
 /// is the difference between a five-second answer and a guessing game.
-fn root(label: &str) -> Root {    let unique = std::time::SystemTime::now()
+fn root(label: &str) -> Root {
+    let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_nanos());
     let path = scratch().join(format!("synra-app-{label}-{unique}"));

@@ -5,7 +5,10 @@ use synra_core::bus::EventBus;
 use super::*;
 
 fn notice(message: &str) -> KernelEvent {
-    KernelEvent::Notice { message: message.to_owned(), params: serde_json::json!({}) }
+    KernelEvent::Notice {
+        message: message.to_owned(),
+        params: serde_json::json!({}),
+    }
 }
 
 #[test]

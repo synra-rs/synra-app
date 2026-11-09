@@ -87,7 +87,11 @@ fn a_hosted_page_whose_token_is_unknown_is_refused() {
     let refused = plugin_ui_ready(&state, "page-1").expect_err("no such session");
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
-    let marked = state.hosted_ui.lock().get("page-1").map(|entry| entry.ready);
+    let marked = state
+        .hosted_ui
+        .lock()
+        .get("page-1")
+        .map(|entry| entry.ready);
     assert_eq!(marked, Some(false), "and it is not marked ready");
 }
 
@@ -95,9 +99,10 @@ fn a_hosted_page_whose_token_is_unknown_is_refused() {
 fn a_hosted_page_with_a_live_session_is_marked_ready() {
     let state = crate::testing::state();
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    let nonce = state
-        .ui_sessions
-        .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), now);
+    let nonce =
+        state
+            .ui_sessions
+            .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), now);
     state.hosted_ui.lock().insert(
         "page-2".to_owned(),
         HostedUi {
@@ -111,7 +116,11 @@ fn a_hosted_page_with_a_live_session_is_marked_ready() {
 
     plugin_ui_ready(&state, "page-2").expect("a live session");
 
-    let marked = state.hosted_ui.lock().get("page-2").map(|entry| entry.ready);
+    let marked = state
+        .hosted_ui
+        .lock()
+        .get("page-2")
+        .map(|entry| entry.ready);
     assert_eq!(marked, Some(true));
 }
 
@@ -228,13 +237,21 @@ fn opening_a_page_issues_the_grants_the_user_allowed() {
         .db()
         .record_grants(
             ID,
-            &[("log:*".to_owned(), true), ("network:fetch".to_owned(), false)],
+            &[
+                ("log:*".to_owned(), true),
+                ("network:fetch".to_owned(), false),
+            ],
             crate::testing::FIXED_NOW_MS,
             "sha256-manifest",
         )
         .expect("decisions");
     let request = opened(&state, ID);
-    let entry = state.hosted_ui.lock().get(&request.label).cloned().expect("recorded");
+    let entry = state
+        .hosted_ui
+        .lock()
+        .get(&request.label)
+        .cloned()
+        .expect("recorded");
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
 
     let session = state
@@ -249,8 +266,14 @@ fn opening_a_page_issues_the_grants_the_user_allowed() {
 
     let allowed = synra_capability::Capability::parse("log:write").expect("a capability");
     let refused = synra_capability::Capability::parse("network:fetch").expect("a capability");
-    assert!(session.grants().contains(&allowed), "a granted family did not reach the session");
-    assert!(!session.grants().contains(&refused), "a refused capability reached the session");
+    assert!(
+        session.grants().contains(&allowed),
+        "a granted family did not reach the session"
+    );
+    assert!(
+        !session.grants().contains(&refused),
+        "a refused capability reached the session"
+    );
 }
 
 #[test]
@@ -261,7 +284,10 @@ fn opening_a_page_for_a_plugin_that_is_not_installed_is_refused() {
     let refused = super::open_request(&state, "@acme/absent").expect_err("nothing is installed");
 
     assert_eq!(refused.code, ErrorCode::PluginNotInstalled);
-    assert!(state.hosted_ui.lock().is_empty(), "and nothing was recorded");
+    assert!(
+        state.hosted_ui.lock().is_empty(),
+        "and nothing was recorded"
+    );
 }
 
 #[test]
@@ -273,7 +299,10 @@ fn opening_a_page_for_a_plugin_with_no_ui_is_a_different_refusal() {
     let refused = super::open_request(&state, ID).expect_err("it has no UI");
 
     assert_eq!(refused.code, ErrorCode::Unsupported);
-    assert!(state.hosted_ui.lock().is_empty(), "and no page was recorded");
+    assert!(
+        state.hosted_ui.lock().is_empty(),
+        "and no page was recorded"
+    );
     assert!(state.ui_sessions.is_empty(), "nor a session issued");
 }
 
@@ -317,8 +346,15 @@ fn packages_with_a_shared_name_prefix_have_separate_origins() {
 fn an_address_for_an_unknown_plugin_is_not_split() {
     let ids = [synra_protocol::ids::PluginId::parse("@acme/hello").expect("an id")];
 
-    for url in ["synra-plugin://@acme/other/index.html", "https://example.com/x", "synra-plugin://@acme/hello"] {
-        assert!(super::split_ui_url(url, &ids).is_none(), "{url} must not be served");
+    for url in [
+        "synra-plugin://@acme/other/index.html",
+        "https://example.com/x",
+        "synra-plugin://@acme/hello",
+    ] {
+        assert!(
+            super::split_ui_url(url, &ids).is_none(),
+            "{url} must not be served"
+        );
     }
 }
 
@@ -336,7 +372,10 @@ fn a_bundle_file_is_served_with_its_type() {
     assert_eq!(content_type, "text/html; charset=utf-8");
     assert_eq!(bytes, b"<!doctype html>");
     let (_, script_type) = super::ui_file(&root, "assets/app.js").expect("it is there");
-    assert!(script_type.starts_with("text/javascript"), "got {script_type}");
+    assert!(
+        script_type.starts_with("text/javascript"),
+        "got {script_type}"
+    );
 
     let _ = std::fs::remove_dir_all(Path::new(&root));
 }
@@ -350,7 +389,11 @@ fn a_path_that_leaves_the_bundle_is_refused() {
 
     for path in ["../identity.toml", "../../etc/passwd", "/etc/passwd"] {
         let refused = super::ui_file(&root, path).expect_err("{path} must not be served");
-        assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument, "{path}");
+        assert_eq!(
+            refused.code,
+            synra_protocol::ErrorCode::InvalidArgument,
+            "{path}"
+        );
     }
 
     let _ = std::fs::remove_dir_all(&root);
@@ -390,13 +433,19 @@ fn the_initialization_script_keeps_the_seed_in_the_wrapper_and_calls_the_facade(
         script.contains(&format!("\"token\":{:?}", u128::MAX.to_string())),
         "the token as a **string**, so no digits are lost"
     );
-    assert!(script.contains("\"granted\":[\"log:*\"]"), "the decisions travel with the seed");
+    assert!(
+        script.contains("\"granted\":[\"log:*\"]"),
+        "the decisions travel with the seed"
+    );
     assert!(
         script.contains("\"platformCapabilities\":[\"open_url\"]"),
         "the platform's answer travels with the seed: {script}"
     );
     assert!(script.contains("/* facade */"), "the facade is inline");
-    assert!(script.contains("SynraInjection.boot(seed);"), "and it is called with the seed");
+    assert!(
+        script.contains("SynraInjection.boot(seed);"),
+        "and it is called with the seed"
+    );
     assert!(
         !script.contains("__SYNRA_PLUGIN__"),
         "the seed must not be reachable through a global: {script}"
@@ -413,7 +462,10 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
         .db()
         .record_grants(
             ID,
-            &[("log:*".to_owned(), true), ("network:fetch".to_owned(), false)],
+            &[
+                ("log:*".to_owned(), true),
+                ("network:fetch".to_owned(), false),
+            ],
             crate::testing::FIXED_NOW_MS,
             "sha256-manifest",
         )
@@ -448,7 +500,11 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
         "\"platformCapabilities\":[",
         "\"open_url\"",
     ] {
-        assert!(request.script.contains(expected), "the seed is missing {expected}: {}", request.script);
+        assert!(
+            request.script.contains(expected),
+            "the seed is missing {expected}: {}",
+            request.script
+        );
     }
     assert!(request.script.contains(&format!(
         "\"sdkVersion\":\"{}\"",
@@ -456,7 +512,10 @@ fn opening_a_page_writes_the_environment_the_facade_answers_from() {
     )));
     // ★ And the façade itself is in the script, called with the seed. Without it the page would have a seed and no
     // client — which is the state this whole round exists to end.
-    assert!(request.script.contains("SynraInjection.boot(seed);"), "the façade is called with the seed");
+    assert!(
+        request.script.contains("SynraInjection.boot(seed);"),
+        "the façade is called with the seed"
+    );
     assert!(
         request.script.contains("window.synra"),
         "the façade publishes the client: {}",
@@ -476,9 +535,10 @@ fn a_session_that_expired_is_refused() {
     let state = crate::testing::state();
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
     let long_ago = now - synra_plugin_ui::SESSION_LIFETIME_MS - 1;
-    let nonce = state
-        .ui_sessions
-        .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), long_ago);
+    let nonce =
+        state
+            .ui_sessions
+            .issue_placeholder(&plugin_id(), "1.0.0", CapabilitySet::new(), long_ago);
     state.hosted_ui.lock().insert(
         "page-3".to_owned(),
         HostedUi {
@@ -493,7 +553,11 @@ fn a_session_that_expired_is_refused() {
     let refused = plugin_ui_ready(&state, "page-3").expect_err("the session is too old");
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
-    let marked = state.hosted_ui.lock().get("page-3").map(|entry| entry.ready);
+    let marked = state
+        .hosted_ui
+        .lock()
+        .get("page-3")
+        .map(|entry| entry.ready);
     assert_eq!(marked, Some(false), "and it is not marked ready");
 }
 
@@ -532,8 +596,13 @@ fn hosted_page_with(state: &crate::AppState, grants: &[&str]) -> String {
 fn a_token_that_is_not_a_number_is_an_argument_error() {
     let state = crate::testing::state();
 
-    let refused = super::plugin_ui_rpc(&state, "not-a-number", "device.list", &serde_json::json!({}))
-        .expect_err("a token is a decimal number");
+    let refused = super::plugin_ui_rpc(
+        &state,
+        "not-a-number",
+        "device.list",
+        &serde_json::json!({}),
+    )
+    .expect_err("a token is a decimal number");
 
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
 }
@@ -560,7 +629,13 @@ fn an_unknown_method_is_refused_by_name() {
         .expect_err("that is not an operation");
 
     assert_eq!(refused.code, ErrorCode::Unsupported);
-    assert_eq!(refused.params.get("method").and_then(|value| value.as_str()), Some("device.explode"));
+    assert_eq!(
+        refused
+            .params
+            .get("method")
+            .and_then(|value| value.as_str()),
+        Some("device.explode")
+    );
 }
 
 #[test]
@@ -614,14 +689,23 @@ fn device_list_answers_the_four_fields_a_plugin_may_see() {
     let devices = answer.as_array().expect("a bare array");
 
     assert_eq!(devices.len(), 1, "{answer}");
-    assert_eq!(devices[0]["deviceId"], "11111111-1111-4111-8111-111111111111");
+    assert_eq!(
+        devices[0]["deviceId"],
+        "11111111-1111-4111-8111-111111111111"
+    );
     assert_eq!(devices[0]["displayName"], "Laptop");
     assert_eq!(devices[0]["platform"], "linux");
     assert_eq!(devices[0]["online"], false);
     // ★ The reduced shape, not the host's card: a plugin may not receive an address seen on the network, a blocked flag
     // or a transfer summary.
-    assert!(devices[0].get("address").is_none(), "the plugin received the host's card: {answer}");
-    assert!(devices[0].get("transfer").is_none(), "the plugin received the host's card: {answer}");
+    assert!(
+        devices[0].get("address").is_none(),
+        "the plugin received the host's card: {answer}"
+    );
+    assert!(
+        devices[0].get("transfer").is_none(),
+        "the plugin received the host's card: {answer}"
+    );
 }
 
 #[test]
@@ -663,7 +747,14 @@ fn storage_page() -> (crate::testing::Root, crate::AppState, String) {
     let (root, state) = crate::testing::file_state();
     state
         .db()
-        .insert_plugin(plugin_id().as_str(), true, true, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .insert_plugin(
+            plugin_id().as_str(),
+            true,
+            true,
+            "installed",
+            crate::testing::FIXED_NOW_MS,
+            crate::testing::FIXED_NOW_MS,
+        )
         .expect("a plugin row");
     let token = hosted_page_with(&state, &["storage:local:read", "storage:local:write"]);
     (root, state, token)
@@ -683,14 +774,24 @@ fn storage_round_trips_through_the_channel() {
     assert_eq!(written, serde_json::Value::Null);
 
     assert_eq!(
-        super::plugin_ui_rpc(&state, &token, "storage.get", &serde_json::json!({"key": "draft"}))
-            .expect("a read"),
+        super::plugin_ui_rpc(
+            &state,
+            &token,
+            "storage.get",
+            &serde_json::json!({"key": "draft"})
+        )
+        .expect("a read"),
         serde_json::json!("hello")
     );
     // An absent key is `null`, the client's `string | null` — not an error and not an empty string.
     assert_eq!(
-        super::plugin_ui_rpc(&state, &token, "storage.get", &serde_json::json!({"key": "absent"}))
-            .expect("a read"),
+        super::plugin_ui_rpc(
+            &state,
+            &token,
+            "storage.get",
+            &serde_json::json!({"key": "absent"})
+        )
+        .expect("a read"),
         serde_json::Value::Null
     );
     assert_eq!(
@@ -698,18 +799,29 @@ fn storage_round_trips_through_the_channel() {
         serde_json::json!(["draft"])
     );
     assert_eq!(
-        super::plugin_ui_rpc(&state, &token, "storage.quota", &serde_json::json!({})).expect("quota"),
+        super::plugin_ui_rpc(&state, &token, "storage.quota", &serde_json::json!({}))
+            .expect("quota"),
         serde_json::json!({"usedBytes": 5, "maxBytes": 64 * 1024 * 1024})
     );
 
     assert_eq!(
-        super::plugin_ui_rpc(&state, &token, "storage.delete", &serde_json::json!({"key": "draft"}))
-            .expect("a delete"),
+        super::plugin_ui_rpc(
+            &state,
+            &token,
+            "storage.delete",
+            &serde_json::json!({"key": "draft"})
+        )
+        .expect("a delete"),
         serde_json::json!(true)
     );
     assert_eq!(
-        super::plugin_ui_rpc(&state, &token, "storage.get", &serde_json::json!({"key": "draft"}))
-            .expect("a read"),
+        super::plugin_ui_rpc(
+            &state,
+            &token,
+            "storage.get",
+            &serde_json::json!({"key": "draft"})
+        )
+        .expect("a read"),
         serde_json::Value::Null
     );
 }
@@ -720,7 +832,14 @@ fn a_storage_call_without_the_capability_is_refused() {
     let (_root, state) = crate::testing::file_state();
     state
         .db()
-        .insert_plugin(plugin_id().as_str(), true, true, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .insert_plugin(
+            plugin_id().as_str(),
+            true,
+            true,
+            "installed",
+            crate::testing::FIXED_NOW_MS,
+            crate::testing::FIXED_NOW_MS,
+        )
         .expect("a plugin row");
     let read_only = hosted_page_with(&state, &["storage:local:read"]);
 
@@ -734,11 +853,17 @@ fn a_storage_call_without_the_capability_is_refused() {
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
     assert_eq!(
-        refused.params.get("capability").and_then(|value| value.as_str()),
+        refused
+            .params
+            .get("capability")
+            .and_then(|value| value.as_str()),
         Some("storage:local:write")
     );
     assert_eq!(
-        state.db().storage_get(plugin_id().as_str(), "k").expect("a read"),
+        state
+            .db()
+            .storage_get(plugin_id().as_str(), "k")
+            .expect("a read"),
         None,
         "a refused write left something behind"
     );
@@ -748,11 +873,19 @@ fn a_storage_call_without_the_capability_is_refused() {
 fn a_key_that_is_not_a_string_is_an_argument_error() {
     let (_root, state, token) = storage_page();
 
-    let refused = super::plugin_ui_rpc(&state, &token, "storage.get", &serde_json::json!({"key": 7}))
-        .expect_err("a key is a string");
+    let refused = super::plugin_ui_rpc(
+        &state,
+        &token,
+        "storage.get",
+        &serde_json::json!({"key": 7}),
+    )
+    .expect_err("a key is a string");
 
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("key"));
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("key")
+    );
 }
 
 #[test]
@@ -760,7 +893,11 @@ fn a_write_replaces_rather_than_double_counting_the_old_value() {
     // ★ The arithmetic a real 64 MiB ceiling cannot exercise: rewriting a key with a slightly larger value must not
     // count the value it replaces twice.
     assert_eq!(super::storage_after(10, 4, 6), 12);
-    assert_eq!(super::storage_after(10, 8, 3), 5, "a smaller replacement shrinks the store");
+    assert_eq!(
+        super::storage_after(10, 8, 3),
+        5,
+        "a smaller replacement shrinks the store"
+    );
     assert_eq!(super::storage_after(0, 0, 0), 0);
     // A stored value larger than the measured usage cannot happen through the store, but saturating keeps a corrupt
     // measurement from wrapping into a tiny number and letting an oversized write through.
@@ -795,7 +932,10 @@ impl CommandRunner for RecordingRunner {
     ) -> Result<String, PlatformError> {
         self.calls.lock().push((
             program.to_owned(),
-            arguments.iter().map(|argument| (*argument).to_owned()).collect(),
+            arguments
+                .iter()
+                .map(|argument| (*argument).to_owned())
+                .collect(),
             input.map(str::to_owned),
         ));
         Ok(self.answer.clone())
@@ -803,7 +943,14 @@ impl CommandRunner for RecordingRunner {
 }
 
 /// A state whose platform records instead of acting, and a page holding these grants.
-fn platform_page(grants: &[&str]) -> (crate::testing::Root, crate::AppState, String, RecordingRunner) {
+fn platform_page(
+    grants: &[&str],
+) -> (
+    crate::testing::Root,
+    crate::AppState,
+    String,
+    RecordingRunner,
+) {
     let (root, mut state) = crate::testing::file_state();
     let answer = if cfg!(windows) {
         serde_json::to_string("from the clipboard").expect("nullable text JSON")
@@ -824,14 +971,17 @@ fn platform_page(grants: &[&str]) -> (crate::testing::Root, crate::AppState, Str
 
 #[test]
 fn reading_the_clipboard_answers_with_the_platforms_text() {
-    let (_root, state, token, runner) =
-        platform_page(&["platform:read-clipboard"]);
+    let (_root, state, token, runner) = platform_page(&["platform:read-clipboard"]);
 
     let answer = super::plugin_ui_rpc(&state, &token, "clipboard.read", &serde_json::json!({}))
         .expect("the clipboard");
 
     assert_eq!(answer, serde_json::json!("from the clipboard"));
-    assert_eq!(runner.calls.lock().len(), 1, "the platform was asked exactly once");
+    assert_eq!(
+        runner.calls.lock().len(),
+        1,
+        "the platform was asked exactly once"
+    );
 }
 
 #[test]
@@ -850,10 +1000,16 @@ fn writing_the_clipboard_without_the_write_grant_never_reaches_the_platform() {
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
     assert_eq!(
-        refused.params.get("capability").and_then(|value| value.as_str()),
+        refused
+            .params
+            .get("capability")
+            .and_then(|value| value.as_str()),
         Some("platform:write-clipboard")
     );
-    assert!(runner.calls.lock().is_empty(), "a refused write launched a program");
+    assert!(
+        runner.calls.lock().is_empty(),
+        "a refused write launched a program"
+    );
 }
 
 #[test]
@@ -907,7 +1063,10 @@ fn opening_a_url_hands_it_to_the_platform() {
     let reached_url = {
         let calls = runner.calls.lock();
         assert_eq!(calls.len(), 1, "the opener was launched once");
-        calls[0].1.iter().any(|argument| argument == "https://example.com/page")
+        calls[0]
+            .1
+            .iter()
+            .any(|argument| argument == "https://example.com/page")
     };
     assert!(reached_url, "the URL did not reach the platform");
 }
@@ -927,8 +1086,14 @@ fn a_url_the_platform_refuses_never_reaches_the_runner() {
     // The refusal is about the argument, and it names the field — a user can act on that; "internal" would send them to
     // the logs for a URL the policy already explained.
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("url"));
-    assert!(runner.calls.lock().is_empty(), "a refused URL was opened anyway");
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("url")
+    );
+    assert!(
+        runner.calls.lock().is_empty(),
+        "a refused URL was opened anyway"
+    );
 }
 
 #[test]
@@ -952,8 +1117,14 @@ fn a_notification_carries_its_title_and_body() {
             calls[0].1.join(" ")
         }
     };
-    assert!(joined.contains("Build"), "the title did not reach the notifier: {joined}");
-    assert!(joined.contains("it finished"), "the body did not reach the notifier: {joined}");
+    assert!(
+        joined.contains("Build"),
+        "the title did not reach the notifier: {joined}"
+    );
+    assert!(
+        joined.contains("it finished"),
+        "the body did not reach the notifier: {joined}"
+    );
 }
 
 // ── Outbound network ────────────────────────────────────────────────────────────────────────────
@@ -966,9 +1137,9 @@ fn network_page() -> (crate::testing::Root, crate::AppState, String) {
         Arc::clone(&state.platform),
     ));
     let backend = Backend::new(Arc::new(ScriptedBackend::new()));
-    let state = state.with_plugins(Arc::new(Mutex::new(
-        synra_core::dispatch::PluginSet::new(backend, host),
-    )));
+    let state = state.with_plugins(Arc::new(Mutex::new(synra_core::dispatch::PluginSet::new(
+        backend, host,
+    ))));
     let token = hosted_page(&state);
     (root, state, token)
 }
@@ -1007,7 +1178,10 @@ fn a_byte_body_is_refused_before_the_request_is_made() {
     .expect_err("a byte body cannot cross this channel");
 
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("body"));
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("body")
+    );
 }
 
 #[test]
@@ -1076,12 +1250,30 @@ fn a_platform_action_is_named_the_way_the_client_names_it() {
     // for every action on a host that supports all of them — the exact bug this mapping exists to prevent.
     use synra_platform::PlatformAction as Action;
 
-    assert_eq!(super::platform_capability(Action::OpenUrl), Some("open_url"));
-    assert_eq!(super::platform_capability(Action::OpenPath), Some("open_path"));
-    assert_eq!(super::platform_capability(Action::RevealPath), Some("reveal_path"));
-    assert_eq!(super::platform_capability(Action::SimulateKeys), Some("simulate_keys"));
-    assert_eq!(super::platform_capability(Action::ReadClipboard), Some("clipboard_read"));
-    assert_eq!(super::platform_capability(Action::WriteClipboard), Some("clipboard_write"));
+    assert_eq!(
+        super::platform_capability(Action::OpenUrl),
+        Some("open_url")
+    );
+    assert_eq!(
+        super::platform_capability(Action::OpenPath),
+        Some("open_path")
+    );
+    assert_eq!(
+        super::platform_capability(Action::RevealPath),
+        Some("reveal_path")
+    );
+    assert_eq!(
+        super::platform_capability(Action::SimulateKeys),
+        Some("simulate_keys")
+    );
+    assert_eq!(
+        super::platform_capability(Action::ReadClipboard),
+        Some("clipboard_read")
+    );
+    assert_eq!(
+        super::platform_capability(Action::WriteClipboard),
+        Some("clipboard_write")
+    );
     assert_eq!(super::platform_capability(Action::Notify), Some("notify"));
 }
 
@@ -1093,15 +1285,30 @@ fn a_page_may_only_stay_on_itself() {
     let opened = "synra-plugin://acme/hello/index";
 
     assert!(super::stays_on_page(opened, opened));
-    assert!(super::stays_on_page("synra-plugin://acme/hello/index#/settings", opened));
-    assert!(super::stays_on_page("synra-plugin://acme/hello/index#", opened));
+    assert!(super::stays_on_page(
+        "synra-plugin://acme/hello/index#/settings",
+        opened
+    ));
+    assert!(super::stays_on_page(
+        "synra-plugin://acme/hello/index#",
+        opened
+    ));
 
     // Another page of the same bundle is still a navigation, and would keep this page's authority.
-    assert!(!super::stays_on_page("synra-plugin://acme/hello/other", opened));
+    assert!(!super::stays_on_page(
+        "synra-plugin://acme/hello/other",
+        opened
+    ));
     // The prefix trap: a page whose address merely starts with the opened one.
-    assert!(!super::stays_on_page("synra-plugin://acme/hello/index2", opened));
+    assert!(!super::stays_on_page(
+        "synra-plugin://acme/hello/index2",
+        opened
+    ));
     // Another plugin's origin, and the schemes a page might use to leave the app entirely.
-    assert!(!super::stays_on_page("synra-plugin://acme/other/index", opened));
+    assert!(!super::stays_on_page(
+        "synra-plugin://acme/other/index",
+        opened
+    ));
     assert!(!super::stays_on_page("https://example.com/", opened));
     assert!(!super::stays_on_page("file:///etc/passwd", opened));
     assert!(!super::stays_on_page("data:text/html,hello", opened));
@@ -1114,8 +1321,15 @@ fn a_page_may_only_stay_on_itself() {
 ///
 /// The script is keyed by the call's **payload**, so `args_json` must be what `self.invoke` will serialise: an action
 /// asked for without arguments arrives as `null`, not as `{}`.
-fn action_page(answer: synra_plugin_host::Scripted, args_json: &str)
-    -> (crate::testing::Root, crate::AppState, String, Arc<ScriptedBackend>) {
+fn action_page(
+    answer: synra_plugin_host::Scripted,
+    args_json: &str,
+) -> (
+    crate::testing::Root,
+    crate::AppState,
+    String,
+    Arc<ScriptedBackend>,
+) {
     let backend = Arc::new(ScriptedBackend::new());
     backend.script(
         &synra_plugin_host::Work::InvokeAction {
@@ -1137,11 +1351,23 @@ fn action_page_on(
     let plugin = plugin_id();
     state
         .db()
-        .insert_plugin(plugin.as_str(), true, true, "installed", crate::testing::FIXED_NOW_MS, crate::testing::FIXED_NOW_MS)
+        .insert_plugin(
+            plugin.as_str(),
+            true,
+            true,
+            "installed",
+            crate::testing::FIXED_NOW_MS,
+            crate::testing::FIXED_NOW_MS,
+        )
         .expect("a plugin row");
     state
         .db()
-        .record_plugin_action(plugin.as_str(), "send", Some(r#"{"type":"object"}"#), Some("Send a message"))
+        .record_plugin_action(
+            plugin.as_str(),
+            "send",
+            Some(r#"{"type":"object"}"#),
+            Some("Send a message"),
+        )
         .expect("a declaration");
 
     let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
@@ -1169,7 +1395,8 @@ fn action_page_on(
 fn the_actions_a_plugin_declared_are_listed_with_their_schema() {
     // ★ `args` is parsed rather than a JSON string inside JSON: the contract's `ActionDescriptor` declares it as
     // `unknown`, and a page rendering a form should not have to parse a string it was handed inside an object.
-    let (_root, state, token, _backend) = action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
+    let (_root, state, token, _backend) =
+        action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
 
     let answer = super::plugin_ui_rpc(&state, &token, "self.actions", &serde_json::json!({}))
         .expect("the list");
@@ -1186,8 +1413,10 @@ fn the_actions_a_plugin_declared_are_listed_with_their_schema() {
 
 #[test]
 fn an_action_runs_on_the_headless_half() {
-    let (_root, state, token, backend) =
-        action_page(synra_plugin_host::Scripted::Ok(r#"{"sent":true}"#.to_owned()), r#"{"to":"bob"}"#);
+    let (_root, state, token, backend) = action_page(
+        synra_plugin_host::Scripted::Ok(r#"{"sent":true}"#.to_owned()),
+        r#"{"to":"bob"}"#,
+    );
 
     let answer = super::plugin_ui_rpc(
         &state,
@@ -1206,7 +1435,8 @@ fn an_action_this_plugin_never_declared_is_refused_before_the_call() {
     // ★ The ownership check the design asks for. `Work::InvokeAction` carries a name and nothing about who declared
     // it; without this lookup a page could name any action, which is one plugin driving another through a token it was
     // given for itself.
-    let (_root, state, token, backend) = action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
+    let (_root, state, token, backend) =
+        action_page(synra_plugin_host::Scripted::Ok("null".to_owned()), "null");
 
     let refused = super::plugin_ui_rpc(
         &state,
@@ -1217,8 +1447,15 @@ fn an_action_this_plugin_never_declared_is_refused_before_the_call() {
     .expect_err("that action is not this plugin's");
 
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("action"));
-    assert_eq!(backend.calls(), 0, "an undeclared action reached the headless half");
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("action")
+    );
+    assert_eq!(
+        backend.calls(),
+        0,
+        "an undeclared action reached the headless half"
+    );
 }
 
 #[test]
@@ -1242,7 +1479,10 @@ fn a_structured_failure_keeps_the_code_the_plugin_chose() {
 
     assert_eq!(refused.code, ErrorCode::DeviceOffline);
     assert_eq!(
-        refused.params.get("reason").and_then(|value| value.as_str()),
+        refused
+            .params
+            .get("reason")
+            .and_then(|value| value.as_str()),
         Some("the other end is away")
     );
 }
@@ -1286,7 +1526,10 @@ fn a_page_without_the_transfer_grant_cannot_send() {
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
     assert_eq!(
-        refused.params.get("capability").and_then(|value| value.as_str()),
+        refused
+            .params
+            .get("capability")
+            .and_then(|value| value.as_str()),
         Some("file:transfer:send")
     );
 }
@@ -1326,7 +1569,10 @@ fn a_transfer_argument_this_channel_cannot_honour_is_named() {
     )
     .expect_err("not one path component");
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("fileName"));
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("fileName")
+    );
 
     // The device id is a uuid; a made-up string is the caller's mistake, not a failed dial.
     let refused = super::plugin_ui_rpc(
@@ -1337,7 +1583,10 @@ fn a_transfer_argument_this_channel_cannot_honour_is_named() {
     )
     .expect_err("not a device id");
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("to"));
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("to")
+    );
 
     // And bytes that are not base64 never become a temp file.
     let refused = super::plugin_ui_rpc(
@@ -1352,7 +1601,10 @@ fn a_transfer_argument_this_channel_cannot_honour_is_named() {
     )
     .expect_err("not base64");
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
-    assert_eq!(refused.params.get("field").and_then(|value| value.as_str()), Some("data"));
+    assert_eq!(
+        refused.params.get("field").and_then(|value| value.as_str()),
+        Some("data")
+    );
 }
 
 #[test]
@@ -1381,7 +1633,9 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
 
     let uploads = state.paths.cache_dir().join("plugin-transfers");
     assert_eq!(
-        std::fs::read_dir(&uploads).map(|entries| entries.count()).unwrap_or(0),
+        std::fs::read_dir(&uploads)
+            .map(|entries| entries.count())
+            .unwrap_or(0),
         1,
         "the upload owns one directory while it is open"
     );
@@ -1424,11 +1678,12 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
     .expect("the upload aborts");
     assert_eq!(aborted.get("aborted"), Some(&serde_json::Value::Bool(true)));
     assert_eq!(
-        std::fs::read_dir(&uploads).map(|entries| entries.count()).unwrap_or(0),
+        std::fs::read_dir(&uploads)
+            .map(|entries| entries.count())
+            .unwrap_or(0),
         0,
         "the upload's directory went with it"
     );
-
 }
 
 #[test]
@@ -1478,7 +1733,10 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
         &serde_json::json!({"uploadId": upload}),
     )
     .expect("finish answers before the dial");
-    assert!(finished.get("transferId").is_some(), "an id, not a completed send");
+    assert!(
+        finished.get("transferId").is_some(),
+        "an id, not a completed send"
+    );
 
     // The worker fails against port 1 and removes its row; the test waits for that rather than for a fixed sleep.
     //
@@ -1494,7 +1752,13 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
     }
     assert!(state.transfers.is_empty(), "the failed send left no row");
     assert!(
-        !state.paths.cache_dir().join("plugin-transfers").read_dir().map(|entries| entries.count() > 0).unwrap_or(false),
+        !state
+            .paths
+            .cache_dir()
+            .join("plugin-transfers")
+            .read_dir()
+            .map(|entries| entries.count() > 0)
+            .unwrap_or(false),
         "the upload's files were left in the cache"
     );
 }
@@ -1515,7 +1779,10 @@ fn a_chunked_transfer_the_page_never_finishes_uses_no_send() {
         }),
     )
     .expect("the upload begins");
-    let upload = begun.get("uploadId").and_then(|value| value.as_str()).expect("an id");
+    let upload = begun
+        .get("uploadId")
+        .and_then(|value| value.as_str())
+        .expect("an id");
 
     let refused = super::plugin_ui_rpc(
         &state,
@@ -1550,7 +1817,10 @@ fn a_file_larger_than_one_ipc_message_is_refused_by_size() {
 
     assert_eq!(refused.code, ErrorCode::PayloadTooLarge);
     assert_eq!(
-        refused.params.get("maxBytes").and_then(|value| value.as_u64()),
+        refused
+            .params
+            .get("maxBytes")
+            .and_then(|value| value.as_u64()),
         Some(super::MAX_PLUGIN_TRANSFER_BYTES as u64)
     );
 }
@@ -1636,7 +1906,13 @@ fn closing_a_page_ends_its_session() {
 
     assert!(state.hosted_ui.lock().get("page-rpc").is_none());
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    assert!(state.ui_sessions.validate(nonce, &plugin_id(), "1.0.0", now).is_err(), "the session is gone");
+    assert!(
+        state
+            .ui_sessions
+            .validate(nonce, &plugin_id(), "1.0.0", now)
+            .is_err(),
+        "the session is gone"
+    );
 }
 
 #[cfg(feature = "tauri-shell")]

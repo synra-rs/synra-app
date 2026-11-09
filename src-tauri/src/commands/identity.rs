@@ -3,7 +3,7 @@
 //! Two commands, and they exist together because a device that cannot be renamed is one whose identity users report as
 //! broken on the other side: "the wrong name" is only diagnosable if this side can show and change its own.
 
-use synra_ipc::{IpcError, IdentitySnapshot};
+use synra_ipc::{IdentitySnapshot, IpcError};
 
 use crate::state::AppState;
 
@@ -35,18 +35,20 @@ pub fn identity_set_display_name(state: &AppState, name: &str) -> Result<(), Ipc
     // refuses.
     if name.is_empty() {
         return Err(
-            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-                .with_params(serde_json::json!({"field": "name", "reason": "a name cannot be empty"})),
+            IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"field": "name", "reason": "a name cannot be empty"}),
+            ),
         );
     }
     synra_core::check_display_name(name).map_err(|error| {
-        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({
+        IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+            serde_json::json!({
                 "field": "name",
                 "reason": error.to_string(),
                 // ★ Carried so the interface can set `maxlength` rather than discovering the limit by being refused.
                 "maxChars": synra_core::MAX_DISPLAY_NAME_LEN,
-            }))
+            }),
+        )
     })?;
 
     // ★ The identity lock does not span the registry update.
@@ -60,13 +62,14 @@ pub fn identity_set_display_name(state: &AppState, name: &str) -> Result<(), Ipc
         identity
             .rename(&state.db(), name, state.started_at_ms)
             .map_err(|error| {
-                IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
-                    .with_params(serde_json::json!({
-                    "field": "name",
-                    "reason": error.to_string(),
-                    // ★ Carried so the interface can set `maxlength` rather than discovering the limit by being refused.
-                    "maxChars": synra_core::MAX_DISPLAY_NAME_LEN,
-                }))
+                IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
+                    serde_json::json!({
+                        "field": "name",
+                        "reason": error.to_string(),
+                        // ★ Carried so the interface can set `maxlength` rather than discovering the limit by being refused.
+                        "maxChars": synra_core::MAX_DISPLAY_NAME_LEN,
+                    }),
+                )
             })?;
     }
 
@@ -106,8 +109,14 @@ mod tests {
     fn a_fresh_device_has_a_name_and_is_marked_as_generated() {
         let state = testing::state();
         let snapshot = identity_get(&state).expect("an identity");
-        assert!(snapshot.name_is_default, "a fresh device's name was generated");
-        assert!(is_generated(&snapshot.display_name), "the snapshot agrees with the rule");
+        assert!(
+            snapshot.name_is_default,
+            "a fresh device's name was generated"
+        );
+        assert!(
+            is_generated(&snapshot.display_name),
+            "the snapshot agrees with the rule"
+        );
     }
 
     #[test]
@@ -116,7 +125,10 @@ mod tests {
         identity_set_display_name(&state, "Kitchen tablet").expect("a rename");
         let snapshot = identity_get(&state).expect("an identity");
         assert_eq!(snapshot.display_name, "Kitchen tablet");
-        assert!(!snapshot.name_is_default, "a chosen name is not a generated one");
+        assert!(
+            !snapshot.name_is_default,
+            "a chosen name is not a generated one"
+        );
     }
 
     #[test]
@@ -126,7 +138,10 @@ mod tests {
         let (root, state) = testing::file_state();
         identity_set_display_name(&state, "Kitchen tablet").expect("a rename");
         let reopened = testing::reopen(&state);
-        assert_eq!(identity_get(&reopened).expect("an identity").display_name, "Kitchen tablet");
+        assert_eq!(
+            identity_get(&reopened).expect("an identity").display_name,
+            "Kitchen tablet"
+        );
         drop(root);
     }
 
@@ -147,7 +162,11 @@ mod tests {
         let before = identity_get(&state).expect("an identity").display_name;
         let error = identity_set_display_name(&state, "   ").expect_err("a blank name");
         assert_eq!(error.code, ErrorCode::InvalidArgument);
-        assert_eq!(identity_get(&state).expect("an identity").display_name, before, "nothing changed");
+        assert_eq!(
+            identity_get(&state).expect("an identity").display_name,
+            before,
+            "nothing changed"
+        );
     }
 
     #[test]
@@ -155,7 +174,8 @@ mod tests {
         // A newline in a name is how a log line is forged and a carriage return is how a device-list row is rewritten.
         // The kernel refuses it; this reports the refusal rather than restating the rule.
         let state = testing::state();
-        let error = identity_set_display_name(&state, "Study\nPC").expect_err("a name with a newline in it");
+        let error = identity_set_display_name(&state, "Study\nPC")
+            .expect_err("a name with a newline in it");
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert_eq!(
             identity_get(&state).expect("an identity").display_name,
@@ -174,14 +194,18 @@ mod tests {
         // called `***` is unusual, not invalid, and refusing it would mean the shell and the CLI disagree.
         let state = testing::state();
         identity_set_display_name(&state, "***").expect("a name of punctuation");
-        assert_eq!(identity_get(&state).expect("an identity").display_name, "***");
+        assert_eq!(
+            identity_get(&state).expect("an identity").display_name,
+            "***"
+        );
     }
 
     #[test]
     fn a_name_too_long_to_fit_a_device_card_is_refused_with_the_limit_in_the_message() {
         let state = testing::state();
         let too_long = "a".repeat(synra_core::MAX_DISPLAY_NAME_LEN + 1);
-        let error = identity_set_display_name(&state, &too_long).expect_err("a name that cannot fit");
+        let error =
+            identity_set_display_name(&state, &too_long).expect_err("a name that cannot fit");
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert_eq!(
             error.params["maxChars"].as_u64(),
@@ -195,12 +219,18 @@ mod tests {
         let state = testing::state();
         let at_limit = "a".repeat(synra_core::MAX_DISPLAY_NAME_LEN);
         identity_set_display_name(&state, &at_limit).expect("a name at the limit");
-        assert_eq!(identity_get(&state).expect("an identity").display_name, at_limit);
+        assert_eq!(
+            identity_get(&state).expect("an identity").display_name,
+            at_limit
+        );
     }
 
     #[test]
     fn a_state_can_be_built_without_a_plugin_host() {
         let state = testing::state();
-        assert!(state.plugin_set().is_err(), "no engine means a refusal, not an empty set");
+        assert!(
+            state.plugin_set().is_err(),
+            "no engine means a refusal, not an empty set"
+        );
     }
 }

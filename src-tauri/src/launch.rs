@@ -51,8 +51,12 @@ where
 {
     let mut args = args.into_iter();
     let _program = args.next()?;
-    args.map(PathBuf::from)
-        .find(|path| path.is_file() && path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("synra")))
+    args.map(PathBuf::from).find(|path| {
+        path.is_file()
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("synra"))
+    })
 }
 
 #[cfg(test)]
@@ -63,9 +67,19 @@ mod tests {
     fn a_package_is_installed_updated_or_left_alone_by_its_version() {
         assert_eq!(action(None, "1.0.0"), PackageAction::Install);
         assert_eq!(action(Some("1.0.0"), "2.0.0"), PackageAction::Update);
-        assert_eq!(action(Some("1.9.0"), "1.10.0"), PackageAction::Update, "version order, not string order");
-        assert_eq!(action(Some("2.0.0"), "2.0.0"), PackageAction::AlreadyInstalled);
-        assert_eq!(action(Some("2.0.0"), "1.0.0"), PackageAction::NewerInstalled);
+        assert_eq!(
+            action(Some("1.9.0"), "1.10.0"),
+            PackageAction::Update,
+            "version order, not string order"
+        );
+        assert_eq!(
+            action(Some("2.0.0"), "2.0.0"),
+            PackageAction::AlreadyInstalled
+        );
+        assert_eq!(
+            action(Some("2.0.0"), "1.0.0"),
+            PackageAction::NewerInstalled
+        );
     }
 
     #[test]
@@ -92,7 +106,10 @@ mod tests {
         // is the earlier, clearer answer.
         let directory = root.join("folder.synra");
         std::fs::create_dir_all(&directory).expect("a directory");
-        assert_eq!(package_from_args(["synra-app.exe".to_owned(), directory.display().to_string()]), None);
+        assert_eq!(
+            package_from_args(["synra-app.exe".to_owned(), directory.display().to_string()]),
+            None
+        );
         assert_eq!(package_from_args(["synra-app.exe".to_owned()]), None);
 
         let _ = std::fs::remove_dir_all(&root);

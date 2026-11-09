@@ -31,12 +31,18 @@ fn an_answer_with_a_version_is_what_gets_recorded() {
     // version than the one sent (a build that re-pointed the active row) must not be recorded as holding ours.
     let events = [verified(), answered(true, Some("2.0.0"), None)];
 
-    assert_eq!(verdict(&events, "1.2.3"), Verdict::Installed("2.0.0".to_owned()));
+    assert_eq!(
+        verdict(&events, "1.2.3"),
+        Verdict::Installed("2.0.0".to_owned())
+    );
 }
 
 #[test]
 fn a_refusal_records_nothing_and_keeps_its_reason() {
-    let events = [verified(), answered(false, None, Some("signature did not cover the bytes"))];
+    let events = [
+        verified(),
+        answered(false, None, Some("signature did not cover the bytes")),
+    ];
 
     assert_eq!(
         verdict(&events, "1.2.3"),
@@ -59,7 +65,10 @@ fn no_answer_falls_back_to_the_version_that_was_pushed() {
     // fact available, and it is a better answer than "nothing happened".
     let events = [verified()];
 
-    assert_eq!(verdict(&events, "1.2.3"), Verdict::Installed("1.2.3".to_owned()));
+    assert_eq!(
+        verdict(&events, "1.2.3"),
+        Verdict::Installed("1.2.3".to_owned())
+    );
 }
 
 #[test]

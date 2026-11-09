@@ -16,7 +16,6 @@ use synra_protocol::ErrorCode;
 
 use crate::state::AppState;
 
-
 /// What the loaded plugin set knows about each installed plugin.
 ///
 /// # ★ Why the store cannot answer this
@@ -43,7 +42,10 @@ struct LoadedPlugin {
 ///
 /// A shell with no engine answers "not loaded, no version, nothing refused" for all of them — which is true of a shell
 /// that has no engine, and not a fallback.
-fn loaded_plugins(state: &AppState, installed: &[synra_store::records::PluginRow]) -> Vec<LoadedPlugin> {
+fn loaded_plugins(
+    state: &AppState,
+    installed: &[synra_store::records::PluginRow],
+) -> Vec<LoadedPlugin> {
     let Ok(set) = state.plugin_set() else {
         return installed.iter().map(|_| LoadedPlugin::default()).collect();
     };
@@ -75,10 +77,16 @@ fn loaded_plugins(state: &AppState, installed: &[synra_store::records::PluginRow
 /// Because a bundle is exactly the moment when the *whole* picture is wanted, including the parts that are inconvenient
 /// — so it is the one command that should not stop at the first bad row. A corrupt setting must not be the reason a
 /// user cannot get help; the value goes in as the text it is, and the omission list says it was unreadable.
-pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<DiagExportResult, IpcError> {
+pub fn diag_export(
+    state: &AppState,
+    options: &DiagExportOptions,
+) -> Result<DiagExportResult, IpcError> {
     let (devices, plugins) = {
         let db = state.db();
-        (db.paired_devices().map_err(internal)?, db.plugins().map_err(internal)?)
+        (
+            db.paired_devices().map_err(internal)?,
+            db.plugins().map_err(internal)?,
+        )
     };
 
     // ★ The plan is built with the sections this shell can fill, and the ones it cannot are stated as omissions.
@@ -151,13 +159,18 @@ pub fn diag_export(state: &AppState, options: &DiagExportOptions) -> Result<Diag
         if let Some(guard) = state.log.as_ref() {
             guard.flush();
         }
-        let wanted = options.log_lines.map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
-        sources.log_lines = Some(
-            synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines,
-        );
+        let wanted = options
+            .log_lines
+            .map_or(synra_observe::logging::DEFAULT_TAIL_LINES, |n| n as usize);
+        sources.log_lines =
+            Some(synra_observe::logging::tail(state.paths.log_dir(), wanted, true, None).lines);
     }
 
-    let mut plan = BundlePlan::plan(sources, state.started_at_ms, destination(state, state.next_bundle_id()));
+    let mut plan = BundlePlan::plan(
+        sources,
+        state.started_at_ms,
+        destination(state, state.next_bundle_id()),
+    );
     if let Some(lines) = options.log_lines {
         plan.set_log_tail_lines(lines as usize);
     }
@@ -324,9 +337,7 @@ pub fn diag_logs_tail(state: &AppState, lines: Option<u32>) -> Result<Vec<String
 /// # Errors
 ///
 /// Never in practice: an unreadable report is skipped by `read_all`, and a missing directory is an empty list.
-pub fn diag_crashes(
-    state: &AppState,
-) -> Result<Vec<synra_observe::crash::CrashReport>, IpcError> {
+pub fn diag_crashes(state: &AppState) -> Result<Vec<synra_observe::crash::CrashReport>, IpcError> {
     let mut reports = synra_observe::crash::CrashStore::at(state.paths.crash_dir()).read_all();
     reports.sort_by_key(|report| std::cmp::Reverse(report.at_ms));
     Ok(reports)
@@ -417,17 +428,16 @@ pub fn diag_metrics(state: &AppState) -> Result<synra_observe::metrics::MetricsS
     // shell that keeps producing answers for it; the number is the only place that is visible without reading the directory.
     state.metrics.gauge_set(
         &synra_observe::metrics::SeriesKey::new("late_results", []),
-        i64::try_from(
-            synra_core::late_queue::LateQueue::in_data_dir(state.paths.data_dir()).len(),
-        )
-        .unwrap_or(i64::MAX),
+        i64::try_from(synra_core::late_queue::LateQueue::in_data_dir(state.paths.data_dir()).len())
+            .unwrap_or(i64::MAX),
     );
     Ok(state.metrics.snapshot())
 }
 
 /// The one place a database or filesystem failure becomes an `IpcError`.
 fn internal(error: impl std::fmt::Display) -> IpcError {
-    IpcError::unknown(ErrorCode::Internal).with_params(serde_json::json!({ "reason": error.to_string() }))
+    IpcError::unknown(ErrorCode::Internal)
+        .with_params(serde_json::json!({ "reason": error.to_string() }))
 }
 
 #[cfg(test)]

@@ -28,7 +28,8 @@ struct Recent {
 impl Recent {
     /// Whether this URL should be handled now, recording it when it should.
     fn accept(&mut self, url: &str, now: Instant) -> bool {
-        self.seen.retain(|_, at| now.duration_since(*at) < DUPLICATE_WINDOW);
+        self.seen
+            .retain(|_, at| now.duration_since(*at) < DUPLICATE_WINDOW);
         if self.seen.contains_key(url) {
             return false;
         }
@@ -87,8 +88,7 @@ pub fn receive(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
                 &state,
                 &IntentSourceDto::Share { text, title: None },
             );
-        }
-        else if url.scheme() == "synra" {
+        } else if url.scheme() == "synra" {
             // ★ A link this build does not know is still a link the user clicked. Focusing the window silently would
             // make it look as if something happened; the notice says what did not.
             state.publish(synra_ipc::event::KernelEvent::Notice {
@@ -144,9 +144,17 @@ mod tests {
 
     #[test]
     fn what_is_not_a_share_is_refused_rather_than_opening_an_empty_one() {
-        assert_eq!(share_text("synra://share?text="), None, "an empty share is not a share");
+        assert_eq!(
+            share_text("synra://share?text="),
+            None,
+            "an empty share is not a share"
+        );
         assert_eq!(share_text("synra://share?other=value"), None);
-        assert_eq!(share_text("https://example.test/share?text=hi"), None, "the scheme is part of the contract");
+        assert_eq!(
+            share_text("https://example.test/share?text=hi"),
+            None,
+            "the scheme is part of the contract"
+        );
         assert_eq!(share_text("synra://other?text=hi"), None);
         assert_eq!(share_text("not a url"), None);
     }

@@ -13,7 +13,12 @@ fn peer(name: &str, online: bool, version: Option<&str>, digest: Option<&str>) -
         digest: digest.map(str::to_owned),
         active: false,
     });
-    PeerView { device_id: DeviceId::new(), display_name: name.to_owned(), online, remote }
+    PeerView {
+        device_id: DeviceId::new(),
+        display_name: name.to_owned(),
+        online,
+        remote,
+    }
 }
 
 fn plan(peers: &[PeerView]) -> synra_ipc::dto::SyncPlanDto {
@@ -31,7 +36,10 @@ fn a_peer_with_the_same_bytes_needs_nothing() {
     let wanted = plan(&[peer("Study PC", true, Some("1.2.3"), Some("sha256-mine"))]);
 
     assert_eq!(wanted.targets.len(), 1);
-    assert!(!wanted.targets[0].needs_artifact, "the same bytes are the same plugin");
+    assert!(
+        !wanted.targets[0].needs_artifact,
+        "the same bytes are the same plugin"
+    );
 }
 
 #[test]
@@ -39,7 +47,10 @@ fn a_peer_with_different_bytes_needs_the_artifact() {
     // Same version string, different digest: the case a version-only comparison would call "already synced".
     let wanted = plan(&[peer("Study PC", true, Some("1.2.3"), Some("sha256-theirs"))]);
 
-    assert!(wanted.targets[0].needs_artifact, "different bytes are a different artifact");
+    assert!(
+        wanted.targets[0].needs_artifact,
+        "different bytes are a different artifact"
+    );
 }
 
 #[test]
@@ -49,7 +60,10 @@ fn a_peer_that_did_not_answer_is_reported_as_offline_and_unsynced() {
 
     assert_eq!(wanted.targets.len(), 1, "the device is still listed");
     assert!(wanted.targets[0].needs_artifact);
-    assert!(!wanted.targets[0].online, "and the interface can see why it has not happened");
+    assert!(
+        !wanted.targets[0].online,
+        "and the interface can see why it has not happened"
+    );
     assert_eq!(wanted.targets[0].version, None);
 }
 
@@ -97,8 +111,16 @@ fn the_plugins_own_state_comes_from_its_summary_and_every_held_row_is_recorded()
     assert_eq!(
         held,
         vec![
-            ("@acme/hello".to_owned(), "1.2.3".to_owned(), "sha256-abc".to_owned()),
-            ("@acme/other".to_owned(), "2.0.0".to_owned(), "sha256-other".to_owned()),
+            (
+                "@acme/hello".to_owned(),
+                "1.2.3".to_owned(),
+                "sha256-abc".to_owned()
+            ),
+            (
+                "@acme/other".to_owned(),
+                "2.0.0".to_owned(),
+                "sha256-other".to_owned()
+            ),
         ],
         "a plan about one plugin does not discard what the peer said about the others"
     );
@@ -109,7 +131,11 @@ fn a_peer_that_answered_without_the_plugin_is_known_to_not_have_it() {
     // ★ The difference the plan depends on: an answer that does not mention the plugin is a fact ("it does not have it"), while
     // no answer at all is not. Both make `decide` push, but only one means the device could be reached.
     let id = PluginId::parse("@acme/hello").expect("an id");
-    let list = answer(vec![summary("@acme/other", Some("2.0.0"), Some("sha256-other"))]);
+    let list = answer(vec![summary(
+        "@acme/other",
+        Some("2.0.0"),
+        Some("sha256-other"),
+    )]);
 
     let (remote, held) = interpret(&id, &list);
 
@@ -128,7 +154,11 @@ fn a_summary_that_claims_neither_a_version_nor_a_digest_is_not_recorded() {
 
     let (remote, held) = interpret(&id, &list);
 
-    assert_eq!(remote, RemoteState::absent(id), "a claim of nothing is not a claim to hold it");
+    assert_eq!(
+        remote,
+        RemoteState::absent(id),
+        "a claim of nothing is not a claim to hold it"
+    );
     assert_eq!(
         held,
         vec![("@acme/other".to_owned(), "2.0.0".to_owned(), String::new())],

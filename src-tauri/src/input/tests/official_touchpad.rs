@@ -56,7 +56,9 @@ fn installed(effects: Option<Arc<Mutex<Effects>>>) -> (crate::testing::Root, App
             .expect("set SYNRA_TOUCHPAD_PACKAGE to CLI-built dist"),
     );
     let root = crate::testing::Root::fresh("touchpad-package");
-    synra_store::Paths::under(root.path()).ensure_directories().unwrap();
+    synra_store::Paths::under(root.path())
+        .ensure_directories()
+        .unwrap();
     let mut state = crate::testing::state_in(&root);
     if let Some(effects) = effects {
         state.input = Input::with_pointer(
@@ -93,9 +95,13 @@ fn installed(effects: Option<Arc<Mutex<Effects>>>) -> (crate::testing::Root, App
     ))));
     let archive = root.path().join("touchpad.synra");
     synra_core::install::package_directory(&package, &archive).unwrap();
-    let installed = commands::plugins::plugins_install(&state, &synra_ipc::InstallSourceDto::Path {
-        path: archive.to_string_lossy().into_owned(),
-    }).unwrap();
+    let installed = commands::plugins::plugins_install(
+        &state,
+        &synra_ipc::InstallSourceDto::Path {
+            path: archive.to_string_lossy().into_owned(),
+        },
+    )
+    .unwrap();
     assert_eq!(installed.plugin_id.as_str(), PLUGIN);
     commands::plugins::plugins_consent_respond(&state, PLUGIN, &GRANTS.map(str::to_owned)).unwrap();
     commands::plugins::plugins_enable(&state, PLUGIN).unwrap();
@@ -272,7 +278,11 @@ fn official_touchpad_controls_only_after_host_consent_and_releases_on_stop() {
     wait(|| invoke(&phone, &token, json!({"op":"status"}))["phase"] == "ended");
     commands::plugin_ui::forget_window(&phone, &opened.label);
     if let Some(destination) = std::env::var_os("SYNRA_TOUCHPAD_ARCHIVE") {
-        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(destination).unwrap();
+        let mut output = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .unwrap();
         let mut source = std::fs::File::open(_pc_root.path().join("touchpad.synra")).unwrap();
         std::io::copy(&mut source, &mut output).unwrap();
     }

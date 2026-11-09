@@ -31,7 +31,11 @@ fn a_bundle_is_written_where_it_says_it_is() {
     let state = testing::state_in(&root);
 
     let result = diag_export(&state, &options()).expect("exports");
-    assert!(std::path::Path::new(&result.path).is_file(), "the file it named is at {}", result.path);
+    assert!(
+        std::path::Path::new(&result.path).is_file(),
+        "the file it named is at {}",
+        result.path
+    );
 }
 
 #[test]
@@ -45,11 +49,21 @@ fn the_exclusions_are_written_into_the_file_not_only_returned() {
 
     let result = diag_export(&state, &options()).expect("exports");
     let file = bundle(&result);
-    let excluded = file.get("excluded").and_then(Value::as_array).expect("the file carries the list");
-    assert!(!excluded.is_empty(), "and it is not empty — the defaults exclude the audit trail");
+    let excluded = file
+        .get("excluded")
+        .and_then(Value::as_array)
+        .expect("the file carries the list");
+    assert!(
+        !excluded.is_empty(),
+        "and it is not empty — the defaults exclude the audit trail"
+    );
     assert_eq!(
         excluded,
-        &result.excluded.iter().map(|section| Value::String(section.clone())).collect::<Vec<Value>>(),
+        &result
+            .excluded
+            .iter()
+            .map(|section| Value::String(section.clone()))
+            .collect::<Vec<Value>>(),
         "what the screen showed and what the file says are the same list"
     );
 }
@@ -74,10 +88,16 @@ fn a_default_bundle_leaves_out_the_audit_trail_and_the_log() {
 
     let result = diag_export(&state, &options()).expect("exports");
     let file = bundle(&result);
-    assert!(is_empty_section(&file, "auditTrail"), "no audit trail without consent");
+    assert!(
+        is_empty_section(&file, "auditTrail"),
+        "no audit trail without consent"
+    );
     assert!(is_empty_section(&file, "logs"), "and no log");
     assert!(
-        !result.included.iter().any(|section| section == "audit-trail"),
+        !result
+            .included
+            .iter()
+            .any(|section| section == "audit-trail"),
         "and the consent screen said so before the file was written: {:?}",
         result.included
     );
@@ -103,25 +123,45 @@ fn asking_for_the_audit_trail_puts_an_empty_one_in_rather_than_pretending_it_ran
     let root = testing::Root::fresh("diag-audit");
     let state = testing::state_in(&root);
 
-    let result =
-        diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: true, ..options() }).expect("exports");
+    let result = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions {
+            include_audit: true,
+            ..options()
+        },
+    )
+    .expect("exports");
     let file = bundle(&result);
     assert_eq!(
-        file.get("auditTrail").and_then(Value::as_array).map(Vec::len),
+        file.get("auditTrail")
+            .and_then(Value::as_array)
+            .map(Vec::len),
         Some(0),
         "present, and empty because nothing has run"
     );
     assert!(
-        result.included.iter().any(|section| section == "audit-trail"),
+        result
+            .included
+            .iter()
+            .any(|section| section == "audit-trail"),
         "and listed as included: {:?}",
         result.included
     );
 
     // And absent when it was not asked for, which is the half this test *can* check.
-    let result = diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: false, ..options() })
-        .expect("exports");
+    let result = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions {
+            include_audit: false,
+            ..options()
+        },
+    )
+    .expect("exports");
     assert!(
-        !result.included.iter().any(|section| section == "audit-trail"),
+        !result
+            .included
+            .iter()
+            .any(|section| section == "audit-trail"),
         "not asked for, so not in the bundle: {:?}",
         result.included
     );
@@ -158,15 +198,24 @@ fn the_plugin_section_reports_what_the_set_knows_rather_than_a_constant() {
 
     let result = diag_export(&state, &options()).expect("exports");
     let file = bundle(&result);
-    let plugins = file.get("plugins").and_then(Value::as_array).expect("a plugin section");
+    let plugins = file
+        .get("plugins")
+        .and_then(Value::as_array)
+        .expect("a plugin section");
 
     // The fixture installs plugins, and each one is reported — rather than the section being empty, which would make the
     // assertions below vacuous.
     assert_eq!(plugins.len(), 1, "the fixture installs one plugin: {file}");
     for plugin in plugins {
         assert_eq!(plugin.get("active").and_then(Value::as_bool), Some(false));
-        assert_eq!(plugin.get("hadRefusals").and_then(Value::as_bool), Some(false));
-        assert!(plugin.get("version").is_some(), "the key is present even when the value is empty");
+        assert_eq!(
+            plugin.get("hadRefusals").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert!(
+            plugin.get("version").is_some(),
+            "the key is present even when the value is empty"
+        );
     }
 }
 
@@ -181,11 +230,17 @@ fn asking_for_the_debug_log_carries_the_section_too() {
 
     let result = diag_export(
         &state,
-        &synra_ipc::DiagExportOptions { include_debug_logs: true, ..options() },
+        &synra_ipc::DiagExportOptions {
+            include_debug_logs: true,
+            ..options()
+        },
     )
     .expect("exports");
     assert!(
-        result.included.iter().any(|section| section == "debug-logs"),
+        result
+            .included
+            .iter()
+            .any(|section| section == "debug-logs"),
         "the debug log was asked for, so it is in the bundle: {:?}",
         result.included
     );
@@ -213,7 +268,10 @@ fn the_log_tail_reads_the_shells_own_log_including_the_debug_lines() {
 
     let all = super::diag_logs_tail(&state, None).expect("reads");
     assert_eq!(all.len(), 3, "every line, debug included: {all:?}");
-    assert!(all.iter().any(|line| line.contains("third")), "the debug line is missing: {all:?}");
+    assert!(
+        all.iter().any(|line| line.contains("third")),
+        "the debug line is missing: {all:?}"
+    );
 
     // The count is honoured, and the tail is the newest end — a user asking for the last line wants the last line, not
     // the first.
@@ -289,12 +347,18 @@ fn the_debug_log_section_is_empty_rather_than_absent_when_there_is_no_log() {
 
     let result = diag_export(
         &state,
-        &synra_ipc::DiagExportOptions { include_debug_logs: true, ..options() },
+        &synra_ipc::DiagExportOptions {
+            include_debug_logs: true,
+            ..options()
+        },
     )
     .expect("exports");
 
     assert!(
-        result.included.iter().any(|section| section == "debug-logs"),
+        result
+            .included
+            .iter()
+            .any(|section| section == "debug-logs"),
         "a section the user asked for is listed even when it has nothing in it: {:?}",
         result.included
     );
@@ -311,15 +375,23 @@ fn the_exclusions_are_about_what_can_never_be_included_not_about_what_was_declin
     let state = testing::state_in(&root);
 
     let lean = diag_export(&state, &options()).expect("exports");
-    let generous =
-        diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: true, ..options() }).expect("exports");
+    let generous = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions {
+            include_audit: true,
+            ..options()
+        },
+    )
+    .expect("exports");
 
     assert_eq!(
         lean.excluded, generous.excluded,
         "consenting to more does not change the standing policy"
     );
     assert!(
-        lean.excluded.iter().any(|section| section.contains("pairing secrets")),
+        lean.excluded
+            .iter()
+            .any(|section| section.contains("pairing secrets")),
         "and the policy does name what it is: {:?}",
         lean.excluded
     );
@@ -332,7 +404,9 @@ fn the_configuration_in_the_bundle_is_what_the_settings_screen_shows() {
     crate::commands::config_set(
         &state,
         &synra_ipc::ConfigPatch {
-            set: [("ui.locale".to_owned(), serde_json::json!("zh"))].into_iter().collect(),
+            set: [("ui.locale".to_owned(), serde_json::json!("zh"))]
+                .into_iter()
+                .collect(),
             unset: Vec::new(),
         },
     )
@@ -340,7 +414,8 @@ fn the_configuration_in_the_bundle_is_what_the_settings_screen_shows() {
 
     let file = bundle(&diag_export(&state, &options()).expect("exports"));
     assert_eq!(
-        file.get("config").and_then(|config| config.get("ui.locale")),
+        file.get("config")
+            .and_then(|config| config.get("ui.locale")),
         Some(&serde_json::json!("zh")),
         "a maintainer reading this can see what the user had set"
     );
@@ -357,9 +432,18 @@ fn the_bundle_names_the_versions_a_mismatch_would_be_found_in() {
 
     let file = bundle(&diag_export(&state, &options()).expect("exports"));
     let environment = file.get("environment").expect("the environment is there");
-    assert_eq!(environment.get("kernelVersion").and_then(Value::as_str), Some(crate::KERNEL_VERSION));
-    assert_eq!(environment.get("appVersion").and_then(Value::as_str), Some(crate::KERNEL_VERSION));
-    assert_eq!(environment.get("os").and_then(Value::as_str), Some(std::env::consts::OS));
+    assert_eq!(
+        environment.get("kernelVersion").and_then(Value::as_str),
+        Some(crate::KERNEL_VERSION)
+    );
+    assert_eq!(
+        environment.get("appVersion").and_then(Value::as_str),
+        Some(crate::KERNEL_VERSION)
+    );
+    assert_eq!(
+        environment.get("os").and_then(Value::as_str),
+        Some(std::env::consts::OS)
+    );
 }
 
 #[test]
@@ -372,8 +456,13 @@ fn a_webview_version_is_absent_rather_than_guessed() {
     let state = testing::state_in(&root);
 
     let file = bundle(&diag_export(&state, &options()).expect("exports"));
-    let webview = file.get("environment").and_then(|environment| environment.get("webviewVersion"));
-    assert!(webview.is_none() || webview == Some(&Value::Null), "absent or null, never invented");
+    let webview = file
+        .get("environment")
+        .and_then(|environment| environment.get("webviewVersion"));
+    assert!(
+        webview.is_none() || webview == Some(&Value::Null),
+        "absent or null, never invented"
+    );
 }
 
 #[test]
@@ -393,7 +482,10 @@ fn a_paired_device_appears_in_the_bundle_by_id() {
         .expect("pairs");
 
     let file = bundle(&diag_export(&state, &options()).expect("exports"));
-    let devices = file.get("devices").and_then(Value::as_array).expect("the devices section is there");
+    let devices = file
+        .get("devices")
+        .and_then(Value::as_array)
+        .expect("the devices section is there");
     assert_eq!(devices.len(), 1);
     assert_eq!(
         devices[0].get("deviceId").and_then(Value::as_str),
@@ -401,7 +493,6 @@ fn a_paired_device_appears_in_the_bundle_by_id() {
         "so a maintainer can tell which machine was paired"
     );
 }
-
 
 #[test]
 fn two_exports_in_one_session_are_two_files_and_not_one_overwritten() {
@@ -416,8 +507,14 @@ fn two_exports_in_one_session_are_two_files_and_not_one_overwritten() {
     let first = diag_export(&state, &options()).expect("first");
     let second = diag_export(&state, &options()).expect("second");
 
-    assert_ne!(first.path, second.path, "the second export is not the first one again");
-    assert!(std::path::Path::new(&first.path).is_file(), "and the first is still there");
+    assert_ne!(
+        first.path, second.path,
+        "the second export is not the first one again"
+    );
+    assert!(
+        std::path::Path::new(&first.path).is_file(),
+        "and the first is still there"
+    );
     assert!(std::path::Path::new(&second.path).is_file());
 }
 
@@ -426,8 +523,14 @@ fn the_exclusions_are_the_same_whether_the_user_shared_more_or_less() {
     let root = testing::Root::fresh("diag-exclusion-constancy");
     let state = testing::state_in(&root);
     let first = diag_export(&state, &options()).expect("exports");
-    let second =
-        diag_export(&state, &synra_ipc::DiagExportOptions { include_audit: true, ..options() }).expect("exports");
+    let second = diag_export(
+        &state,
+        &synra_ipc::DiagExportOptions {
+            include_audit: true,
+            ..options()
+        },
+    )
+    .expect("exports");
     assert_eq!(first.excluded, second.excluded);
 }
 
@@ -454,7 +557,12 @@ fn a_fresh_shell_reports_what_building_it_measured_and_nothing_else() {
         .iter()
         .filter_map(|sample| sample["key"]["name"].as_str())
         .collect();
-    for expected in ["db_size_bytes", "uptime_seconds", "memory_rss_bytes", "cpu_percent"] {
+    for expected in [
+        "db_size_bytes",
+        "uptime_seconds",
+        "memory_rss_bytes",
+        "cpu_percent",
+    ] {
         assert!(names.contains(&expected), "{value}");
     }
     // ★ `db_write_duration_us` is allowed from the first tick now: the shell installs the store's write observer while
@@ -486,7 +594,10 @@ fn a_fresh_shell_reports_what_building_it_measured_and_nothing_else() {
     );
     // ★ A shell whose logger is not running writes no log gauges at all: zero would be "running and quiet", which is a
     // different fact from "not running".
-    assert!(!names.contains(&"log_lines"), "a log gauge was invented without a log: {value}");
+    assert!(
+        !names.contains(&"log_lines"),
+        "a log gauge was invented without a log: {value}"
+    );
 }
 
 #[test]
@@ -520,7 +631,9 @@ fn what_the_gate_counts_is_what_the_command_reports() {
     assert_eq!(found["value"]["value"], 1);
     let labels = found["key"]["labels"].as_array().expect("labels");
     assert!(
-        labels.iter().any(|pair| pair[0] == "capability" && pair[1] == "device:send:*"),
+        labels
+            .iter()
+            .any(|pair| pair[0] == "capability" && pair[1] == "device:send:*"),
         "{found}"
     );
 }
@@ -539,7 +652,10 @@ fn the_metrics_answer_includes_the_database_size() {
 
     let snapshot = diag_metrics(&state).expect("metrics");
 
-    assert_eq!(snapshot.get("db_size_bytes"), Some(&synra_observe::metrics::Value::Gauge(32)));
+    assert_eq!(
+        snapshot.get("db_size_bytes"),
+        Some(&synra_observe::metrics::Value::Gauge(32))
+    );
 }
 
 #[test]
@@ -567,12 +683,19 @@ fn the_window_asks_the_same_probe_questions_the_cli_does() {
 
     let report = diag_probes(&state).expect("the probes run");
 
-    let names: Vec<&str> = report.results.iter().map(|result| result.name.as_str()).collect();
+    let names: Vec<&str> = report
+        .results
+        .iter()
+        .map(|result| result.name.as_str())
+        .collect();
     for expected in ["tcp_port_available", "data_dir_writable", "webview_version"] {
         assert!(names.contains(&expected), "missing {expected} in {names:?}");
     }
     assert!(
-        report.results.iter().all(|result| ["ok", "warn", "fail"].contains(&result.status.as_str())),
+        report
+            .results
+            .iter()
+            .all(|result| ["ok", "warn", "fail"].contains(&result.status.as_str())),
         "a status outside the contract's three words"
     );
 }
@@ -596,12 +719,18 @@ fn dismissing_crashes_clears_the_reports_that_would_enter_safe_mode() {
             ))
             .expect("the report is written");
     }
-    assert!(!store.verdict(1_000).allows_plugins(), "the fixture did not reach safe mode");
+    assert!(
+        !store.verdict(1_000).allows_plugins(),
+        "the fixture did not reach safe mode"
+    );
 
     super::diag_crash_dismiss(&state).expect("the reports are dismissed");
 
     assert!(store.is_empty(), "a report survived the dismiss");
-    assert!(store.verdict(1_000).allows_plugins(), "the next start would still be in safe mode");
+    assert!(
+        store.verdict(1_000).allows_plugins(),
+        "the next start would still be in safe mode"
+    );
 }
 
 #[test]
