@@ -77,8 +77,8 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 
 ## 5.1 Source file size and module layout
 
-- Keep hand-written Rust, TypeScript, JavaScript, Vue and stylesheet sources at or below 300 physical lines. Move inline tests
-  into sibling modules when needed. Group large test suites by scenario and keep their shared fixtures beside them.
+- Keep hand-written Rust, TypeScript, JavaScript, Vue, HTML and stylesheet sources at or below 300 physical lines.
+  Move inline tests into sibling modules when needed. Group large test suites by scenario and keep shared fixtures beside them.
 - When a file contains one coherent feature, replace the flat file with a directory and keep `mod.rs` focused on the public
   surface and re-exports. Split by actor or responsibility so each change stays near the code it affects.
 - When a file mixes unrelated responsibilities, move shared behavior into a named utility module and keep feature-specific
@@ -87,7 +87,7 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
   the rest of the report to track existing files. Generated source belongs to its generator.
 
   ```powershell
-  $long = foreach ($file in rg --files --hidden -g '*.{rs,ts,tsx,js,jsx,mjs,cjs,vue,css,scss}' -g '!**/generated/**' -g '!**/auto-generated/**' -g '!**/dist/**' -g '!**/target/**' -g '!**/node_modules/**') {
+  $long = foreach ($file in rg --files --hidden -g '*.{rs,ts,tsx,js,jsx,mjs,cjs,vue,html,css,scss,sass,less}' -g '!**/generated/**' -g '!**/auto-generated/**' -g '!**/dist/**' -g '!**/target/**' -g '!**/node_modules/**') {
       $count = [IO.File]::ReadAllLines((Join-Path $PWD $file)).Length
       if ($count -gt 300) { [pscustomobject]@{ Lines = $count; Path = $file } }
   }
