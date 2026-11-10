@@ -83,15 +83,13 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
   surface and re-exports. Split by actor or responsibility so each change stays near the code it affects.
 - When a file mixes unrelated responsibilities, move shared behavior into a named utility module and keep feature-specific
   code in its own directory. Do not create catch-all utility files.
-- Scan source files before committing a refactor. Split every new or refactored hand-written file above 300 lines and use
-  the rest of the report to track existing files. Generated source belongs to its generator.
+- Run the source-size guard before committing source changes. It checks tracked and unignored new source files,
+  including tests, and fails when any file exceeds 300 physical lines. The guard lists the generated outputs it exempts.
+  The source-size workflow runs on pull requests, merge queues, pushes to main, and release checks.
+  To block oversized changes at merge time, require the `source-size` check on `main` and require changes through pull requests.
 
-  ```powershell
-  $long = foreach ($file in rg --files --hidden -g '*.{rs,ts,tsx,js,jsx,mjs,cjs,vue,html,css,scss,sass,less}' -g '!**/generated/**' -g '!**/auto-generated/**' -g '!**/dist/**' -g '!**/target/**' -g '!**/node_modules/**') {
-      $count = [IO.File]::ReadAllLines((Join-Path $PWD $file)).Length
-      if ($count -gt 300) { [pscustomobject]@{ Lines = $count; Path = $file } }
-  }
-  $long | Sort-Object Lines -Descending
+  ```text
+  pnpm run check:source-size
   ```
 
 ## 6. Tests

@@ -10,7 +10,8 @@
     "build:facade": "vite build --config vite.inject.config.ts",
     "build:android": "tauri android build",
     "build:ios": "tauri ios build",
-    "check": "vue-tsc -b && pnpm run shapes",
+    "check": "pnpm run check:source-size && vue-tsc -b && pnpm run shapes",
+    "check:source-size": "node scripts/check-source-size.ts",
     "shapes": "esno scripts/check-shapes.ts",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint ."
