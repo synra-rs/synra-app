@@ -75,20 +75,23 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 - When replacing an anchor, **write the anchor back**. The most common self-inflicted error here is an edit whose
   `new_string` omits the line it matched.
 
-## 5.1 Rust file size and module layout
+## 5.1 Source file size and module layout
 
-- Production Rust files under `src-tauri/` must stay at or below 300 lines. Tests may exceed that limit when keeping a complete
-  scenario together, but production code must not be hidden inside a large test file.
+- Keep hand-written Rust, TypeScript, JavaScript, Vue and stylesheet sources at or below 300 physical lines. Move inline tests
+  into sibling modules when needed. Group large test suites by scenario and keep their shared fixtures beside them.
 - When a file contains one coherent feature, replace the flat file with a directory and keep `mod.rs` focused on the public
   surface and re-exports. Split by actor or responsibility so each change stays near the code it affects.
 - When a file mixes unrelated responsibilities, move shared behavior into a named utility module and keep feature-specific
   code in its own directory. Do not create catch-all utility files.
-- Any new production file over 300 lines requires a design note in the change and should be split before commit.
-- Before committing Rust changes, scan production portions with the PowerShell check below. A result over 300 lines must be
-  split or explicitly identified as a test-only aggregation in the change:
+- Scan source files before committing a refactor. Split every new or refactored hand-written file above 300 lines and use
+  the rest of the report to track existing files. Generated source belongs to its generator.
 
   ```powershell
-  $out = @(); foreach ($f in rg --files src-tauri -g '*.rs') { $lines = Get-Content $f; $cut = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*#\[cfg\(test\)\]') { $cut = $i; break } }; if ($cut -gt 300) { $out += [pscustomobject]@{ Lines = $cut; Path = $f } } }; $out | Sort-Object Lines -Descending
+  $long = foreach ($file in rg --files --hidden -g '*.{rs,ts,tsx,js,jsx,mjs,cjs,vue,css,scss}' -g '!**/generated/**' -g '!**/auto-generated/**' -g '!**/dist/**' -g '!**/target/**' -g '!**/node_modules/**') {
+      $count = [IO.File]::ReadAllLines((Join-Path $PWD $file)).Length
+      if ($count -gt 300) { [pscustomobject]@{ Lines = $count; Path = $file } }
+  }
+  $long | Sort-Object Lines -Descending
   ```
 
 ## 6. Tests
