@@ -46,8 +46,7 @@ jobs:
           repository: synra-rs/synra-js
           path: synra-js
 
-      # ★ The kernel is read by two checks in this job: `src/ipc/registration.test.ts` and `src/ipc/commands.test.ts`
-      # read `crates/synra-ipc/src/command.rs`, and `scripts/check-shapes.ts` compares that contract against the shell.
+      # The IPC tests and `scripts/check-shapes.ts` read the command catalogue from the Core checkout.
       # Until this checkout existed the tests threw (and the guard *skipped* the comparison, which looked green) — the
       # same "a green run and a never-compared run look alike" failure the type library's release workflow documents.
       - name: Check out the kernel

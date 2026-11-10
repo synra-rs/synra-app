@@ -9,8 +9,8 @@ const SOURCE = 'commands! { "identity_get" => Identity, Read, One, false; }'
 let workspace: string
 let appRoot: string
 
-function checkout(root: string): string {
-  const path = join(root, 'crates', 'synra-ipc', 'src', 'command.rs')
+function checkout(root: string, ...layout: string[]): string {
+  const path = join(root, 'crates', 'synra-ipc', 'src', ...(layout.length === 0 ? ['command.rs'] : layout))
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, SOURCE)
   return path
@@ -30,6 +30,13 @@ afterEach(() => {
 describe('the IPC contract checkout', () => {
   it('reads the sibling used for local development', () => {
     const path = checkout(join(workspace, 'synra-rust-core'))
+    expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
+  })
+
+  it('prefers the catalogue in the selected checkout over an older flat file', () => {
+    const root = join(workspace, 'synra-rust-core')
+    checkout(root)
+    const path = checkout(root, 'command', 'catalog.rs')
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 

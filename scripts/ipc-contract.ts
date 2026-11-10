@@ -7,7 +7,10 @@ export function readIpcContract(appRoot: string, coreRoot: string | undefined = 
   const roots = [coreRoot, resolve(appRoot, '..', 'synra-rust-core'), resolve(appRoot, 'synra-rust-core')]
   const candidates = roots
     .filter((root): root is string => root !== undefined && root !== '')
-    .map(root => resolve(root, 'crates', 'synra-ipc', 'src', 'command.rs'))
+    .flatMap((root) => {
+      const src = resolve(root, 'crates', 'synra-ipc', 'src')
+      return [resolve(src, 'command', 'catalog.rs'), resolve(src, 'command.rs')]
+    })
   const path = candidates.find(candidate => existsSync(candidate))
   if (path === undefined) {
     throw new Error(
