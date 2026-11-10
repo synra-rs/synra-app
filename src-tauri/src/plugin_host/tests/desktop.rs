@@ -4,108 +4,8 @@ use parking_lot::Mutex;
 use synra_plugin_host::host_calls::Host as _;
 use synra_protocol::ids::PluginId;
 
-use super::{DesktopHost, fetcher_for, host_of};
-
-/// A plugin identifier, spelled the way the protocol spells it.
-fn id(name: &str) -> PluginId {
-    PluginId::parse(name).expect("a plugin id")
-}
-
-fn host() -> DesktopHost {
-    let state = crate::testing::state();
-    // ★ The plugin rows have to exist: `plugin_storage` references `plugins`, so a value stored against a plugin this
-    // database has never heard of is refused by the schema. That is the cascade doing its job — and it is why the first
-    // version of this test failed with `FOREIGN KEY constraint failed`, which is a better answer than silently keeping
-    // storage for a plugin nobody installed.
-    for plugin in ["@acme/notes", "@acme/chat"] {
-        state
-            .db
-            .lock()
-            .insert_plugin(plugin, true, true, "healthy", 1, 1)
-            .expect("a plugin row");
-    }
-    DesktopHost::new(std::sync::Arc::clone(&state.db))
-}
-
-#[test]
-fn a_capability_names_a_host_or_it_names_nothing() {
-    // The parsing rule on its own, because the tests below depend on it being the fail-closed reading.
-    assert_eq!(
-        host_of("network:fetch:api.github.com").as_deref(),
-        Some("api.github.com")
-    );
-    // A method qualifier is not part of the host: the guard decides *where*, and the method travels as sent.
-    assert_eq!(
-        host_of("network:fetch:api.github.com:POST").as_deref(),
-        Some("api.github.com")
-    );
-
-    // ★ `*` is the family spelling the **gate** uses, not a hostname — reading it as one builds a guard for a machine
-    // called `*`, and reading it as "anything" is the capability an SSRF guard exists to make deliberate.
-    assert_eq!(host_of("network:fetch:*"), None);
-    assert_eq!(host_of("network:fetch:"), None);
-    assert_eq!(host_of("network:fetch"), None);
-    assert_eq!(host_of("fs:read:/data/**"), None);
-}
-
-#[test]
-fn a_plugin_with_no_host_grant_is_told_which_spelling_it_needs() {
-    // Nothing granted: `capabilityDenied`, because the answer is "ask the user" rather than "that host is not one of
-    // them" — and a plugin author can act on the first.
-    let host = host_with(&[]);
-    let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no grant");
-
-    assert_eq!(
-        refused.code,
-        synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED
-    );
-    assert!(
-        refused.message.contains("network:fetch:"),
-        "and it says what to ask for: {}",
-        refused.message
-    );
-}
-
-#[test]
-fn a_family_grant_with_a_star_is_not_a_grant_to_reach_everything() {
-    // ★ The whole point of the guard, at the shell: `network:fetch:*` passes the **gate** — it is the family — and it
-    // must not become "every host on the internet".
-    let host = host_with(&[("network:fetch:*", true)]);
-    let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("no host named");
-
-    assert_eq!(
-        refused.code,
-        synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED,
-        "{refused}"
-    );
-}
-
-#[test]
-fn a_granted_host_gives_a_client_and_withdrawing_it_takes_the_client_away() {
-    // ★ The test the cache needs: a client built for a grant must not outlive the grant. If the cache were keyed on the
-    // plugin alone, the call after the withdrawal would hand back the earlier client — and a user who withdrew a host
-    // would keep reaching it.
-    let host = host_with(&[("network:fetch:api.github.com", true)]);
-    assert!(fetcher_for(&host, &id("@acme/notes")).is_ok(), "granted");
-    assert!(fetcher_for(&host, &id("@acme/notes")).is_ok(), "and again");
-
-    host.db
-        .lock()
-        .record_grants(
-            "@acme/notes",
-            &[("network:fetch:api.github.com".to_owned(), false)],
-            2,
-            "d2",
-        )
-        .expect("the withdrawal is recorded");
-    let refused = fetcher_for(&host, &id("@acme/notes")).expect_err("withdrawn");
-
-    assert_eq!(
-        refused.code,
-        synra_plugin_host::host_calls::CallError::CAPABILITY_DENIED,
-        "{refused}"
-    );
-}
+use super::super::{DesktopHost, PlatformAction, audit_sink};
+use super::{host, host_with, id};
 
 #[test]
 fn a_plugin_can_store_something_in_the_shell_too() {
@@ -149,20 +49,6 @@ fn a_plugin_can_store_something_in_the_shell_too() {
     assert_eq!(host.storage_used(&plugin).expect("measures"), 0);
 }
 
-pub(super) fn host_with(grants: &[(&str, bool)]) -> DesktopHost {
-    let mut db = synra_store::SynraDb::open_in_memory().expect("a database");
-    db.migrate().expect("migrates");
-    db.insert_plugin("@acme/notes", true, true, "healthy", 1, 1)
-        .expect("a plugin row");
-    let decisions: Vec<(String, bool)> = grants
-        .iter()
-        .map(|(cap, granted)| ((*cap).to_owned(), *granted))
-        .collect();
-    db.record_grants("@acme/notes", &decisions, 1, "digest")
-        .expect("decisions");
-    DesktopHost::new(Arc::new(Mutex::new(db)))
-}
-
 #[test]
 fn the_shell_is_a_desktop_rather_than_a_headless_build() {
     // ★ The whole reason this host exists rather than the daemon's.
@@ -203,7 +89,7 @@ fn a_bad_address_is_the_plugins_mistake_rather_than_a_missing_feature() {
     let refused = host
         .platform(
             &plugin,
-            super::PlatformAction::OpenUrl,
+            PlatformAction::OpenUrl,
             "javascript:alert(1)",
         )
         .expect_err("the guard refuses this scheme");
@@ -311,7 +197,7 @@ fn an_audited_call_is_written_down_rather_than_only_remembered() {
         db.migrate().expect("the schema");
         db
     }));
-    let sink = super::audit_sink(Arc::clone(&db));
+    let sink = audit_sink(Arc::clone(&db));
 
     let entry = synra_observe::audit::AuditEntry {
         plugin: PluginId::parse("@acme/notes").expect("an id"),
