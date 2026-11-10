@@ -30,7 +30,6 @@
  * every declared command must be either registered or listed as waiting, with a reason.
  */
 
-import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,14 +37,10 @@ import { describe, expect, it } from 'vitest'
 
 import { NOT_YET_REGISTERED, REGISTERED } from '@/ipc/command-inventory'
 import { readIpcContract } from '../../scripts/ipc-contract'
+import { readTauriWrappers } from '../../scripts/tauri-wrappers'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(HERE, '..', '..')
-// ★ `shell.rs`, not `main.rs`: the dispatch table moved into the library when the window assembly did, and `main.rs` is
-// now only the exit code a desktop process returns. The test was reading `main.rs` and failing with "generate_handler!
-// is not in …" rather than with anything about a command — a failed test that named the wrong file, and a gate that was
-// red before this change rather than because of it.
-const SHELL_RS = resolve(APP_ROOT, 'src-tauri', 'src', 'shell.rs')
 const { path: CONTRACT_RS, source: contractSource } = readIpcContract(APP_ROOT)
 
 /** The command names the contract declares, read from `command.rs`. */
@@ -68,21 +63,9 @@ function declaredInContract(): string[] {
   return names
 }
 
-/** The names inside `generate_handler![...]` in the shell's `shell.rs`. */
+/** Commands that have a dispatcher route, a Tauri handler and a wrapper. */
 function registeredInShell(): string[] {
-  const source = readFileSync(SHELL_RS, 'utf8')
-  const start = source.indexOf('generate_handler![')
-  expect(start, `generate_handler! is not in ${SHELL_RS}`).toBeGreaterThan(-1)
-
-  const open = source.indexOf('[', start)
-  const close = source.indexOf(']', open)
-  expect(close, 'the generate_handler! list is not closed').toBeGreaterThan(open)
-
-  return source
-    .slice(open + 1, close)
-    .split(',')
-    .map(name => name.trim())
-    .filter(name => name.length > 0)
+  return [...readTauriWrappers(APP_ROOT).keys()]
 }
 
 describe('the commands the shell registers', () => {

@@ -6,8 +6,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '@/App.vue'
 import { setLocalePreference } from '@/app/locale'
+import AppNavigation from '@/components/AppNavigation.vue'
 import { IDENTITY } from '@/ipc/fake-kernel-fixtures'
 import { messages } from '@/messages'
+import { useDevicesStore } from '@/stores/devices'
 import { useSettingsStore } from '@/stores/settings'
 
 const { call } = vi.hoisted(() => ({ call: vi.fn() }))
@@ -114,19 +116,12 @@ it('still names the device when the sidebar is a rail', async () => {
   // ★ The rail hides `displayName`, `platform` and the version. That leaves an `AAvatar` holding one
   //   `aria-hidden` laptop glyph — an unnamed square, to a screen reader and to the eye. The name moves onto
   //   the avatar instead of disappearing with the text beside it.
-  window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  call.mockImplementation(async (command: string) => {
-    if (command === 'config_get')
-      return { ok: true, value: { values: {}, overridden: [] } }
-    if (command === 'devices_snapshot')
-      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
-    throw new Error(`Unexpected command: ${command}`)
-  })
   const pinia = createPinia()
+  useDevicesStore(pinia).applySnapshot({ identity: IDENTITY, devices: [] })
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
   await router.push('/')
-  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true } } })
+  const wrapper = mount(AppNavigation, { props: { rail: true }, global: { plugins: [pinia, router] } })
   try {
     await flushPromises()
     // The rail is the state where the name is gone from the text.

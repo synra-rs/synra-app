@@ -1,46 +1,20 @@
 import { readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
-import { callSites, shellWrappers } from './calls'
+import { readTauriWrappers } from '../tauri-wrappers'
+import { callSites } from './calls'
 import { failures, here, notes, sources } from './common'
 
 export async function checkCommandArguments(called: ReadonlySet<string>): Promise<void> {
-  let shell: string
+  let wrappers: ReturnType<typeof readTauriWrappers>
   try {
-    shell = await readFile(join(here, 'src-tauri', 'src', 'shell.rs'), 'utf8')
+    wrappers = readTauriWrappers(here)
   }
-  catch {
-    // The shell lives in this repository, so its absence is a failure rather than a note: with no signatures there is
-    // nothing to compare, and a check that quietly compares nothing is the failure this whole file exists to remove.
+  catch (error) {
     failures.push({
       check: 'command-arguments',
-      detail: 'src-tauri/src/shell.rs is unreadable, so no call could be held to its arguments'
+      detail: error instanceof Error ? error.message : String(error)
     })
     return
-  }
-  const wrappers = shellWrappers(shell)
-  if (wrappers.size === 0) {
-    failures.push({
-      check: 'command-arguments',
-      detail: 'no #[tauri::command] signature was parsed from src-tauri/src/shell.rs — the wrappers\' shape has changed'
-    })
-    return
-  }
-  // The parser's own guard: what it read must be what the shell registers. A regex that had stopped matching half the
-  // wrappers would make every call site look correct.
-  const handler = /generate_handler!\[([\s\S]*?)\]/.exec(shell)
-  const registered = (handler?.[1] ?? '')
-    .split(',')
-    .map(name => name.trim())
-    .filter(name => name.length > 0)
-  const mismatched = [
-    ...registered.filter(name => !wrappers.has(name)),
-    ...[...wrappers.keys()].filter(name => !registered.includes(name))
-  ]
-  if (mismatched.length > 0) {
-    failures.push({
-      check: 'command-arguments',
-      detail: `generate_handler! and the wrapper signatures disagree about ${mismatched.join(', ')}`
-    })
   }
   let checked = 0
   let unreadable = 0
@@ -68,7 +42,7 @@ export async function checkCommandArguments(called: ReadonlySet<string>): Promis
         if (!site.keys.includes(key)) {
           failures.push({
             check: 'command-arguments',
-            detail: `${site.where} calls \`${site.command}\` without \`${key}\`, which src-tauri/src/shell.rs declares as required`
+            detail: `${site.where} calls \`${site.command}\` without its required Tauri argument \`${key}\``
           })
         }
       }
@@ -113,7 +87,7 @@ export async function checkCommandArguments(called: ReadonlySet<string>): Promis
     if (wrapper === undefined) {
       failures.push({
         check: 'command-arguments',
-        detail: `REQUIRED_ARGS names \`${command}\`, which src-tauri/src/shell.rs does not register`
+        detail: `REQUIRED_ARGS names \`${command}\`, which the Tauri shell does not register`
       })
       continue
     }
