@@ -84,6 +84,12 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 - When a file mixes unrelated responsibilities, move shared behavior into a named utility module and keep feature-specific
   code in its own directory. Do not create catch-all utility files.
 - Any new production file over 300 lines requires a design note in the change and should be split before commit.
+- Before committing Rust changes, scan production portions with the PowerShell check below. A result over 300 lines must be
+  split or explicitly identified as a test-only aggregation in the change:
+
+  ```powershell
+  $out = @(); foreach ($f in rg --files src-tauri -g '*.rs') { $lines = Get-Content $f; $cut = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\s*#\[cfg\(test\)\]') { $cut = $i; break } }; if ($cut -gt 300) { $out += [pscustomobject]@{ Lines = $cut; Path = $f } } }; $out | Sort-Object Lines -Descending
+  ```
 
 ## 6. Tests
 
