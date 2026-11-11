@@ -109,6 +109,6 @@ pub(super) fn open_registered_app(id: &str) -> Result<(), CallError> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn open_registered_app(_id: &str) -> Result<(), CallError> {
+pub(super) fn open_registered_app(_id: &str) -> Result<(), CallError> {
     Err(not_implemented("registered applications"))
 }

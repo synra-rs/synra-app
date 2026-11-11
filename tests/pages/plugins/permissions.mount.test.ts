@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { flushPromises } from '@vue/test-utils'
+import type { VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { answer, card, click, clickBody, ErrorNotice, messages, mocks, mountPage, PluginPermissions, usePluginsStore } from './workflow.testkit'
+
+type FormWrapper = Pick<VueWrapper, 'findAll'>
 
 async function editor() {
   const page = await mountPage('/plugins?plugin=%40acme%2Freader')
@@ -12,11 +15,11 @@ async function editor() {
   return { ...page, form }
 }
 
-function capabilityFields(form: ReturnType<typeof editor> extends Promise<infer Value> ? Value['form'] : never) {
+function capabilityFields(form: FormWrapper) {
   return form.findAll('[data-permission-capability] input')
 }
 
-function checkedCapabilityFields(form: ReturnType<typeof editor> extends Promise<infer Value> ? Value['form'] : never) {
+function checkedCapabilityFields(form: FormWrapper) {
   return capabilityFields(form).filter(field => (field.element as HTMLInputElement).checked)
 }
 
