@@ -23,6 +23,10 @@ macro_rules! platform_host_methods {
             }
             // A notification carries a title and a body separated by the contract's own delimiter, which is the shape
             // `host_calls` builds when it sends one.
+            let tracing_keys = action == PlatformAction::SimulateKeys;
+            if tracing_keys {
+                eprintln!("synra: platform simulate-keys start chord={argument:?}");
+            }
             let outcome = match action {
                 PlatformAction::OpenUrl => self.platform.open_url(argument),
                 PlatformAction::OpenPath => self.platform.open_path(std::path::Path::new(argument)),
@@ -48,6 +52,14 @@ macro_rules! platform_host_methods {
                     ));
                 }
             };
+            if tracing_keys {
+                match &outcome {
+                    Ok(()) => eprintln!("synra: platform simulate-keys result=ok chord={argument:?}"),
+                    Err(error) => eprintln!(
+                        "synra: platform simulate-keys result=error chord={argument:?} error={error:?}"
+                    ),
+                }
+            }
             outcome.map_or_else(|error| Err(platform_refusal(&error)), |()| Ok(None))
         }
 
