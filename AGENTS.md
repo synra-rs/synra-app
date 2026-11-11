@@ -77,20 +77,16 @@ invisible until both run in the same place**, which is why `pnpm run lint` is a 
 
 ## 5.1 Source file size and module layout
 
-- Keep hand-written Rust, TypeScript, JavaScript, Vue, HTML and stylesheet sources at or below 300 physical lines.
+- Keep hand-written Rust, TypeScript, JavaScript, Vue, HTML and stylesheet sources at or below 300 code lines.
+  Comment-only lines and blank lines are excluded. A line containing code and an inline comment still counts.
   Move inline tests into sibling modules when needed. Group large test suites by scenario and keep shared fixtures beside them.
-- When a file contains one coherent feature, replace the flat file with a directory and keep `mod.rs` focused on the public
-  surface and re-exports. Split by actor or responsibility so each change stays near the code it affects.
+- When a file contains one coherent feature, replace it with a same-named directory, such as `plugins.rs` to
+  `plugins/mod.rs` or `plugins.ts` to `plugins/index.ts`. Keep the entry module focused on the public surface and
+  re-exports. Split by actor or responsibility so each change stays near the code it affects.
 - When a file mixes unrelated responsibilities, move shared behavior into a named utility module and keep feature-specific
   code in its own directory. Do not create catch-all utility files.
-- Run the source-size guard before committing source changes. It checks tracked and unignored new source files,
-  including tests, and fails when any file exceeds 300 physical lines. The guard lists the generated outputs it exempts.
-  The source-size workflow runs on pull requests, merge queues, pushes to main, and release checks.
-  To block oversized changes at merge time, require the `source-size` check on `main` and require changes through pull requests.
-
-  ```text
-  pnpm run check:source-size
-  ```
+- Apply this layout and the code-line limit to every new or changed hand-written source file.
+  Keep repeated behavior in named reusable helpers near their callers, and shared test fixtures beside scenario tests.
 
 ## 6. Tests
 

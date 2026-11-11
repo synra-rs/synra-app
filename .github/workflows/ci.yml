@@ -5,8 +5,10 @@ name: checks
 # Interface, shell and declared MSRV jobs, each running a command that already exists in this repository: the interface (`pnpm test`, `pnpm build`,
 # `pnpm shapes`) and the shell (`cargo test`, `cargo clippy`). Nothing here is a check that only CI knows how to do.
 #
-# The full suite runs through `release.yaml` on `v*` tags. The independent source-size workflow also runs on
-# pull requests, merge queues, and pushes to main.
+# ★ **This file has no trigger of its own.** It is a reusable workflow (`workflow_call`), invoked by `release.yaml` when
+# a `v*` tag is pushed. That is the one entry: merging to `main` does not run anything, and a broken commit is found at
+# release time rather than before it — the trade the sibling `synra-js` repository already chose, in the same words.
+# Adding `push`/`pull_request` back here would give "release" and "checks" two different permission sets in one run.
 #
 # ★ The sibling checkouts are not optional decoration.
 #
@@ -26,9 +28,6 @@ env:
   CARGO_INCREMENTAL: '0'
 
 jobs:
-  source-size:
-    uses: ./.github/workflows/source-size.yml
-
   interface:
     name: interface
     runs-on: ubuntu-latest
