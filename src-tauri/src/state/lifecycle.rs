@@ -124,7 +124,12 @@ impl AppState {
             started_at_ms: now_ms,
             started: std::time::Instant::now(),
             uptime_reported: Mutex::new(0),
-            platform: Arc::new(synra_platform::CommandPlatform::new()),
+            // Plugin grants are the single user-facing gate for host effects. The desktop platform itself should not
+            // ask for a second hidden simulate-keys switch after the plugin permission has been approved.
+            platform: Arc::new(
+                synra_platform::CommandPlatform::new()
+                    .with_policies(synra_platform::Policies::new().with_simulate_keys(true)),
+            ),
             metrics,
             log: None,
             events,

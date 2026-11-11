@@ -20,8 +20,26 @@
         {{ messages.plugins.workflow.allowRun }}
       </AButton>
     </div>
-    <div v-for="capability in capabilities" :key="capability" class="min-w-0 border-b border-line py-3">
-      <ACheckbox v-if="editing" class="w-full" :checked="draft.includes(capability)" :disabled="busy" @update:checked="checked => select(capability, checked)">
+    <div v-if="editing && capabilities.length" class="border-b border-line py-3">
+      <ACheckbox
+        data-testid="permission-all"
+        class="w-full"
+        :checked="allChecked"
+        :indeterminate="allIndeterminate"
+        :disabled="busy"
+        @update:checked="selectAll"
+      >
+        <span class="text-base">{{ messages.plugins.workflow.all }}</span>
+      </ACheckbox>
+    </div>
+    <div v-for="capability in capabilities" :key="capability" :data-permission-capability="editing ? capability : undefined" class="min-w-0 border-b border-line py-3">
+      <ACheckbox
+        v-if="editing"
+        class="w-full"
+        :checked="draft.includes(capability)"
+        :disabled="busy"
+        @update:checked="checked => select(capability, checked)"
+      >
         <span class="min-w-0 stack gap-1">
           <span class="text-base">{{ capabilityPurpose(capability) }}</span>
           <code class="break-all text-sm text-ink-dim">{{ capability }}</code>
@@ -78,6 +96,8 @@ const capabilities = computed(() => [...new Set(props.plugin.requested ?? [])])
 const denied = computed(() => props.plugin.denied ?? [])
 const approvalOnly = computed(() => !capabilities.value.length && (props.plugin.state === 'awaiting_consent' || (props.initialEdit && editing.value)))
 const firstDecision = computed(() => !props.plugin.granted.length && !denied.value.length)
+const allChecked = computed(() => capabilities.value.length > 0 && capabilities.value.every(capability => draft.value.includes(capability)))
+const allIndeterminate = computed(() => !allChecked.value && capabilities.value.some(capability => draft.value.includes(capability)))
 const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every(value => b.includes(value))
 const changed = computed(() => !same(draft.value, props.plugin.granted))
 watch(() => props.plugin, (next, previous) => {
@@ -87,6 +107,9 @@ watch(() => props.plugin, (next, previous) => {
 
 function select(capability: string, checked: boolean): void {
   draft.value = checked ? [...new Set([...draft.value, capability])] : draft.value.filter(value => value !== capability)
+}
+function selectAll(checked: boolean): void {
+  draft.value = checked ? [...capabilities.value] : []
 }
 function cancel(): void {
   draft.value = [...props.plugin.granted]

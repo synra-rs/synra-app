@@ -8,7 +8,7 @@ it('names the permission region and associates every requested scope with its ch
   await clickBody(messages.plugins.workflow.permissions, 'tab')
   const form = wrapper.getComponent(PluginPermissions)
   expect(form.get('section').attributes('aria-label')).toBe(messages.plugins.workflow.permissions)
-  const labels = form.findAll('label')
+  const labels = form.findAll('[data-permission-capability]')
   expect(labels).toHaveLength(2)
   expect(labels[0]!.text()).toContain('log:*')
   expect(labels[1]!.text()).toContain('net:fetch:example.com')

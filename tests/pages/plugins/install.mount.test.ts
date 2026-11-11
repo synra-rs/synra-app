@@ -16,8 +16,8 @@ describe('local installation', () => {
     await click(wrapper, messages.plugins.reviewPermissions)
     await flushPromises()
     const permissions = wrapper.getComponent(PluginPermissions)
-    expect(permissions.findAll('input[type="checkbox"]')).toHaveLength(2)
-    expect(permissions.findAll('input:checked')).toHaveLength(0)
+    expect(permissions.findAll('[data-permission-capability] input')).toHaveLength(2)
+    expect(permissions.findAll('[data-permission-capability] input:checked')).toHaveLength(0)
     expect(permissions.text()).toContain(messages.plugins.workflow.allowSelected)
   })
   it('does not start reads or installations until the dialog is used', async () => {

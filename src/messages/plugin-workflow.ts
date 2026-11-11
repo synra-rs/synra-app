@@ -5,6 +5,7 @@ export const workflow = {
   details: 'Details',
   more: 'More actions',
   edit: 'Edit permissions',
+  all: 'All',
   cancel: 'Cancel',
   close: 'Close',
   allowSelected: 'Allow selected permissions',

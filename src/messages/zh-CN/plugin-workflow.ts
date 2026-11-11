@@ -7,6 +7,7 @@ export const workflow = {
   'plugins.workflow.details': '查看详情',
   'plugins.workflow.more': '更多操作',
   'plugins.workflow.edit': '修改权限',
+  'plugins.workflow.all': '所有',
   'plugins.workflow.cancel': '取消',
   'plugins.workflow.close': '关闭',
   'plugins.workflow.allowSelected': '允许所选权限',
