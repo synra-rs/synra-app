@@ -95,6 +95,21 @@ export function usePluginLibrary(onRemoved?: (id: string) => void) {
     await load()
   }
 
+  async function reloadLocal(plugin: PluginSnapshot, removeData: boolean): Promise<boolean> {
+    delete errors[plugin.pluginId]
+    const answer = await operations.run(plugin.pluginId, 'reload', () => kernel.call<InstallReport>('plugins_update', { pluginId: plugin.pluginId, removeData }))
+    if (!answer)
+      return false
+    if (!answer.ok) {
+      errors[plugin.pluginId] = failureOf(answer.error)
+      return false
+    }
+    note.value = messages.plugins.workflow.reloadAction
+    warnings.value = answer.value.warnings ?? []
+    await load()
+    return true
+  }
+
   async function remove(plugin: PluginSnapshot, removeData: boolean): Promise<boolean> {
     delete errors[plugin.pluginId]
     const answer = await operations.run(plugin.pluginId, 'remove', () => uninstall(kernel, plugin.pluginId, removeData))
@@ -113,7 +128,7 @@ export function usePluginLibrary(onRemoved?: (id: string) => void) {
     return true
   }
 
-  return reactive({ operations, errors, error, loading, note, warnings, leftovers, load, toggle, open, retry, checkUpdate, update, remove })
+  return reactive({ operations, errors, error, loading, note, warnings, leftovers, load, toggle, open, retry, checkUpdate, update, reloadLocal, remove })
 }
 
 export type PluginLibrary = ReturnType<typeof usePluginLibrary>

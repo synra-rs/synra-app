@@ -2,7 +2,7 @@
 import { flushPromises } from '@vue/test-utils'
 import { Checkbox } from 'ant-design-vue'
 import { expect, it } from 'vitest'
-import { answer, card, click, clickBody, ErrorNotice, messages, mocks, mountPage, PluginRemoval, usePluginsStore } from './workflow.testkit'
+import { answer, card, click, clickBody, ErrorNotice, messages, mocks, mountPage, PluginReload, PluginRemoval, usePluginsStore } from './workflow.testkit'
 
 async function removal() {
   const page = await mountPage('/plugins?plugin=%40acme%2Freader')
@@ -15,6 +15,16 @@ it('opens routine update details when addedCapabilities is omitted', async () =>
   await mountPage('/plugins?plugin=%40acme%2Freader')
   expect(document.body.textContent).toContain(messages.plugins.updateNoNewPermissions)
   expect(document.body.textContent).toContain('2.0')
+})
+it('replaces update checks with a confirmed local reload', async () => {
+  answer({ plugins_list: [card({ localSource: true })], plugins_update: { pluginId: '@acme/reader', version: '1.0', enabled: false, warnings: [] } })
+  const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
+  await click(wrapper, messages.plugins.workflow.more)
+  await clickBody(messages.plugins.workflow.reloadAction, 'menuitem')
+  const dialog = wrapper.getComponent(PluginReload)
+  await dialog.getComponent(Checkbox).get('input').setValue(true)
+  await click(dialog, messages.plugins.workflow.reloadAction)
+  expect(mocks.call).toHaveBeenCalledWith('plugins_update', { pluginId: '@acme/reader', removeData: true })
 })
 it('asks about data and resets the destructive choice after cancellation', async () => {
   const { wrapper, dialog } = await removal()

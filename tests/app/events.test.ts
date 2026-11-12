@@ -180,6 +180,7 @@ describe('the event stream', () => {
         pluginId: '@acme/hello',
         title: 'Hello',
         version: '1.0.0',
+        localSource: false,
         publisher: 'acme',
         enabled: true,
         state: 'active',

@@ -44,7 +44,7 @@ pub use catalog::{
 };
 pub(crate) use install::{check_local_update, local_directory_source};
 pub(crate) use install::{
-    complete_update, install_directory, migrate_and_unload, update_directory,
+    complete_update, install_directory, migrate_and_unload, reload_directory, update_directory,
 };
 pub(crate) use lifecycle::{apply_lifecycle, apply_unload};
 #[cfg(test)]

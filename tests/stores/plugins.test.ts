@@ -17,6 +17,7 @@ function card(pluginId: string, overrides: Partial<PluginSnapshot> = {}): Plugin
     pluginId,
     title: pluginId,
     version: '1.0.0',
+    localSource: false,
     publisher: 'acme',
     enabled: false,
     state: 'awaiting_consent',

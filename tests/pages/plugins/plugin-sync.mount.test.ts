@@ -41,6 +41,7 @@ function snapshot(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
     pluginId: 'demo',
     title: 'Demo',
     version: '1.0.0',
+    localSource: false,
     state: 'running',
     enabled: true,
     hasUi: false,

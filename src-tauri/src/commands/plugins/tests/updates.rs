@@ -59,6 +59,29 @@ fn an_update_check_names_the_version_and_the_new_permission() {
 }
 
 #[test]
+fn a_local_reload_removes_data_before_reinstalling_the_same_directory() {
+    let (root, state) = testing::file_state();
+    let state = with_engine(state);
+    let source = package(root.path());
+    plugins_install(
+        &state,
+        &InstallSourceDto::Path {
+            path: source.to_string_lossy().into_owned(),
+        },
+    )
+    .expect("the fixture installs");
+    let data = state.paths.plugin_sandbox_dir("@acme/hello");
+    std::fs::create_dir_all(&data).expect("data directory");
+    std::fs::write(data.join("state.txt"), "old").expect("plugin data");
+
+    let report = plugins_update(&state, "@acme/hello", Some(true)).expect("the local reload runs");
+
+    assert_eq!(report.version, "1.0.0");
+    assert!(!data.join("state.txt").exists(), "reload deleted the requested data");
+    assert!(state.paths.plugin_dir("@acme/hello").join("manifest.json").exists());
+}
+
+#[test]
 fn an_update_asks_the_old_version_to_migrate_before_replacing_it() {
     // ★ The data being moved is the old plugin's, and the old code is the only code that knows what it wrote. A
     // migration that runs after the replacement has no working version to fall back to.

@@ -2,7 +2,7 @@ use super::{
     AUDIT_RETENTION_KEY, announce_updated, discover_plugins, install_directory,
     load_installed_plugins, plugins_audit, plugins_audit_clear, plugins_catalog_search,
     plugins_check_update, plugins_consent_respond, plugins_install, plugins_list, plugins_preview,
-    plugins_publisher_decide, plugins_publishers, prune_audit, record_card,
+    plugins_publisher_decide, plugins_publishers, plugins_update, prune_audit, record_card,
 };
 use crate::testing;
 use synra_ipc::{CatalogQuery, InstallSourceDto};

@@ -1,1 +1,1 @@
-export type PluginMenuAction = 'overview' | 'permissions' | 'audit' | 'check' | 'update' | 'sync' | 'remove'
+export type PluginMenuAction = 'overview' | 'permissions' | 'audit' | 'check' | 'reload' | 'update' | 'sync' | 'remove'

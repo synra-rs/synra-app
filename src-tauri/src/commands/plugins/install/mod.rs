@@ -80,6 +80,16 @@ pub(crate) fn update_directory(
     complete_update(state, &id, run_install(state, path, true))
 }
 
+pub(crate) fn reload_directory(
+    state: &AppState,
+    plugin_id: &str,
+    path: &std::path::Path,
+    remove_data: bool,
+) -> Result<InstallReport, IpcError> {
+    plugins_uninstall(state, plugin_id, remove_data)?;
+    install_directory(state, path)
+}
+
 /// Migrates the old instance before replacing its files, then stops it.
 pub(crate) fn migrate_and_unload(
     state: &AppState,

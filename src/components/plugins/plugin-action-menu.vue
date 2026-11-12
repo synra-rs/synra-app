@@ -18,10 +18,10 @@
           </AMenuItem>
           <AMenuDivider />
         </template>
-        <AMenuItem key="check">
-          {{ messages.plugins.checkUpdates }}
+        <AMenuItem :key="plugin.localSource ? 'reload' : 'check'">
+          {{ plugin.localSource ? messages.plugins.workflow.reloadAction : messages.plugins.checkUpdates }}
         </AMenuItem>
-        <AMenuItem v-if="plugin.update" key="update">
+        <AMenuItem v-if="plugin.update && !plugin.localSource" key="update">
           {{ messages.plugins.updateAction }}
         </AMenuItem>
         <AMenuDivider />

@@ -17,6 +17,7 @@ function snapshot(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
     title: 'Starter',
     description: 'Examples.',
     version: '0.1.0',
+    localSource: false,
     publisher: 'Acme',
     enabled: true,
     state: 'running',

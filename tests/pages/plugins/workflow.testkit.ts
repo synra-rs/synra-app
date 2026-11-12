@@ -17,6 +17,7 @@ export const PluginRow = (await import('@/components/plugins/plugin-row.vue')).d
 export const PluginDetail = (await import('@/components/plugins/plugin-detail.vue')).default
 export const PluginPermissions = (await import('@/components/plugins/plugin-permissions.vue')).default
 export const PluginInstallConsent = (await import('@/components/plugins/plugin-install-consent.vue')).default
+export const PluginReload = (await import('@/components/plugins/plugin-reload.vue')).default
 export const LocalInstallDialog = (await import('@/components/plugins/local-install-dialog.vue')).default
 export const RegistryDiscover = (await import('@/components/plugins/registry-discover.vue')).default
 export const RegistryInstallDialog = (await import('@/components/plugins/registry-install-dialog.vue')).default
@@ -28,7 +29,7 @@ export const { usePluginsStore } = await import('@/stores/plugins')
 export const { messages } = await import('@/messages')
 
 export function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
-  return { pluginId: '@acme/reader', dataPath: 'data/reader', title: 'Reader', description: 'A plugin with a page', version: '1.0.0', publisher: '@acme', enabled: true, state: 'active', hasUi: true, hybrid: false, requested: ['log:*', 'net:fetch:example.com'], granted: ['log:*'], denied: ['net:fetch:example.com'], ...overrides }
+  return { pluginId: '@acme/reader', dataPath: 'data/reader', title: 'Reader', description: 'A plugin with a page', version: '1.0.0', localSource: false, publisher: '@acme', enabled: true, state: 'active', hasUi: true, hybrid: false, requested: ['log:*', 'net:fetch:example.com'], granted: ['log:*'], denied: ['net:fetch:example.com'], ...overrides }
 }
 export function answer(byCommand: Record<string, unknown> = {}): void {
   mocks.call.mockImplementation(async (command: string, args: unknown) => {

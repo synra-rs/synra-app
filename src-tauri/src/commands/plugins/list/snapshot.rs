@@ -72,6 +72,7 @@ pub(crate) fn snapshot(
         version: manifest
             .as_ref()
             .map_or_else(String::new, |manifest| manifest.version.clone()),
+        local_source: crate::commands::plugins::local_directory_source(state, &row.plugin_id).is_some(),
         publisher: manifest
             .as_ref()
             .map_or_else(String::new, |manifest| manifest.publisher.id.clone()),

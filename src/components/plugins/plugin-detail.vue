@@ -29,6 +29,7 @@
   </ADrawer>
   <PluginSync ref="sync" triggerless :plugin="plugin" :operations="library.operations" />
   <PluginInstallConsent v-if="plugin.state === 'awaiting_consent'" :plugin="plugin" :library="library" @close="close" />
+  <PluginReload v-if="reloading" :plugin="plugin" :library="library" @close="reloading = false" />
   <PluginRemoval v-if="removing" :plugin="plugin" :library="library" @close="removed" />
 </template>
 
@@ -47,6 +48,7 @@ import PluginAudit from './plugin-audit.vue'
 import PluginInstallConsent from './plugin-install-consent.vue'
 import PluginOverview from './plugin-overview.vue'
 import PluginPermissions from './plugin-permissions.vue'
+import PluginReload from './plugin-reload.vue'
 import PluginRemoval from './plugin-removal.vue'
 import PluginSync from './plugin-sync.vue'
 
@@ -55,6 +57,7 @@ const emit = defineEmits<{ close: [] }>()
 const tab = ref(props.initialTab || 'overview')
 watch(() => props.initialTab, value => tab.value = value || 'overview')
 const removing = ref(false)
+const reloading = ref(false)
 const sync = ref<InstanceType<typeof PluginSync>>()
 watch(() => props.initialAction, async (value) => {
   if (value === 'sync') {
@@ -78,6 +81,9 @@ function action(key: PluginMenuAction): void {
       break
     case 'sync':
       void sync.value?.show()
+      break
+    case 'reload':
+      reloading.value = true
       break
     case 'audit':
       tab.value = 'audit'

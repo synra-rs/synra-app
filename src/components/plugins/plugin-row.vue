@@ -19,7 +19,7 @@
       </span>
       <PluginActionMenu compact :plugin="plugin" :disabled="busy" @action="action => $emit('action', action)" />
     </div>
-    <p v-if="plugin.update" class="m-0 text-sm text-primary-ink">
+    <p v-if="plugin.update && !plugin.localSource" class="m-0 text-sm text-primary-ink">
       {{ plugin.update.needsNewConsent ? messages.plugins.updateNeedsConsent : messages.plugins.updateAvailable }}
     </p>
     <p v-if="attention" class="m-0 text-sm text-warn">

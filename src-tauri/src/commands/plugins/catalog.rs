@@ -60,9 +60,16 @@ pub fn plugins_preview(
 ///
 /// `PluginNotInstalled` when no active version exists, `Unsupported` when no registry is configured, and the install
 /// pipeline's refusals when the package cannot be fetched or verified.
-pub fn plugins_update(state: &AppState, plugin_id: &str) -> Result<InstallReport, IpcError> {
+pub fn plugins_update(
+    state: &AppState,
+    plugin_id: &str,
+    remove_data: Option<bool>,
+) -> Result<InstallReport, IpcError> {
     if let Some(source) = local_directory_source(state, plugin_id) {
-        let report = update_directory(state, plugin_id, &source)?;
+        let report = match remove_data {
+            Some(remove_data) => reload_directory(state, plugin_id, &source, remove_data)?,
+            None => update_directory(state, plugin_id, &source)?,
+        };
         announce_updated(state, &report);
         return Ok(report);
     }

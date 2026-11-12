@@ -74,8 +74,9 @@ pub fn plugins_publisher_decide(
 pub fn plugins_update(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     plugin_id: String,
+    remove_data: Option<bool>,
 ) -> Result<InstallReport, IpcError> {
-    commands::plugins::plugins_update(&state, &plugin_id)
+    commands::plugins::plugins_update(&state, &plugin_id, remove_data)
 }
 
 /// The updates the last background pass found, so a page opened later can show them without asking the registry.

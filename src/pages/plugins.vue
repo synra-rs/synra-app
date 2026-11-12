@@ -78,6 +78,7 @@
       </AButton>
     </div>
     <PluginRemoval v-if="removingPlugin" :plugin="removingPlugin" :library="library" @close="removingId = ''" />
+    <PluginReload v-if="reloadingPlugin" :plugin="reloadingPlugin" :library="library" @close="reloadingId = ''" />
     <LocalInstallDialog v-if="installOpen" @close="installOpen = false" @installed="installed" />
     <PublisherManager v-if="publishersOpen" :model="publishers" @close="publishersOpen = false" />
   </section>
@@ -92,6 +93,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
 import PluginInstallConsent from '../components/plugins/plugin-install-consent.vue'
+import PluginReload from '../components/plugins/plugin-reload.vue'
 import PluginRemoval from '../components/plugins/plugin-removal.vue'
 import PluginRow from '../components/plugins/plugin-row.vue'
 import RegistryDiscover from '../components/plugins/registry-discover.vue'
@@ -120,7 +122,9 @@ const pendingPublisher = ref<{ id: string, fingerprint: string }>()
 const detailTab = ref('overview')
 const detailAction = ref('')
 const removingId = ref('')
+const reloadingId = ref('')
 const removingPlugin = computed(() => store.plugin(removingId.value))
+const reloadingPlugin = computed(() => store.plugin(reloadingId.value))
 let detailTrigger: HTMLElement | undefined
 const categories = computed(() => [{ label: messages.plugins.categories.installed, value: 'installed' }, { label: messages.plugins.categories.discover, value: 'discover' }])
 const targetId = computed(() => typeof route.query.plugin === 'string' ? route.query.plugin : '')
@@ -164,6 +168,8 @@ function rowAction(plugin: PluginSnapshot, action: PluginMenuAction): void {
     void library.update(plugin)
   else if (action === 'remove')
     removingId.value = plugin.pluginId
+  else if (action === 'reload')
+    reloadingId.value = plugin.pluginId
   else if (action === 'sync')
     showDetails(plugin.pluginId, 'overview', 'sync')
   else
