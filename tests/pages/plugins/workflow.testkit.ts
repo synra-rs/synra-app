@@ -16,6 +16,7 @@ export const PluginsPage = (await import('@/pages/plugins.vue')).default
 export const PluginRow = (await import('@/components/plugins/plugin-row.vue')).default
 export const PluginDetail = (await import('@/components/plugins/plugin-detail.vue')).default
 export const PluginPermissions = (await import('@/components/plugins/plugin-permissions.vue')).default
+export const PluginInstallConsent = (await import('@/components/plugins/plugin-install-consent.vue')).default
 export const LocalInstallDialog = (await import('@/components/plugins/local-install-dialog.vue')).default
 export const RegistryDiscover = (await import('@/components/plugins/registry-discover.vue')).default
 export const RegistryInstallDialog = (await import('@/components/plugins/registry-install-dialog.vue')).default

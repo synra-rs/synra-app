@@ -18,7 +18,6 @@ export const plugins = {
     discover: 'Find more'
   },
   manage: 'Permissions and management',
-  reviewPermissions: 'Review permissions',
   showAll: 'All plugins',
   notFound: (id: string) => `Plugin ${id} is no longer installed.`,
   enableLabel: (name: string) => `Enable ${name}`,
@@ -198,7 +197,6 @@ export const plugins = {
   /** The list the user decides about, one checkbox each. */
   requested: 'It asks for',
   /** The button that records the decision. "Allow" rather than "Save": the act is approval, not persistence. */
-  consentAction: 'Save permissions',
 
   /**
    * The install form's words, added when the command became reachable from this window.

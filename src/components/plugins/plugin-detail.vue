@@ -19,7 +19,7 @@
           </AButton>
         </ATabPane>
         <ATabPane key="permissions" :tab="messages.plugins.workflow.permissions">
-          <PluginPermissions :plugin="plugin" :operations="library.operations" :initial-edit="initialAction === 'review'" />
+          <PluginPermissions :plugin="plugin" />
         </ATabPane>
         <ATabPane key="audit" :tab="messages.plugins.audit.title">
           <PluginAudit :plugin-id="plugin.pluginId" :active="tab === 'audit' && visible" />
@@ -28,6 +28,7 @@
     </div>
   </ADrawer>
   <PluginSync ref="sync" triggerless :plugin="plugin" :operations="library.operations" />
+  <PluginInstallConsent v-if="plugin.state === 'awaiting_consent'" :plugin="plugin" :library="library" @close="close" />
   <PluginRemoval v-if="removing" :plugin="plugin" :library="library" @close="removed" />
 </template>
 
@@ -43,6 +44,7 @@ import { useDialogVisibility } from '../../stores/dialogs'
 import { usePluginsStore } from '../../stores/plugins'
 import PluginActionMenu from './plugin-action-menu.vue'
 import PluginAudit from './plugin-audit.vue'
+import PluginInstallConsent from './plugin-install-consent.vue'
 import PluginOverview from './plugin-overview.vue'
 import PluginPermissions from './plugin-permissions.vue'
 import PluginRemoval from './plugin-removal.vue'

@@ -16,9 +16,6 @@
       <p v-for="warning in library.warnings" :key="warning" class="m-0 text-sm text-warn">
         {{ warning }}
       </p>
-      <AButton v-if="lastInstalled" size="small" class="self-start" @click="showDetails(lastInstalled.pluginId, 'permissions', 'review')">
-        {{ messages.plugins.reviewPermissions }}
-      </AButton>
     </div>
     <div v-if="pendingPublisher" class="stack gap-2 border border-line rounded-control p-3">
       <p class="m-0 text-base">
@@ -72,6 +69,7 @@
     </div>
     <RegistryDiscover v-show="category === 'discover'" data-testid="plugin-discover-view" @installed="installed" @details="showDetails" />
     <PluginDetail v-if="targetPlugin" :key="targetPlugin.pluginId" :plugin="targetPlugin" :library="library" :initial-tab="detailTab" :initial-action="detailAction" @close="leaveTarget" />
+    <PluginInstallConsent v-if="consentPlugin" :plugin="consentPlugin" :library="library" @close="consentPluginId = ''" />
     <div v-else-if="targetId && !library.loading" class="stack items-start gap-2" data-testid="plugin-target">
       <p class="m-0 text-base">
         {{ messages.plugins.notFound(targetId) }}
@@ -93,6 +91,7 @@ import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
 import PageHeader from '../components/PageHeader.vue'
+import PluginInstallConsent from '../components/plugins/plugin-install-consent.vue'
 import PluginRemoval from '../components/plugins/plugin-removal.vue'
 import PluginRow from '../components/plugins/plugin-row.vue'
 import RegistryDiscover from '../components/plugins/registry-discover.vue'
@@ -116,7 +115,7 @@ const installOpen = ref(false)
 const publishersOpen = ref(false)
 const filterInput = ref<{ focus: () => void }>()
 const installToggle = ref<{ $el: HTMLButtonElement }>()
-const lastInstalled = ref<InstallReport>()
+const consentPluginId = ref('')
 const pendingPublisher = ref<{ id: string, fingerprint: string }>()
 const detailTab = ref('overview')
 const detailAction = ref('')
@@ -126,6 +125,7 @@ let detailTrigger: HTMLElement | undefined
 const categories = computed(() => [{ label: messages.plugins.categories.installed, value: 'installed' }, { label: messages.plugins.categories.discover, value: 'discover' }])
 const targetId = computed(() => typeof route.query.plugin === 'string' ? route.query.plugin : '')
 const targetPlugin = computed(() => store.plugin(targetId.value))
+const consentPlugin = computed(() => store.plugin(consentPluginId.value))
 const visiblePlugins = computed(() => {
   const query = filter.value.trim().toLowerCase()
   return store.plugins.filter(plugin => [plugin.title, plugin.pluginId, plugin.description ?? ''].some(text => text.toLowerCase().includes(query)))
@@ -171,10 +171,10 @@ function rowAction(plugin: PluginSnapshot, action: PluginMenuAction): void {
 }
 async function installed(report: InstallReport): Promise<void> {
   installOpen.value = false
-  lastInstalled.value = report
   library.note = messages.plugins.workflow.installedHelp
   library.warnings = report.warnings ?? []
   await Promise.all([library.load(), publishers.read()])
+  consentPluginId.value = report.pluginId
   const known = publishers.list.find(publisher => publisher.publisherId === report.publisherId)
   if (report.publisherId && report.fingerprint && known?.trust !== 'trusted')
     pendingPublisher.value = { id: report.publisherId, fingerprint: report.fingerprint }
