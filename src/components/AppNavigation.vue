@@ -18,7 +18,7 @@
       </ATooltip>
     </div>
     <AMenu :aria-label="messages.app.navigation" class="min-h-0 flex-1 overflow-y-auto overscroll-contain [&_.ant-menu-item:focus-visible]:ring-2 [&_.ant-menu-item:focus-visible]:ring-offset-2 [&_.ant-menu-item:focus-visible]:ring-primary-ink [&_.ant-menu-item:focus-visible]:ring-offset-screen" mode="inline" :inline-collapsed="rail" :selected-keys="[route.path]" @click="navigate">
-      <AMenuItem v-for="page in PAGES" :key="page.path">
+      <AMenuItem v-for="page in PAGES" :key="page.path" :title="page.label">
         <template #icon>
           <span :class="page.icon" aria-hidden="true" />
         </template>
