@@ -22,7 +22,7 @@
         <AButton v-if="!card.paired && !card.blocked" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
           {{ messages.devices.pairing }}
         </AButton>
-        <AButton type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
+        <AButton class="device-details-action" type="text" :aria-label="messages.devices.detailsFor(card.displayName)" :aria-expanded="expanded" :aria-controls="detailsId" @click="expanded = !expanded">
           {{ messages.devices.details }}
           <span :class="expanded ? 'i-carbon-chevron-up' : 'i-carbon-chevron-down'" aria-hidden="true" />
         </AButton>
@@ -83,6 +83,23 @@ const detailsId = useId()
 <style scoped>
 .device-actions {
   min-width: 10rem;
+}
+
+.device-details-action {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+article:hover .device-details-action,
+article:focus-within .device-details-action,
+.device-details-action[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .device-details-action {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 40rem) {
