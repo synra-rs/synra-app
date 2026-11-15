@@ -1,9 +1,19 @@
 <template>
   <section class="mx-auto max-w-[1200px] min-w-0 stack gap-5 pb-4" data-page-width="workspace">
     <PageHeader :title="messages.plugins.title">
-      <AButton data-testid="publishers-toggle" @click="publishersOpen = true">
-        {{ messages.plugins.publishers.manage(attentionCount) }}
-      </AButton>
+      <ADropdown :trigger="['click']">
+        <AButton class="plugin-header-more" :aria-label="messages.plugins.workflow.more" data-testid="plugins-more">
+          <span class="i-carbon-overflow-menu-horizontal" aria-hidden="true" />
+          <span v-if="attentionCount" class="plugin-header-more-dot" aria-hidden="true" />
+        </AButton>
+        <template #overlay>
+          <AMenu @click="({ key }) => key === 'publishers' && (publishersOpen = true)">
+            <AMenu.Item key="publishers" data-testid="publishers-toggle">
+              {{ messages.plugins.publishers.manage(attentionCount) }}
+            </AMenu.Item>
+          </AMenu>
+        </template>
+      </ADropdown>
       <AButton ref="installToggle" type="primary" data-testid="install-toggle" @click="installOpen = true">
         {{ messages.plugins.workflow.localInstall }}
       </AButton>
@@ -86,8 +96,9 @@
 
 <script setup lang="ts">
 import type { InstallReport, PluginSnapshot } from '@synra/protocol'
+<<<<<<< HEAD:src/pages/plugins.vue
 import type { PluginMenuAction } from '../features/plugins/menu'
-import { Button as AButton, Empty as AEmpty, Input as AInput, Segmented as ASegmented } from 'ant-design-vue'
+import { Button as AButton, Dropdown as ADropdown, Empty as AEmpty, Input as AInput, Menu as AMenu, Segmented as ASegmented } from 'ant-design-vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ErrorNotice from '../components/ErrorNotice.vue'
@@ -193,3 +204,20 @@ async function decidePending(trust: 'trusted' | 'revoked'): Promise<void> {
     pendingPublisher.value = undefined
 }
 </script>
+
+<style scoped>
+.plugin-header-more {
+  position: relative;
+}
+
+.plugin-header-more-dot {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  background: var(--synra-warning, #d97706);
+  border: 2px solid var(--synra-screen, #fff);
+  border-radius: 9999px;
+}
+</style>

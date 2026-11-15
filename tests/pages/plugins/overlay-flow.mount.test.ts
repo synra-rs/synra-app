@@ -71,7 +71,8 @@ it('releases a sync when its detail is removed and can open a different drawer a
   await router.replace('/plugins')
   await flushPromises()
   expect(wrapper.findComponent(PluginSync).exists()).toBe(false)
-  await click(wrapper, messages.plugins.publishers.manage(0))
+  await wrapper.get('[data-testid="plugins-more"]').trigger('click')
+  await clickBody(messages.plugins.publishers.manage(0), 'menuitem')
   await vi.waitFor(() => {
     expect(document.querySelector('.ant-drawer-title')?.textContent).toContain(messages.plugins.publishers.title)
     expect(new DOMWrapper(document.querySelector('.ant-drawer-body')!).isVisible()).toBe(true)

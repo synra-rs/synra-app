@@ -31,7 +31,7 @@ it('asks about data and resets the destructive choice after cancellation', async
   expect((dialog.getComponent(Checkbox).get('input').element as HTMLInputElement).checked).toBe(false)
   await dialog.getComponent(Checkbox).get('input').setValue(true)
   await click(dialog, messages.plugins.workflow.cancel)
-  await click(wrapper, messages.plugins.workflow.more)
+  await wrapper.get('[data-testid="plugins-more"]').trigger('click')
   await clickBody(messages.plugins.removeAction, 'menuitem')
   expect((wrapper.getComponent(PluginRemoval).getComponent(Checkbox).get('input').element as HTMLInputElement).checked).toBe(false)
   expect(mocks.call.mock.calls.some(([command]) => command === 'plugins_uninstall')).toBe(false)
@@ -64,7 +64,8 @@ it('binds publisher trust to the full fingerprint and preserves failed decisions
   const publisher = { publisherId: '@acme', fingerprint: 'full-fingerprint-from-the-kernel', trust: 'seen' }
   answer({ plugins_publishers: [publisher], plugins_publisher_decide: () => ({ ok: false, error: { code: 'invalid_argument', message: 'error.stale' } }) })
   const { wrapper } = await mountPage()
-  await click(wrapper, messages.plugins.publishers.manage(1))
+  await wrapper.get('[data-testid="plugins-more"]').trigger('click')
+  await clickBody(messages.plugins.publishers.manage(1), 'menuitem')
   await click(wrapper, messages.plugins.publishers.trust)
   expect(mocks.call).toHaveBeenCalledWith('plugins_publisher_decide', { publisherId: publisher.publisherId, fingerprint: publisher.fingerprint, trust: 'trusted' })
   await flushPromises()
