@@ -215,12 +215,41 @@
   font-size: 0.8125rem;
   color: #52647b;
 }
+.debug-status {
+  display: flex;
+  flex: none;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.2rem 0.85rem calc(0.3rem + env(safe-area-inset-bottom));
+  color: #8192a8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  border-top: 1px solid rgb(255 255 255 / 5%);
+}
+.debug-jump {
+  flex: none;
+  min-height: 1.6rem;
+  padding: 0.15rem 0.55rem;
+  color: #cfe4ff;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid rgb(207 228 255 / 24%);
+  border-radius: 0.45rem;
+}
+.debug-jump:hover {
+  background: rgb(207 228 255 / 10%);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .debug-scrim,
   .debug-sheet,
   .debug-action,
   .debug-tools-summary {
+    transition: none;
+  }
+  .debug-jump {
     transition: none;
   }
 }

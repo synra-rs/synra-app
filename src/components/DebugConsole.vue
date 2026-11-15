@@ -78,7 +78,7 @@
               ⋯
             </summary>
             <div class="debug-tools-popover">
-              <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
+              <button type="button" class="debug-action border-0 bg-transparent" @click="setPaused(!paused)">
                 {{ paused ? words.resume : words.pause }}
               </button>
               <button type="button" class="debug-action border-0 bg-transparent" @click="clear">
@@ -96,6 +96,15 @@
             {{ words.empty }}
           </div>
         </div>
+        <div class="debug-status" role="status" aria-live="polite">
+          <span v-if="paused">{{ words.paused }}<template v-if="pausedLines"> · {{ words.newLines(pausedLines) }}</template></span>
+          <span v-else-if="unread">{{ words.newLines(unread) }}</span>
+          <span v-else-if="!atLatest">{{ words.viewingHistory }}</span>
+          <span v-else aria-hidden="true">&nbsp;</span>
+          <button v-if="!atLatest" type="button" class="debug-jump border-0 bg-transparent" @click="jumpToLatest">
+            {{ words.jumpLatest }}
+          </button>
+        </div>
       </section>
     </div>
   </Teleport>
@@ -111,5 +120,5 @@ import '../debug/terminal.css'
 const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
-const { open, visible, paused, filter, unread, lineCount, enabled, words, hide, toggle, clear, copy, copyLabel } = useWireConsole(host, bubble, closeButton)
+const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused } = useWireConsole(host, bubble, closeButton)
 </script>

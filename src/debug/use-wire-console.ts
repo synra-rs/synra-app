@@ -20,15 +20,19 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   const sentCount = ref(0)
   const receivedCount = ref(0)
   const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
+  const atLatest = ref(true)
+  const pausedLines = ref(0)
   const settings = useSettingsStore()
   const enabled = computed(() => settings.value('ui.debugConsole') !== false)
   const terminal = ref<Terminal | null>(null)
   let fitAddon: FitAddon | null = null
-  const pending: WireLine[] = []
-  const MAX_PENDING = 2000
+  const history: WireLine[] = []
+  const MAX_HISTORY = 8000
   let stopListening: (() => void) | null = null
   let resizeObserver: ResizeObserver | null = null
   let copyTimer: number | undefined
+  let fitTimer: number | undefined
+  let didInitialScroll = false
   const words = computed(() => messages.debug)
   function playDemo() {
     const base = Date.now() - 12_000
@@ -47,34 +51,60 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       { atMs: base + 5120, direction: 'received', peer: '7f3a9c21', label: '_synra.transfer.accept', bytes: 64 }
     ]
     for (const line of lines)
-      write(line)
+      observe(line)
   }
   function passes(line: WireLine): boolean {
     if (filter.value === 'all')
       return true
     return line.direction === filter.value
   }
-  function write(line: WireLine) {
+  function isAtLatest(): boolean {
     const term = terminal.value
-    if (!term) {
-      if (pending.length >= MAX_PENDING)
-        pending.shift()
-      pending.push(line)
+    if (!term)
+      return true
+    const buffer = term.buffer.active
+    return buffer.viewportY >= buffer.baseY
+  }
+  function renderHistory(scroll = false): void {
+    const term = terminal.value
+    if (!term)
       return
+    term.clear()
+    lineCount.value = 0
+    for (const line of history) {
+      if (passes(line)) {
+        term.write(`${formatWireLine(line)}\r\n`)
+        lineCount.value += 1
+      }
     }
-    if (paused.value || !passes(line))
+    if (scroll)
+      scrollToEnd()
+  }
+  function append(line: WireLine): void {
+    const term = terminal.value
+    if (!term || paused.value || !passes(line))
       return
+    const wasAtLatest = isAtLatest()
     term.write(`${formatWireLine(line)}\r\n`)
     lineCount.value += 1
+    atLatest.value = wasAtLatest
+    if (open.value && !wasAtLatest)
+      unread.value += 1
   }
   function observe(line: WireLine) {
     if (!enabled.value)
       return
+    history.push(line)
+    if (history.length > MAX_HISTORY)
+      history.shift()
     if (line.direction === 'sent')
       sentCount.value += 1
     else if (line.direction === 'received')
       receivedCount.value += 1
-    write(line)
+    if (paused.value)
+      pausedLines.value += 1
+    else
+      append(line)
     if (!open.value) {
       unread.value += 1
     }
@@ -113,13 +143,14 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     term.loadAddon(fitAddon)
     term.open(host.value)
     terminal.value = term
-    for (const line of pending) {
-      if (passes(line)) {
-        term.write(`${formatWireLine(line)}\r\n`)
-        lineCount.value += 1
-      }
+    if (typeof term.onScroll === 'function') {
+      term.onScroll(() => {
+        atLatest.value = isAtLatest()
+        if (atLatest.value)
+          unread.value = 0
+      })
     }
-    pending.length = 0
+    renderHistory()
   }
   async function fit() {
     if (!visible.value)
@@ -133,6 +164,20 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   }
   function scrollToEnd() {
     terminal.value?.scrollToBottom()
+    atLatest.value = true
+    unread.value = 0
+  }
+  function jumpToLatest(): void {
+    scrollToEnd()
+  }
+  function setPaused(value: boolean): void {
+    if (paused.value === value)
+      return
+    paused.value = value
+    if (!value) {
+      pausedLines.value = 0
+      renderHistory(true)
+    }
   }
   async function show() {
     open.value = true
@@ -143,7 +188,10 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     closeButton.value?.focus()
     window.setTimeout(() => {
       void fit()
-      scrollToEnd()
+      if (!didInitialScroll) {
+        didInitialScroll = true
+        scrollToEnd()
+      }
     }, 280)
   }
   function hide() {
@@ -162,11 +210,13 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   }
   function clear() {
     terminal.value?.clear()
-    pending.length = 0
+    history.length = 0
     lineCount.value = 0
     sentCount.value = 0
     receivedCount.value = 0
     unread.value = 0
+    pausedLines.value = 0
+    atLatest.value = true
   }
   async function copy() {
     const term = terminal.value
@@ -216,6 +266,14 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       }
     }
   }
+  function scheduleFit(): void {
+    window.clearTimeout(fitTimer)
+    fitTimer = window.setTimeout(() => void fit(), 48)
+  }
+  watch(filter, () => {
+    if (!paused.value)
+      renderHistory()
+  })
   onMounted(async () => {
     if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('wire-demo')) {
       playDemo()
@@ -223,22 +281,21 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     }
     stopListening = subscribeWireLines(observe)
     if (typeof ResizeObserver !== 'undefined' && host.value) {
-      resizeObserver = new ResizeObserver(() => {
-        void fit()
-      })
+      resizeObserver = new ResizeObserver(scheduleFit)
       resizeObserver.observe(host.value)
     }
     window.addEventListener('keydown', onKey)
-    window.addEventListener('resize', fit)
+    window.addEventListener('resize', scheduleFit)
   })
   onBeforeUnmount(() => {
     stopListening?.()
     resizeObserver?.disconnect()
     resizeObserver = null
     window.removeEventListener('keydown', onKey)
-    window.removeEventListener('resize', fit)
+    window.removeEventListener('resize', scheduleFit)
     window.clearTimeout(copyTimer)
+    window.clearTimeout(fitTimer)
     terminal.value?.dispose()
   })
-  return { open, visible, paused, filter, unread, lineCount, sentCount, receivedCount, enabled, words, hide, toggle, clear, copy, copyLabel }
+  return { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, sentCount, receivedCount, enabled, words, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused }
 }
