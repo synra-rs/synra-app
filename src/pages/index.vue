@@ -36,12 +36,12 @@
       <AList v-else size="small">
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId" :style="{ paddingInline: 0 }">
           <div class="min-w-0 w-full stack gap-2">
-            <div class="row-between gap-3">
+            <div class="home-transfer-row row-between gap-3">
               <div class="min-w-0 stack gap-0.5">
                 <span class="truncate text-base">{{ transfer.peerName }}</span>
                 <span v-if="transfer.fileName" class="truncate text-sm text-ink-dim">{{ transfer.fileName }}</span>
               </div>
-              <div class="row gap-2">
+              <div class="home-transfer-actions row gap-2">
                 <ATag class="m-0">
                   {{ directionOf(transfer) }}
                 </ATag>
@@ -201,3 +201,41 @@ import { formatDateTime } from '../utils/locale-format'
 
 const { router, devices, askBeforeCancel, error, received, cancelling, percentOf, progressLabel, directionOf, stateLabel, cancelTransfer, wire, state, wirePeerName, wireWidth, wireLive, load, expanded, copiedTrace, selectedTrace, toggleExpanded, copyTrace, deciding, accept, decline, canDecline, deviceName, intentStateLabel, intentStateColor, retryLabel, formatClock, intentError, intents, transfers } = useHomePage()
 </script>
+
+<style scoped>
+.home-transfer-actions {
+  min-width: 8.5rem;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.home-transfer-row:hover .home-transfer-actions,
+.home-transfer-row:focus-within .home-transfer-actions {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .home-transfer-actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-transfer-actions {
+    transition: none;
+  }
+}
+
+@media (max-width: 40rem) {
+  .home-transfer-row {
+    align-items: flex-start;
+  }
+
+  .home-transfer-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>
