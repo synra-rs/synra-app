@@ -215,6 +215,16 @@
   font-size: 0.8125rem;
   color: #52647b;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .debug-scrim,
+  .debug-sheet,
+  .debug-action,
+  .debug-tools-summary {
+    transition: none;
+  }
+}
+
 @media (min-width: 48rem) {
   .debug-sheet {
     right: 1.25rem;

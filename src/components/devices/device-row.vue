@@ -102,6 +102,12 @@ article:focus-within .device-details-action,
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .device-details-action {
+    transition: none;
+  }
+}
+
 @media (max-width: 40rem) {
   .device-actions {
     width: 100%;

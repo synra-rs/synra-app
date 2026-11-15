@@ -73,6 +73,12 @@ const summary = computed(() => props.plugin.stateReason || (props.plugin.health 
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .plugin-actions {
+    transition: none;
+  }
+}
+
 @media (max-width: 40rem) {
   .plugin-actions {
     width: 100%;
