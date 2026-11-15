@@ -27,6 +27,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   const pending: WireLine[] = []
   const MAX_PENDING = 2000
   let stopListening: (() => void) | null = null
+  let resizeObserver: ResizeObserver | null = null
   let copyTimer: number | undefined
   const words = computed(() => messages.debug)
   function playDemo() {
@@ -221,11 +222,19 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       void show()
     }
     stopListening = subscribeWireLines(observe)
+    if (typeof ResizeObserver !== 'undefined' && host.value) {
+      resizeObserver = new ResizeObserver(() => {
+        void fit()
+      })
+      resizeObserver.observe(host.value)
+    }
     window.addEventListener('keydown', onKey)
     window.addEventListener('resize', fit)
   })
   onBeforeUnmount(() => {
     stopListening?.()
+    resizeObserver?.disconnect()
+    resizeObserver = null
     window.removeEventListener('keydown', onKey)
     window.removeEventListener('resize', fit)
     window.clearTimeout(copyTimer)

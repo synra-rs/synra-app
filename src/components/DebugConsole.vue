@@ -47,7 +47,7 @@
             </svg>
           </button>
         </header>
-        <div class="debug-filters">
+        <div class="debug-filters" role="toolbar" :aria-label="words.tools">
           <button
             type="button"
             class="debug-filter border-0 bg-transparent"

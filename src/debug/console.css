@@ -235,3 +235,13 @@
     border-radius: 1.15rem 1.15rem 0 0;
   }
 }
+
+@media (max-width: 40rem) {
+  .debug-filters {
+    padding-inline: 0.65rem;
+  }
+
+  .debug-hint {
+    display: none;
+  }
+}
