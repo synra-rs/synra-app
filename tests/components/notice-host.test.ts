@@ -29,7 +29,11 @@ function mountHost() {
       { path: '/:pathMatch(.*)*', component: { template: '<div />' } }
     ]
   })
-  return { router, wrapper: mount(NoticeHost, { global: { plugins: [router] } }) }
+  return { router, wrapper: mount(NoticeHost, { attachTo: document.body, global: { plugins: [router] } }) }
+}
+
+function bodyText(): string {
+  return document.body.textContent ?? ''
 }
 
 beforeEach(() => {
@@ -43,8 +47,8 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.received('notes.txt'))
-    expect(wrapper.text()).toContain(messages.notices.savedTo('C:/inbox/notes.txt'))
+    expect(bodyText()).toContain(messages.notices.received('notes.txt'))
+    expect(bodyText()).toContain(messages.notices.savedTo('C:/inbox/notes.txt'))
     wrapper.unmount()
   })
 
@@ -56,8 +60,8 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('second.txt')
-    expect(wrapper.text()).not.toContain('first.txt')
+    expect(bodyText()).toContain('second.txt')
+    expect(bodyText()).not.toContain('first.txt')
     wrapper.unmount()
   })
 
@@ -71,9 +75,9 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.installed('@acme/hello', '1.2.0'))
+    expect(bodyText()).toContain(messages.notices.installed('@acme/hello', '1.2.0'))
     // ★ The verifier's warning is the part a file opened from the desktop most needs: it is not signed.
-    expect(wrapper.text()).toContain('The package is not signed.')
+    expect(bodyText()).toContain('The package is not signed.')
     wrapper.unmount()
   })
 
@@ -87,8 +91,8 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.updated('@acme/hello', '2.0.0'))
-    expect(wrapper.text()).toContain('This update asks for a new capability.')
+    expect(bodyText()).toContain(messages.notices.updated('@acme/hello', '2.0.0'))
+    expect(bodyText()).toContain('This update asks for a new capability.')
     wrapper.unmount()
   })
 
@@ -100,9 +104,9 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('2 plugin updates are available.')
-    expect(wrapper.text()).toContain('@acme/one, @acme/two')
-    expect(wrapper.text()).toContain(messages.notices.review)
+    expect(bodyText()).toContain('2 plugin updates are available.')
+    expect(bodyText()).toContain('@acme/one, @acme/two')
+    expect(bodyText()).toContain(messages.notices.review)
     wrapper.unmount()
   })
 
@@ -116,7 +120,7 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.newerInstalled('@acme/hello', '2.0.0', '1.0.0'))
+    expect(bodyText()).toContain(messages.notices.newerInstalled('@acme/hello', '2.0.0', '1.0.0'))
     wrapper.unmount()
   })
 
@@ -126,9 +130,9 @@ describe('the notice host', () => {
     const { router, wrapper } = mountHost()
     await flushPromises()
 
-    const action = wrapper.findAll('button').find(button => button.text() === messages.notices.review)
+    const action = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === messages.notices.review)
     expect(action, 'the package notice has no way to the plugins page').toBeDefined()
-    await action?.trigger('click')
+    action?.click()
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/plugins')
@@ -142,7 +146,7 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.dropIgnored)
+    expect(bodyText()).toContain(messages.notices.dropIgnored)
     wrapper.unmount()
   })
 
@@ -154,8 +158,8 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.unknownLink('synra://settings'))
-    expect(wrapper.text()).not.toContain('notice.unknownLink')
+    expect(bodyText()).toContain(messages.notices.unknownLink('synra://settings'))
+    expect(bodyText()).not.toContain('notice.unknownLink')
     wrapper.unmount()
   })
 
@@ -165,8 +169,8 @@ describe('the notice host', () => {
     const { wrapper } = mountHost()
     await flushPromises()
 
-    expect(wrapper.text()).toContain(messages.notices.generic)
-    expect(wrapper.text()).not.toContain('notice.something-new')
+    expect(bodyText()).toContain(messages.notices.generic)
+    expect(bodyText()).not.toContain('notice.something-new')
     wrapper.unmount()
   })
 })

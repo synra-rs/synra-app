@@ -9,6 +9,7 @@ export const debug = {
   all: 'All',
   open: 'Open the wire',
   close: 'Close',
+  tools: 'Wire actions',
   clear: 'Clear',
   copy: 'Copy',
   copied: 'Copied',

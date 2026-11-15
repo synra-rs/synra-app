@@ -31,39 +31,21 @@
       <section class="debug-sheet" role="dialog" aria-modal="true" :aria-label="words.title">
         <div class="debug-grip" aria-hidden="true" />
         <header class="debug-head">
-          <div class="debug-heading">
-            <div class="debug-title">
-              {{ words.title }}
-              <span class="debug-scheme">synra://wire</span>
-            </div>
+          <div class="debug-live" role="status" aria-live="polite">
+            <span class="debug-live-dot" aria-hidden="true">●</span>
+            <span>LIVE</span>
           </div>
-          <div class="debug-counters" aria-hidden="true">
-            <span class="debug-counter debug-counter-sent">↑ {{ sentCount }}</span>
-            <span class="debug-counter debug-counter-received">↓ {{ receivedCount }}</span>
-            <span class="debug-counter">{{ words.lines(lineCount) }}</span>
-          </div>
-          <div class="debug-actions">
-            <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
-              {{ paused ? words.resume : words.pause }}
-            </button>
-            <button type="button" class="debug-action border-0 bg-transparent" @click="clear">
-              {{ words.clear }}
-            </button>
-            <button type="button" class="debug-action border-0 bg-transparent" @click="copy">
-              {{ copyLabel }}
-            </button>
-            <button
-              ref="closeButton"
-              type="button"
-              class="debug-action debug-action-close border-0 bg-transparent"
-              :aria-label="words.close"
-              @click="hide"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-              </svg>
-            </button>
-          </div>
+          <button
+            ref="closeButton"
+            type="button"
+            class="debug-action debug-action-close border-0 bg-transparent"
+            :aria-label="words.close"
+            @click="hide"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
         </header>
         <div class="debug-filters">
           <button
@@ -91,6 +73,20 @@
             {{ words.received }}
           </button>
           <span class="debug-hint">{{ words.hintOpen }}</span>
+          <details class="debug-tools">
+            <summary class="debug-tools-summary" :aria-label="words.tools">⋯</summary>
+            <div class="debug-tools-popover">
+              <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
+                {{ paused ? words.resume : words.pause }}
+              </button>
+              <button type="button" class="debug-action border-0 bg-transparent" @click="clear">
+                {{ words.clear }}
+              </button>
+              <button type="button" class="debug-action border-0 bg-transparent" @click="copy">
+                {{ copyLabel }}
+              </button>
+            </div>
+          </details>
         </div>
         <div class="debug-term-wrap">
           <div ref="host" class="debug-term" />
@@ -113,5 +109,5 @@ import '../debug/terminal.css'
 const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
-const { open, visible, paused, filter, unread, lineCount, sentCount, receivedCount, enabled, words, hide, toggle, clear, copy, copyLabel } = useWireConsole(host, bubble, closeButton)
+const { open, visible, paused, filter, unread, lineCount, enabled, words, hide, toggle, clear, copy, copyLabel } = useWireConsole(host, bubble, closeButton)
 </script>

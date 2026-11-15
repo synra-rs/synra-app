@@ -13,12 +13,8 @@
         <AppNavigation :rail="rail" @search="searchPalette?.show()" />
         <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="desktop-main [scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
           <div class="mx-auto max-w-[1200px] min-w-0 w-full">
-            <div v-if="!online" role="alert" class="mb-4 border border-line rounded-surface bg-raised px-4 py-3 text-base">
-              <span class="font-medium">{{ messages.app.offline }}</span>
-              <span class="text-ink-dim"> {{ messages.app.offlineDetail }}</span>
-            </div>
             <CrashNotice />
-            <NoticeHost />
+            <NoticeHost :online="online" />
             <RouterView />
           </div>
         </main>

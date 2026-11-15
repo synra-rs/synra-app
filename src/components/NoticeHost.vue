@@ -1,24 +1,32 @@
 <template>
-  <!--
-    ★ The kernel's page-less notice, at the root beside the crash banner. A received file is news for whoever is looking at
-    the screen, not for one page: the progress row disappears when the transfer finishes, and this is what replaces it.
-  -->
-  <AAlert
-    v-if="notice"
-    :type="alertType"
-    show-icon
-    closable
-    :message="headline"
-    :description="detail"
-    class="mb-4"
-    @close="notices.dismiss()"
-  >
-    <template v-if="showAction" #action>
-      <AButton size="small" @click="review">
-        {{ messages.notices.review }}
-      </AButton>
-    </template>
-  </AAlert>
+  <Teleport to="body">
+    <div class="notice-host" aria-live="polite">
+      <div v-if="online === false" class="notice-offline" role="alert">
+        <span class="notice-offline-title">{{ messages.app.offline }}</span>
+        <span class="notice-offline-detail"> {{ messages.app.offlineDetail }}</span>
+      </div>
+      <!--
+        The kernel's page-less notice is a top layer rather than page content. A received file is news for whoever is
+        looking at the screen, not for one page, and the notice must not push the current page down when it arrives.
+      -->
+      <AAlert
+        v-if="notice"
+        :type="alertType"
+        show-icon
+        closable
+        :message="headline"
+        :description="detail"
+        class="notice-card"
+        @close="notices.dismiss()"
+      >
+        <template v-if="showAction" #action>
+          <AButton size="small" @click="review">
+            {{ messages.notices.review }}
+          </AButton>
+        </template>
+      </AAlert>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -44,6 +52,7 @@ import { useNoticesStore } from '../stores/notices'
 
 const notices = useNoticesStore()
 const router = useRouter()
+const { online } = defineProps<{ online?: boolean }>()
 const notice = computed(() => notices.latest)
 
 /** A package notice has somewhere to go: the plugin that was installed or updated. */
@@ -120,3 +129,42 @@ const detail = computed(() => {
   return undefined
 })
 </script>
+<style scoped>
+.notice-host {
+  position: fixed;
+  z-index: 1050;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  left: max(0.75rem, env(safe-area-inset-left));
+  display: flex;
+  max-height: min(50vh, 28rem);
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  overflow: auto;
+  pointer-events: none;
+}
+
+.notice-card,
+.notice-offline {
+  width: min(100%, 48rem);
+  pointer-events: auto;
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 12%);
+}
+
+.notice-offline {
+  padding: 0.75rem 1rem;
+  color: var(--synra-ink, #1f2937);
+  background: var(--synra-raised, #fff);
+  border: 1px solid var(--synra-line, #d5dbe5);
+  border-radius: var(--synra-radius-surface, 0.75rem);
+}
+
+.notice-offline-title {
+  font-weight: 600;
+}
+
+.notice-offline-detail {
+  color: var(--synra-ink-dim, #64748b);
+}
+</style>

@@ -5,6 +5,7 @@ export const debug = {
   'debug.all': '全部',
   'debug.open': '打开线缆监视',
   'debug.close': '关闭',
+  'debug.tools': '线缆操作',
   'debug.clear': '清空',
   'debug.copy': '复制',
   'debug.copied': '已复制',
