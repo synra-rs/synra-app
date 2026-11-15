@@ -6,7 +6,9 @@
       </template>
       <ACollapse.Panel key="device" :header="`设备信息 · ${deviceDetails[0]?.value ?? ''}`" force-render>
         <div class="stack gap-2 text-sm">
-          <p class="m-0 text-ink-dim">{{ messages.settings.diagnostics.deviceDetail }}</p>
+          <p class="m-0 text-ink-dim">
+            {{ messages.settings.diagnostics.deviceDetail }}
+          </p>
           <AList size="small" bordered>
             <AList.Item v-for="item in deviceDetails" :key="item.label">
               <span class="text-ink-dim">{{ item.label }}</span>

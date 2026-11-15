@@ -74,7 +74,9 @@
           </button>
           <span class="debug-hint">{{ words.hintOpen }}</span>
           <details class="debug-tools">
-            <summary class="debug-tools-summary" :aria-label="words.tools">⋯</summary>
+            <summary class="debug-tools-summary" :aria-label="words.tools">
+              ⋯
+            </summary>
             <div class="debug-tools-popover">
               <button type="button" class="debug-action border-0 bg-transparent" @click="paused = !paused">
                 {{ paused ? words.resume : words.pause }}

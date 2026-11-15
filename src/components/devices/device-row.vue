@@ -1,3 +1,40 @@
+<style scoped>
+.device-actions {
+  min-width: 10rem;
+}
+
+.device-details-action {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+article:hover .device-details-action,
+article:focus-within .device-details-action,
+.device-details-action[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .device-details-action {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-details-action {
+    transition: none;
+  }
+}
+
+@media (max-width: 40rem) {
+  .device-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>
+
 <template>
   <article class="min-w-0 border-b border-line py-3">
     <div class="min-w-0 row-between flex-wrap gap-3">
@@ -79,40 +116,3 @@ const emit = defineEmits<{ forget: [card: DeviceCard], pair: [card: DeviceCard] 
 const expanded = ref(false)
 const detailsId = useId()
 </script>
-
-<style scoped>
-.device-actions {
-  min-width: 10rem;
-}
-
-.device-details-action {
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-article:hover .device-details-action,
-article:focus-within .device-details-action,
-.device-details-action[aria-expanded="true"] {
-  opacity: 1;
-}
-
-@media (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .device-details-action {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .device-details-action {
-    transition: none;
-  }
-}
-
-@media (max-width: 40rem) {
-  .device-actions {
-    width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-  }
-}
-</style>

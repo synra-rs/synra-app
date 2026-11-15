@@ -7,9 +7,9 @@
     <InputPrompt />
     <DebugConsole />
     <SearchPalette ref="searchPalette" />
-    <div class="screen grid-rows-[auto_minmax(0,1fr)]" :class="{ 'mobile-shell': isMobile }">
+    <div class="grid-rows-[auto_minmax(0,1fr)] screen" :class="{ 'mobile-shell': isMobile }">
       <WindowTitleBar />
-      <div class="desktop-shell grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[15rem_minmax(0,1fr)]">
+      <div class="desktop-shell grid grid-rows-[minmax(0,1fr)_auto] min-h-0 min-w-0 md:grid-cols-[15rem_minmax(0,1fr)]">
         <AppNavigation :rail="rail" @search="searchPalette?.show()" />
         <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="desktop-main [scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
           <div class="mx-auto max-w-[1200px] min-w-0 w-full">

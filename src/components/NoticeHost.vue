@@ -1,3 +1,43 @@
+<style scoped>
+.notice-host {
+  position: fixed;
+  z-index: 1050;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  left: max(0.75rem, env(safe-area-inset-left));
+  display: flex;
+  max-height: min(50vh, 28rem);
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  overflow: auto;
+  pointer-events: none;
+}
+
+.notice-card,
+.notice-offline {
+  width: min(100%, 48rem);
+  pointer-events: auto;
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 12%);
+}
+
+.notice-offline {
+  padding: 0.75rem 1rem;
+  color: var(--synra-ink, #1f2937);
+  background: var(--synra-raised, #fff);
+  border: 1px solid var(--synra-line, #d5dbe5);
+  border-radius: var(--synra-radius-surface, 0.75rem);
+}
+
+.notice-offline-title {
+  font-weight: 600;
+}
+
+.notice-offline-detail {
+  color: var(--synra-ink-dim, #64748b);
+}
+</style>
+
 <template>
   <Teleport to="body">
     <div class="notice-host" aria-live="polite">
@@ -50,9 +90,9 @@ import { useRouter } from 'vue-router'
 import { messages } from '../messages'
 import { useNoticesStore } from '../stores/notices'
 
+const { online } = defineProps<{ online?: boolean }>()
 const notices = useNoticesStore()
 const router = useRouter()
-const { online } = defineProps<{ online?: boolean }>()
 const notice = computed(() => notices.latest)
 
 /** A package notice has somewhere to go: the plugin that was installed or updated. */
@@ -129,42 +169,3 @@ const detail = computed(() => {
   return undefined
 })
 </script>
-<style scoped>
-.notice-host {
-  position: fixed;
-  z-index: 1050;
-  top: max(0.75rem, env(safe-area-inset-top));
-  right: max(0.75rem, env(safe-area-inset-right));
-  left: max(0.75rem, env(safe-area-inset-left));
-  display: flex;
-  max-height: min(50vh, 28rem);
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: center;
-  overflow: auto;
-  pointer-events: none;
-}
-
-.notice-card,
-.notice-offline {
-  width: min(100%, 48rem);
-  pointer-events: auto;
-  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 12%);
-}
-
-.notice-offline {
-  padding: 0.75rem 1rem;
-  color: var(--synra-ink, #1f2937);
-  background: var(--synra-raised, #fff);
-  border: 1px solid var(--synra-line, #d5dbe5);
-  border-radius: var(--synra-radius-surface, 0.75rem);
-}
-
-.notice-offline-title {
-  font-weight: 600;
-}
-
-.notice-offline-detail {
-  color: var(--synra-ink-dim, #64748b);
-}
-</style>

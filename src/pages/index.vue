@@ -1,3 +1,41 @@
+<style scoped>
+.home-transfer-actions {
+  min-width: 8.5rem;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.home-transfer-row:hover .home-transfer-actions,
+.home-transfer-row:focus-within .home-transfer-actions {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .home-transfer-actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-transfer-actions {
+    transition: none;
+  }
+}
+
+@media (max-width: 40rem) {
+  .home-transfer-row {
+    align-items: flex-start;
+  }
+
+  .home-transfer-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>
+
 <template>
   <section class="mx-auto max-w-3xl min-w-0 stack gap-6 pb-4" data-page-width="reading">
     <PageHeader :title="messages.home.title">
@@ -201,41 +239,3 @@ import { formatDateTime } from '../utils/locale-format'
 
 const { router, devices, askBeforeCancel, error, received, cancelling, percentOf, progressLabel, directionOf, stateLabel, cancelTransfer, wire, state, wirePeerName, wireWidth, wireLive, load, expanded, copiedTrace, selectedTrace, toggleExpanded, copyTrace, deciding, accept, decline, canDecline, deviceName, intentStateLabel, intentStateColor, retryLabel, formatClock, intentError, intents, transfers } = useHomePage()
 </script>
-
-<style scoped>
-.home-transfer-actions {
-  min-width: 8.5rem;
-  justify-content: flex-end;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.home-transfer-row:hover .home-transfer-actions,
-.home-transfer-row:focus-within .home-transfer-actions {
-  opacity: 1;
-}
-
-@media (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .home-transfer-actions {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-transfer-actions {
-    transition: none;
-  }
-}
-
-@media (max-width: 40rem) {
-  .home-transfer-row {
-    align-items: flex-start;
-  }
-
-  .home-transfer-actions {
-    width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-  }
-}
-</style>

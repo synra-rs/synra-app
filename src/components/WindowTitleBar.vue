@@ -1,13 +1,19 @@
 <template>
   <header class="hidden h-11 min-h-11 shrink-0 items-center border-b border-line bg-glass px-3 md:flex" data-tauri-drag-region @dblclick="toggleMaximize">
-    <div class="row min-w-0 flex-1 gap-2" data-tauri-drag-region>
+    <div class="min-w-0 row flex-1 gap-2" data-tauri-drag-region>
       <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
       <span class="truncate text-sm font-semibold">{{ messages.app.name }}</span>
     </div>
     <div class="row gap-1" @mousedown.stop @dblclick.stop>
-      <AButton ghost type="default" size="small" :aria-label="messages.window.minimize" @click="minimize"><span class="i-carbon-minimize" aria-hidden="true" /></AButton>
-      <AButton ghost type="default" size="small" :aria-label="messages.window.maximize" @click="toggleMaximize"><span :class="maximized ? 'i-carbon-window-auto' : 'i-carbon-maximize'" aria-hidden="true" /></AButton>
-      <AButton ghost type="default" size="small" danger :aria-label="messages.window.close" @click="close"><span class="i-carbon-close" aria-hidden="true" /></AButton>
+      <AButton ghost type="default" size="small" :aria-label="messages.window.minimize" @click="minimize">
+        <span class="i-carbon-minimize" aria-hidden="true" />
+      </AButton>
+      <AButton ghost type="default" size="small" :aria-label="messages.window.maximize" @click="toggleMaximize">
+        <span :class="maximized ? 'i-carbon-window-auto' : 'i-carbon-maximize'" aria-hidden="true" />
+      </AButton>
+      <AButton ghost type="default" size="small" danger :aria-label="messages.window.close" @click="close">
+        <span class="i-carbon-close" aria-hidden="true" />
+      </AButton>
     </div>
   </header>
 </template>

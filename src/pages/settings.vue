@@ -169,12 +169,12 @@
             </SettingsRow>
           </SettingsGroup>
           <SettingsGroup :title="messages.settings.field.version">
-            <div class="row min-w-0 gap-2 py-4 first:pt-0 whitespace-nowrap">
+            <div class="min-w-0 row gap-2 whitespace-nowrap py-4 first:pt-0">
               <span class="shrink-0 text-base font-medium">{{ messages.settings.field.frontend }}</span>
               <span class="shrink-0 text-base text-ink-dim" aria-hidden="true">-</span>
               <span class="min-w-0 truncate text-base font-mono">v{{ buildStamp.version }}({{ buildStamp.shortHash || '—' }})</span>
             </div>
-            <div class="row min-w-0 gap-2 py-4 whitespace-nowrap">
+            <div class="min-w-0 row gap-2 whitespace-nowrap py-4">
               <span class="shrink-0 text-base font-medium">{{ messages.settings.field.core }}</span>
               <span class="shrink-0 text-base text-ink-dim" aria-hidden="true">-</span>
               <span class="min-w-0 truncate text-base font-mono" :title="coreBuildStamp.hash || undefined">v{{ coreBuildStamp.version }}({{ coreBuildStamp.shortHash || '—' }})</span>

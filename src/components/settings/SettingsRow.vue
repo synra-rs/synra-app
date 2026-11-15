@@ -1,3 +1,9 @@
+<style scoped>
+.settings-feedback-slot {
+  min-height: 1.25rem;
+}
+</style>
+
 <template>
   <div class="synra-choice grid min-w-0 gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] sm:items-start sm:gap-x-6 first:pt-0">
     <div class="min-w-0 stack gap-1">
@@ -19,9 +25,3 @@
 <script setup lang="ts">
 defineProps<{ label: string, description?: string | undefined, forId?: string | undefined }>()
 </script>
-
-<style scoped>
-.settings-feedback-slot {
-  min-height: 1.25rem;
-}
-</style>

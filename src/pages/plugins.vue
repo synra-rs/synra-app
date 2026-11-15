@@ -1,3 +1,20 @@
+<style scoped>
+.plugin-header-more {
+  position: relative;
+}
+
+.plugin-header-more-dot {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.35rem;
+  height: 0.35rem;
+  background: var(--synra-warning, #d97706);
+  border: 2px solid var(--synra-screen, #fff);
+  border-radius: 9999px;
+}
+</style>
+
 <template>
   <section class="mx-auto max-w-[1200px] min-w-0 stack gap-5 pb-4" data-page-width="workspace">
     <PageHeader :title="messages.plugins.title">
@@ -203,20 +220,3 @@ async function decidePending(trust: 'trusted' | 'revoked'): Promise<void> {
     pendingPublisher.value = undefined
 }
 </script>
-
-<style scoped>
-.plugin-header-more {
-  position: relative;
-}
-
-.plugin-header-more-dot {
-  position: absolute;
-  top: 0.35rem;
-  right: 0.35rem;
-  width: 0.35rem;
-  height: 0.35rem;
-  background: var(--synra-warning, #d97706);
-  border: 2px solid var(--synra-screen, #fff);
-  border-radius: 9999px;
-}
-</style>

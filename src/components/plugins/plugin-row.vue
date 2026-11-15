@@ -1,3 +1,44 @@
+<style scoped>
+.plugin-actions {
+  display: flex;
+  min-width: 13rem;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.plugin-row:hover .plugin-actions,
+.plugin-row:focus-within .plugin-actions,
+.plugin-actions-attention {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .plugin-actions {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-actions {
+    transition: none;
+  }
+}
+
+@media (max-width: 40rem) {
+  .plugin-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>
+
 <template>
   <article class="plugin-row min-w-0 stack gap-2 border-b border-line py-3" :data-plugin="plugin.pluginId">
     <div class="plugin-row-main min-w-0 row flex-wrap items-start gap-3">
@@ -46,44 +87,3 @@ defineEmits<{ details: [tab?: 'permissions'], action: [action: PluginMenuAction]
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
 const summary = computed(() => props.plugin.stateReason || (props.plugin.health && props.plugin.health.health !== 'good' ? messages.plugins.healthLabel(props.plugin.health.health) : props.plugin.description || props.plugin.pluginId))
 </script>
-
-<style scoped>
-.plugin-actions {
-  display: flex;
-  min-width: 13rem;
-  min-height: 2rem;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: flex-end;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.plugin-row:hover .plugin-actions,
-.plugin-row:focus-within .plugin-actions,
-.plugin-actions-attention {
-  opacity: 1;
-}
-
-@media (pointer: coarse), (prefers-reduced-motion: reduce) {
-  .plugin-actions {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plugin-actions {
-    transition: none;
-  }
-}
-
-@media (max-width: 40rem) {
-  .plugin-actions {
-    width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-  }
-}
-</style>
