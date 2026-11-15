@@ -1,23 +1,25 @@
 <template>
-  <article class="min-w-0 stack gap-2 border-b border-line py-3" :data-plugin="plugin.pluginId">
-    <div class="min-w-0 row flex-wrap gap-3">
+  <article class="plugin-row min-w-0 stack gap-2 border-b border-line py-3" :data-plugin="plugin.pluginId">
+    <div class="plugin-row-main min-w-0 row flex-wrap items-start gap-3">
       <button type="button" class="synra-choice min-w-0 flex-1 border-0 rounded-control bg-transparent p-0 text-start text-ink focusable" @click="$emit('details')">
         <span class="block truncate text-base font-medium">{{ plugin.title }}</span>
         <span class="block truncate text-sm text-ink-dim">{{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }} · {{ summary }}</span>
       </button>
-      <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="$emit('details', 'permissions')">
-        {{ messages.plugins.workflow.installConsentTitle }}
-      </AButton>
-      <AButton v-else-if="plugin.state === 'faulted'" size="small" :disabled="busy" @click="library.retry(plugin)">
-        {{ messages.plugins.retry }}
-      </AButton>
-      <AButton v-if="plugin.hasUi && plugin.state !== 'awaiting_consent'" size="small" :disabled="busy" :aria-label="messages.plugins.openLabel(plugin.title)" @click="library.open(plugin)">
-        {{ messages.plugins.openAction }}
-      </AButton>
-      <span class="synra-choice row shrink-0">
-        <ASwitch :aria-label="messages.plugins.enableLabel(plugin.title)" :checked="plugin.enabled" :loading="library.operations.busy.get(plugin.pluginId) === 'toggle'" :disabled="busy" @change="value => library.toggle(plugin, value as boolean)" />
-      </span>
-      <PluginActionMenu compact :plugin="plugin" :disabled="busy" @action="action => $emit('action', action)" />
+      <div class="plugin-actions" :class="{ 'plugin-actions-attention': plugin.state === 'awaiting_consent' || plugin.state === 'faulted' }">
+        <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="$emit('details', 'permissions')">
+          {{ messages.plugins.workflow.installConsentTitle }}
+        </AButton>
+        <AButton v-else-if="plugin.state === 'faulted'" size="small" :disabled="busy" @click="library.retry(plugin)">
+          {{ messages.plugins.retry }}
+        </AButton>
+        <AButton v-if="plugin.hasUi && plugin.state !== 'awaiting_consent'" size="small" :disabled="busy" :aria-label="messages.plugins.openLabel(plugin.title)" @click="library.open(plugin)">
+          {{ messages.plugins.openAction }}
+        </AButton>
+        <span class="synra-choice row shrink-0">
+          <ASwitch :aria-label="messages.plugins.enableLabel(plugin.title)" :checked="plugin.enabled" :loading="library.operations.busy.get(plugin.pluginId) === 'toggle'" :disabled="busy" @change="value => library.toggle(plugin, value as boolean)" />
+        </span>
+        <PluginActionMenu compact :plugin="plugin" :disabled="busy" @action="action => $emit('action', action)" />
+      </div>
     </div>
     <p v-if="plugin.update && !plugin.localSource" class="m-0 text-sm text-primary-ink">
       {{ plugin.update.needsNewConsent ? messages.plugins.updateNeedsConsent : messages.plugins.updateAvailable }}
@@ -44,3 +46,38 @@ defineEmits<{ details: [tab?: 'permissions'], action: [action: PluginMenuAction]
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
 const summary = computed(() => props.plugin.stateReason || (props.plugin.health && props.plugin.health.health !== 'good' ? messages.plugins.healthLabel(props.plugin.health.health) : props.plugin.description || props.plugin.pluginId))
 </script>
+
+<style scoped>
+.plugin-actions {
+  display: flex;
+  min-width: 13rem;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.plugin-row:hover .plugin-actions,
+.plugin-row:focus-within .plugin-actions,
+.plugin-actions-attention {
+  opacity: 1;
+}
+
+@media (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .plugin-actions {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 40rem) {
+  .plugin-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>

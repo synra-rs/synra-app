@@ -18,7 +18,7 @@
           not line up is the block's own right edge: it is as wide as its contents, and a paired device has no Pair
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
-      <div class="row flex-wrap items-center gap-2">
+      <div class="device-actions row flex-wrap items-center justify-end gap-2">
         <AButton v-if="!card.paired && !card.blocked" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
           {{ messages.devices.pairing }}
         </AButton>
@@ -79,3 +79,17 @@ const emit = defineEmits<{ forget: [card: DeviceCard], pair: [card: DeviceCard] 
 const expanded = ref(false)
 const detailsId = useId()
 </script>
+
+<style scoped>
+.device-actions {
+  min-width: 10rem;
+}
+
+@media (max-width: 40rem) {
+  .device-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+</style>
