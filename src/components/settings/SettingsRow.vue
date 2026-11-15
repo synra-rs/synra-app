@@ -10,7 +10,7 @@
     <div class="gap-2[&_.ant-select]:max-w-full min-w-0 stack items-start sm:items-end">
       <slot />
     </div>
-    <div v-if="$slots.feedback" class="min-w-0 sm:col-span-2">
+    <div v-if="$slots.feedback" class="settings-feedback-slot min-w-0 sm:col-span-2">
       <slot name="feedback" />
     </div>
   </div>
@@ -19,3 +19,9 @@
 <script setup lang="ts">
 defineProps<{ label: string, description?: string | undefined, forId?: string | undefined }>()
 </script>
+
+<style scoped>
+.settings-feedback-slot {
+  min-height: 1.25rem;
+}
+</style>
