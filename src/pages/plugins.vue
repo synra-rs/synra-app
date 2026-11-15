@@ -96,7 +96,6 @@
 
 <script setup lang="ts">
 import type { InstallReport, PluginSnapshot } from '@synra/protocol'
-<<<<<<< HEAD:src/pages/plugins.vue
 import type { PluginMenuAction } from '../features/plugins/menu'
 import { Button as AButton, Dropdown as ADropdown, Empty as AEmpty, Input as AInput, Menu as AMenu, Segmented as ASegmented } from 'ant-design-vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, ref } from 'vue'
