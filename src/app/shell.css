@@ -44,8 +44,7 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background-image: radial-gradient(58rem 40rem at 24% -32%, color-mix(in oklab, var(--synra-primary) 10%, transparent), transparent);
-  background-attachment: fixed;
+  background: var(--synra-screen);
 }
 
 .desktop-shell {
@@ -181,5 +180,16 @@
 @supports not (backdrop-filter: blur(0)) {
   .mobile-shell > .desktop-shell > nav {
     background-color: var(--synra-glass-base);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
