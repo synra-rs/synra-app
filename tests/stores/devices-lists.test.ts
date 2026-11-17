@@ -44,6 +44,17 @@ describe('the lists a screen renders', () => {
     expect(store.online.map(each => each.deviceId)).toEqual(['dev_paired_online'])
   })
 
+  it('keeps blocked devices out of usable paired lists', () => {
+    const store = useDevicesStore()
+    store.applySnapshot(snapshot([
+      card('dev_blocked', { paired: true, blocked: true, online: true }),
+      card('dev_paired', { paired: true, online: true })
+    ]))
+
+    expect(store.paired.map(each => each.deviceId)).toEqual(['dev_paired'])
+    expect(store.online.map(each => each.deviceId)).toEqual(['dev_paired'])
+  })
+
   it('is empty before the first snapshot rather than undefined', () => {
     // The panel renders on mount, before the kernel has answered. A store that started as `undefined` would make every
     // component handle a case that is not a state.

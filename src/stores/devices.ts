@@ -114,10 +114,10 @@ export const useDevicesStore = defineStore('devices', () => {
   }
 
   /** The devices the user has paired with. */
-  const paired = computed(() => cards.value.filter(card => card.paired))
+  const paired = computed(() => cards.value.filter(card => card.paired && !card.blocked))
 
   /** The paired devices that are reachable now. */
-  const online = computed(() => cards.value.filter(card => card.paired && card.online))
+  const online = computed(() => cards.value.filter(card => card.paired && !card.blocked && card.online))
 
   /** A device by id. */
   function get(deviceId: string): DeviceCard | undefined {
