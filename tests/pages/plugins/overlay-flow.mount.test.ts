@@ -78,6 +78,22 @@ it('opens the console during sync and restores the pending workflow when it clos
   }
 })
 
+it('returns focus to the wire bubble after the console closes', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    const close = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.close)!
+    close.click()
+    await flushPromises()
+    expect(document.activeElement).toBe(bubble)
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
 it('opens the terminal search with Ctrl-F and closes it with Escape', async () => {
   const debug = mount(DebugConsole, { attachTo: document.body })
   try {
