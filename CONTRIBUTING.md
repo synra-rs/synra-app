@@ -21,6 +21,7 @@ pnpm exec tauri dev
 ```
 
 `pnpm dev` 运行浏览器预览；它使用隔离的假内核，不能证明真实网络或原生能力。
+不要直接双击 `src-tauri/target/debug/synra-app.exe`：这个调试二进制依赖 `http://localhost:5173`，不会自行启动 Vite，直接运行会显示 `ERR_CONNECTION_REFUSED`。需要验证打包后的 WebView2 宿主时，先执行 `pnpm exec tauri build`，再运行生成的 release 安装包或 release 可执行文件。
 
 ## 检查
 
