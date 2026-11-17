@@ -36,6 +36,8 @@ pub(super) fn with_wire_trace(state: AppState) -> AppState {
                 peer: line.peer.clone(),
                 label: line.label.clone(),
                 bytes: u64::try_from(line.bytes).unwrap_or(u64::MAX),
+                trace_id: line.trace_id.clone(),
+                request_id: line.request_id.clone(),
             },
         )));
     }));

@@ -124,6 +124,28 @@
             {{ words.empty }}
           </div>
         </div>
+        <section v-if="selectedMetadata" class="debug-metadata" :aria-label="words.metadata">
+          <div class="debug-metadata-head">
+            <strong>{{ words.metadata }}</strong>
+            <button type="button" class="debug-search-button border-0 bg-transparent" :aria-label="words.closeMetadata" @click="clearMetadata">
+              ×
+            </button>
+          </div>
+          <dl class="debug-metadata-grid">
+            <template v-if="selectedMetadata.traceId">
+              <dt>{{ words.traceId }}</dt>
+              <dd>{{ selectedMetadata.traceId }}</dd>
+            </template>
+            <template v-if="selectedMetadata.requestId">
+              <dt>{{ words.requestId }}</dt>
+              <dd>{{ selectedMetadata.requestId }}</dd>
+            </template>
+            <dt>{{ words.peer }}</dt>
+            <dd>{{ selectedMetadata.peer }}</dd>
+            <dt>{{ words.event }}</dt>
+            <dd>{{ selectedMetadata.label }}</dd>
+          </dl>
+        </section>
         <div class="debug-status" role="status" aria-live="polite">
           <span v-if="paused">{{ words.paused }}<template v-if="pausedLines"> · {{ words.newLines(pausedLines) }}</template></span>
           <span v-else-if="unread">{{ words.newLines(unread) }}</span>
@@ -149,5 +171,5 @@ const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
 const searchField = useTemplateRef<HTMLInputElement>('searchField')
-const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext } = useWireConsole(host, bubble, closeButton, searchField)
+const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, selectedMetadata, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext, clearMetadata } = useWireConsole(host, bubble, closeButton, searchField)
 </script>

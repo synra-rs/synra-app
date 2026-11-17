@@ -2,14 +2,22 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { Drawer, Modal } from 'ant-design-vue'
 import { expect, it, vi } from 'vitest'
+import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
 
+const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }, writes: string[] } | undefined }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
+    options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }
+    writes: string[] = []
     buffer = { active: { length: 0 } }
+    constructor(options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }) {
+      this.options = options
+      terminalState.last = this
+    }
     loadAddon() {}
     open() {}
-    write() {}
+    write(value: string) { this.writes.push(value) }
     clear() {}
     scrollToBottom() {}
     dispose() {}
@@ -80,6 +88,25 @@ it('opens the terminal search with Ctrl-F and closes it with Escape', async () =
     input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
     expect(document.querySelector('.debug-search-input')).toBeNull()
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
+it('opens correlation details when a metadata line is clicked', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    publishWireLine({ atMs: 1, direction: 'sent', peer: 'peer-1', label: '_synra.intent.request', bytes: 12, traceId: 'trace-1', requestId: 'request-1' })
+    bubble.click()
+    await flushPromises()
+    const link = terminalState.last?.writes.join('').match(/synra-wire:([^\x07]+)/)?.[1]
+    expect(link, 'the metadata line is not linked').toBeDefined()
+    terminalState.last?.options.linkHandler?.activate(new MouseEvent('click'), `synra-wire:${link}`)
+    await flushPromises()
+    expect(document.querySelector('.debug-metadata')?.textContent).toContain('trace-1')
+    expect(document.querySelector('.debug-metadata')?.textContent).toContain('request-1')
   }
   finally {
     debug.unmount()

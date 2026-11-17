@@ -19,6 +19,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   const searchOpen = ref(false)
   const searchQuery = ref('')
   const searchResult = ref<'idle' | 'found' | 'missing'>('idle')
+  const selectedMetadata = ref<WireLine>()
   const unread = ref(0)
   const lineCount = ref(0)
   const sentCount = ref(0)
@@ -32,6 +33,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
   const history: WireLine[] = []
+  const metadataIds = new WeakMap<object, string>()
+  let nextMetadataId = 0
   const MAX_HISTORY = 8000
   let stopListening: (() => void) | null = null
   let resizeObserver: ResizeObserver | null = null
@@ -39,6 +42,27 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   let fitTimer: number | undefined
   let didInitialScroll = false
   const words = computed(() => messages.debug)
+  function hasMetadata(line: WireLine): boolean {
+    return Boolean(line.traceId || line.requestId)
+  }
+  function metadataId(line: WireLine): string {
+    const existing = metadataIds.get(line)
+    if (existing)
+      return existing
+    const id = `line-${++nextMetadataId}`
+    metadataIds.set(line, id)
+    return id
+  }
+  function renderLine(line: WireLine): string {
+    const rendered = formatWireLine(line)
+    if (!hasMetadata(line))
+      return rendered
+    const id = metadataId(line)
+    return `\x1B]8;;synra-wire:${id}\x07${rendered}\x1B]8;;\x07`
+  }
+  function selectMetadata(id: string): void {
+    selectedMetadata.value = history.find(line => metadataId(line) === id)
+  }
   function playDemo() {
     const base = Date.now() - 12_000
     const lines: WireLine[] = [
@@ -78,7 +102,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     lineCount.value = 0
     for (const line of history) {
       if (passes(line)) {
-        term.write(`${formatWireLine(line)}\r\n`)
+        term.write(`${renderLine(line)}\r\n`)
         lineCount.value += 1
       }
     }
@@ -90,7 +114,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     if (!term || paused.value || !passes(line))
       return
     const wasAtLatest = isAtLatest()
-    term.write(`${formatWireLine(line)}\r\n`)
+    term.write(`${renderLine(line)}\r\n`)
     lineCount.value += 1
     atLatest.value = wasAtLatest
     if (open.value && !wasAtLatest)
@@ -132,6 +156,12 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       cursorBlink: false,
       disableStdin: true,
       screenReaderMode: true,
+      linkHandler: {
+        activate: (_event, uri) => {
+          if (uri.startsWith('synra-wire:'))
+            selectMetadata(uri.slice('synra-wire:'.length))
+        }
+      },
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
       fontSize: 13,
       lineHeight: 1.35,
@@ -265,6 +295,10 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     unread.value = 0
     pausedLines.value = 0
     atLatest.value = true
+    selectedMetadata.value = undefined
+  }
+  function clearMetadata(): void {
+    selectedMetadata.value = undefined
   }
   async function copy() {
     const term = terminal.value
@@ -374,6 +408,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     searchOpen,
     searchQuery,
     searchResult,
+    selectedMetadata,
     openSearch,
     closeSearch,
     onSearchKeydown,
@@ -385,6 +420,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     jumpToLatest,
     setPaused,
     searchPrevious: () => runSearch('previous'),
-    searchNext: () => runSearch('next')
+    searchNext: () => runSearch('next'),
+    clearMetadata
   }
 }
