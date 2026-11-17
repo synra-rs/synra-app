@@ -5,13 +5,14 @@ import { expect, it, vi } from 'vitest'
 import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
 
-const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[], selection: string, getSelection: () => string } | undefined }))
+const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[], selection: string, scrolls: number, getSelection: () => string, buffer: { active: { length: number, viewportY: number, baseY: number } } } | undefined }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }
     writes: string[] = []
     selection = ''
-    buffer = { active: { length: 0 } }
+    scrolls = 0
+    buffer = { active: { length: 0, viewportY: 0, baseY: 0 } }
     constructor(options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }) {
       this.options = options
       terminalState.last = this
@@ -21,7 +22,7 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     write(value: string) { this.writes.push(value) }
     clear() { this.writes = [] }
-    scrollToBottom() {}
+    scrollToBottom() { this.scrolls += 1; this.buffer.active.viewportY = this.buffer.active.baseY }
     getSelection() { return this.selection }
     dispose() {}
   }
@@ -118,6 +119,25 @@ it('filters the terminal view by peer without dropping history', async () => {
     await flushPromises()
     expect(terminalState.last?.writes.join('')).toContain('event.a')
     expect(terminalState.last?.writes.join('')).toContain('event.b')
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
+it('keeps the terminal at history while reporting new lines', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    publishWireLine({ atMs: 1, direction: 'sent', peer: 'peer-a', label: 'event.a', bytes: 1 })
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    terminalState.last!.buffer.active.baseY = 4
+    terminalState.last!.buffer.active.viewportY = 0
+    publishWireLine({ atMs: 2, direction: 'received', peer: 'peer-a', label: 'event.b', bytes: 2 })
+    await flushPromises()
+    expect(document.querySelector('.debug-status')?.textContent).toContain(messages.debug.newLines(1))
+    expect(terminalState.last?.scrolls).toBe(0)
   }
   finally {
     debug.unmount()
