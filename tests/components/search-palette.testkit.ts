@@ -75,8 +75,8 @@ function text(): string {
   return document.body.textContent ?? ''
 }
 
-async function open(wrapper: ReturnType<typeof mountPalette>['wrapper']): Promise<void> {
-  ;(wrapper.vm as unknown as { show: () => void }).show()
+async function open(wrapper: ReturnType<typeof mountPalette>['wrapper'], trigger?: HTMLElement): Promise<void> {
+  ;(wrapper.vm as unknown as { show: (trigger?: HTMLElement) => void }).show(trigger)
   await flushPromises()
 }
 

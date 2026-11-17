@@ -1,6 +1,6 @@
 <template>
   <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line md:hidden">
-    <button type="button" class="mobile-search-entry synra-icon-button border-0 bg-transparent" :aria-label="messages.search.title" :title="messages.search.title" data-testid="mobile-search-entry" @click="$emit('search')">
+    <button type="button" class="mobile-search-entry synra-icon-button border-0 bg-transparent" :aria-label="messages.search.title" :title="messages.search.title" data-testid="mobile-search-entry" @click="emitSearch">
       <span :class="icons.search" aria-hidden="true" />
     </button>
     <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 border-0 bg-transparent text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
@@ -15,7 +15,7 @@
         <template #title>
           {{ messages.search.shortcutHint }}<code>{{ messages.search.shortcut }}</code>
         </template>
-        <AButton type="text" class="synra-icon-button shrink-0" :aria-label="messages.search.title" data-testid="search-entry" @click="$emit('search')">
+        <AButton type="text" class="synra-icon-button shrink-0" :aria-label="messages.search.title" data-testid="search-entry" @click="emitSearch">
           <span :class="icons.search" aria-hidden="true" />
         </AButton>
       </ATooltip>
@@ -55,10 +55,15 @@ import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
 
 defineProps<{ rail: boolean, bottom?: boolean }>()
-defineEmits<{ search: [] }>()
+const emit = defineEmits<{ search: [trigger?: HTMLElement] }>()
 const route = useRoute()
 const router = useRouter()
 const devices = useDevicesStore()
+
+function emitSearch(event: MouseEvent): void {
+  const trigger = event.currentTarget
+  emit('search', trigger instanceof HTMLElement ? trigger : undefined)
+}
 function navigate(info: { key: string | number }): void {
   void router.replace(String(info.key))
 }

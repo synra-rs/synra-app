@@ -185,6 +185,21 @@ describe('the search box', () => {
     }
   })
 
+  it('returns focus to the trigger after Escape closes it', async () => {
+    const { wrapper } = mountPalette()
+    const trigger = document.createElement('button')
+    trigger.type = 'button'
+    trigger.textContent = 'Search'
+    document.body.append(trigger)
+    await open(wrapper, trigger)
+
+    field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+
+    expect((wrapper.vm as unknown as { open: boolean }).open).toBe(false)
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('tells the reader which row the arrow keys moved to', async () => {
     const { wrapper } = mountPalette()
     try {

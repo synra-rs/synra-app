@@ -25,6 +25,7 @@ export function useSearchPalette() {
   const open = ref(false)
   const query = ref('')
   const field = ref<{ focus: () => void }>()
+  const returnFocus = ref<HTMLElement>()
   function setField(value: unknown): void {
     field.value = value as { focus: () => void } | undefined
   }
@@ -98,18 +99,32 @@ export function useSearchPalette() {
     activeId.value = value[0]?.id
   })
 
-  function show(): void {
+  function show(trigger?: HTMLElement): void {
+    const candidate = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : undefined)
+    returnFocus.value = candidate?.isConnected ? candidate : undefined
     open.value = true
     query.value = ''
     void nextTick(() => field.value?.focus())
   }
 
-  function close(): void {
+  function finishClose(restoreFocus: boolean): void {
     open.value = false
+    const target = returnFocus.value
+    returnFocus.value = undefined
+    if (restoreFocus && target?.isConnected)
+      void nextTick(() => target.focus())
+  }
+
+  function close(): void {
+    finishClose(true)
+  }
+
+  function closeWithoutFocus(): void {
+    finishClose(false)
   }
 
   function choose(item: Item): void {
-    close()
+    closeWithoutFocus()
     void router.push(item.to)
   }
 
