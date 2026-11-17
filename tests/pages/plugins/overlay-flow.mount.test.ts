@@ -5,15 +5,15 @@ import { expect, it, vi } from 'vitest'
 import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
 
-const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[], selection: string, scrolls: number, getSelection: () => string, buffer: { active: { length: number, viewportY: number, baseY: number } } } | undefined }))
+const terminalState = vi.hoisted(() => ({ last: undefined as { options: { disableStdin?: boolean, screenReaderMode?: boolean, linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[], selection: string, scrolls: number, getSelection: () => string, buffer: { active: { length: number, viewportY: number, baseY: number } } } | undefined }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
-    options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }
+    options: { disableStdin?: boolean, screenReaderMode?: boolean, linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }
     writes: string[] = []
     selection = ''
     scrolls = 0
     buffer = { active: { length: 0, viewportY: 0, baseY: 0 } }
-    constructor(options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }) {
+    constructor(options: { disableStdin?: boolean, screenReaderMode?: boolean, linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }) {
       this.options = options
       terminalState.last = this
     }
@@ -92,6 +92,20 @@ it('opens the terminal search with Ctrl-F and closes it with Escape', async () =
     input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
     expect(document.querySelector('.debug-search-input')).toBeNull()
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
+it('keeps the wire terminal read-only and screen-reader accessible', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    expect(terminalState.last?.options.disableStdin).toBe(true)
+    expect(terminalState.last?.options.screenReaderMode).toBe(true)
   }
   finally {
     debug.unmount()
