@@ -54,10 +54,13 @@ import { usePluginsStore } from '../../stores/plugins'
 const props = defineProps<{ plugin: PluginSnapshot, library: PluginLibrary }>()
 const emit = defineEmits<{ close: [] }>()
 const store = usePluginsStore()
-const visible = useDialogVisibility(ref(true), 80)
 const capabilities = computed(() => [...new Set(props.plugin.requested ?? [])])
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
 const error = ref<Failure>()
+const visible = useDialogVisibility(ref(true), 80, () => {
+  if (!busy.value)
+    emit('close')
+})
 
 async function accept(): Promise<void> {
   error.value = undefined

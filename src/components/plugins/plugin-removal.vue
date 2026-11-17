@@ -36,7 +36,10 @@ const props = defineProps<{ plugin: PluginSnapshot, library: PluginLibrary }>()
 const emit = defineEmits<{ close: [] }>()
 const removeData = ref(false)
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
-const visible = useDialogVisibility(ref(true), 60)
+const visible = useDialogVisibility(ref(true), 60, () => {
+  if (!busy.value)
+    emit('close')
+})
 async function remove(): Promise<void> {
   if (await props.library.remove(props.plugin, removeData.value))
     emit('close')

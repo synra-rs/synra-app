@@ -80,11 +80,14 @@ import { formatBytes } from '../../utils/format'
 
 const props = defineProps<{ pluginId: string }>()
 const emit = defineEmits<{ close: [], installed: [report: InstallReport] }>()
-const visible = useDialogVisibility(ref(true), 40)
 const preview = ref<InstallPreviewDto>()
 const error = ref<Failure>()
 const loading = ref(false)
 const installing = ref(false)
+const visible = useDialogVisibility(ref(true), 40, () => {
+  if (!installing.value)
+    emit('close')
+})
 let revision = 0
 onScopeDispose(() => revision++)
 async function load(): Promise<void> {

@@ -35,10 +35,13 @@ import { useDialogVisibility } from '../../stores/dialogs'
 
 const props = defineProps<{ plugin: PluginSnapshot, library: PluginLibrary }>()
 const emit = defineEmits<{ close: [] }>()
-const visible = useDialogVisibility(ref(true), 70)
 const removeData = ref(false)
 const error = ref<Failure>()
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
+const visible = useDialogVisibility(ref(true), 70, () => {
+  if (!busy.value)
+    emit('close')
+})
 
 async function reload(): Promise<void> {
   error.value = undefined

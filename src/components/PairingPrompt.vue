@@ -55,7 +55,9 @@ import { usePairingStore } from '../stores/pairing'
 import ErrorNotice from './ErrorNotice.vue'
 
 const pairing = usePairingStore()
-const visible = useDialogVisibility(computed(() => pairing.visible), 100)
+const visible = useDialogVisibility(computed(() => pairing.visible), 100, () => {
+  void pairing.close()
+})
 const outcomeText = computed(() => {
   switch (pairing.snapshot.outcome) {
     case 'paired': return messages.devices.pairingPaired(pairing.peerName)

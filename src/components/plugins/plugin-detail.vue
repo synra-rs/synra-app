@@ -65,7 +65,7 @@ watch(() => props.initialAction, async (value) => {
     void sync.value?.show()
   }
 }, { immediate: true })
-const visible = useDialogVisibility(ref(true), 20)
+const visible = useDialogVisibility(ref(true), 20, close)
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
 function close(): void {
   if (!busy.value)

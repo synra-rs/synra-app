@@ -36,6 +36,6 @@ import { messages } from '../../messages'
 import { useDialogVisibility } from '../../stores/dialogs'
 
 defineProps<{ model: Publishers }>()
-defineEmits<{ close: [] }>()
-const visible = useDialogVisibility(ref(true), 30)
+const emit = defineEmits<{ close: [] }>()
+const visible = useDialogVisibility(ref(true), 30, () => emit('close'))
 </script>

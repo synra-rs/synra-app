@@ -172,4 +172,5 @@ const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
 const searchField = useTemplateRef<HTMLInputElement>('searchField')
 const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, selectedMetadata, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext, clearMetadata } = useWireConsole(host, bubble, closeButton, searchField)
+defineExpose({ hide, isVisible: () => visible.value })
 </script>

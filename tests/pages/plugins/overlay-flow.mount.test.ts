@@ -5,11 +5,12 @@ import { expect, it, vi } from 'vitest'
 import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
 
-const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[] } | undefined }))
+const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[], selection: string, getSelection: () => string } | undefined }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }
     writes: string[] = []
+    selection = ''
     buffer = { active: { length: 0 } }
     constructor(options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }) {
       this.options = options
@@ -21,6 +22,7 @@ vi.mock('@xterm/xterm', () => ({
     write(value: string) { this.writes.push(value) }
     clear() {}
     scrollToBottom() {}
+    getSelection() { return this.selection }
     dispose() {}
   }
 }))
@@ -92,6 +94,29 @@ it('opens the terminal search with Ctrl-F and closes it with Escape', async () =
   }
   finally {
     debug.unmount()
+  }
+})
+
+it('copies selected terminal text when a selection exists', async () => {
+  const writeText = vi.fn(async () => {})
+  const previousClipboard = navigator.clipboard
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    terminalState.last!.selection = 'selected wire line'
+    const summary = document.querySelector<HTMLElement>('.debug-tools-summary')!
+    summary.click()
+    const copy = [...document.querySelectorAll<HTMLButtonElement>('.debug-tools-popover .debug-action')].find(button => button.textContent?.trim() === messages.debug.copy)!
+    copy.click()
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('selected wire line')
+  }
+  finally {
+    debug.unmount()
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: previousClipboard })
   }
 })
 

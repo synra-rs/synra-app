@@ -213,5 +213,8 @@ const deviceDetails = computed(() => {
     { label: 'Online', value: navigator.onLine ? 'yes' : 'no' }
   ]
 })
-const confirmVisible = useDialogVisibility(confirmDismiss, 60)
+const confirmVisible = useDialogVisibility(confirmDismiss, 60, () => {
+  if (!dismissing.value && !loadingCrashes.value)
+    confirmDismiss.value = false
+})
 </script>

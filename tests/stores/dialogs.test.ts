@@ -1,9 +1,10 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
-import { useDialogVisibility } from '@/stores/dialogs'
+import { dismissActiveDialog, useDialogVisibility } from '@/stores/dialogs'
 
 beforeEach(() => setActivePinia(createPinia()))
+
 describe('dialog presentation', () => {
   it('suspends an editor for pairing and restores the same draft afterwards', () => {
     const scope = effectScope()
@@ -24,6 +25,7 @@ describe('dialog presentation', () => {
     })
     scope.stop()
   })
+
   it('releases a presentation when its owner is unmounted', () => {
     const editorScope = effectScope()
     const pairingScope = effectScope()
@@ -33,5 +35,48 @@ describe('dialog presentation', () => {
     pairingScope.stop()
     expect(editor.value).toBe(true)
     editorScope.stop()
+  })
+})
+
+describe('dialog back coordination', () => {
+  it('dismisses the highest priority visible dialog first', () => {
+    const scope = effectScope()
+    const result = scope.run(() => {
+      const lowerOpen = ref(false)
+      const higherOpen = ref(false)
+      const lowerDismiss = vi.fn(() => {
+        lowerOpen.value = false
+      })
+      const higherDismiss = vi.fn(() => {
+        higherOpen.value = false
+      })
+      const lowerVisible = useDialogVisibility(lowerOpen, 10, lowerDismiss)
+      const higherVisible = useDialogVisibility(higherOpen, 20, higherDismiss)
+      lowerOpen.value = true
+      higherOpen.value = true
+      return { lowerOpen, higherOpen, lowerDismiss, higherDismiss, lowerVisible, higherVisible }
+    })!
+
+    expect(result.lowerVisible.value).toBe(false)
+    expect(result.higherVisible.value).toBe(true)
+    expect(dismissActiveDialog()).toBe(true)
+    expect(result.higherDismiss).toHaveBeenCalledOnce()
+    expect(result.higherOpen.value).toBe(false)
+    expect(result.lowerVisible.value).toBe(true)
+    expect(dismissActiveDialog()).toBe(true)
+    expect(result.lowerDismiss).toHaveBeenCalledOnce()
+    expect(result.lowerOpen.value).toBe(false)
+    expect(dismissActiveDialog()).toBe(false)
+    scope.stop()
+  })
+
+  it('consumes back when a visible dialog has no safe dismiss action', () => {
+    const scope = effectScope()
+    const open = ref(true)
+    const visible = scope.run(() => useDialogVisibility(open, 1))!
+    expect(visible.value).toBe(true)
+    expect(dismissActiveDialog()).toBe(true)
+    expect(open.value).toBe(true)
+    scope.stop()
   })
 })

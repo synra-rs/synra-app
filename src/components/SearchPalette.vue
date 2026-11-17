@@ -73,6 +73,6 @@ import { useDialogVisibility } from '../stores/dialogs'
 import { useSearchPalette } from './search/use-search-palette'
 
 const { open, query, setField, activeId, results, grouped, optionDomId, show, close, choose, onKeydown } = useSearchPalette()
-const visible = useDialogVisibility(open, 90)
-defineExpose({ show })
+const visible = useDialogVisibility(open, 90, close)
+defineExpose({ show, close, isVisible: () => visible.value })
 </script>

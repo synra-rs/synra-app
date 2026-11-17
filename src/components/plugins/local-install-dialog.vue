@@ -47,11 +47,14 @@ import { useDialogVisibility } from '../../stores/dialogs'
 import { guardCompositionEscape, isComposing } from '../../utils/keyboard'
 
 const emit = defineEmits<{ close: [], installed: [report: InstallReport] }>()
-const visible = useDialogVisibility(ref(true), 40)
 const path = ref('')
 const choosing = ref(false)
 const installing = ref(false)
 const error = ref<Failure>()
+const visible = useDialogVisibility(ref(true), 40, () => {
+  if (!installing.value && !choosing.value)
+    emit('close')
+})
 let alive = true
 onScopeDispose(() => alive = false)
 async function choose(directory: boolean): Promise<void> {

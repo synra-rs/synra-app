@@ -173,6 +173,11 @@
   background: rgb(255 255 255 / 7%);
   border-color: rgb(255 255 255 / 8%);
 }
+.debug-sheet button:focus-visible,
+.debug-tools-summary:focus-visible {
+  outline: 2px solid #cfe4ff;
+  outline-offset: 2px;
+}
 .debug-search-state {
   flex: none;
   color: #f9b4b4;
@@ -321,6 +326,22 @@
 }
 .debug-jump:hover {
   background: rgb(207 228 255 / 10%);
+}
+
+@media (any-pointer: coarse) {
+  .debug-action,
+  .debug-filter,
+  .debug-search-input,
+  .debug-search-button,
+  .debug-tools-summary,
+  .debug-jump {
+    min-height: var(--synra-control-touch);
+  }
+  .debug-action-close,
+  .debug-search-button,
+  .debug-tools-summary {
+    width: var(--synra-control-touch);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

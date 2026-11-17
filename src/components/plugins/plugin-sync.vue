@@ -89,7 +89,9 @@ import { useDialogVisibility } from '../../stores/dialogs'
 
 const props = defineProps<{ plugin: PluginSnapshot, operations: ReturnType<typeof usePluginOperations>, triggerless?: boolean }>()
 const opened = ref(false)
-const visible = useDialogVisibility(opened, 50)
+const visible = useDialogVisibility(opened, 50, () => {
+  void close()
+})
 const plan = ref<SyncPlanDto>()
 const report = ref<SyncReport>()
 const error = ref<Failure>()

@@ -143,7 +143,9 @@ const blocked = computed(() => devices.cards.filter(card => card.blocked))
 let disposed = false
 const { snapshotError, refreshing, ready, refresh, startingScan, cancellingScan, scanState, scanning, scanReport, scanError, failedCancelId, scanSummary, scan, cancelScan, retryScan } = useDeviceDiscovery()
 const forgetTarget = ref<DeviceCard>()
-const forgetVisible = useDialogVisibility(computed(() => !!forgetTarget.value), 60)
+const forgetVisible = useDialogVisibility(computed(() => !!forgetTarget.value), 60, () => {
+  void closeForget()
+})
 const forgetError = ref<IpcError>()
 const forgetting = ref(false)
 const notice = ref('')

@@ -33,6 +33,7 @@ import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { isPrimaryRoute } from './app/back'
 import { kernel } from './app/kernel'
 import { locale, watchSystemLocale } from './app/locale'
 import { useNetworkStatus } from './app/network'
@@ -47,6 +48,7 @@ import TransferPrompt from './components/TransferPrompt.vue'
 import WindowTitleBar from './components/WindowTitleBar.vue'
 import { messages } from './messages'
 import { useDevicesStore } from './stores/devices'
+import { dismissActiveDialog } from './stores/dialogs'
 import { useSettingsStore } from './stores/settings'
 
 const route = useRoute()
@@ -74,10 +76,6 @@ watch(() => route.path, () => contentPane.value?.scrollTo({ top: 0, left: 0 }), 
 
 function apply(event: MediaQueryList | MediaQueryListEvent): void {
   rail.value = !event.matches
-}
-
-function isPrimaryRoute(path: string): boolean {
-  return path === '/' || path === '/devices' || path === '/plugins' || path === '/settings'
 }
 
 onMounted(async () => {
@@ -134,7 +132,9 @@ onMounted(async () => {
         return
       }
       event.preventDefault()
-      if (!isPrimaryRoute(route.path)) {
+      if (dismissActiveDialog())
+        return
+      if (!isPrimaryRoute(route.path, route.query, route.hash)) {
         await router.back()
         return
       }

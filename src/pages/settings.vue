@@ -215,5 +215,5 @@ import { messages } from '../messages'
 import { useDialogVisibility } from '../stores/dialogs'
 
 const { category, categories, setCategoryHeading, diagnosticsVisited, selectCategory, identity, readError, loading, renaming, startRename, cancelRename, checkName, saveName, askCancel, debugConsole, notifyOnReceive, languageOptions, updatePolicyOptions, updatePolicy, saveLanguage, saveUpdatePolicy, updateRegistry, saveRegistry, saveRetention, trusted, removingId, forgetTrusted, launchAtLogin, launchAtLoginUnavailable, saveLaunchAtLogin, pluginDrafts, hasDrafts, resolveLeave, saveAndLeave, load, errors, busy, saved, needsRead, anyBusy, configReady, checkSetting, writeSetting, nameDraft, nameDirty, nameConflict, registryUrls, registryDirty, registryConflict, retentionDays, retentionDirty, retentionConflict, resetName, resetRegistry, resetRetention, leaveOpen } = useSettingsPage()
-const leaveVisible = useDialogVisibility(leaveOpen, 60)
+const leaveVisible = useDialogVisibility(leaveOpen, 60, () => resolveLeave(false))
 </script>

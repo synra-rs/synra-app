@@ -13,7 +13,7 @@ import { subscribeWireLines } from './wire-stream'
 export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTMLButtonElement | null>, closeButton: Ref<HTMLButtonElement | null>, searchInput: Ref<HTMLInputElement | null>) {
   const open = ref(false)
   // Explicit diagnostics temporarily suspend workflows without hiding their own entry point.
-  const visible = useDialogVisibility(open, 110)
+  const visible = useDialogVisibility(open, 110, () => hide())
   const paused = ref(false)
   const filter = ref<'all' | 'sent' | 'received'>('all')
   const searchOpen = ref(false)
@@ -305,12 +305,17 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     const term = terminal.value
     if (!term)
       return
-    const buffer = term.buffer.active
-    const lines: string[] = []
-    for (let y = 0; y < buffer.length; y += 1)
-      lines.push(buffer.getLine(y)?.translateToString(true) ?? '')
+    const selection = typeof term.getSelection === 'function' ? term.getSelection() : ''
+    let text = selection
+    if (text.length === 0) {
+      const buffer = term.buffer.active
+      const lines: string[] = []
+      for (let y = 0; y < buffer.length; y += 1)
+        lines.push(buffer.getLine(y)?.translateToString(true) ?? '')
+      text = lines.join('\n').trimEnd()
+    }
     try {
-      await navigator.clipboard.writeText(lines.join('\n').trimEnd())
+      await navigator.clipboard.writeText(text)
       copyState.value = 'copied'
     }
     catch {
