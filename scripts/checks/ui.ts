@@ -19,6 +19,17 @@ export async function checkMobileViewportLock(): Promise<void> {
   notes.push('mobile-viewport-lock: app surface keeps software style fixed zoom')
 }
 
+export async function checkTerminalTouchPath(): Promise<void> {
+  const app = await readFile(join(here, 'src', 'App.vue'), 'utf8')
+  const terminalCss = await readFile(join(here, 'src', 'debug', 'console.css'), 'utf8')
+  const hasVerticalPan = /\.debug-term[\s\S]*?touch-action:\s*pan-y\s*;/.test(terminalCss)
+  const hasMomentumScroll = /-webkit-overflow-scrolling:\s*touch/.test(terminalCss)
+  const hasControlledOverscroll = /overscroll-behavior-y:\s*contain/.test(terminalCss)
+  if (/touchmove/.test(app) || !hasVerticalPan || !hasMomentumScroll || !hasControlledOverscroll)
+    failures.push({ check: 'terminal-touch-path', detail: 'The terminal must keep single-finger vertical scrolling independent from parent touchmove handlers' })
+  notes.push('terminal-touch-path: viewport pan and momentum scrolling stay local to the terminal')
+}
+
 export async function checkDialogNames(): Promise<void> {
   const files = await sources(join(here, 'src'))
   let counted = 0
