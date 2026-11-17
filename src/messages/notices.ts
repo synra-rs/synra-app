@@ -21,6 +21,7 @@ export const notices = {
   /** The daily background check found newer versions; it installed nothing. */
   updates: (count: number): string =>
     count === 1 ? '1 plugin update is available.' : `${count} plugin updates are available.`,
+  more: (count: number): string => count === 1 ? '1 earlier notification' : `${count} earlier notifications`,
   /** A `synra://` link this build does not understand; it focused the window but did nothing. */
   unknownLink: (url: string): string => `This build does not understand this link: ${url}`,
   /** A notice key this build does not know still has to say something rather than print the key. */

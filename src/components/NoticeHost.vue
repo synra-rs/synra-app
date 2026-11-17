@@ -16,7 +16,8 @@
 }
 
 .notice-card,
-.notice-offline {
+.notice-offline,
+.notice-overflow {
   width: min(100%, 48rem);
   pointer-events: auto;
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 12%);
@@ -36,6 +37,16 @@
 
 .notice-offline-detail {
   color: var(--synra-ink-dim, #64748b);
+}
+
+.notice-overflow {
+  padding: 0.45rem 0.75rem;
+  color: var(--synra-ink-dim, #64748b);
+  background: var(--synra-raised, #fff);
+  border: 1px solid var(--synra-line, #d5dbe5);
+  border-radius: var(--synra-radius-control, 0.5rem);
+  font-size: 0.8125rem;
+  text-align: center;
 }
 </style>
 
@@ -67,6 +78,9 @@
           </AButton>
         </template>
       </AAlert>
+      <div v-if="notices.dropped > 0" class="notice-overflow" role="status">
+        {{ messages.notices.more(notices.dropped) }}
+      </div>
     </div>
   </Teleport>
 </template>

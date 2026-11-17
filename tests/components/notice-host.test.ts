@@ -66,6 +66,7 @@ describe('the notice host', () => {
     expect(bodyText()).toContain('third.txt')
     expect(bodyText()).toContain('second.txt')
     expect(bodyText()).not.toContain('first.txt')
+    expect(bodyText()).toContain(messages.notices.more(1))
     wrapper.unmount()
   })
 

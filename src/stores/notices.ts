@@ -20,6 +20,7 @@ export interface Notice {
 
 export const useNoticesStore = defineStore('notices', () => {
   const items = ref<Notice[]>([])
+  const dropped = ref(0)
   const latest = computed(() => items.value[0])
   let nextId = 0
 
@@ -33,6 +34,8 @@ export const useNoticesStore = defineStore('notices', () => {
       message: event.payload.message,
       params: typeof params === 'object' && params !== null ? params as Record<string, unknown> : {}
     }
+    if (items.value.length >= 3)
+      dropped.value += 1
     items.value = [notice, ...items.value].slice(0, 3)
     return true
   }
@@ -40,10 +43,13 @@ export const useNoticesStore = defineStore('notices', () => {
   function dismiss(id?: number): void {
     if (id === undefined) {
       items.value = []
+      dropped.value = 0
       return
     }
     items.value = items.value.filter(notice => notice.id !== id)
+    if (items.value.length === 0)
+      dropped.value = 0
   }
 
-  return { apply, dismiss, items, latest }
+  return { apply, dismiss, items, dropped, latest }
 })

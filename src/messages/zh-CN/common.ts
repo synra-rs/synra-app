@@ -22,6 +22,7 @@ export const common = {
   'notices.newerInstalled': (pluginId, installed, offered) => `${pluginId} 已安装的 ${installed} 比 ${offered} 更新，未替换。`,
   'notices.dropIgnored': '这里只接受 .synra 插件包。',
   'notices.updates': count => `${count} 个插件有可用更新。`,
+  'notices.more': count => `还有 ${count} 条更早通知`,
   'notices.unknownLink': url => `此版本无法处理这个链接：${url}`,
   'notices.generic': '有一条新通知。',
   'notices.review': '查看插件',
