@@ -29,8 +29,11 @@ export function useHomePage() {
       error.value = { code: answer.error.code, message: answer.error.message, actions: answer.error.actions }
   }
   const notices = useNoticesStore()
-  watch(() => notices.latest, (latest) => {
-    if (latest?.message === 'notice.received')
+  watch(() => notices.latest?.id, (latestId, previousId) => {
+    // Dismissing the newest banner reveals an older one; that is not a new file and must not trigger another read.
+    if (latestId === undefined || (previousId !== undefined && latestId <= previousId))
+      return
+    if (notices.latest?.message === 'notice.received')
       void refreshReceived()
   })
   const cancelling = ref<string | undefined>(undefined)
