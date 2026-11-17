@@ -15,6 +15,7 @@ vi.mock('@xterm/xterm', () => ({
       this.options = options
       terminalState.last = this
     }
+
     loadAddon() {}
     open() {}
     write(value: string) { this.writes.push(value) }
@@ -101,7 +102,11 @@ it('opens correlation details when a metadata line is clicked', async () => {
     publishWireLine({ atMs: 1, direction: 'sent', peer: 'peer-1', label: '_synra.intent.request', bytes: 12, traceId: 'trace-1', requestId: 'request-1' })
     bubble.click()
     await flushPromises()
-    const link = terminalState.last?.writes.join('').match(/synra-wire:([^\x07]+)/)?.[1]
+    const output = terminalState.last?.writes.join('') ?? ''
+    const marker = 'synra-wire:'
+    const start = output.indexOf(marker)
+    const end = output.indexOf(String.fromCharCode(7), start)
+    const link = start >= 0 && end >= 0 ? output.slice(start + marker.length, end) : undefined
     expect(link, 'the metadata line is not linked').toBeDefined()
     terminalState.last?.options.linkHandler?.activate(new MouseEvent('click'), `synra-wire:${link}`)
     await flushPromises()
