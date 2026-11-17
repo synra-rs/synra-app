@@ -3,7 +3,7 @@ import { checkCommandArguments } from './checks/arguments'
 import { failures, notes } from './checks/common'
 import { checkCommandNames, checkFakeIsQuarantined, checkInjection, checkSingleDeclarations, checkTypeOnlyImports } from './checks/contracts'
 import { checkFacadeIsFresh } from './checks/facade'
-import { checkControlNames, checkCornerLadder, checkDialogNames, checkFocusableNames, checkNativeButtons, checkPageButtons, checkTouchBreakpoints } from './checks/ui'
+import { checkControlNames, checkCornerLadder, checkDialogNames, checkFocusableNames, checkNativeButtons, checkPageButtons, checkTouchBreakpoints, checkViewportAccessibility } from './checks/ui'
 
 await checkInjection()
 await checkSingleDeclarations()
@@ -13,6 +13,7 @@ await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 await checkFacadeIsFresh()
 await checkPageButtons()
+await checkViewportAccessibility()
 await checkDialogNames()
 await checkControlNames()
 await checkTouchBreakpoints()

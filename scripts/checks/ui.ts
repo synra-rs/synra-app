@@ -11,6 +11,14 @@ export async function checkPageButtons(): Promise<void> {
   notes.push('page-buttons: shared theme owns desktop density and coarse pointer targets')
 }
 
+export async function checkViewportAccessibility(): Promise<void> {
+  const html = await readFile(join(here, 'index.html'), 'utf8')
+  const viewport = /<meta\s+name="viewport"[^>]*>/i.exec(html)?.[0] ?? ''
+  if (!viewport || /user-scalable\s*=\s*no|max(?:imum)?-scale\s*=\s*1(?:\.0+)?/i.test(viewport))
+    failures.push({ check: 'viewport-accessibility', detail: 'The viewport must preserve user zoom for 200% accessibility checks' })
+  notes.push('viewport-accessibility: user zoom remains available')
+}
+
 export async function checkDialogNames(): Promise<void> {
   const files = await sources(join(here, 'src'))
   let counted = 0
