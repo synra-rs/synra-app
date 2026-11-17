@@ -1,6 +1,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { icons } from '../../app/icon-map'
 import { PAGES } from '../../app/router'
 import { messages } from '../../messages'
 import { useDevicesStore } from '../../stores/devices'
@@ -40,14 +41,14 @@ export function useSearchPalette() {
       id: `plugin:${plugin.pluginId}`,
       label: plugin.title,
       detail: plugin.pluginId,
-      icon: 'i-carbon-application',
+      icon: icons.pages.plugins,
       group: 'plugins' as const,
       to: `/plugins?plugin=${encodeURIComponent(plugin.pluginId)}`
     })),
     ...SETTINGS_SECTIONS.map(section => ({
       id: `settings:${section}`,
       label: messages.settings.categories[section],
-      icon: 'i-carbon-settings',
+      icon: icons.pages.settings,
       group: 'settings' as const,
       to: `/settings?category=${section}`
     })),
@@ -55,7 +56,7 @@ export function useSearchPalette() {
       id: `device:${card.deviceId}`,
       label: card.displayName,
       detail: card.platform,
-      icon: 'i-carbon-devices',
+      icon: icons.pages.devices,
       group: 'devices' as const,
 
       to: `/devices?device=${encodeURIComponent(card.deviceId)}`

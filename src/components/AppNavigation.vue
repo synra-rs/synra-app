@@ -1,7 +1,7 @@
 <template>
   <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line md:hidden">
     <button type="button" class="mobile-search-entry synra-icon-button border-0 bg-transparent" :aria-label="messages.search.title" :title="messages.search.title" data-testid="mobile-search-entry" @click="$emit('search')">
-      <span class="i-carbon-search" aria-hidden="true" />
+      <span :class="icons.search" aria-hidden="true" />
     </button>
     <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 border-0 bg-transparent text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
       <span class="absolute inset-x-4 bottom-1 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': route.path === page.path }" aria-hidden="true" />
@@ -16,7 +16,7 @@
           {{ messages.search.shortcutHint }}<code>{{ messages.search.shortcut }}</code>
         </template>
         <AButton type="text" class="synra-icon-button shrink-0" :aria-label="messages.search.title" data-testid="search-entry" @click="$emit('search')">
-          <span class="i-carbon-search" aria-hidden="true" />
+          <span :class="icons.search" aria-hidden="true" />
         </AButton>
       </ATooltip>
     </div>
@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { Avatar as AAvatar, Button as AButton, Menu as AMenu, MenuItem as AMenuItem, Skeleton as ASkeleton, Tooltip as ATooltip } from 'ant-design-vue'
 import { useRoute, useRouter } from 'vue-router'
+import { icons } from '../app/icon-map'
 import { PAGES } from '../app/router'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'

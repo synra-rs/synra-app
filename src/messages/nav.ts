@@ -1,3 +1,5 @@
+import { icons } from '../app/icon-map'
+
 /**
  * The four pages, as the navigation shows them.
  *
@@ -14,8 +16,8 @@
  *   have to read twice before clicking is an item that slowed you down.
  */
 export const nav = {
-  home: { label: 'Home', icon: 'i-carbon-home' },
-  devices: { label: 'Devices', icon: 'i-carbon-devices' },
-  plugins: { label: 'Plugins', icon: 'i-carbon-application' },
-  settings: { label: 'Settings', icon: 'i-carbon-settings' }
+  home: { label: 'Home', icon: icons.pages.home },
+  devices: { label: 'Devices', icon: icons.pages.devices },
+  plugins: { label: 'Plugins', icon: icons.pages.plugins },
+  settings: { label: 'Settings', icon: icons.pages.settings }
 } as const

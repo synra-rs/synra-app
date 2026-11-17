@@ -11,7 +11,7 @@
   >
     <div class="stack gap-3">
       <div class="row items-center gap-2 border border-line rounded-control bg-raised px-3">
-        <span class="i-carbon-search shrink-0 text-ink-dim" aria-hidden="true" />
+        <span :class="icons.search" class="shrink-0 text-ink-dim" aria-hidden="true" />
         <AInput
           :ref="setField"
           v-model:value="query"
@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { Button as AButton, Input as AInput, Modal as AModal } from 'ant-design-vue'
+import { icons } from '../app/icon-map'
 import { messages } from '../messages'
 import { useDialogVisibility } from '../stores/dialogs'
 import { useSearchPalette } from './search/use-search-palette'
