@@ -52,14 +52,18 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
-  it('replaces the previous notice rather than queueing a second banner', async () => {
+  it('keeps a bounded stack of recent notices', async () => {
     const store = useNoticesStore()
     store.apply(notice('notice.received', { name: 'first.txt', path: 'C:/inbox/first.txt' }))
     store.apply(notice('notice.received', { name: 'second.txt', path: 'C:/inbox/second.txt' }))
+    store.apply(notice('notice.received', { name: 'third.txt', path: 'C:/inbox/third.txt' }))
+    store.apply(notice('notice.received', { name: 'fourth.txt', path: 'C:/inbox/fourth.txt' }))
 
     const { wrapper } = mountHost()
     await flushPromises()
 
+    expect(bodyText()).toContain('fourth.txt')
+    expect(bodyText()).toContain('third.txt')
     expect(bodyText()).toContain('second.txt')
     expect(bodyText()).not.toContain('first.txt')
     wrapper.unmount()

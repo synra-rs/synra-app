@@ -50,17 +50,18 @@
         looking at the screen, not for one page, and the notice must not push the current page down when it arrives.
       -->
       <AAlert
-        v-if="notice"
-        :type="alertType"
+        v-for="item in notices.items"
+        :key="item.id"
+        :type="alertType(item)"
         show-icon
         closable
-        :message="headline"
-        :description="detail"
+        :message="headline(item)"
+        :description="detail(item)"
         class="notice-card"
-        @close="notices.dismiss()"
+        @close="notices.dismiss(item.id)"
       >
-        <template v-if="showAction" #action>
-          <AButton size="small" @click="review">
+        <template v-if="showAction(item)" #action>
+          <AButton size="small" @click="review(item)">
             {{ messages.notices.review }}
           </AButton>
         </template>
@@ -71,7 +72,7 @@
 
 <script setup lang="ts">
 /**
- * Draws the latest `notice` event.
+ * Draws a bounded stack of page-less `notice` events.
  *
  * # Why the message is a key and not a sentence
  *
@@ -84,44 +85,41 @@
  * engine word on screen (R34); showing nothing would make the event look lost. A generic sentence is the honest middle.
  */
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
-import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { messages } from '../messages'
+import type { Notice } from '../stores/notices'
 import { useNoticesStore } from '../stores/notices'
 
 const { online } = defineProps<{ online?: boolean }>()
 const notices = useNoticesStore()
 const router = useRouter()
-const notice = computed(() => notices.latest)
 
 /** A package notice has somewhere to go: the plugin that was installed or updated. */
-const showAction = computed(() => {
-  const message = notice.value?.message
+function showAction(notice: Notice): boolean {
+  const message = notice.message
   return message === 'notice.installed'
     || message === 'notice.updated'
     || message === 'notice.alreadyInstalled'
     || message === 'notice.newerInstalled'
     || message === 'notice.updates'
-})
+}
 
 /** Opens the plugins page and clears the banner: the next step is on that page. */
-function review(): void {
-  const value = notice.value
-  const pluginId = value?.params.pluginId
-  notices.dismiss()
+function review(notice: Notice): void {
+  const pluginId = notice.params.pluginId
+  notices.dismiss(notice.id)
   void router.push(typeof pluginId === 'string'
     ? { path: '/plugins', query: { plugin: pluginId } }
     : '/plugins')
 }
 
 /** A link this build does not understand is a warning rather than a success. */
-const alertType = computed(() => notice.value?.message === 'notice.unknownLink' ? 'warning' : 'success')
+function alertType(notice: Notice): 'warning' | 'success' {
+  return notice.message === 'notice.unknownLink' ? 'warning' : 'success'
+}
 
-const headline = computed(() => {
-  const value = notice.value
-  if (!value)
-    return ''
+function headline(value: Notice): string {
   if (value.message === 'notice.received')
     return messages.notices.received(String(value.params.name ?? ''))
   if (value.message === 'notice.installed')
@@ -144,12 +142,9 @@ const headline = computed(() => {
   if (value.message === 'notice.unknownLink')
     return messages.notices.unknownLink(String(value.params.url ?? ''))
   return messages.notices.generic
-})
+}
 
-const detail = computed(() => {
-  const value = notice.value
-  if (!value)
-    return undefined
+function detail(value: Notice): string | undefined {
   if (value.message === 'notice.received') {
     const path = value.params.path
     return typeof path === 'string' ? messages.notices.savedTo(path) : undefined
@@ -167,5 +162,5 @@ const detail = computed(() => {
     return Array.isArray(warnings) && warnings.length > 0 ? warnings.map(String).join(' ') : undefined
   }
   return undefined
-})
+}
 </script>

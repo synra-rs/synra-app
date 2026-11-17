@@ -132,8 +132,8 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
     intents.apply(event)
   })
 
-  // ★ The one event with no page of its own: a received file is news wherever the user happens to be. The store keeps the
-  // latest and the root draws it; a notice that arrived while another was showing replaces it rather than queueing.
+  // ★ The one event with no page of its own: a received file is news wherever the user happens to be. The root draws a
+  // small bounded stack so a burst of background events remains visible without entering the page content flow.
   const notices = useNoticesStore()
   dispatcher.on('debugWire', event => publishWireLine(event.payload))
   dispatcher.on('notice', (event) => {
