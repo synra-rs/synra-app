@@ -41,6 +41,8 @@ export default defineConfig({
   // than to a server root.
   base: './',
   server: {
+    port: 5173,
+    strictPort: true,
     watch: { ignored: ['**/src-tauri/target/**'] }
   },
   build: {
