@@ -1,7 +1,8 @@
 <style scoped>
 .notice-host {
   position: fixed;
-  z-index: 1050;
+  /* Stay above page content but below modal and drawer portals. */
+  z-index: 900;
   top: max(0.75rem, env(safe-area-inset-top));
   right: max(0.75rem, env(safe-area-inset-right));
   left: max(0.75rem, env(safe-area-inset-left));
