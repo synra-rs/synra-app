@@ -131,6 +131,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       convertEol: false,
       cursorBlink: false,
       disableStdin: true,
+      screenReaderMode: true,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace',
       fontSize: 13,
       lineHeight: 1.35,
