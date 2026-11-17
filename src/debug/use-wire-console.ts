@@ -157,6 +157,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       disableStdin: true,
       screenReaderMode: true,
       linkHandler: {
+        allowNonHttpProtocols: true,
         activate: (_event, uri) => {
           if (uri.startsWith('synra-wire:'))
             selectMetadata(uri.slice('synra-wire:'.length))

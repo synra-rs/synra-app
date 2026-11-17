@@ -5,13 +5,13 @@ import { expect, it, vi } from 'vitest'
 import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
 
-const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }, writes: string[] } | undefined }))
+const terminalState = vi.hoisted(() => ({ last: undefined as { options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }, writes: string[] } | undefined }))
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
-    options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }
+    options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }
     writes: string[] = []
     buffer = { active: { length: 0 } }
-    constructor(options: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }) {
+    constructor(options: { linkHandler?: { allowNonHttpProtocols?: boolean, activate: (event: MouseEvent, uri: string) => void } }) {
       this.options = options
       terminalState.last = this
     }
