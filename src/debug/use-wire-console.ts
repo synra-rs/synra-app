@@ -360,7 +360,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       return
     }
     if (event.key === 'Tab') {
-      const controls = [...(host.value?.closest('.debug-sheet')?.querySelectorAll<HTMLElement>('button, textarea, [tabindex="0"]') ?? [])].filter(element => element.getClientRects().length > 0)
+      const controls = [...(host.value?.closest('.debug-sheet')?.querySelectorAll<HTMLElement>('button, input, textarea, select, summary, [role="combobox"], [tabindex="0"]') ?? [])]
+        .filter(element => element.getClientRects().length > 0 && !element.hasAttribute('disabled'))
       const first = controls[0]
       const last = controls.at(-1)
       if (event.shiftKey && document.activeElement === first) {
