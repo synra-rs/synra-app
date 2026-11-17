@@ -65,6 +65,7 @@ const isMobile = ref(false)
 const isTauri = '__TAURI_INTERNALS__' in window
 let query: MediaQueryList | undefined
 let removeContextMenu: (() => void) | undefined
+let removeGestureListeners: (() => void) | undefined
 let backResetTimer: ReturnType<typeof setTimeout> | undefined
 let lastBackAt = 0
 let stopBack: (() => void) | undefined
@@ -92,6 +93,27 @@ onMounted(async () => {
   const preventContextMenu = (event: MouseEvent): void => event.preventDefault()
   document.addEventListener('contextmenu', preventContextMenu)
   removeContextMenu = () => document.removeEventListener('contextmenu', preventContextMenu)
+  const preventZoom = (event: TouchEvent): void => {
+    if (event.touches.length > 1)
+      event.preventDefault()
+  }
+  document.addEventListener('touchstart', preventZoom, { passive: false })
+  document.addEventListener('touchmove', preventZoom, { passive: false })
+  removeGestureListeners = () => {
+    document.removeEventListener('touchstart', preventZoom)
+    document.removeEventListener('touchmove', preventZoom)
+  }
+  if ('ontouchstart' in window) {
+    const preventGesture = (event: Event): void => event.preventDefault()
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+      document.addEventListener(type, preventGesture, { passive: false })
+    const removeGestureEvents = removeGestureListeners
+    removeGestureListeners = () => {
+      removeGestureEvents?.()
+      for (const type of ['gesturestart', 'gesturechange', 'gestureend'])
+        document.removeEventListener(type, preventGesture)
+    }
+  }
   if (isMobile.value && isTauri) {
     try {
       const windowHandle = getCurrentWindow()
@@ -141,6 +163,7 @@ onUnmounted(() => {
   stopLocaleSync()
   stopBack?.()
   removeContextMenu?.()
+  removeGestureListeners?.()
   if (backResetTimer)
     clearTimeout(backResetTimer)
   query?.removeEventListener('change', apply)

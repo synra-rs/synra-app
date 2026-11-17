@@ -11,12 +11,12 @@ export async function checkPageButtons(): Promise<void> {
   notes.push('page-buttons: shared theme owns desktop density and coarse pointer targets')
 }
 
-export async function checkViewportAccessibility(): Promise<void> {
+export async function checkMobileViewportLock(): Promise<void> {
   const html = await readFile(join(here, 'index.html'), 'utf8')
   const viewport = /<meta\s+name="viewport"[^>]*>/i.exec(html)?.[0] ?? ''
-  if (!viewport || /user-scalable\s*=\s*no|max(?:imum)?-scale\s*=\s*1(?:\.0+)?/i.test(viewport))
-    failures.push({ check: 'viewport-accessibility', detail: 'The viewport must preserve user zoom for 200% accessibility checks' })
-  notes.push('viewport-accessibility: user zoom remains available')
+  if (!viewport || !/user-scalable\s*=\s*no/i.test(viewport) || !/maximum-scale\s*=\s*1(?:\.0+)?/i.test(viewport))
+    failures.push({ check: 'mobile-viewport-lock', detail: 'The mobile viewport must keep the app surface at a fixed zoom' })
+  notes.push('mobile-viewport-lock: app surface keeps software style fixed zoom')
 }
 
 export async function checkDialogNames(): Promise<void> {
