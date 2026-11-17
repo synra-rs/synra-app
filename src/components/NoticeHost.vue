@@ -84,11 +84,11 @@
  * Because a kernel newer than the window may send a notice this build has never heard of. Printing the key would put an
  * engine word on screen (R34); showing nothing would make the event look lost. A generic sentence is the honest middle.
  */
+import type { Notice } from '../stores/notices'
 import { Alert as AAlert, Button as AButton } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
 
 import { messages } from '../messages'
-import type { Notice } from '../stores/notices'
 import { useNoticesStore } from '../stores/notices'
 
 const { online } = defineProps<{ online?: boolean }>()
