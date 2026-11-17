@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { messages } from '../messages'
 import { useDialogVisibility } from '../stores/dialogs'
 import { useSettingsStore } from '../stores/settings'
-import { formatWireLine } from './wire'
+import { formatWireLine, shortPeer } from './wire'
 import { subscribeWireLines } from './wire-stream'
 
 export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTMLButtonElement | null>, closeButton: Ref<HTMLButtonElement | null>, searchInput: Ref<HTMLInputElement | null>) {
@@ -16,6 +16,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   const visible = useDialogVisibility(open, 110, () => hide())
   const paused = ref(false)
   const filter = ref<'all' | 'sent' | 'received'>('all')
+  const peerFilter = ref('')
   const searchOpen = ref(false)
   const searchQuery = ref('')
   const searchResult = ref<'idle' | 'found' | 'missing'>('idle')
@@ -33,6 +34,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   let fitAddon: FitAddon | null = null
   let searchAddon: SearchAddon | null = null
   const history: WireLine[] = []
+  const peers = ref<readonly string[]>([])
   const metadataIds = new WeakMap<object, string>()
   let nextMetadataId = 0
   const MAX_HISTORY = 8000
@@ -42,6 +44,10 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   let fitTimer: number | undefined
   let didInitialScroll = false
   const words = computed(() => messages.debug)
+  const peerOptions = computed(() => [
+    { label: words.value.peerAll, value: '' },
+    ...peers.value.map(peer => ({ label: shortPeer(peer), value: peer }))
+  ])
   function hasMetadata(line: WireLine): boolean {
     return Boolean(line.traceId || line.requestId)
   }
@@ -83,9 +89,9 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
       observe(line)
   }
   function passes(line: WireLine): boolean {
-    if (filter.value === 'all')
-      return true
-    return line.direction === filter.value
+    if (filter.value !== 'all' && line.direction !== filter.value)
+      return false
+    return !peerFilter.value || line.peer === peerFilter.value
   }
   function isAtLatest(): boolean {
     const term = terminal.value
@@ -123,6 +129,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   function observe(line: WireLine) {
     if (!enabled.value)
       return
+    if (!peers.value.includes(line.peer))
+      peers.value = [...peers.value, line.peer]
     history.push(line)
     if (history.length > MAX_HISTORY)
       history.shift()
@@ -290,6 +298,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   function clear() {
     terminal.value?.clear()
     history.length = 0
+    peers.value = []
+    peerFilter.value = ''
     lineCount.value = 0
     sentCount.value = 0
     receivedCount.value = 0
@@ -371,6 +381,10 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     if (!paused.value)
       renderHistory()
   })
+  watch(peerFilter, () => {
+    if (!paused.value)
+      renderHistory()
+  })
   watch(searchQuery, () => {
     if (searchOpen.value)
       runSearch('next')
@@ -405,6 +419,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     pausedLines,
     atLatest,
     filter,
+    peerFilter,
+    peerOptions,
     unread,
     lineCount,
     sentCount,

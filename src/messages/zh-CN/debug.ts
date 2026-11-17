@@ -16,6 +16,7 @@ export const debug = {
   'debug.traceId': '追踪标识',
   'debug.requestId': '请求标识',
   'debug.peer': '设备',
+  'debug.peerAll': '全部设备',
   'debug.event': '事件',
   'debug.closeMetadata': '关闭详情',
   'debug.clear': '清空',

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
-import { Drawer, Modal } from 'ant-design-vue'
+import { Drawer, Modal, Select } from 'ant-design-vue'
 import { expect, it, vi } from 'vitest'
 import { publishWireLine } from '@/debug/wire-stream'
 import { answer, click, clickBody, messages, mountPage, PluginDetail } from './workflow.testkit'
@@ -20,7 +20,7 @@ vi.mock('@xterm/xterm', () => ({
     loadAddon() {}
     open() {}
     write(value: string) { this.writes.push(value) }
-    clear() {}
+    clear() { this.writes = [] }
     scrollToBottom() {}
     getSelection() { return this.selection }
     dispose() {}
@@ -91,6 +91,33 @@ it('opens the terminal search with Ctrl-F and closes it with Escape', async () =
     input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
     expect(document.querySelector('.debug-search-input')).toBeNull()
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
+it('filters the terminal view by peer without dropping history', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    publishWireLine({ atMs: 1, direction: 'sent', peer: 'peer-a', label: 'event.a', bytes: 1 })
+    publishWireLine({ atMs: 2, direction: 'received', peer: 'peer-b', label: 'event.b', bytes: 2 })
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    expect(terminalState.last?.writes.join('')).toContain('event.a')
+    expect(terminalState.last?.writes.join('')).toContain('event.b')
+
+    const peerSelect = debug.getComponent(Select)
+    await peerSelect.vm.$emit('update:value', 'peer-a')
+    await flushPromises()
+    expect(terminalState.last?.writes.join('')).toContain('event.a')
+    expect(terminalState.last?.writes.join('')).not.toContain('event.b')
+
+    await peerSelect.vm.$emit('update:value', '')
+    await flushPromises()
+    expect(terminalState.last?.writes.join('')).toContain('event.a')
+    expect(terminalState.last?.writes.join('')).toContain('event.b')
   }
   finally {
     debug.unmount()

@@ -20,6 +20,7 @@ export const debug = {
   traceId: 'Trace ID',
   requestId: 'Request ID',
   peer: 'Peer',
+  peerAll: 'All peers',
   event: 'Event',
   closeMetadata: 'Close details',
   clear: 'Clear',

@@ -72,6 +72,14 @@
           >
             {{ words.received }}
           </button>
+          <ASelect
+            v-model:value="peerFilter"
+            class="debug-peer-filter"
+            data-testid="debug-peer-filter"
+            size="small"
+            :aria-label="words.peer"
+            :options="peerOptions"
+          />
           <button type="button" class="debug-filter border-0 bg-transparent" :aria-label="words.search" @click="openSearch">
             {{ words.search }}
           </button>
@@ -161,6 +169,7 @@
 </template>
 
 <script setup lang="ts">
+import { Select as ASelect } from 'ant-design-vue'
 import { useTemplateRef } from 'vue'
 import { useWireConsole } from '../debug/use-wire-console'
 import '../debug/bubble.css'
@@ -171,6 +180,6 @@ const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
 const searchField = useTemplateRef<HTMLInputElement>('searchField')
-const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, selectedMetadata, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext, clearMetadata } = useWireConsole(host, bubble, closeButton, searchField)
+const { open, visible, paused, pausedLines, atLatest, filter, peerFilter, peerOptions, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, selectedMetadata, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext, clearMetadata } = useWireConsole(host, bubble, closeButton, searchField)
 defineExpose({ hide, isVisible: () => visible.value })
 </script>

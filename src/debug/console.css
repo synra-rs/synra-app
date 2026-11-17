@@ -129,6 +129,9 @@
   background: #9df3b8;
   border-color: #9df3b8;
 }
+.debug-peer-filter {
+  min-width: 7.5rem;
+}
 .debug-search {
   display: flex;
   min-width: min(100%, 18rem);
