@@ -91,12 +91,18 @@
         </h2>
         <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" @forget="askForget" />
       </section>
+      <section v-if="blocked.length" :aria-label="messages.devices.blockedDevices" class="min-w-0 stack gap-0">
+        <h2 class="m-0 text-base font-medium">
+          {{ messages.devices.blockedDevices }}
+        </h2>
+        <DeviceRow v-for="card in blocked" :key="card.deviceId" :card="card" @forget="askForget" />
+      </section>
     </div>
 
-    <AModal v-if="forgetTarget" :open="forgetVisible" :title="messages.devices.forgetTitle(forgetTarget.displayName)" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
+    <AModal v-if="forgetTarget" :open="forgetVisible" :title="forgetTarget.blocked ? messages.devices.unblockTitle(forgetTarget.displayName) : messages.devices.forgetTitle(forgetTarget.displayName)" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
       <div class="stack gap-4">
         <p class="m-0 text-base">
-          {{ messages.devices.forgetHelp }}
+          {{ forgetTarget.blocked ? messages.devices.unblockHelp : messages.devices.forgetHelp }}
         </p>
         <p class="m-0 break-all text-sm text-ink-dim font-mono">
           {{ forgetTarget.deviceId }}
@@ -107,7 +113,7 @@
             {{ messages.devices.forgetCancel }}
           </AButton>
           <AButton type="primary" danger :loading="forgetting" :disabled="forgetting || !(devices.get(forgetTarget.deviceId)?.paired || devices.get(forgetTarget.deviceId)?.blocked)" @click="forget">
-            {{ messages.devices.forget }}
+            {{ forgetTarget.blocked ? messages.devices.unblock : messages.devices.forget }}
           </AButton>
         </div>
       </div>
@@ -132,7 +138,8 @@ import { usePairingStore } from '../stores/pairing'
 const devices = useDevicesStore()
 const pairing = usePairingStore()
 const startPair = pairing.start
-const nearby = computed(() => devices.cards.filter(card => !card.paired))
+const nearby = computed(() => devices.cards.filter(card => !card.paired && !card.blocked))
+const blocked = computed(() => devices.cards.filter(card => card.blocked))
 let disposed = false
 const { snapshotError, refreshing, ready, refresh, startingScan, cancellingScan, scanState, scanning, scanReport, scanError, failedCancelId, scanSummary, scan, cancelScan, retryScan } = useDeviceDiscovery()
 const forgetTarget = ref<DeviceCard>()
@@ -180,7 +187,7 @@ async function forget(): Promise<void> {
     }
     // The command has removed the relationship even when a subsequent read fails.
     devices.remove(target.deviceId)
-    notice.value = messages.devices.forgotten(target.displayName)
+    notice.value = target.blocked ? messages.devices.unblocked(target.displayName) : messages.devices.forgotten(target.displayName)
     forgetTarget.value = undefined
     await refresh()
     await nextTick()

@@ -1,4 +1,5 @@
 import type { FitAddon } from '@xterm/addon-fit'
+import type { SearchAddon } from '@xterm/addon-search'
 import type { Terminal } from '@xterm/xterm'
 import type { Ref } from 'vue'
 import type { WireLine } from './wire'
@@ -9,12 +10,15 @@ import { useSettingsStore } from '../stores/settings'
 import { formatWireLine } from './wire'
 import { subscribeWireLines } from './wire-stream'
 
-export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTMLButtonElement | null>, closeButton: Ref<HTMLButtonElement | null>) {
+export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTMLButtonElement | null>, closeButton: Ref<HTMLButtonElement | null>, searchInput: Ref<HTMLInputElement | null>) {
   const open = ref(false)
   // Explicit diagnostics temporarily suspend workflows without hiding their own entry point.
   const visible = useDialogVisibility(open, 110)
   const paused = ref(false)
   const filter = ref<'all' | 'sent' | 'received'>('all')
+  const searchOpen = ref(false)
+  const searchQuery = ref('')
+  const searchResult = ref<'idle' | 'found' | 'missing'>('idle')
   const unread = ref(0)
   const lineCount = ref(0)
   const sentCount = ref(0)
@@ -26,6 +30,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   const enabled = computed(() => settings.value('ui.debugConsole') !== false)
   const terminal = ref<Terminal | null>(null)
   let fitAddon: FitAddon | null = null
+  let searchAddon: SearchAddon | null = null
   const history: WireLine[] = []
   const MAX_HISTORY = 8000
   let stopListening: (() => void) | null = null
@@ -112,16 +117,17 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   async function ensureTerminal() {
     if (terminal.value)
       return
-    const [{ Terminal }, { FitAddon }, _styles] = await Promise.all([
+    const [{ Terminal }, { FitAddon }, { SearchAddon }, _styles] = await Promise.all([
       import('@xterm/xterm'),
       import('@xterm/addon-fit'),
+      import('@xterm/addon-search'),
       import('@xterm/xterm/css/xterm.css')
     ])
     await nextTick()
     if (!host.value)
       return
     const term = new Terminal({
-      allowTransparency: true,
+      allowTransparency: false,
       convertEol: false,
       cursorBlink: false,
       disableStdin: true,
@@ -141,6 +147,8 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     })
     fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
+    searchAddon = new SearchAddon()
+    term.loadAddon(searchAddon)
     term.open(host.value)
     terminal.value = term
     if (typeof term.onScroll === 'function') {
@@ -170,6 +178,44 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   function jumpToLatest(): void {
     scrollToEnd()
   }
+  function runSearch(direction: 'next' | 'previous'): void {
+    const query = searchQuery.value.trim()
+    if (!query || !searchAddon) {
+      searchResult.value = 'idle'
+      searchAddon?.clearDecorations()
+      return
+    }
+    const found = direction === 'next'
+      ? searchAddon.findNext(query)
+      : searchAddon.findPrevious(query)
+    searchResult.value = found ? 'found' : 'missing'
+  }
+  async function openSearch(): Promise<void> {
+    searchOpen.value = true
+    await nextTick()
+    searchInput.value?.focus()
+    searchInput.value?.select()
+    runSearch('next')
+  }
+  function closeSearch(restoreFocus = true): void {
+    searchOpen.value = false
+    searchQuery.value = ''
+    searchResult.value = 'idle'
+    searchAddon?.clearDecorations()
+    if (restoreFocus)
+      void nextTick(() => closeButton.value?.focus())
+  }
+  function onSearchKeydown(event: KeyboardEvent): void {
+    event.stopPropagation()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeSearch()
+    }
+    else if (event.key === 'Enter') {
+      event.preventDefault()
+      runSearch(event.shiftKey ? 'previous' : 'next')
+    }
+  }
   function setPaused(value: boolean): void {
     if (paused.value === value)
       return
@@ -195,6 +241,7 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     }, 280)
   }
   function hide() {
+    closeSearch(false)
     open.value = false
     void nextTick(() => bubble.value?.focus())
   }
@@ -248,9 +295,18 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   function onKey(event: KeyboardEvent) {
     if (!visible.value)
       return
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+      event.preventDefault()
+      void openSearch()
+      return
+    }
     if (event.key === 'Escape') {
       event.preventDefault()
-      hide()
+      if (searchOpen.value)
+        closeSearch()
+      else
+        hide()
+      return
     }
     if (event.key === 'Tab') {
       const controls = [...(host.value?.closest('.debug-sheet')?.querySelectorAll<HTMLElement>('button, textarea, [tabindex="0"]') ?? [])].filter(element => element.getClientRects().length > 0)
@@ -273,6 +329,10 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
   watch(filter, () => {
     if (!paused.value)
       renderHistory()
+  })
+  watch(searchQuery, () => {
+    if (searchOpen.value)
+      runSearch('next')
   })
   onMounted(async () => {
     if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('wire-demo')) {
@@ -297,5 +357,33 @@ export function useWireConsole(host: Ref<HTMLDivElement | null>, bubble: Ref<HTM
     window.clearTimeout(fitTimer)
     terminal.value?.dispose()
   })
-  return { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, sentCount, receivedCount, enabled, words, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused }
+  return {
+    open,
+    visible,
+    paused,
+    pausedLines,
+    atLatest,
+    filter,
+    unread,
+    lineCount,
+    sentCount,
+    receivedCount,
+    enabled,
+    words,
+    searchOpen,
+    searchQuery,
+    searchResult,
+    openSearch,
+    closeSearch,
+    onSearchKeydown,
+    hide,
+    toggle,
+    clear,
+    copy,
+    copyLabel,
+    jumpToLatest,
+    setPaused,
+    searchPrevious: () => runSearch('previous'),
+    searchNext: () => runSearch('next')
+  }
 }

@@ -72,6 +72,34 @@
           >
             {{ words.received }}
           </button>
+          <button type="button" class="debug-filter border-0 bg-transparent" :aria-label="words.search" @click="openSearch">
+            {{ words.search }}
+          </button>
+          <div v-if="searchOpen" class="debug-search" role="search">
+            <input
+              ref="searchField"
+              v-model="searchQuery"
+              type="search"
+              class="debug-search-input"
+              :placeholder="words.searchPlaceholder"
+              :aria-label="words.searchPlaceholder"
+              autocomplete="off"
+              spellcheck="false"
+              @keydown="onSearchKeydown"
+            >
+            <button type="button" class="debug-search-button border-0 bg-transparent" :aria-label="words.searchPrevious" @click="searchPrevious">
+              ↑
+            </button>
+            <button type="button" class="debug-search-button border-0 bg-transparent" :aria-label="words.searchNext" @click="searchNext">
+              ↓
+            </button>
+            <span v-if="searchResult === 'missing'" class="debug-search-state" role="status">
+              {{ words.searchNoResults }}
+            </span>
+            <button type="button" class="debug-search-button border-0 bg-transparent" :aria-label="words.searchClose" @click="closeSearch()">
+              ×
+            </button>
+          </div>
           <span class="debug-hint">{{ words.hintOpen }}</span>
           <details class="debug-tools">
             <summary class="debug-tools-summary" :aria-label="words.tools">
@@ -120,5 +148,6 @@ import '../debug/terminal.css'
 const host = useTemplateRef<HTMLDivElement>('host')
 const bubble = useTemplateRef<HTMLButtonElement>('bubble')
 const closeButton = useTemplateRef<HTMLButtonElement>('closeButton')
-const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused } = useWireConsole(host, bubble, closeButton)
+const searchField = useTemplateRef<HTMLInputElement>('searchField')
+const { open, visible, paused, pausedLines, atLatest, filter, unread, lineCount, enabled, words, searchOpen, searchQuery, searchResult, openSearch, closeSearch, onSearchKeydown, hide, toggle, clear, copy, copyLabel, jumpToLatest, setPaused, searchPrevious, searchNext } = useWireConsole(host, bubble, closeButton, searchField)
 </script>

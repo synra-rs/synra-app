@@ -66,6 +66,26 @@ it('opens the console during sync and restores the pending workflow when it clos
   }
 })
 
+it('opens the terminal search with Ctrl-F and closes it with Escape', async () => {
+  const debug = mount(DebugConsole, { attachTo: document.body })
+  try {
+    const bubble = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.getAttribute('aria-label') === messages.debug.open)!
+    bubble.click()
+    await flushPromises()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+    await flushPromises()
+    const input = document.querySelector<HTMLInputElement>('.debug-search-input')
+    expect(input, 'the terminal search field is missing').not.toBeNull()
+    expect(input?.getAttribute('aria-label')).toBe(messages.debug.searchPlaceholder)
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+    expect(document.querySelector('.debug-search-input')).toBeNull()
+  }
+  finally {
+    debug.unmount()
+  }
+})
+
 it('releases a sync when its detail is removed and can open a different drawer afterwards', async () => {
   const { wrapper, router } = await openSync()
   await router.replace('/plugins')

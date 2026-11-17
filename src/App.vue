@@ -18,7 +18,7 @@
             <RouterView />
           </div>
         </main>
-        <AppNavigation bottom :rail="rail" />
+        <AppNavigation bottom :rail="rail" @search="searchPalette?.show()" />
       </div>
     </div>
   </ConfigProvider>

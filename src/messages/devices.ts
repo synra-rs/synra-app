@@ -22,6 +22,7 @@ export const devices = {
   cancelScan: 'Cancel scan',
   paired: 'Paired',
   nearby: 'Nearby devices',
+  blockedDevices: 'Blocked devices',
   details: 'Details',
   detailsFor: (name: string): string => `Show details for ${name}`,
   name: 'Name',
@@ -41,11 +42,15 @@ export const devices = {
   refresh: 'Refresh devices',
   knownOnly: 'Showing the last successfully loaded device information.',
   forgotten: (name: string): string => `Forgot ${name}.`,
+  unblocked: (name: string): string => `Removed the block on ${name}.`,
   unpaired: 'Not paired',
   /** Undoes a relationship. Confirmed inline because the next send to that device is a first contact again. */
   forget: 'Forget',
+  unblock: 'Remove block',
   forgetTitle: (name: string): string => `Forget ${name}?`,
   forgetHelp: 'This device will be treated as new the next time it is reached. Automatic acceptance for this sender will also be removed.',
+  unblockTitle: (name: string): string => `Remove the block on ${name}?`,
+  unblockHelp: 'This device will be allowed to appear again, but it will not become paired automatically.',
   forgetCancel: 'Keep',
   /** One person reads this number to another; it is not identity verification. */
   pairing: 'Pair',

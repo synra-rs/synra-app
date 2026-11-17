@@ -97,7 +97,7 @@ article:focus-within .device-details-action,
       </dl>
       <div v-if="card.paired || card.blocked">
         <AButton danger @click="emit('forget', card)">
-          {{ messages.devices.forget }}
+          {{ card.blocked ? messages.devices.unblock : messages.devices.forget }}
         </AButton>
       </div>
     </div>

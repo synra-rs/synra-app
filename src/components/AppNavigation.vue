@@ -1,5 +1,8 @@
 <template>
   <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line md:hidden">
+    <button type="button" class="mobile-search-entry synra-icon-button border-0 bg-transparent" :aria-label="messages.search.title" :title="messages.search.title" data-testid="mobile-search-entry" @click="$emit('search')">
+      <span class="i-carbon-search" aria-hidden="true" />
+    </button>
     <button v-for="page in PAGES" :key="page.path" type="button" class="relative min-h-14 row flex-1 flex-col justify-center gap-0.5 border-0 bg-transparent text-sm text-ink-dim focusable hover:text-ink" :class="{ 'text-primary-ink': route.path === page.path }" :aria-current="route.path === page.path ? 'page' : undefined" @click="navigateTab(page.path)">
       <span class="absolute inset-x-4 bottom-1 h-0.5 rounded-pill bg-transparent" :class="{ 'bg-primary': route.path === page.path }" aria-hidden="true" />
       <span :class="page.icon" class="text-lg" aria-hidden="true" />

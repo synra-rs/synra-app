@@ -84,6 +84,22 @@ it('gives the search entry a full-size target', async () => {
   }
 })
 
+it('keeps search visible without adding a fifth mobile tab', async () => {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  await router.push('/')
+  const wrapper = mount(AppNavigation, { props: { rail: false, bottom: true }, global: { plugins: [router] } })
+  try {
+    const search = wrapper.get('[data-testid="mobile-search-entry"]')
+    expect(wrapper.findAll('button')).toHaveLength(5)
+    expect(search.attributes('aria-label')).toBe(messages.search.title)
+    await search.trigger('click')
+    expect(wrapper.emitted('search')).toHaveLength(1)
+  }
+  finally {
+    wrapper.unmount()
+  }
+})
+
 it('names the page menu, so its four links are not offered from nowhere', async () => {
   // ★ `AMenu` renders `<ul role="menu">` with no accessible name of its own. Without one a screen reader offers
   //   "Home", "Devices", "Plugins", "Settings" as four links with nothing saying they are this window's pages —
