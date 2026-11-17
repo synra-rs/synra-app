@@ -30,6 +30,16 @@ export async function checkTerminalTouchPath(): Promise<void> {
   notes.push('terminal-touch-path: viewport pan and momentum scrolling stay local to the terminal')
 }
 
+export async function checkDevServerContract(): Promise<void> {
+  const tauri = JSON.parse(await readFile(join(here, 'src-tauri', 'tauri.conf.json'), 'utf8')) as { build?: { devUrl?: string } }
+  const devUrl = tauri.build?.devUrl
+  const port = devUrl ? new URL(devUrl).port : ''
+  const vite = await readFile(join(here, 'vite.config.ts'), 'utf8')
+  if (!port || !new RegExp(`port:\\s*${port}\\b`).test(vite) || !/strictPort:\s*true/.test(vite))
+    failures.push({ check: 'dev-server-contract', detail: 'Tauri devUrl and Vite strict port must remain aligned' })
+  notes.push(`dev-server-contract: Tauri devUrl and Vite stay on localhost:${port || 'unknown'}`)
+}
+
 export async function checkDialogNames(): Promise<void> {
   const files = await sources(join(here, 'src'))
   let counted = 0
