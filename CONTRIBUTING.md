@@ -5,7 +5,17 @@
 本仓库承载 Tauri 壳、Vue 管理界面和插件页面。需要脱离界面也成立的规则放入共享核心。
 内核事件只由 `src/events.ts` 订阅，页面读取 store；IPC 类型来自 `@synra/protocol`。
 
-将 `synra-rust-core`、`synra-js` 与本仓库并排检出。
+将 `synra-core`、`synra-js` 与本仓库并排检出。
+目录可以放在任意位置，只需保持以下相对关系：
+
+```text
+<workspace>/
+├── synra-app/
+├── synra-core/
+└── synra-js/
+```
+
+前端配置从本仓库解析 `../synra-core`，Rust 依赖从 `src-tauri/` 解析 `../../synra-core`。
 Cargo 与 pnpm 的本地路径依赖见 `src-tauri/Cargo.toml`、`pnpm-workspace.yaml`；
 它们是当前开发配置，单独克隆应用仓库还不足以安装所有依赖。
 

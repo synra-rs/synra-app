@@ -29,25 +29,25 @@ afterEach(() => {
 
 describe('the IPC contract checkout', () => {
   it('reads the sibling used for local development', () => {
-    const path = checkout(join(workspace, 'synra-rust-core'))
+    const path = checkout(join(workspace, 'synra-core'))
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 
   it('prefers the catalogue in the selected checkout over an older flat file', () => {
-    const root = join(workspace, 'synra-rust-core')
+    const root = join(workspace, 'synra-core')
     checkout(root)
     const path = checkout(root, 'command', 'catalog.rs')
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 
   it('reads the checkout inside the app used by CI', () => {
-    const path = checkout(join(appRoot, 'synra-rust-core'))
+    const path = checkout(join(appRoot, 'synra-core'))
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 
   it('prefers an explicit kernel root over both default checkouts', () => {
-    checkout(join(workspace, 'synra-rust-core'))
-    checkout(join(appRoot, 'synra-rust-core'))
+    checkout(join(workspace, 'synra-core'))
+    checkout(join(appRoot, 'synra-core'))
     const root = join(workspace, 'custom-core')
     const path = checkout(root)
     expect(readIpcContract(appRoot, root)).toEqual({ path, source: SOURCE })
@@ -61,14 +61,14 @@ describe('the IPC contract checkout', () => {
   })
 
   it('prefers the sibling when both default checkouts exist', () => {
-    const path = checkout(join(workspace, 'synra-rust-core'))
-    checkout(join(appRoot, 'synra-rust-core'))
+    const path = checkout(join(workspace, 'synra-core'))
+    checkout(join(appRoot, 'synra-core'))
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 
   it('continues past a directory that does not contain the contract', () => {
-    mkdirSync(join(workspace, 'synra-rust-core'))
-    const path = checkout(join(appRoot, 'synra-rust-core'))
+    mkdirSync(join(workspace, 'synra-core'))
+    const path = checkout(join(appRoot, 'synra-core'))
     expect(readIpcContract(appRoot, '')).toEqual({ path, source: SOURCE })
   })
 
@@ -77,8 +77,8 @@ describe('the IPC contract checkout', () => {
     for (const expected of [
       'SYNRA_CORE_ROOT',
       join(root, 'crates', 'synra-ipc', 'src', 'command.rs'),
-      join(workspace, 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs'),
-      join(appRoot, 'synra-rust-core', 'crates', 'synra-ipc', 'src', 'command.rs')
+      join(workspace, 'synra-core', 'crates', 'synra-ipc', 'src', 'command.rs'),
+      join(appRoot, 'synra-core', 'crates', 'synra-ipc', 'src', 'command.rs')
     ]) {
       expect(() => readIpcContract(appRoot, root)).toThrow(expected)
     }

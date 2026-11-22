@@ -6,9 +6,9 @@ import UnoCSS from 'unocss/vite'
 import buildStamp from 'unplugin-build-stamp/vite'
 import { defineConfig } from 'vite'
 
-const coreRoot = fileURLToPath(new URL('../synra-rust-core', import.meta.url))
+const coreRoot = fileURLToPath(new URL('../synra-core', import.meta.url))
 const buildStampModule = fileURLToPath(new URL('./src/auto-generated/build-stamp.ts', import.meta.url))
-const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synra-rust-core/Cargo.toml', import.meta.url), 'utf8'))?.[1] ?? '0.0.0'
+const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synra-core/Cargo.toml', import.meta.url), 'utf8'))?.[1] ?? '0.0.0'
 
 /**
  * The host interface's build.

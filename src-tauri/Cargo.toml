@@ -14,7 +14,7 @@ repository.workspace = true
 
 authors.workspace = true
 
-# ★ `src-tauri` 是**独立 workspace**，不是 `synra-rust-core` 的成员。
+# ★ `src-tauri` 是**独立 workspace**，不是 `synra-core` 的成员。
 #
 # 理由是设计文档 06 §4.1 给的判据：宿主是否只依赖内核的公开 API 且没有平台特定的重型依赖。CLI/daemon 是，
 # Tauri 应用不是 —— 它要 WebView2、要 NDK、要自己的 CI。把 Tauri 拖进内核仓库会让内核的依赖图和 CI 都背上
@@ -101,24 +101,24 @@ tauri-shell = [
   "dep:tauri-plugin-deep-link"
 ]
 [dependencies]
-synra-core = { path = "../../synra-rust-core/crates/synra-core" }
+synra-core = { path = "../../synra-core/crates/synra-core" }
 # The HTTP client `network-fetch` needs. A host-side crate on purpose: putting it in the kernel would drag a TLS stack into
 # a crate that is cross-compiled for Android — see the crate's own `Cargo.toml`.
-synra-fetch = { path = "../../synra-rust-core/crates/synra-fetch" }
+synra-fetch = { path = "../../synra-core/crates/synra-fetch" }
 # The registry protocol's own rules: packument parsing and the safe tarball extraction. A separate crate because both
 # are about untrusted bytes and can be tested without a window or a socket.
-synra-registry = { path = "../../synra-rust-core/crates/synra-registry" }
-synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
-synra-protocol = { path = "../../synra-rust-core/crates/synra-protocol" }
-synra-capability = { path = "../../synra-rust-core/crates/synra-capability" }
-synra-store = { path = "../../synra-rust-core/crates/synra-store" }
-synra-observe = { path = "../../synra-rust-core/crates/synra-observe" }
-synra-platform = { path = "../../synra-rust-core/crates/synra-platform" }
-synra-plugin-api = { path = "../../synra-rust-core/crates/synra-plugin-api" }
+synra-registry = { path = "../../synra-core/crates/synra-registry" }
+synra-ipc = { path = "../../synra-core/crates/synra-ipc" }
+synra-protocol = { path = "../../synra-core/crates/synra-protocol" }
+synra-capability = { path = "../../synra-core/crates/synra-capability" }
+synra-store = { path = "../../synra-core/crates/synra-store" }
+synra-observe = { path = "../../synra-core/crates/synra-observe" }
+synra-platform = { path = "../../synra-core/crates/synra-platform" }
+synra-plugin-api = { path = "../../synra-core/crates/synra-plugin-api" }
 # The kernel holds the plugin seam but not an engine, so the shell brings one — the same split the daemon makes.
-synra-plugin-host = { path = "../../synra-rust-core/crates/synra-plugin-host", features = [ "wasm-runtime" ] }
+synra-plugin-host = { path = "../../synra-core/crates/synra-plugin-host", features = [ "wasm-runtime" ] }
 # The UI session registry: tokens issued to a plugin page, and the validation `plugin_ui_ready` performs against them.
-synra-plugin-ui = { path = "../../synra-rust-core/crates/synra-plugin-ui" }
+synra-plugin-ui = { path = "../../synra-core/crates/synra-plugin-ui" }
 parking_lot = "0.12"
 # The process gauges (`memory_rss_bytes`, `cpu_percent`, `threads`) need facts only the platform knows, and `sysinfo` is
 # the one crate that answers on all three desktop targets without a per-OS module here. It is already in the lockfile as
@@ -168,7 +168,7 @@ tauri-plugin-global-shortcut = { version = "2" }
 tauri-plugin-autostart = { version = "2" }
 
 [build-dependencies]
-synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
+synra-ipc = { path = "../../synra-core/crates/synra-ipc" }
 
 # ★ `tauri-build` is optional, and it has to be.
 #
@@ -188,7 +188,7 @@ synra-ipc = { path = "../../synra-rust-core/crates/synra-ipc" }
 #      **MSRV**（见 `[workspace.package] rust-version` 那一段）。现在两边都是 2.12。
 tauri-build = { version = "2", optional = true, features = [ ] }
 
-# The lint set mirrors the kernel's for the reasons in `synra-rust-core/AGENT.md`: the shell is where a command can
+# The lint set mirrors the kernel's for the reasons in `synra-core/AGENTS.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
 [dev-dependencies]
 tempfile = "3"
@@ -196,7 +196,7 @@ tempfile = "3"
 wat = "=1.262.0"
 # Corrupt registration metadata through an independent real SQLite connection.
 rusqlite = { version = "0.40", features = ["bundled"] }
-synra-testkit = { path = "../../synra-rust-core/crates/synra-testkit", features = ["wasm-fixtures"] }
+synra-testkit = { path = "../../synra-core/crates/synra-testkit", features = ["wasm-fixtures"] }
 ed25519-dalek = "2"
 # The registry test builds the tarball the client downloads; parsing it is the production side's job.
 tar = "0.4"

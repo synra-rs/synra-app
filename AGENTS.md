@@ -25,7 +25,7 @@ see a mistake in it; CI runs only the first because a Linux runner has no WebKit
 your machine — the second command works here.
 
 ★ **`cargo run -p guards` is not in this list, and that is not an omission**: `guards` is a binary in the **core** workspace,
-so it is run from `synra-rust-core/`, not from here. `cargo run -p guards` in this repository fails with "package not found in
+so it is run from `synra-core/`, not from here. `cargo run -p guards` in this repository fails with "package not found in
 workspace", which reads like a broken guard and is really a wrong directory.
 
 ## 2. Mobile Android build order

@@ -12,7 +12,7 @@ name: checks
 #
 # ★ The sibling checkouts are not optional decoration.
 #
-# `src-tauri/Cargo.toml` reaches the kernel by **path** (`../../synra-rust-core/crates/…`) and
+# `src-tauri/Cargo.toml` reaches the kernel by **path** (`../../synra-core/crates/…`) and
 # `pnpm-workspace.yaml` reaches the type library by `overrides: link:../synra-js/packages/…`. Both are resolved against
 # the *parent directory*, so the three repositories are checked out side by side under the same names a local checkout
 # uses. Without them this workflow could only test a copy of the app that does not exist.
@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: synra-rs/synra-core
-          path: synra-rust-core
+          path: synra-core
 
       # ★ Pinned rather than "latest": the lockfile is `lockfileVersion: '9.0'`, and a pnpm major that reads a
       # different lockfile format would turn "the lockfile is out of date" into a red build that says nothing about
@@ -109,7 +109,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: synra-rs/synra-core
-          path: synra-rust-core
+          path: synra-core
 
       # The root toolchain file also applies from src-tauri.
       - name: Install the development toolchain
@@ -145,7 +145,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: synra-rs/synra-core
-          path: synra-rust-core
+          path: synra-core
 
       - name: Install the declared MSRV
         id: msrv
