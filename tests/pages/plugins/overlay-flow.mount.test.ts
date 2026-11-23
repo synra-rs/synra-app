@@ -22,7 +22,11 @@ vi.mock('@xterm/xterm', () => ({
     open() {}
     write(value: string) { this.writes.push(value) }
     clear() { this.writes = [] }
-    scrollToBottom() { this.scrolls += 1; this.buffer.active.viewportY = this.buffer.active.baseY }
+    scrollToBottom() {
+      this.scrolls += 1
+      this.buffer.active.viewportY = this.buffer.active.baseY
+    }
+
     getSelection() { return this.selection }
     dispose() {}
   }

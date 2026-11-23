@@ -24,7 +24,8 @@ function answering(answers: Readonly<Record<string, unknown>>) {
       if (!(method in answers)) {
         throw Object.assign(new Error(`no answer for ${method}`), {
           code: 'unsupported',
-          message: 'error.unsupported'
+          message: 'error.unsupported',
+          retryable: false
         })
       }
       return answers[method]
@@ -49,7 +50,11 @@ describe('self', () => {
     })
     const synra = createInjection(context({ bridge: bridge({ invoke }) }))
 
-    await expect(synra.self.invoke('send')).rejects.toBe(refusal)
+    await expect(synra.self.invoke('send')).rejects.toMatchObject({
+      code: refusal.code,
+      retryable: refusal.retryable,
+      details: { params: refusal.params, context: refusal.details }
+    })
     expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
       token: '123456789012345678901234567890',
       method: 'self.invoke',
@@ -110,14 +115,15 @@ describe('self', () => {
     // `TypeError` with no code; this names the host as the thing that broke its promise.
     const synra = createInjection(context({ bridge: bridge({ invoke: answering({ 'self.actions': { not: 'a list' } }) }) }))
 
-    await expect(synra.self.actions()).rejects.toMatchObject({ code: 'unsupported' })
+    await expect(synra.self.actions()).rejects.toMatchObject({ code: 'internal' })
   })
 
   it('keeps a kernel refusal a refusal', async () => {
     const invoke = vi.fn<(command: string, payload?: Readonly<Record<string, unknown>>) => Promise<unknown>>(async () => {
       throw Object.assign(new Error('that action is not this plugin\'s'), {
         code: 'invalid_argument',
-        message: 'error.invalid_argument'
+        message: 'error.invalid_argument',
+        retryable: false
       })
     })
     const synra = createInjection(context({ bridge: bridge({ invoke }) }))

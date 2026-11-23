@@ -18,7 +18,8 @@
 import type { ActionDescriptor, SelfNamespace } from '@synra/client'
 
 import type { InjectionContext } from './context'
-import { asSynraError, unsupported } from './errors'
+import { createSynraError } from '../errors'
+import { asSynraError } from './errors'
 
 /** The self namespace, over the plugin channel. */
 export function createSelfNamespace(context: InjectionContext): SelfNamespace {
@@ -41,7 +42,7 @@ export function createSelfNamespace(context: InjectionContext): SelfNamespace {
       if (!Array.isArray(listed)) {
         // A kernel that answered something else is a contract violation, and reading `.length` off it later would be the
         // crash rather than the message. This is the one place the façade has to distrust the host's shape.
-        throw unsupported('self.actions')
+        throw createSynraError('internal', { feature: 'self.actions', reason: 'the host did not return an action list' })
       }
       return listed as ActionDescriptor[]
     }

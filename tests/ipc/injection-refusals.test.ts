@@ -118,13 +118,13 @@ describe('device.list', () => {
         // An `Error` carrying the fields, because that is what a command actually rejects with and what the injection's
         // error mapping reads. A bare object literal would be the same assertion written in a form nothing produces.
         throw Object.assign(new Error('the store is not reachable'), {
-          code: 'store_unavailable',
-          message: 'error.storeUnavailable',
+          code: 'internal',
+          message: 'error.internal',
           retryable: true
         })
       })
     })
     const synra = createInjection(context({ bridge: refusing }))
-    await expect(synra.device.list()).rejects.toMatchObject({ code: 'store_unavailable' })
+    await expect(synra.device.list()).rejects.toMatchObject({ code: 'internal', retryable: true })
   })
 })

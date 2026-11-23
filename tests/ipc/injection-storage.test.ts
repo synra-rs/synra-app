@@ -103,7 +103,8 @@ describe('storage', () => {
     const invoke = answering(() => {
       throw Object.assign(new Error('no write capability'), {
         code: 'capability_denied',
-        message: 'error.capabilityDenied'
+        message: 'error.capability_denied',
+        retryable: false
       })
     })
     const synra = createInjection(context({ bridge: bridge({ invoke }) }))

@@ -1,0 +1,171 @@
+{
+  "policies": [
+    {
+      "code": "capability_denied",
+      "message": "error.capability_denied",
+      "retryable": false
+    },
+    {
+      "code": "plugin_not_installed",
+      "message": "error.plugin_not_installed",
+      "retryable": false
+    },
+    {
+      "code": "device_offline",
+      "message": "error.device_offline",
+      "retryable": true
+    },
+    {
+      "code": "not_paired",
+      "message": "error.not_paired",
+      "retryable": false
+    },
+    {
+      "code": "transport_not_open",
+      "message": "error.transport_not_open",
+      "retryable": true
+    },
+    {
+      "code": "transfer_failed",
+      "message": "error.transfer_failed",
+      "retryable": true
+    },
+    {
+      "code": "integrity_mismatch",
+      "message": "error.integrity_mismatch",
+      "retryable": false
+    },
+    {
+      "code": "payload_too_large",
+      "message": "error.payload_too_large",
+      "retryable": false
+    },
+    {
+      "code": "timeout",
+      "message": "error.timeout",
+      "retryable": true
+    },
+    {
+      "code": "rate_limited",
+      "message": "error.rate_limited",
+      "retryable": true
+    },
+    {
+      "code": "unsupported",
+      "message": "error.unsupported",
+      "retryable": false
+    },
+    {
+      "code": "invalid_argument",
+      "message": "error.invalid_argument",
+      "retryable": false
+    },
+    {
+      "code": "scheme_not_allowed",
+      "message": "error.scheme_not_allowed",
+      "retryable": false
+    },
+    {
+      "code": "host_not_allowed",
+      "message": "error.host_not_allowed",
+      "retryable": false
+    },
+    {
+      "code": "ip_not_allowed",
+      "message": "error.ip_not_allowed",
+      "retryable": false
+    },
+    {
+      "code": "redirect_blocked",
+      "message": "error.redirect_blocked",
+      "retryable": false
+    },
+    {
+      "code": "response_too_large",
+      "message": "error.response_too_large",
+      "retryable": false
+    },
+    {
+      "code": "protocol_violation",
+      "message": "error.protocol_violation",
+      "retryable": false
+    },
+    {
+      "code": "protocol_version_unsupported",
+      "message": "error.protocol_version_unsupported",
+      "retryable": false
+    },
+    {
+      "code": "plugin_trapped",
+      "message": "error.plugin_trapped",
+      "retryable": false
+    },
+    {
+      "code": "plugin_timeout",
+      "message": "error.plugin_timeout",
+      "retryable": false
+    },
+    {
+      "code": "internal",
+      "message": "error.internal",
+      "retryable": true
+    }
+  ],
+  "ipc": {
+    "code": "device_offline",
+    "message": "error.device_offline",
+    "params": {
+      "field": "deviceId"
+    },
+    "details": {
+      "kernelMessage": "the selected peer is offline",
+      "context": {
+        "peer": "contract-peer",
+        "attempts": [
+          1,
+          2
+        ]
+      },
+      "traceId": "contract-trace"
+    },
+    "retryable": true,
+    "actions": [
+      {
+        "kind": "openSettings",
+        "section": "general"
+      },
+      {
+        "kind": "requestCapability",
+        "capability": "log:read"
+      },
+      {
+        "kind": "installPlugin",
+        "pluginId": "@synra-plugin/example"
+      },
+      {
+        "kind": "connectDevice",
+        "deviceId": "example"
+      },
+      {
+        "kind": "retry"
+      },
+      {
+        "kind": "viewLogs",
+        "traceId": "example"
+      }
+    ]
+  },
+  "plugin": {
+    "code": "device_offline",
+    "message": "the selected peer is offline",
+    "retryable": true,
+    "traceId": "contract-trace",
+    "details": {
+      "peer": "contract-peer",
+      "attempts": [
+        1,
+        2
+      ]
+    }
+  }
+}

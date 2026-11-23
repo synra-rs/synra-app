@@ -52,7 +52,7 @@ describe('the two members the design listed and the implementation did not have'
   // the injected object had neither — so an author copying the example got a method that does not exist.
   it('answers isCapabilityDenied by narrowing, not by a boolean', () => {
     const synra = createInjection(context())
-    const denied = { code: 'capability_denied', message: 'no', params: {} }
+    const denied = { code: 'capability_denied', message: 'no', retryable: false, params: {} }
 
     expect(synra.isCapabilityDenied(denied)).toBe(true)
     // A different code is not a capability denial, which is the whole reason the specific predicate exists.

@@ -12,71 +12,30 @@
  * throws them and a refusal that read differently in each group would be a second vocabulary for one thing.
  */
 
-import type { ErrorCode, SynraError } from '@synra/protocol'
+import type { SynraError } from '@synra/protocol'
+import { createSynraError } from '../errors'
 
-import type { IpcError } from '../client'
+export { asSynraError, isSynraErrorValue } from '../errors'
 
 /** A refusal that says what is missing rather than what went wrong. */
 export function unsupported(feature: string): SynraError {
-  return {
-    code: 'unsupported' as ErrorCode,
-    message: `error.unsupported`,
-    retryable: false,
-    details: { feature }
-  } as unknown as SynraError
+  return createSynraError('unsupported', { feature })
 }
 
 /** A refusal for a capability this plugin was not granted. */
 export function denied(capability: string): SynraError {
   return {
-    code: 'capability_denied' as ErrorCode,
-    message: `error.capabilityDenied`,
-    retryable: false,
-    details: { capability }
-  } as unknown as SynraError
+    ...createSynraError('capability_denied', { capability }),
+    actions: [{ kind: 'requestCapability', capability }]
+  }
 }
 
 /** A refusal for a value the host will not take in one piece. */
 export function tooLarge(detail: string): SynraError {
-  return {
-    code: 'payload_too_large' as ErrorCode,
-    message: `error.payload_too_large`,
-    retryable: false,
-    details: { detail }
-  } as unknown as SynraError
+  return createSynraError('payload_too_large', { detail })
 }
 
 /** A refusal for an argument the host cannot accept. */
 export function invalidArgument(detail: string): SynraError {
-  return {
-    code: 'invalid_argument' as ErrorCode,
-    message: `error.invalid_argument`,
-    retryable: false,
-    details: { detail }
-  } as unknown as SynraError
-}
-
-/** Turns whatever the bridge rejected with into the shape a plugin can branch on. */
-export function asSynraError(reason: unknown): SynraError {
-  const candidate = reason as Partial<IpcError> | undefined
-  if (candidate !== undefined && typeof candidate.code === 'string')
-    return candidate as unknown as SynraError
-  return unsupported('unknown')
-}
-
-/**
- * Whether a value is a `SynraError`.
- *
- * ★ A named function, not only the method.
- *
- * `isCode` has to branch on the same test. Written as `isSynraError(value)` inside the object literal it would resolve
- * to the property being defined a line above, which is a self-reference through `synra` — so this is the function the
- * method and its sibling both call.
- */
-export function isSynraErrorValue(value: unknown): value is SynraError {
-  const candidate = value as Partial<SynraError> | undefined
-  return candidate !== undefined
-    && typeof candidate === 'object'
-    && typeof candidate.code === 'string'
-    && typeof candidate.message === 'string'
+  return createSynraError('invalid_argument', { detail })
 }

@@ -134,7 +134,8 @@ describe('network.fetch', () => {
     const invoke = vi.fn<(command: string, payload?: Readonly<Record<string, unknown>>) => Promise<unknown>>(async () => {
       throw Object.assign(new Error('host not allowed'), {
         code: 'host_not_allowed',
-        message: 'error.host_not_allowed'
+        message: 'error.host_not_allowed',
+        retryable: false
       })
     })
     const synra = createInjection(context({ bridge: bridge({ invoke }) }))

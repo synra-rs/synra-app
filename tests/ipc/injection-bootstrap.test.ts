@@ -98,7 +98,7 @@ describe('injecting the façade into a plugin page', () => {
 
   it('keeps a refusal a refusal', async () => {
     const invoke = vi.fn(async () => {
-      throw Object.assign(new Error('no session'), { code: 'capability_denied', message: 'error.capabilityDenied' })
+      throw Object.assign(new Error('no session'), { code: 'capability_denied', message: 'error.capability_denied', retryable: false })
     })
     const client = inject(seed(), bridge({ invoke }))
 

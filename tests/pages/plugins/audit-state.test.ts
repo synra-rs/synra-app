@@ -81,10 +81,10 @@ describe('audit view ownership', () => {
       await audit.loadMore()
       expect(await audit.clear()).toBe(false)
       expect(invoke).toHaveBeenCalledTimes(2)
-      pending.resolve({ code: 'unavailable', message: 'error.unavailable', retryable: true })
+      pending.resolve({ code: 'timeout', message: 'error.timeout', retryable: true })
       await more
       expect(audit.rows.value).toHaveLength(20)
-      expect(audit.error.value?.code).toBe('unavailable')
+      expect(audit.error.value?.code).toBe('timeout')
       await audit.retry()
       expect(invoke).toHaveBeenLastCalledWith('plugins_audit', { pluginId: '@acme/one', limit: 20, offset: 20 })
       expect(audit.rows.value).toHaveLength(21)
@@ -96,13 +96,13 @@ describe('audit view ownership', () => {
   })
 
   it('retains records after a failed clear and empties them only after a successful retry', async () => {
-    const invoke = vi.fn().mockResolvedValueOnce(entries(1)).mockRejectedValueOnce({ code: 'unavailable', message: 'error.unavailable', retryable: true }).mockResolvedValueOnce(null)
+    const invoke = vi.fn().mockResolvedValueOnce(entries(1)).mockRejectedValueOnce({ code: 'timeout', message: 'error.timeout', retryable: true }).mockResolvedValueOnce(null)
     const { scope, audit } = setup(invoke)
     try {
       await audit.setExpanded(true)
       expect(await audit.clear()).toBe(false)
       expect(audit.rows.value).toHaveLength(1)
-      expect(audit.error.value?.code).toBe('unavailable')
+      expect(audit.error.value?.code).toBe('timeout')
       expect(await audit.retry()).toBe(true)
       expect(audit.rows.value).toEqual([])
       expect(audit.done.value).toBe(true)
@@ -142,7 +142,7 @@ describe('audit view ownership', () => {
     await audit.setExpanded(false)
     await audit.setExpanded(true)
     scope.stop()
-    pending.resolve({ code: 'unavailable', message: 'error.unavailable', retryable: true })
+    pending.resolve({ code: 'timeout', message: 'error.timeout', retryable: true })
     await opening
     expect(invoke).toHaveBeenCalledTimes(1)
     expect(audit.rows.value).toBeUndefined()

@@ -2,6 +2,7 @@ import process from 'node:process'
 import { checkCommandArguments } from './checks/arguments'
 import { failures, notes } from './checks/common'
 import { checkCommandNames, checkFakeIsQuarantined, checkInjection, checkSingleDeclarations, checkTypeOnlyImports } from './checks/contracts'
+import { checkErrorContract } from './checks/error-contract'
 import { checkFacadeIsFresh } from './checks/facade'
 import { checkControlNames, checkCornerLadder, checkDevServerContract, checkDialogNames, checkFocusableNames, checkMobileViewportLock, checkNativeButtons, checkPageButtons, checkTerminalTouchPath, checkTouchBreakpoints } from './checks/ui'
 
@@ -11,6 +12,7 @@ await checkTypeOnlyImports()
 const called = await checkCommandNames()
 await checkCommandArguments(called)
 await checkFakeIsQuarantined()
+checkErrorContract()
 await checkFacadeIsFresh()
 await checkPageButtons()
 await checkMobileViewportLock()

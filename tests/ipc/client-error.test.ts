@@ -49,7 +49,7 @@ describe('whether a value is an error', () => {
         params: { field: 'name' },
         details: 'the name was empty',
         retryable: false,
-        actions: ['openSettings']
+        actions: [{ kind: 'openSettings', section: 'plugins' }]
       })
     ).toBe(true)
   })

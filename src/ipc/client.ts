@@ -7,6 +7,8 @@
  */
 
 import type { IpcError } from '@synra/protocol'
+import { asIpcError, isSynraErrorValue } from './errors'
+import { hasErrorFields } from './errors/shape'
 
 export type { IpcError } from '@synra/protocol'
 
@@ -46,14 +48,7 @@ export type CallResult<T>
  * still an error; one missing any of the three is one this interface cannot render or classify.
  */
 export function isIpcError(value: unknown): value is IpcError {
-  if (typeof value !== 'object' || value === null)
-    return false
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.code === 'string'
-    && typeof candidate.message === 'string'
-    && typeof candidate.retryable === 'boolean'
-  )
+  return isSynraErrorValue(value)
 }
 
 /**
@@ -97,16 +92,14 @@ export class KernelClient {
       //
       // A rejection that is already an error is passed through, since some bridges reject with the error rather than
       // resolving with it, and re-wrapping it would lose the code.
-      if (isIpcError(thrown))
-        return { ok: false, error: thrown }
-      return { ok: false, error: bridgeFailure(thrown) }
+      return { ok: false, error: asIpcError(thrown) }
     }
 
     // The host's convention: a command returning a value *is* the success, and its refusal is a value that looks like
     // an error. Checking the shape rather than a wrapper means a command whose return type is itself an object with a
     // `code` field is still handled correctly — because the check needs all three fields.
-    if (isIpcError(raw))
-      return { ok: false, error: raw }
+    if (hasErrorFields(raw))
+      return { ok: false, error: asIpcError(raw) }
     return { ok: true, value: raw as T }
   }
 
@@ -124,30 +117,6 @@ export class KernelClient {
     handler: (payload: unknown) => void
   ): Promise<() => void> {
     return await this.#bridge.listen(event, handler)
-  }
-}
-
-/**
- * The error for a rejection that was not one of ours.
- *
- * # Why it becomes an `IpcError` rather than propagating
- *
- * A caller that receives a raw exception has to know that the bridge exists. This turns it into the same shape every
- * other failure has — with `Internal`, which is the code the kernel uses for "something unexpected" and which **is**
- * retryable — so the interface has one path rather than two.
- *
- * `message` is a key rather than a sentence, and the key says what happened: the bridge, not the kernel, failed. A
- * user-facing sentence for it is the interface's to write.
- */
-function bridgeFailure(thrown: unknown): IpcError {
-  const detail = thrown instanceof Error ? thrown.message : String(thrown)
-  return {
-    code: 'internal',
-    message: 'error.bridgeFailed',
-    params: { detail },
-    // Retryable: a bridge rejection is a transport-shaped failure, and the kernel's own `internal` is retryable. The
-    // alternative is an interface that gives up on a transient fault.
-    retryable: true
   }
 }
 

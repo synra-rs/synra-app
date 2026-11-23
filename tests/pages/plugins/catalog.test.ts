@@ -87,7 +87,7 @@ describe('registry search state', () => {
   it('keeps existing rows after a pagination refusal and retries the same offset', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce(page(0))
-      .mockRejectedValueOnce({ code: 'unavailable', message: 'error.unavailable', retryable: true })
+      .mockRejectedValueOnce({ code: 'timeout', message: 'error.timeout', retryable: true })
       .mockResolvedValueOnce(page(20, 1))
     const { scope, catalog } = setup(invoke)
     try {
@@ -95,7 +95,7 @@ describe('registry search state', () => {
       await catalog.search()
       await catalog.loadMore()
       expect(catalog.results.value).toHaveLength(20)
-      expect(catalog.error.value?.code).toBe('unavailable')
+      expect(catalog.error.value?.code).toBe('timeout')
       expect(catalog.hasMore.value).toBe(true)
       await catalog.retry()
       expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', { query: { query: 'plugin', sort: 'relevance', offset: 20 } })
@@ -110,7 +110,7 @@ describe('registry search state', () => {
   it('retries a failed first page as a search even while previous rows remain', async () => {
     const invoke = vi.fn()
       .mockResolvedValueOnce(page(0))
-      .mockRejectedValueOnce({ code: 'unavailable', message: 'error.unavailable', retryable: true })
+      .mockRejectedValueOnce({ code: 'timeout', message: 'error.timeout', retryable: true })
       .mockResolvedValueOnce(page(40, 1))
     const { scope, catalog } = setup(invoke)
     try {
@@ -136,7 +136,7 @@ describe('registry search state', () => {
       const request = catalog.search()
       catalog.text.value = 'new'
       // The bridge can also resolve with an IPC error value; KernelClient normalizes that refusal.
-      pending.resolve({ code: 'unavailable', message: 'error.unavailable', retryable: true })
+      pending.resolve({ code: 'timeout', message: 'error.timeout', retryable: true })
       await request
       expect(catalog.error.value).toBeUndefined()
       expect(catalog.searched.value).toBe(false)
