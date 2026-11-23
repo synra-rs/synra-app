@@ -10,94 +10,34 @@ pub(crate) fn bases(state: &AppState) -> Result<Vec<Base>, synra_ipc::IpcError> 
         synra_ipc::IpcError::unknown(ErrorCode::Internal)
             .with_params(serde_json::json!({"detail": error.to_string()}))
     })?;
-    let Some(row) = rows.iter().find(|row| row.key == REGISTRY_KEY) else {
-        return Err(synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-            "why": format!("no registry is configured; set `{REGISTRY_KEY}` to its base URL first"),
-        })));
-    };
-    let value: serde_json::Value = serde_json::from_str(&row.value).map_err(|error| {
-        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": REGISTRY_KEY, "reason": error.to_string()}))
-    })?;
-    let urls: Vec<String> = match value {
-        serde_json::Value::String(url) => vec![url],
-        serde_json::Value::Array(items) => items
-            .iter()
-            .filter_map(|item| item.as_str().map(str::to_owned))
-            .collect(),
-        _ => {
-            return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                serde_json::json!({"field": REGISTRY_KEY, "reason": "it must be a URL or an array of URLs"}),
-            ));
-        }
-    };
-    let parsed: Vec<Base> = urls
+    let value = rows
         .iter()
-        .map(|url| url.trim())
-        .filter(|url| !url.is_empty())
-        .map(|url| match url.strip_prefix("static:") {
-            Some(rest) => split_url(rest.trim(), Kind::Static),
-            None => split_url(url, Kind::Npm),
-        })
-        .collect::<Result<_, _>>()?;
-    if parsed.is_empty() {
-        return Err(
-            synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-                "why": format!("`{REGISTRY_KEY}` names no registry"),
-            })),
-        );
+        .find(|row| row.key == REGISTRY_KEY)
+        .map(|row| serde_json::from_str::<serde_json::Value>(&row.value))
+        .transpose()
+        .map_err(|error| invalid_configuration(None, error.to_string()))?;
+    let config = validate_setting(value.as_ref())?;
+    if config.sources().is_empty() {
+        return Err(synra_ipc::RegistryProblem::NotConfigured.into_error());
     }
-    Ok(parsed)
+    Ok(config.sources().to_vec())
 }
 
-/// Splits a base URL into its scheme, authority and host.
-pub(crate) fn split_url(url: &str, kind: Kind) -> Result<Base, synra_ipc::IpcError> {
-    let refused = |reason: &str| {
-        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
-            .with_params(serde_json::json!({"field": REGISTRY_KEY, "reason": reason}))
-    };
-    let (secure, rest) = if let Some(rest) = url.strip_prefix("https://") {
-        (true, rest)
-    } else if let Some(rest) = url.strip_prefix("http://") {
-        (false, rest)
-    } else {
-        return Err(refused("it must start with https:// or http://"));
-    };
-    let authority = rest.split('/').next().unwrap_or_default();
-    if authority.is_empty() {
-        return Err(refused("it names no host"));
+/// Validate a setting before committing it, and when reading existing configuration.
+pub(crate) fn validate_setting(
+    value: Option<&serde_json::Value>,
+) -> Result<synra_registry::RegistryConfig, synra_ipc::IpcError> {
+    synra_registry::RegistryConfig::parse(value)
+        .map_err(|error| invalid_configuration(error.index, error.reason.to_string()))
+}
+
+fn invalid_configuration(index: Option<usize>, reason: String) -> synra_ipc::IpcError {
+    synra_ipc::RegistryProblem::InvalidConfiguration {
+        field: REGISTRY_KEY.to_owned(),
+        index,
+        reason,
     }
-    let path = rest[authority.len()..].trim_end_matches('/');
-    // An npm registry's paths are the protocol's, so a path in its URL would be silently ignored; a static host's prefix
-    // is where the bucket's files live, so a path is the point there.
-    if kind == Kind::Npm && !path.is_empty() {
-        return Err(refused(
-            "an npm-compatible registry names only a scheme and a host",
-        ));
-    }
-    // A port is allowed.
-    let (host, port) = match authority.rsplit_once(':') {
-        Some((host, port)) if port.chars().all(|character| character.is_ascii_digit()) => {
-            (host, Some(port))
-        }
-        _ => (authority, None),
-    };
-    let host = host.trim_matches(['[', ']']).to_owned();
-    if host.is_empty() {
-        return Err(refused("it names no host"));
-    }
-    let scheme = if secure { "https" } else { "http" };
-    let authority_with_port = match port {
-        Some(port) => format!("{host}:{port}"),
-        None => host.clone(),
-    };
-    let origin = format!("{scheme}://{authority_with_port}{path}");
-    Ok(Base {
-        origin,
-        host,
-        secure,
-        kind,
-    })
+    .into_error()
 }
 
 /// Whether another mirror could plausibly fix this status.
@@ -112,59 +52,63 @@ pub(crate) fn retryable(status: u16) -> bool {
 pub(crate) fn get_text(
     bases: &[Base],
     path_for: impl Fn(&Base) -> String,
-    what: &str,
+    operation: Operation,
 ) -> Result<(Base, synra_fetch::Response), synra_ipc::IpcError> {
-    let mut last: Option<(ErrorCode, String)> = None;
+    let mut last = None;
     for base in bases {
         let path = path_for(base);
-        let url = format!("{}{path}", base.origin);
+        let url = format!("{}{path}", base.url());
         match client(base).fetch(&get(&url)) {
             Ok(response) if (200..300).contains(&response.status) => {
                 return Ok((base.clone(), response));
             }
             Ok(response) if retryable(response.status) => {
-                last = Some((
-                    ErrorCode::Unsupported,
-                    format!("{url} answered {}", response.status),
-                ));
+                last = Some(http_failure(response.status, &url, operation));
             }
             Ok(response) => {
-                return Err(
-                    synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                        serde_json::json!({
-                            "url": url,
-                            "status": response.status,
-                            "reason": format!("{what} refused the request"),
-                        }),
-                    ),
-                );
+                return Err(http_failure(response.status, &url, operation));
             }
             Err(refusal) => {
-                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+                last = Some(network_failure(refusal, &url));
             }
         }
     }
-    let (code, reason) =
-        last.unwrap_or((ErrorCode::Unsupported, format!("no registry serves {what}")));
-    Err(
-        synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
-            "reason": reason,
-            "tried": bases.len(),
-        })),
-    )
+    Err(exhausted(last, operation))
 }
 
 /// The guarded HTTP client for one registry.
 pub(crate) fn client(base: &Base) -> Client {
-    let mut guard = NetworkGuard::for_hosts(std::slice::from_ref(&base.host));
-    if !base.secure {
-        // Plain http is only for a loopback registry — a local mirror, a test server. A public host must be https, which
-        // is the guard's default rather than a rule added here.
-        guard = guard.allowing_insecure(true).with_policy(IpPolicy {
-            allow_loopback: true,
-            ..IpPolicy::default()
-        });
-    }
+    guarded_client(
+        NetworkGuard::for_hosts(&[base.host().to_owned()])
+            .allowing_insecure(!base.secure())
+            .with_policy(IpPolicy {
+                allow_loopback: base.loopback(),
+                ..IpPolicy::default()
+            }),
+    )
+}
+
+/// Artifact URLs use the fetch guard's parser. Their query is not a source configuration prefix.
+pub(crate) fn artifact_client(source: &Base, url: &str) -> Result<Client, synra_ipc::IpcError> {
+    let parsed = NetworkGuard::for_hosts(&[])
+        .allowing_insecure(!source.secure())
+        .parse(url)
+        .map_err(|error| {
+            synra_ipc::IpcError::unknown(error.code)
+                .with_params(serde_json::json!({"reason": error.message}))
+        })?;
+    let allow_http = !source.secure() && synra_registry::is_loopback_host(&parsed.host);
+    Ok(guarded_client(
+        NetworkGuard::for_hosts(&[parsed.host])
+            .allowing_insecure(allow_http)
+            .with_policy(IpPolicy {
+                allow_loopback: source.loopback(),
+                ..IpPolicy::default()
+            }),
+    ))
+}
+
+fn guarded_client(guard: NetworkGuard) -> Client {
     Client::new(
         guard,
         FetchLimits {

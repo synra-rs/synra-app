@@ -2,7 +2,7 @@
 //!
 //! # What is configured
 //!
-//! One key, `plugins.registry`, holding the base URL of an npm-compatible registry. Absent means this device has not
+//! One key, `plugins.registry`, holding an npm URL, a `static:` URL, or an ordered list of mirrors. Absent means this device has not
 //! chosen one, and the answer is `Unsupported` rather than a network attempt at a guess — a shell that dialled a default
 //! somebody else chose would be a shell that phones home.
 //!
@@ -24,10 +24,8 @@
 //! `plugins_preview` reads the packument's inline manifest and shows its permissions **before** the tarball is fetched.
 //! It is a question, not an approval: the signature is checked on the bytes, and the plugin still lands switched off.
 //!
-//! # What this is not
-//!
-//! A catalog. `plugins_catalog_search` still answers from what is installed, because a search endpoint is a different
-//! protocol shape (16 §4.3) and pretending one request is a search would be a worse answer than the filter.
+//! npm sources provide catalog search. Static sources serve known package IDs; they explicitly report that search is
+//! unsupported, separately from an absent or malformed configuration.
 
 use std::collections::BTreeMap;
 
@@ -40,6 +38,8 @@ use synra_ipc::dto::{
 };
 use synra_protocol::ErrorCode;
 use synra_protocol::PluginId;
+pub(crate) use synra_registry::RegistryKind as Kind;
+pub(crate) use synra_registry::RegistrySource as Base;
 use synra_registry::{Packument, Version};
 
 use crate::state::AppState;
@@ -71,36 +71,15 @@ pub struct CachedDocument {
     pub expires_at_ms: Option<i64>,
 }
 
-/// How a registry answers "what versions exist?".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum Kind {
-    /// An npm-compatible registry: a packument at `{origin}/{id}`.
-    Npm,
-    /// A static host: one `index.json` per package at `{origin}/{id}.json` (16 §4.4).
-    Static,
-}
-
-/// A registry address, split into what the guard and the URLs need.
-#[derive(Debug, Clone)]
-pub(crate) struct Base {
-    /// `scheme://authority`, plus the path prefix for a static host, without a trailing slash.
-    origin: String,
-    /// The host alone, as a capability grants it.
-    host: String,
-    /// Whether the scheme is `https`.
-    secure: bool,
-    /// Which document the address serves.
-    kind: Kind,
-}
-
 mod cache;
 mod catalog;
+mod failure;
 mod install;
 mod transport;
 
 pub(crate) use cache::*;
 pub(crate) use catalog::*;
+pub(crate) use failure::{Operation, exhausted, http_failure, network_failure};
 pub(crate) use install::*;
 pub(crate) use transport::*;
 
@@ -108,5 +87,13 @@ pub use cache::prune_documents;
 pub use catalog::{check_update, packument, search};
 pub use install::{install, install_from_source, install_source, preview, update};
 
+#[cfg(test)]
+mod artifact_tests;
+#[cfg(test)]
+mod config_tests;
+#[cfg(test)]
+mod http_tests;
+#[cfg(test)]
+mod test_server;
 #[cfg(test)]
 mod tests;

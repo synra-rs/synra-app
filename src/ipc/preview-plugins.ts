@@ -1,12 +1,13 @@
 import type { AuditEntryDto, CatalogItem, InstallPreviewDto, InstallReport, PluginSnapshot, SequencedKernelEvent, SyncPlanDto, SyncReport } from '@synra/protocol'
 import { DEVICES, PLUGIN_AUDIT, PLUGINS } from './fake-kernel-fixtures'
+import { previewRegistrySearch } from './preview-registry'
 
 /** Isolated browser fixtures; Native always calls the real bridge. */
 export class PreviewPlugins {
   #plugins: PluginSnapshot[] = PLUGINS.map(plugin => ({ ...plugin }))
   readonly #approved = new Set<string>()
   readonly #audit = new Map<string, AuditEntryDto[]>(Object.entries(PLUGIN_AUDIT).map(([id, rows]) => [id, [...rows]]))
-  constructor(private emit: (type: SequencedKernelEvent['type'], payload: unknown) => void) {
+  constructor(private emit: (type: SequencedKernelEvent['type'], payload: unknown) => void, private registry: () => unknown = () => undefined) {
     const base = this.#plugins[0]!
     this.#plugins.push(
       { ...base, pluginId: '@preview/notes', title: 'Notes', description: 'Browse and organize your notes.', hasUi: true, state: 'awaiting_consent', requested: [], granted: [], denied: [] },
@@ -48,12 +49,15 @@ export class PreviewPlugins {
         return command === 'plugins_consent_respond' || command === 'plugins_reload' ? next : null
       }
       case 'plugins_catalog_search': {
+        const error = previewRegistrySearch(this.registry())
+        if (error)
+          return error
         const query = args.query as { query?: string, offset?: number }
         const all: CatalogItem[] = this.#plugins.map(plugin => ({ pluginId: plugin.pluginId, title: plugin.title, description: plugin.description ?? '', version: plugin.version, publisher: plugin.publisher, capabilityCount: plugin.requested?.length ?? 0, installed: true }))
         all.push({ pluginId: '@preview/reader', title: 'Reader', description: 'Read saved articles on your devices.', version: '1.0.0', publisher: '@preview', capabilityCount: 2, installed: this.#plugins.some(plugin => plugin.pluginId === '@preview/reader') })
         return all.filter(item => (item.title + item.pluginId).toLowerCase().includes((query.query ?? '').toLowerCase())).slice(query.offset ?? 0, (query.offset ?? 0) + 20)
       }
-      case 'plugins_request_registry_search': return []
+      case 'plugins_request_registry_search': return this.invoke('plugins_catalog_search', { query: { query: args.query } })
       case 'plugins_preview':
         return { pluginId: id, title: 'Reader', version: '1.0.0', description: 'Read saved articles on your devices.', publisher: '@preview', hasUi: true, headless: true, capabilities: ['fs:read', 'net:fetch:reader.example.test'] } satisfies InstallPreviewDto
       case 'plugins_install': {

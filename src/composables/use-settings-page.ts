@@ -136,7 +136,8 @@ export function useSettingsPage() {
   }
   function registrySource(): string[] {
     const raw = settings.value('plugins.registry')
-    const urls = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : []
+    const display = (item: unknown): string => typeof item === 'string' ? item : JSON.stringify(item) ?? ''
+    const urls = raw === undefined ? [] : Array.isArray(raw) ? raw.map(display) : [display(raw)]
     return urls.length ? urls : ['']
   }
   const { value: registryUrls, dirty: registryDirty, conflict: registryConflict, reset: resetRegistry } = useSettingsDraft(registrySource)
@@ -157,8 +158,9 @@ export function useSettingsPage() {
   async function saveRegistry(): Promise<boolean> {
     if (!registryDirty.value && !needsRead.registry)
       return true
-    const urls = registryUrls.value.map(url => url.trim()).filter(Boolean)
-    return await writeSetting('registry', urls.length ? { set: { 'plugins.registry': urls.length === 1 ? urls[0]! : urls } } : { unset: ['plugins.registry'] })
+    const urls = registryUrls.value.map(url => url.trim())
+    const empty = urls.length === 0 || (urls.length === 1 && urls[0] === '')
+    return await writeSetting('registry', empty ? { unset: ['plugins.registry'] } : { set: { 'plugins.registry': urls.length === 1 ? urls[0]! : urls } })
   }
   async function saveRetention(): Promise<boolean> {
     if (!retentionDirty.value && !needsRead.retention)

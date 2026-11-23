@@ -9,7 +9,7 @@
       </div>
       <ASelect v-model:value="sort" :options="sortOptions" :aria-label="messages.plugins.catalog.sort" class="w-32 self-end" :disabled="busy" />
     </div>
-    <div v-if="missingRegistry" class="stack items-start gap-2">
+    <div v-if="state === 'notConfigured'" class="stack items-start gap-2">
       <p class="m-0 text-base text-ink-dim">
         {{ messages.plugins.workflow.registryMissing }}
       </p>
@@ -17,7 +17,15 @@
         {{ messages.actions.openSettings }}
       </AButton>
     </div>
-    <ErrorNotice v-else-if="error" :code="error.code" :detail="error.detail" :actions="error.actions" @retry="retry" />
+    <div v-else-if="error" class="stack gap-2">
+      <p v-if="state === 'searchUnsupported'" class="m-0 text-base text-ink-dim">
+        {{ messages.plugins.workflow.registrySearchUnsupported }}
+      </p>
+      <AButton v-if="state === 'searchUnsupported'" class="self-start" @click="selected = text.trim()">
+        {{ messages.plugins.workflow.previewPluginId }}
+      </AButton>
+      <ErrorNotice :code="error.code" :detail="error.detail" :actions="error.actions" @retry="retry" />
+    </div>
     <p v-if="searching" class="m-0 text-base text-ink-dim" role="status">
       {{ messages.plugins.workflow.loading }}
     </p>
@@ -54,15 +62,16 @@ import ErrorNotice from '../../components/ErrorNotice.vue'
 import { useCatalog } from '../../features/plugins/catalog'
 import { messages } from '../../messages'
 import { usePluginsStore } from '../../stores/plugins'
+import { useSettingsStore } from '../../stores/settings'
 import RegistryInstallDialog from './registry-install-dialog.vue'
 
 const emit = defineEmits<{ installed: [report: InstallReport], details: [id: string] }>()
 const router = useRouter()
 const store = usePluginsStore()
-const { text, sort, results, searched, error, hasMore, searching, loadingMore, busy, search, loadMore, retry } = useCatalog(kernel)
+const settings = useSettingsStore()
+const { text, sort, results, searched, error, state, hasMore, searching, loadingMore, busy, search, loadMore, retry } = useCatalog(kernel, () => JSON.stringify(settings.value('plugins.registry')))
 const selected = ref('')
 const sortOptions = computed(() => [{ label: messages.plugins.catalog.byRelevance, value: 'relevance' }, { label: messages.plugins.catalog.byName, value: 'name' }])
-const missingRegistry = computed(() => error.value?.message.includes('no registry is configured'))
 function submit(event: KeyboardEvent): void {
   if (!event.isComposing && event.keyCode !== 229)
     void search()

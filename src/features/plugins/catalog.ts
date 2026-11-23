@@ -7,7 +7,7 @@ import { searchCatalog } from './actions'
 const PAGE_SIZE = 20
 
 /** A submitted registry query owns its pages. Draft changes invalidate reads without starting background requests. */
-export function useCatalog(client: KernelClient) {
+export function useCatalog(client: KernelClient, source?: () => string | undefined) {
   const text = ref('')
   const sort = ref<CatalogSort>('relevance')
   const results = ref<CatalogItem[]>([])
@@ -20,7 +20,7 @@ export function useCatalog(client: KernelClient) {
   let alive = true
   let lastReadMore = false
 
-  watch([text, sort], () => {
+  watch([text, sort, ...(source === undefined ? [] : [source])], () => {
     revision++
     results.value = []
     searched.value = false
@@ -74,6 +74,8 @@ export function useCatalog(client: KernelClient) {
     results,
     searched,
     error,
+    state: computed(() => error.value?.registryProblem?.kind
+      ?? (error.value ? 'failed' : busy.value ? 'loading' : searched.value ? 'ready' : 'idle')),
     hasMore,
     searching: computed(() => busy.value === 'search'),
     loadingMore: computed(() => busy.value === 'more'),

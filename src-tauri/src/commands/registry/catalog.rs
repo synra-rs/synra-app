@@ -52,16 +52,12 @@ pub fn search(
 ) -> Result<Vec<CatalogItem>, synra_ipc::IpcError> {
     let bases: Vec<Base> = bases(state)?
         .into_iter()
-        .filter(|base| base.kind == Kind::Npm)
+        .filter(|base| base.kind() == Kind::Npm)
         .collect();
     if bases.is_empty() {
         // A static index is one document per package; there is no index to search, and a request to one would be a 404
         // dressed up as "nothing matched".
-        return Err(
-            synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-                "why": "the configured registries serve no search endpoint",
-            })),
-        );
+        return Err(synra_ipc::RegistryProblem::SearchUnsupported.into_error());
     }
     let text = query.query.trim();
     let scope = if text.is_empty() {
@@ -78,7 +74,7 @@ pub fn search(
         "/-/v1/search?text={}&size={limit}&from={offset}",
         encode(&scope)
     );
-    let (_, response) = get_text(&bases, |_| path.clone(), "the search endpoint")?;
+    let (_, response) = get_text(&bases, |_| path.clone(), Operation::Search)?;
     let parsed: SearchResponse = serde_json::from_str(&response.body).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"reason": error.to_string()}))

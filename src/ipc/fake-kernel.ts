@@ -9,6 +9,7 @@ import {
 import { PreviewConfig } from './preview-config'
 import { PreviewDevices } from './preview-devices'
 import { PreviewPlugins } from './preview-plugins'
+import { previewRegistry } from './preview-registry'
 
 export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
   config_set: ['patch'],
@@ -46,7 +47,7 @@ export const REQUIRED_ARGS: Readonly<Record<string, readonly string[]>> = {
 }
 export class FakeKernel implements Bridge {
   readonly #devices = new PreviewDevices((type, payload) => this.#emit(type, payload))
-  readonly #plugins = new PreviewPlugins((type, payload) => this.#emit(type, payload))
+  readonly #plugins = new PreviewPlugins((type, payload) => this.#emit(type, payload), () => this.#config.value('plugins.registry'))
   readonly #config = new PreviewConfig()
   readonly #handlers = new Map<string, Set<(payload: unknown) => void>>()
   #seq = 0
@@ -118,6 +119,12 @@ export class FakeKernel implements Bridge {
       case 'config_get':
         return this.#config.snapshot()
       case 'config_set': {
+        const patch = args?.patch as { set?: Record<string, unknown> } | undefined
+        if (patch?.set?.['plugins.registry'] !== undefined) {
+          const parsed = previewRegistry(patch.set['plugins.registry'])
+          if (!parsed.ok)
+            return parsed.error
+        }
         const result = this.#config.apply(args?.patch)
         if (typeof result === 'string')
           return { code: result === 'invalid' ? 'invalid_argument' : 'internal', message: result === 'invalid' ? 'error.badArgument' : 'error.storeUnavailable', retryable: false }

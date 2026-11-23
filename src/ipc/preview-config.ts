@@ -37,6 +37,10 @@ export class PreviewConfig {
     return { values: structuredClone(this.#values), overridden: Object.keys(this.#values) }
   }
 
+  value(key: string): unknown {
+    return this.#values[key]
+  }
+
   apply(patch: unknown): ConfigSnapshot | 'invalid' | 'unavailable' {
     if (!record(patch) || (patch.set !== undefined && !record(patch.set))
       || (patch.unset !== undefined && (!Array.isArray(patch.unset) || !patch.unset.every(key => typeof key === 'string')))) {

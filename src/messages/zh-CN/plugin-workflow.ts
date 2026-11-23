@@ -28,6 +28,8 @@ export const workflow = {
   'plugins.workflow.installedHelp': '安装完成，插件尚未启用。请检查权限，再按需启用插件。',
   'plugins.workflow.registry': '已配置的注册表',
   'plugins.workflow.registryMissing': '请先在设置中配置注册表，再搜索插件。',
+  'plugins.workflow.registrySearchUnsupported': '这些源支持按插件 ID 安装，但不提供目录搜索。',
+  'plugins.workflow.previewPluginId': '按此插件 ID 查看详情',
   'plugins.workflow.capabilities.platform:open-url': '在其他应用中打开链接',
   'plugins.workflow.capabilities.net:read-title': '读取网页标题',
   'plugins.workflow.capabilities.net:fetch': '发起网络请求',

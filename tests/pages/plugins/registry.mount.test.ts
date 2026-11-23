@@ -2,6 +2,8 @@
 import { flushPromises } from '@vue/test-utils'
 import { Segmented } from 'ant-design-vue'
 import { expect, it } from 'vitest'
+import { setLocalePreference } from '@/app/locale'
+import { registryFixture } from '../../ipc/registry-fixture'
 import { answer, click, ErrorNotice, messages, mocks, mountPage, RegistryDiscover, RegistryInstallDialog } from './workflow.testkit'
 
 const item = { pluginId: '@acme/article-reader', title: 'Article reader', publisher: '@acme', version: '1.0', capabilityCount: 1, installed: false }
@@ -34,18 +36,39 @@ it('keeps a preview after failed installation and sends only one pending install
   await click(dialog, messages.plugins.installAction)
   await click(dialog, messages.plugins.installAction)
   expect(mocks.call.mock.calls.filter(([name]) => name === 'plugins_install')).toHaveLength(1)
-  finish({ ok: false, error: { code: 'unavailable', message: 'error.unavailable' } })
+  finish({ ok: false, error: registryFixture.network })
   await flushPromises()
   expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
-  expect(dialog.getComponent(ErrorNotice).props('code')).toBe('unavailable')
+  expect(dialog.getComponent(ErrorNotice).props('code')).toBe('timeout')
 })
-it('offers registry settings for an unconfigured source', async () => {
-  answer({ plugins_catalog_search: () => ({ ok: false, error: { code: 'unsupported', message: 'no registry is configured' } }) })
+it.each(['en', 'zh-CN'] as const)('offers registry settings in %s for an unconfigured source', async (locale) => {
+  setLocalePreference(locale)
+  answer({ plugins_catalog_search: () => ({ ok: false, error: { ...registryFixture.notConfigured, message: 'future.translation' } }) })
   const { discover: view, router } = await discover()
   await view.get('input').setValue('reader')
   await click(view, messages.plugins.catalog.action)
   await click(view, messages.actions.openSettings)
   expect(router.currentRoute.value.query.category).toBe('plugins')
+})
+it('offers a real preview by ID when the configured source has no search endpoint', async () => {
+  answer({ plugins_catalog_search: () => ({ ok: false, error: registryFixture.searchUnsupported }), plugins_preview: preview })
+  const { discover: view } = await discover()
+  await view.get('input').setValue(item.pluginId)
+  await click(view, messages.plugins.catalog.action)
+  expect(view.text()).toContain(messages.plugins.workflow.registrySearchUnsupported)
+  expect(view.text()).not.toContain(messages.plugins.workflow.registryMissing)
+  await click(view, messages.plugins.workflow.previewPluginId)
+  expect(mocks.call).toHaveBeenCalledWith('plugins_preview', { pluginId: item.pluginId })
+  expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
+})
+it('shows a malformed mirror as a configuration error with its source position', async () => {
+  answer({ plugins_catalog_search: () => ({ ok: false, error: registryFixture.invalidConfiguration }) })
+  const { discover: view } = await discover()
+  await view.get('input').setValue('reader')
+  await click(view, messages.plugins.catalog.action)
+  expect(view.text()).toContain('plugins.registry[1]')
+  expect(view.getComponent(ErrorNotice).props('code')).toBe('invalid_argument')
+  expect(view.text()).not.toContain(messages.plugins.workflow.registryMissing)
 })
 it('keeps composing Enter in the search field', async () => {
   const { discover: view } = await discover()

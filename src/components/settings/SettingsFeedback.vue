@@ -6,7 +6,7 @@
       one control a thumb could miss (16.151).
   -->
   <div v-if="error || saved || checkRequired" class="min-w-0 stack gap-2" aria-live="polite">
-    <ErrorNotice v-if="error" :code="error.code" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
+    <ErrorNotice v-if="error" :code="error.code" :params="error.params" :detail="registryDetail(registryProblem(error.details))" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
     <span v-else-if="saved" class="text-sm text-ink-dim">{{ messages.settings.edit.saved }}</span>
     <template v-if="checkRequired">
       <span class="text-sm text-ink-dim">{{ messages.settings.edit.checkDetail }}</span>
@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import type { IpcError } from '@synra/protocol'
 import { Button as AButton } from 'ant-design-vue'
+import { registryDetail, registryProblem } from '../../features/plugins/registry-problem'
 import { messages } from '../../messages'
 import ErrorNotice from '../ErrorNotice.vue'
 

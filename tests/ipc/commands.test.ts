@@ -175,6 +175,7 @@ describe('every answer the fake gives, against the arity the kernel declares', (
       expect(declared, `${command} is not declared by ${CONTRACT_RS}`).toBeDefined()
 
       const kernel = new FakeKernel()
+      await kernel.invoke('config_set', { patch: { set: { 'plugins.registry': 'https://registry.example' } } })
       let answer: unknown
       if (command === 'devices_scan_cancel') {
         vi.useFakeTimers()

@@ -96,6 +96,9 @@ pub fn config_set(state: &AppState, patch: &ConfigPatch) -> Result<(), IpcError>
     if let Some(value) = patch.set.get(super::transfers::ACCEPT_FROM_KEY) {
         super::transfers::validate_accepted_senders(value)?;
     }
+    if let Some(value) = patch.set.get(super::registry::REGISTRY_KEY) {
+        super::registry::validate_setting(Some(value))?;
+    }
 
     let changes: Vec<ConfigChange> = patch
         .set

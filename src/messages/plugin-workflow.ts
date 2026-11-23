@@ -26,6 +26,8 @@ export const workflow = {
   installedHelp: 'Installed and switched off. Review permissions, then enable the plugin when you are ready.',
   registry: 'Configured registry',
   registryMissing: 'Configure a registry in Settings to search for plugins.',
+  registrySearchUnsupported: 'These sources support installing by plugin ID but do not provide catalog search.',
+  previewPluginId: 'Preview this plugin ID',
   capabilities: {
     'platform:open-url': 'Open links in another application',
     'net:read-title': 'Read web page titles',

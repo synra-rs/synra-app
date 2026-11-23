@@ -1,0 +1,394 @@
+{
+  "notConfigured": {
+    "code": "unsupported",
+    "message": "error.unsupported",
+    "details": {
+      "registry": {
+        "kind": "notConfigured"
+      }
+    },
+    "retryable": false,
+    "actions": [
+      {
+        "kind": "openSettings",
+        "section": "plugins"
+      }
+    ]
+  },
+  "invalidConfiguration": {
+    "code": "invalid_argument",
+    "message": "error.invalid_argument",
+    "details": {
+      "registry": {
+        "kind": "invalidConfiguration",
+        "field": "plugins.registry",
+        "index": 1,
+        "reason": "every mirror must be a nonempty URL string"
+      }
+    },
+    "retryable": false,
+    "actions": [
+      {
+        "kind": "openSettings",
+        "section": "plugins"
+      }
+    ]
+  },
+  "searchUnsupported": {
+    "code": "unsupported",
+    "message": "error.unsupported",
+    "details": {
+      "registry": {
+        "kind": "searchUnsupported"
+      }
+    },
+    "retryable": false,
+    "actions": [
+      {
+        "kind": "openSettings",
+        "section": "plugins"
+      }
+    ]
+  },
+  "network": {
+    "code": "timeout",
+    "message": "error.timeout",
+    "retryable": true,
+    "actions": [
+      {
+        "kind": "retry"
+      }
+    ]
+  },
+  "settings": [
+    {
+      "present": false,
+      "value": null,
+      "outcome": {
+        "error": {
+          "code": "unsupported",
+          "message": "error.unsupported",
+          "details": {
+            "registry": {
+              "kind": "notConfigured"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "",
+      "outcome": {
+        "error": {
+          "code": "unsupported",
+          "message": "error.unsupported",
+          "details": {
+            "registry": {
+              "kind": "notConfigured"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": [],
+      "outcome": {
+        "error": {
+          "code": "unsupported",
+          "message": "error.unsupported",
+          "details": {
+            "registry": {
+              "kind": "notConfigured"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": 123,
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "choose a URL string or an array of URL strings"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": {
+        "url": "https://registry.example"
+      },
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "choose a URL string or an array of URL strings"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": [
+        123,
+        "https://registry.example"
+      ],
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "index": 0,
+              "reason": "every mirror must be a nonempty URL string"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": [
+        "https://registry.example",
+        ""
+      ],
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "index": 1,
+              "reason": "every mirror must be a nonempty URL string"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "https://host:bad",
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "the registry must be a valid absolute URL with an authority"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "http://registry.example",
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "HTTP is permitted only for a loopback registry"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "https://user:secret@registry.example",
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "registry URLs must not contain credentials"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "https://registry.example?token=secret",
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "registry URLs must not contain a query or fragment"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "https://registry.example/prefix",
+      "outcome": {
+        "error": {
+          "code": "invalid_argument",
+          "message": "error.invalid_argument",
+          "details": {
+            "registry": {
+              "kind": "invalidConfiguration",
+              "field": "plugins.registry",
+              "reason": "an npm registry must name only an origin"
+            }
+          },
+          "retryable": false,
+          "actions": [
+            {
+              "kind": "openSettings",
+              "section": "plugins"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "present": true,
+      "value": "static:https://bucket.example/plugins/",
+      "outcome": {
+        "sources": [
+          {
+            "url": "https://bucket.example/plugins",
+            "host": "bucket.example",
+            "secure": true,
+            "kind": "static"
+          }
+        ]
+      }
+    },
+    {
+      "present": true,
+      "value": [
+        "HTTPS://Registry.Example:443/",
+        "http://[::1]:4123/"
+      ],
+      "outcome": {
+        "sources": [
+          {
+            "url": "https://registry.example",
+            "host": "registry.example",
+            "secure": true,
+            "kind": "npm"
+          },
+          {
+            "url": "http://[::1]:4123",
+            "host": "::1",
+            "secure": false,
+            "kind": "npm"
+          }
+        ]
+      }
+    }
+  ]
+}

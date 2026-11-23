@@ -9,14 +9,14 @@ pub(crate) fn packument_with_base(
     plugin_id: &str,
 ) -> Result<RegistryDocument, synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let mut last: Option<(ErrorCode, String)> = None;
+    let mut last = None;
 
     for base in &bases {
-        let path = match base.kind {
+        let path = match base.kind() {
             Kind::Npm => format!("/{}", plugin_id.replace('/', "%2F")),
             Kind::Static => format!("/{plugin_id}.json"),
         };
-        let url = format!("{}{path}", base.origin);
+        let url = format!("{}{path}", base.url());
 
         // ★ The cached document and its validators are cloned before the lock is dropped: a conditional request spends a
         // network round trip, and a mutex held across it would make every other registry read wait for the slowest bucket.
@@ -32,7 +32,7 @@ pub(crate) fn packument_with_base(
         // ★ A miss in this process is not a miss on this device: the previous run may have written the document and its
         // validators. Reading it back turns "open the app, check every plugin" from N fetches into N conditional requests.
         if cached.is_none()
-            && let Some(loaded) = load_document(state, &url, base.kind, now)
+            && let Some(loaded) = load_document(state, &url, base.kind(), now)
         {
             state
                 .registry_cache
@@ -73,13 +73,12 @@ pub(crate) fn packument_with_base(
                         index_url: Some(url.clone()),
                     });
                 }
-                last = Some((
-                    ErrorCode::ProtocolViolation,
-                    format!("{url} answered 304 without a cached document"),
+                last = Some(synra_ipc::IpcError::unknown(ErrorCode::ProtocolViolation).with_params(
+                    serde_json::json!({"url": url, "reason": "the registry answered 304 without a cached document"}),
                 ));
             }
             Ok(response) if (200..300).contains(&response.status) => {
-                let (document, publishers) = match base.kind {
+                let (document, publishers) = match base.kind() {
                     Kind::Npm => (
                         Packument::parse(&response.body).map_err(|error| {
                             synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
@@ -117,7 +116,7 @@ pub(crate) fn packument_with_base(
                 store_document(
                     state,
                     &url,
-                    base.kind,
+                    base.kind(),
                     &response.body,
                     &response.headers,
                     expires_at_ms,
@@ -126,41 +125,20 @@ pub(crate) fn packument_with_base(
                     base: base.clone(),
                     packument: document,
                     publishers,
-                    index_url: (base.kind == Kind::Static).then(|| url.clone()),
+                    index_url: (base.kind() == Kind::Static).then(|| url.clone()),
                 });
             }
             Ok(response) if retryable(response.status) => {
-                last = Some((
-                    ErrorCode::Unsupported,
-                    format!("{url} answered {}", response.status),
-                ));
+                last = Some(http_failure(response.status, &url, Operation::Metadata));
             }
             Ok(response) => {
-                return Err(
-                    synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                        serde_json::json!({
-                            "pluginId": plugin_id,
-                            "status": response.status,
-                            "reason": "the registry refused the request",
-                        }),
-                    ),
-                );
+                return Err(http_failure(response.status, &url, Operation::Metadata));
             }
             Err(refusal) => {
-                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+                last = Some(network_failure(refusal, &url));
             }
         }
     }
 
-    let (code, reason) = last.unwrap_or((
-        ErrorCode::Unsupported,
-        "no registry serves the package".to_owned(),
-    ));
-    Err(
-        synra_ipc::IpcError::unknown(code).with_params(serde_json::json!({
-            "pluginId": plugin_id,
-            "reason": reason,
-            "tried": bases.len(),
-        })),
-    )
+    Err(exhausted(last, Operation::Metadata))
 }

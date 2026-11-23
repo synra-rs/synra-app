@@ -42,7 +42,7 @@ pub(crate) fn download(
     index_url: Option<&str>,
 ) -> Result<synra_core::install::UnpackedTarball, synra_ipc::IpcError> {
     let mut candidates = Vec::new();
-    if source.kind == Kind::Static {
+    if source.kind() == Kind::Static {
         // ★ A static index may name a tarball relative to itself: the author who uploads files usually does not know the
         // bucket's public URL, and a relative name is resolved against the document that carried it. An absolute URL is
         // still allowed — the bytes may be on a CDN — and is checked for scheme and host like any registry.
@@ -59,63 +59,50 @@ pub(crate) fn download(
             }
             None => chosen.dist.tarball.clone(),
         };
-        let base = split_url(&tarball, Kind::Static).map_err(|_| {
-            synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "tarball": tarball,
-                "reason": "the static index names a tarball that is not an https:// or http:// URL",
-            }))
-        })?;
-        candidates.push((base, tarball));
+        candidates.push((artifact_client(source, &tarball)?, tarball));
     } else {
         // ★ An npm tarball is fetched from the mirror that served the packument, or from another **configured** mirror by
         // the same path. A packument that points at an origin nobody configured is asking for a fetch this device never
         // agreed to.
         let tarball = &chosen.dist.tarball;
-        let path = tarball.strip_prefix(&source.origin).ok_or_else(|| {
-            synra_ipc::IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-                "tarball": tarball,
-                "reason": format!("the tarball is not on a configured registry ({})", source.origin),
-            }))
+        let path = source.npm_artifact_path(tarball).map_err(|reason| {
+            let code = if reason == synra_registry::ArtifactError::OriginMismatch {
+                ErrorCode::HostNotAllowed
+            } else {
+                ErrorCode::InvalidArgument
+            };
+            synra_ipc::IpcError::unknown(code)
+                .with_params(serde_json::json!({"reason": reason.to_string()}))
         })?;
-        candidates.push((source.clone(), tarball.clone()));
+        candidates.push((client(source), format!("{}{path}", source.url())));
         for other in bases {
-            if other.origin != source.origin {
-                candidates.push((other.clone(), format!("{}{}", other.origin, path)));
+            if other.kind() == Kind::Npm && other.url() != source.url() {
+                candidates.push((client(other), format!("{}{path}", other.url())));
             }
         }
     }
 
-    let mut last: Option<(ErrorCode, String)> = None;
+    let mut last = None;
     let mut body: Option<Vec<u8>> = None;
-    for (base, url) in &candidates {
-        match client(base).fetch_bytes(&get(url)) {
+    for (client, url) in &candidates {
+        match client.fetch_bytes(&get(url)) {
             Ok(response) if (200..300).contains(&response.status) => {
                 body = Some(response.body);
                 break;
             }
             Ok(response) if retryable(response.status) => {
-                last = Some((
-                    ErrorCode::Unsupported,
-                    format!("{url} answered {}", response.status),
-                ));
+                last = Some(http_failure(response.status, url, Operation::Download));
             }
             Ok(response) => {
-                return Err(synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(
-                    serde_json::json!({"url": url, "status": response.status, "reason": "the tarball was refused"}),
-                ));
+                return Err(http_failure(response.status, url, Operation::Download));
             }
             Err(refusal) => {
-                last = Some((refusal.code, format!("{url}: {}", refusal.message)));
+                last = Some(network_failure(refusal, url));
             }
         }
     }
     let Some(bytes) = body else {
-        let (code, reason) = last.unwrap_or((
-            ErrorCode::Internal,
-            "no mirror served the tarball".to_owned(),
-        ));
-        return Err(synra_ipc::IpcError::unknown(code)
-            .with_params(serde_json::json!({"tarball": chosen.dist.tarball, "reason": reason})));
+        return Err(exhausted(last, Operation::Download));
     };
     // ★ Verify and unpack are the kernel's, not this host's: the digest is checked before a single entry is written,
     // by the same function the daemon's registry install calls. A document with no integrity string is refused rather

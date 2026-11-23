@@ -174,15 +174,14 @@ pub(crate) fn local_directory_source(
     state: &AppState,
     plugin_id: &str,
 ) -> Option<std::path::PathBuf> {
-    let registry_configured = state
-        .db()
-        .config()
-        .ok()?
-        .into_iter()
-        .find(|row| row.key == crate::commands::registry::REGISTRY_KEY)
-        .and_then(|row| serde_json::from_str::<String>(&row.value).ok())
-        .is_some_and(|value| !value.trim().is_empty());
-    if registry_configured {
+    let setting = synra_core::plugin_updates::registry_setting(&state.db()).ok()?;
+    let value: Option<serde_json::Value> = setting
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .ok()?;
+    let config = synra_registry::RegistryConfig::parse(value.as_ref()).ok()?;
+    if !config.sources().is_empty() {
         return None;
     }
     let note = state.paths.plugin_dir(plugin_id).join("source.json");

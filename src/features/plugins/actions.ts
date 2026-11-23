@@ -14,10 +14,11 @@
  * is described.
  */
 
-import type { AuditEntryDto, CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
+import type { AuditEntryDto, CatalogItem, CatalogSort, InstallPreviewDto, InstallReport, PluginSnapshot, RegistryProblem, RemoveReport, SuggestedAction, SyncPlanDto, SyncReport } from '@synra/protocol'
 
 import type { KernelClient } from '../../ipc/client'
 import { detailOf } from '../../messages/failure-detail'
+import { registryDetail, registryProblem } from './registry-problem'
 
 /**
  * A refusal as the interface needs it: the code, the message **key**, the actions, and whatever the kernel put in
@@ -35,6 +36,10 @@ export interface Failure {
   readonly actions?: readonly SuggestedAction[] | undefined
   /** The kernel's own parameters, rendered as the notice's description when `detail` or `reason` is among them. */
   readonly detail?: string | undefined
+  readonly retryable?: boolean
+  readonly params?: unknown
+  readonly details?: unknown
+  readonly registryProblem?: RegistryProblem
 }
 
 /** What a call came to. */
@@ -48,12 +53,19 @@ export function failureOf(error: {
   message: string
   actions?: readonly SuggestedAction[] | undefined
   params?: unknown
+  details?: unknown
+  retryable?: boolean
 }): Failure {
+  const problem = registryProblem(error.details)
   return {
     code: error.code,
     message: error.message,
     actions: error.actions,
-    detail: detailOf(error.params)
+    detail: detailOf(error.params) ?? registryDetail(problem),
+    ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
+    ...(error.params === undefined ? {} : { params: error.params }),
+    ...(error.details === undefined ? {} : { details: error.details }),
+    ...(problem === undefined ? {} : { registryProblem: problem })
   }
 }
 
