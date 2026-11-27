@@ -37,7 +37,9 @@ fn finishing_an_incoming_transfer_closes_its_row_and_announces_it() {
     // worker that owns it. The completed snapshot comes first so the panel can draw 100% before the row goes.
     let state = crate::testing::state();
     let id = TransferId::new();
-    state.transfers.record(snapshot(id, "active"));
+    let mut receiving = snapshot(id, "active");
+    receiving.direction = "receive".to_owned();
+    state.transfers.record(receiving);
     let subscriber = state.events.subscribe();
 
     super::super::complete_received(&state, id);

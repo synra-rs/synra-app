@@ -86,8 +86,7 @@ pub fn offered_snapshot(
 /// The row was never a transfer in flight, so there is no worker to forget it and no temporary file to delete: the panel
 /// has to be told, and the registry has to stop listing it.
 pub fn withdraw_offer(state: &crate::state::AppState, transfer_id: TransferId) {
-    state.transfers.forget(&transfer_id);
-    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+    withdraw_received(state, transfer_id);
 }
 
 /// Keeps a published offer alive until its question retires, before its registry slot can be reused.

@@ -48,15 +48,14 @@ pub fn transfer_send_text_start(
     );
     row.kind = "attachment".to_owned();
 
-    Ok(start_send(
+    start_send(
         state,
         request.to,
         address,
         sender,
         row,
-        Some(path),
-        None,
-    ))
+        SendSource::Text(path),
+    )
 }
 
 /// Sends text as a file, and answers the transfer it started.

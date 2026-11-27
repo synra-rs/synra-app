@@ -35,6 +35,7 @@ mod send_core;
 mod send_file;
 /// Text-send preparation and dispatch.
 mod send_text;
+mod status;
 
 pub use cleanup::*;
 pub use offers::*;

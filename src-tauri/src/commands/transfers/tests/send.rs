@@ -36,6 +36,26 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
     let total =
         u32::try_from(planned.byte_length.div_ceil(u64::from(planned.chunk_size))).expect("blocks");
     let row = super::super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
+    let owner = synra_protocol::PluginId::parse("@acme/sender").unwrap();
+    let other = synra_protocol::PluginId::parse("@acme/other").unwrap();
+    state.transfers.record_owned(
+        row.clone(),
+        None,
+        None,
+        Some(owner.clone()),
+        synra_core::supervisor::Cancellation::new(),
+    );
+    let pending = state
+        .transfers
+        .plugin_status(&owner, planned.transfer_id, super::super::unix_millis())
+        .unwrap();
+    assert_eq!(pending.state, synra_ipc::dto::PluginTransferState::Pending);
+    assert!(
+        state
+            .transfers
+            .plugin_status(&other, planned.transfer_id, super::super::unix_millis())
+            .is_none()
+    );
     let subscriber = state.events.subscribe();
 
     let destination = path.with_extension("received");
@@ -63,7 +83,8 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
                 }
             }
         });
-        super::super::send_ready(&state, peer, &mut sending, sender, row).expect("the peer confirms");
+        super::super::send_ready(&state, peer, &mut sending, sender, row)
+            .expect("the peer confirms");
         worker.join().unwrap();
     });
     assert_eq!(
@@ -80,6 +101,23 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
         "the end was announced"
     );
     assert!(state.transfers.is_empty(), "and the row is gone");
+    let completed = state
+        .transfers
+        .plugin_status(&owner, planned.transfer_id, super::super::unix_millis())
+        .unwrap();
+    assert_eq!(
+        completed.state,
+        synra_ipc::dto::PluginTransferState::Completed
+    );
+    assert_eq!(completed.received_bytes, planned.byte_length);
+    assert_eq!(completed.blocks_done, total);
+    assert!(completed.revision > pending.revision);
+    assert!(
+        state
+            .transfers
+            .plugin_status(&other, planned.transfer_id, super::super::unix_millis())
+            .is_none()
+    );
 
     // ★ The attempt is measured where every start converges, so the panel's number and the diagnostic bundle's answer the
     // same question. The size is the file's, and only a delivered transfer contributes one.
@@ -156,9 +194,14 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
     let row = super::super::snapshot_from(&planned, (peer, "Study PC"), "queued", 0);
 
     let cancel = synra_core::supervisor::Cancellation::new();
+    let owner = synra_protocol::PluginId::parse("@acme/sender").unwrap();
+    state
+        .transfers
+        .record_owned(row.clone(), None, None, Some(owner.clone()), cancel.clone());
     cancel.cancel();
-    let refused = super::super::send_ready_with(&state, peer, &mut sending, sender, row, Some(&cancel))
-        .expect_err("the token was already cancelled");
+    let refused =
+        super::super::send_ready_with(&state, peer, &mut sending, sender, row, Some(&cancel))
+            .expect_err("the token was already cancelled");
     assert_eq!(refused.code, synra_protocol::ErrorCode::TransferFailed);
 
     match receiving.receive_inbound().expect("the abort") {
@@ -172,6 +215,15 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
         other => panic!("expected an abort, got {other:?}"),
     }
     assert!(state.transfers.is_empty(), "and the row is gone");
+    let cancelled = state
+        .transfers
+        .plugin_status(&owner, planned.transfer_id, super::super::unix_millis())
+        .unwrap();
+    assert_eq!(
+        cancelled.state,
+        synra_ipc::dto::PluginTransferState::Cancelled
+    );
+    assert_eq!(cancelled.received_bytes, 0);
 
     // ★ A cancelled attempt is counted as one, and it contributes **no size**: the histogram answers "how large are the
     // files this device sends", and a file that never left has no answer there. The time is still recorded, because the

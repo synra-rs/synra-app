@@ -13,11 +13,13 @@ pub(crate) fn send_ready_since(
     cancel: Option<&synra_core::supervisor::Cancellation>,
     started: std::time::Instant,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_core::transfer::TransferOutcome;
     use synra_protocol::ErrorCode;
 
     let transfer_id = row.transfer_id;
     announce_transfer(state, row.clone());
 
+    state.transfers.start_transferring(transfer_id);
     row.state = "active".to_owned();
     announce_transfer(state, row.clone());
 
@@ -28,13 +30,11 @@ pub(crate) fn send_ready_since(
         unix_millis() as i64,
         deadline,
     );
-    let outcome =
-        synra_core::send_prepared(link, &mut sender, options, cancelled, |done, _total| {
-            if !cancelled() {
-                row.blocks_done = done;
-                announce_transfer(state, row.clone());
-            }
-        });
+    let outcome = synra_core::send_prepared(link, &mut sender, options, cancelled, |progress| {
+        row.received_bytes = progress.bytes;
+        row.blocks_done = progress.blocks;
+        announce_transfer(state, row.clone());
+    });
     let ended = match &outcome {
         Ok(_) => SendOutcome::Delivered,
         Err(synra_core::SessionError::Cancelled) => SendOutcome::Cancelled,
@@ -42,7 +42,10 @@ pub(crate) fn send_ready_since(
     };
     record_send(state, &row.kind, row.total_bytes, started.elapsed(), ended);
 
-    finish_transfer(state, transfer_id);
+    let terminal = outcome
+        .as_ref()
+        .map_or_else(TransferOutcome::from, |_| TransferOutcome::Completed);
+    finish_transfer(state, transfer_id, terminal);
 
     outcome.map(|_| transfer_id).map_err(|error| {
         IpcError::unknown(ErrorCode::TransferFailed).with_params(

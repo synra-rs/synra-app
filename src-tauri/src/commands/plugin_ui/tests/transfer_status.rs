@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn a_transfer_still_in_flight_reports_the_state_the_contract_names() {
+fn a_plugins_status_cannot_read_a_management_transfer() {
     let (_root, state, token) = transfer_page();
     let transfer_id = synra_protocol::ids::TransferId::new();
     state.transfers.record(synra_ipc::dto::TransferSnapshot {
@@ -23,22 +23,19 @@ fn a_transfer_still_in_flight_reports_the_state_the_contract_names() {
         started_at_ms: crate::testing::FIXED_NOW_MS,
     });
 
-    let answer = super::super::plugin_ui_rpc(
+    let refused = super::super::plugin_ui_rpc(
         &state,
         &token,
         "transfer.status",
         &serde_json::json!({"transferId": transfer_id.to_string()}),
     )
-    .expect("a status");
-
-    assert_eq!(answer["transferId"], transfer_id.to_string());
-    assert_eq!(answer["state"], "transferring");
-    assert_eq!(answer["totalBytes"], 10);
-    assert_eq!(answer["blocksDone"], 1);
+    .expect_err("the management transfer has no plugin owner");
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+    assert_eq!(refused.params["reason"], "transfer_not_found");
 }
 
 #[test]
-fn an_unknown_transfer_says_it_is_not_in_flight() {
+fn an_unknown_transfer_has_a_stable_missing_reason() {
     let (_root, state, token) = transfer_page();
 
     let refused = super::super::plugin_ui_rpc(
@@ -49,5 +46,6 @@ fn an_unknown_transfer_says_it_is_not_in_flight() {
     )
     .expect_err("nothing by that id");
 
-    assert_eq!(refused.code, ErrorCode::Unsupported);
+    assert_eq!(refused.code, ErrorCode::InvalidArgument);
+    assert_eq!(refused.params["reason"], "transfer_not_found");
 }

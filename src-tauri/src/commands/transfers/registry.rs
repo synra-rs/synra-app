@@ -1,19 +1,30 @@
+use super::status::{OwnedStatus, TerminalStatuses};
 use super::*;
+use synra_core::supervisor::Cancellation;
+use synra_core::transfer::{AcknowledgedProgress, TransferOutcome};
+use synra_ipc::dto::PluginTransferStatus;
+use synra_protocol::ids::PluginId;
 
 /// The transfers in flight, by identifier.
 #[derive(Debug, Default)]
 pub struct Transfers {
     /// Keyed by the transfer, not ordered: `list` sorts, so the worker never has to.
-    by_id: Mutex<HashMap<TransferId, Entry>>,
-    /// The token that stops each worker, when a transfer has one.
-    ///
-    /// Beside the snapshots rather than inside them: a token is not part of what a panel draws, and a `TransferSnapshot`
-    /// that carried one would have to be `Clone` over a handle or lose it in the clone.
-    cancels: Mutex<HashMap<TransferId, synra_core::supervisor::Cancellation>>,
+    registry: Mutex<Registry>,
+}
+
+pub(super) enum CancelTarget {
+    Worker(Cancellation),
+    Listener,
+}
+
+#[derive(Debug, Default)]
+struct Registry {
+    active: HashMap<TransferId, Entry>,
+    terminal: TerminalStatuses,
 }
 
 /// One transfer: what the interface shows, and what this shell owns on disk.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Entry {
     /// What the panel draws.
     snapshot: TransferSnapshot,
@@ -25,6 +36,8 @@ struct Entry {
     temp: Option<std::path::PathBuf>,
     /// Upload directory owned by this task; never inferred from a user's source file.
     cleanup_dir: Option<std::path::PathBuf>,
+    status: Option<OwnedStatus>,
+    cancel: Option<Cancellation>,
 }
 
 impl Transfers {
@@ -41,30 +54,53 @@ impl Transfers {
     ///
     /// The temporary file is **kept**: this is called on every block, and a version that cleared it would forget what to delete
     /// on the second report — which is the one moment a cancel is likely to arrive.
-    pub fn record(&self, snapshot: TransferSnapshot) {
-        let mut registry = self.by_id.lock();
-        if let Some(entry) = registry.get_mut(&snapshot.transfer_id) {
+    pub fn record(&self, snapshot: TransferSnapshot) -> bool {
+        let mut registry = self.registry.lock();
+        if let Some(entry) = registry.active.get_mut(&snapshot.transfer_id) {
+            if entry.snapshot.peer_device != snapshot.peer_device
+                || entry.snapshot.direction != snapshot.direction
+            {
+                return false;
+            }
+            if let Some(status) = &mut entry.status {
+                status.lifecycle.acknowledge(AcknowledgedProgress {
+                    bytes: snapshot.received_bytes,
+                    blocks: snapshot.blocks_done,
+                });
+            }
             entry.snapshot = snapshot;
-        } else {
-            registry.insert(
-                snapshot.transfer_id,
-                Entry {
-                    snapshot,
-                    temp: None,
-                    cleanup_dir: None,
-                },
-            );
+            return true;
         }
+        if registry
+            .terminal
+            .get(snapshot.transfer_id, unix_millis())
+            .is_some()
+        {
+            return false;
+        }
+        registry.active.insert(
+            snapshot.transfer_id,
+            Entry {
+                snapshot,
+                temp: None,
+                cleanup_dir: None,
+                status: None,
+                cancel: None,
+            },
+        );
+        true
     }
 
     /// Records a snapshot and the file this shell created for it.
     pub fn record_with_temp(&self, snapshot: TransferSnapshot, temp: std::path::PathBuf) {
-        self.by_id.lock().insert(
+        self.registry.lock().active.insert(
             snapshot.transfer_id,
             Entry {
                 snapshot,
                 temp: Some(temp),
                 cleanup_dir: None,
+                status: None,
+                cancel: None,
             },
         );
     }
@@ -75,68 +111,104 @@ impl Transfers {
         snapshot: TransferSnapshot,
         temp: Option<std::path::PathBuf>,
         cleanup_dir: Option<std::path::PathBuf>,
+        plugin: Option<PluginId>,
+        cancel: Cancellation,
     ) {
-        self.by_id.lock().insert(
+        let status = plugin.map(|owner| OwnedStatus::new(owner, &snapshot));
+        self.registry.lock().active.insert(
             snapshot.transfer_id,
             Entry {
                 snapshot,
                 temp,
                 cleanup_dir,
+                status,
+                cancel: Some(cancel),
             },
         );
     }
 
-    /// Copies cleanup ownership without withdrawing the row before filesystem work has finished.
-    pub(super) fn owned_files(
-        &self,
-        transfer_id: &TransferId,
-    ) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
-        self.by_id
+    pub(super) fn start_transferring(&self, id: TransferId) {
+        if let Some(status) = self
+            .registry
             .lock()
-            .get(transfer_id)
-            .map_or((None, None), |entry| {
-                (entry.temp.clone(), entry.cleanup_dir.clone())
-            })
+            .active
+            .get_mut(&id)
+            .and_then(|entry| entry.status.as_mut())
+        {
+            status.lifecycle.start();
+        }
+    }
+
+    /// Moves the record to terminal retention and takes exclusive cleanup ownership.
+    pub(super) fn finish(
+        &self,
+        id: TransferId,
+        outcome: TransferOutcome,
+        now_ms: u64,
+    ) -> Option<(Option<std::path::PathBuf>, Option<std::path::PathBuf>)> {
+        let mut registry = self.registry.lock();
+        let entry = registry.active.get_mut(&id)?;
+        if entry.snapshot.direction != "send"
+            || entry
+                .status
+                .as_mut()
+                .is_some_and(|status| !status.lifecycle.finish(outcome, now_ms))
+        {
+            return None;
+        }
+        let entry = registry.active.remove(&id)?;
+        if let Some(status) = entry.status {
+            registry.terminal.add(id, status, now_ms);
+        }
+        Some((entry.temp, entry.cleanup_dir))
+    }
+
+    pub(crate) fn plugin_status(
+        &self,
+        owner: &PluginId,
+        id: TransferId,
+        now_ms: u64,
+    ) -> Option<PluginTransferStatus> {
+        let registry = self.registry.lock();
+        let status = registry
+            .active
+            .get(&id)
+            .and_then(|entry| entry.status.as_ref())
+            .or_else(|| registry.terminal.get(id, now_ms))?;
+        (status.plugin == *owner).then(|| status.snapshot(id))
     }
 
     /// Drops a transfer, answering the file the caller should delete.
     ///
     /// Returning the path rather than deleting it here keeps this type free of the filesystem: the registry's job is to know
     /// what is in flight, and a caller that cancels is the one that knows whether the transfer was a message of its own.
-    pub fn forget(&self, transfer_id: &TransferId) -> Option<std::path::PathBuf> {
-        self.by_id
-            .lock()
+    #[cfg(test)]
+    pub(super) fn forget(&self, transfer_id: &TransferId) -> Option<std::path::PathBuf> {
+        let mut registry = self.registry.lock();
+        if registry.active.get(transfer_id)?.status.is_some() {
+            return None;
+        }
+        registry
+            .active
             .remove(transfer_id)
             .and_then(|entry| entry.temp)
     }
 
-    /// Remembers the token that stops the worker for this transfer.
-    pub fn track_cancel(
-        &self,
-        transfer_id: TransferId,
-        cancel: synra_core::supervisor::Cancellation,
-    ) {
-        self.cancels.lock().insert(transfer_id, cancel);
-    }
-
-    /// Takes the token out and asks it to stop.
-    ///
-    /// Answers whether a worker was there to ask. A token is removed on the way out: a cancel arriving after the worker
-    /// finished must not leave one behind for a later transfer that reuses the identifier (identifiers are v4 and do not
-    /// repeat, but a map that only grows is a leak either way).
-    pub fn stop(&self, transfer_id: &TransferId) -> bool {
-        match self.cancels.lock().remove(transfer_id) {
-            Some(cancel) => {
-                cancel.cancel();
-                true
-            }
-            None => false,
+    pub(super) fn take_received(&self, id: TransferId) -> Option<TransferSnapshot> {
+        let mut registry = self.registry.lock();
+        if registry.active.get(&id)?.snapshot.direction != "receive" {
+            return None;
         }
+        registry.active.remove(&id).map(|entry| entry.snapshot)
     }
 
-    /// Forgets a token whose worker has finished on its own.
-    pub fn untrack(&self, transfer_id: &TransferId) {
-        self.cancels.lock().remove(transfer_id);
+    pub(super) fn cancel_target(&self, id: TransferId) -> Option<CancelTarget> {
+        let registry = self.registry.lock();
+        let entry = registry.active.get(&id)?;
+        if entry.snapshot.direction == "receive" {
+            return Some(CancelTarget::Listener);
+        }
+        entry.cancel.clone().map(CancelTarget::Worker)
     }
 
     /// Every transfer, ordered by identifier.
@@ -146,8 +218,9 @@ impl Transfers {
     #[must_use]
     pub fn list(&self) -> Vec<TransferSnapshot> {
         let mut transfers: Vec<TransferSnapshot> = self
-            .by_id
+            .registry
             .lock()
+            .active
             .values()
             .map(|entry| entry.snapshot.clone())
             .collect();
@@ -158,12 +231,12 @@ impl Transfers {
     /// How many are in flight.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.by_id.lock().len()
+        self.registry.lock().active.len()
     }
 
     /// Whether nothing is in flight.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.by_id.lock().is_empty()
+        self.registry.lock().active.is_empty()
     }
 }

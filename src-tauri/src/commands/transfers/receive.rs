@@ -1,3 +1,4 @@
+use super::registry::CancelTarget;
 use super::*;
 
 /// Reports one transfer's state: records it, and tells the interface.
@@ -15,7 +16,9 @@ use super::*;
 /// guessing that would put a transfer's fate in the wrong place.
 pub fn announce_transfer(state: &crate::state::AppState, snapshot: TransferSnapshot) {
     let transfer_id = snapshot.transfer_id;
-    state.transfers.record(snapshot.clone());
+    if !state.transfers.record(snapshot.clone()) {
+        return;
+    }
     state.publish(synra_ipc::event::KernelEvent::TransferUpdated(Box::new(
         snapshot,
     )));
@@ -63,8 +66,13 @@ pub fn snapshot_from(
         // TransferMeta is #[non_exhaustive]: a kind this build does not know is still a row, just a nameless one.
         _ => ("unknown".to_owned(), String::new()),
     };
-    let blocks_total = u32::try_from(request.byte_length.div_ceil(u64::from(request.chunk_size)))
-        .unwrap_or(u32::MAX);
+    let blocks_total = u32::try_from(
+        request
+            .byte_length
+            .div_ceil(u64::from(request.chunk_size))
+            .max(1),
+    )
+    .unwrap_or(u32::MAX);
 
     TransferSnapshot {
         transfer_id: request.transfer_id,
@@ -256,26 +264,18 @@ pub fn transfer_cancel(state: &crate::state::AppState, transfer_id: &str) -> Res
         )
     })?;
 
-    if state
-        .transfers
-        .list()
-        .iter()
-        .all(|transfer| transfer.transfer_id != id)
-    {
-        return Err(
-            IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(
-                serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"}),
-            ),
-        );
-    }
-    // ★ Two directions, two mechanisms. An outgoing transfer has a worker holding a cancellation token; an incoming one
-    // has a connection thread that owns the link, so the command can only leave the identifier where that loop will look.
-    if state.transfers.stop(&id) {
-        finish_transfer(state, id);
-    } else {
-        // The row stays: the listener has not seen the request yet, and removing it here would make the interface forget a
-        // transfer that is still running. It goes when the listener's abort reaches the progress callback.
-        state.inbound_cancels.lock().insert(id.to_string());
+    match state.transfers.cancel_target(id) {
+        Some(CancelTarget::Worker(cancel)) => cancel.cancel(),
+        Some(CancelTarget::Listener) => {
+            state.inbound_cancels.lock().insert(id.to_string());
+        }
+        None => {
+            return Err(
+                IpcError::unknown(synra_protocol::ErrorCode::TransferFailed).with_params(
+                    serde_json::json!({"transferId": transfer_id, "reason": "it is not in flight"}),
+                ),
+            );
+        }
     }
     Ok(())
 }

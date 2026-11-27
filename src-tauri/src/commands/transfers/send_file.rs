@@ -1,4 +1,18 @@
 use super::*;
+use std::path::PathBuf;
+use synra_core::transfer::{TransferFailure, TransferOutcome};
+use synra_protocol::ids::PluginId;
+
+/// Where the worker's source came from and what it owns after admission.
+pub(crate) enum SendSource {
+    UserFile,
+    Text(PathBuf),
+    PluginUpload {
+        owner: PluginId,
+        path: PathBuf,
+        directory: PathBuf,
+    },
+}
 
 /// Starts a send on its own thread, and answers the transfer's identifier now.
 ///
@@ -12,19 +26,28 @@ use super::*;
 ///
 /// The sender (and so the file's blocks), the row it reports, and the temporary file this shell wrote when there was one.
 /// The file is removed on every exit path: a message stuck behind a dead link must not stay in the cache for ever.
-pub fn start_send(
+pub(crate) fn start_send(
     state: &std::sync::Arc<crate::state::AppState>,
     to: synra_protocol::ids::DeviceId,
     address: std::net::SocketAddr,
     sender: synra_core::transfer::TransferSender,
     row: TransferSnapshot,
-    temp: Option<std::path::PathBuf>,
-    cleanup_dir: Option<std::path::PathBuf>,
-) -> synra_protocol::ids::TransferId {
+    source: SendSource,
+) -> Result<TransferId, IpcError> {
+    let (temp, cleanup_dir, owner) = match source {
+        SendSource::UserFile => (None, None, None),
+        SendSource::Text(path) => (Some(path), None, None),
+        SendSource::PluginUpload {
+            owner,
+            path,
+            directory,
+        } => (Some(path), Some(directory), Some(owner)),
+    };
     let transfer_id = row.transfer_id;
     let cancel = synra_core::supervisor::Cancellation::new();
-    state.transfers.track_cancel(transfer_id, cancel.clone());
-    state.transfers.record_owned(row.clone(), temp, cleanup_dir);
+    state
+        .transfers
+        .record_owned(row.clone(), temp, cleanup_dir, owner, cancel.clone());
     announce_transfer(state, row.clone());
 
     let thread_state = std::sync::Arc::clone(state);
@@ -37,11 +60,16 @@ pub fn start_send(
                 eprintln!("synra: transfer {transfer_id} did not finish: {error:?}");
             }
         });
-    if spawned.is_err() {
-        // The row was announced before the thread existed; without this it would stay "queued" for ever.
-        finish_transfer(state, transfer_id);
+    if let Err(error) = spawned {
+        finish_transfer(
+            state,
+            transfer_id,
+            TransferOutcome::Failed(TransferFailure::WorkerUnavailable),
+        );
+        return Err(IpcError::unknown(synra_protocol::ErrorCode::Internal)
+            .with_params(serde_json::json!({"reason": "transfer_worker_unavailable", "detail": error.to_string()})));
     }
-    transfer_id
+    Ok(transfer_id)
 }
 
 /// Opens a file and builds the row a send starts from.
@@ -98,9 +126,14 @@ pub fn transfer_send_file_start(
     request: &synra_ipc::dto::SendFileRequest,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
     let (address, sender, row) = prepare_file_send(state, request.to, &request.path)?;
-    Ok(start_send(
-        state, request.to, address, sender, row, None, None,
-    ))
+    start_send(
+        state,
+        request.to,
+        address,
+        sender,
+        row,
+        SendSource::UserFile,
+    )
 }
 
 /// Where a text send's temporary file goes.

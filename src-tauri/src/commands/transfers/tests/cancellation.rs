@@ -6,7 +6,9 @@ fn a_withdrawn_receive_announces_the_end_without_claiming_completion() {
     // does not. The event is the same `TransferFinished` a cancel uses; only the snapshot is missing.
     let state = crate::testing::state();
     let id = TransferId::new();
-    state.transfers.record(snapshot(id, "active"));
+    let mut receiving = snapshot(id, "active");
+    receiving.direction = "receive".to_owned();
+    state.transfers.record(receiving);
     let subscriber = state.events.subscribe();
 
     super::super::withdraw_received(&state, id);
@@ -58,17 +60,19 @@ fn cancelling_an_incoming_transfer_leaves_the_abort_to_the_listener() {
 }
 
 #[test]
-fn cancelling_a_transfer_that_is_in_flight_drops_it() {
+fn cancelling_a_send_leaves_finalization_to_its_worker() {
     let state = crate::testing::state();
     let id = TransferId::new();
-    state.transfers.record(snapshot(id, "active"));
-    // ★ A worker is what makes it outgoing; without a token the command has no way to tell it from an incoming transfer.
+    let cancel = synra_core::supervisor::Cancellation::new();
     state
         .transfers
-        .track_cancel(id, synra_core::supervisor::Cancellation::new());
+        .record_owned(snapshot(id, "active"), None, None, None, cancel.clone());
     let subscriber = state.events.subscribe();
 
     super::super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
+    assert!(cancel.is_cancelled());
+    assert!(!state.transfers.is_empty(), "the worker has not exited yet");
+    super::super::finish_transfer(&state, id, synra_core::transfer::TransferOutcome::Cancelled);
 
     assert!(
         state.transfers.is_empty(),
@@ -92,28 +96,33 @@ fn cancelling_a_transfer_that_is_in_flight_drops_it() {
 fn cancelling_something_that_is_not_an_identifier_is_the_callers_fault() {
     let state = crate::testing::state();
 
-    let refused = super::super::transfer_cancel(&state, "not-an-id").expect_err("it does not parse");
+    let refused =
+        super::super::transfer_cancel(&state, "not-an-id").expect_err("it does not parse");
 
     assert_eq!(refused.code, synra_protocol::ErrorCode::InvalidArgument);
 }
 
 #[test]
-fn cancelling_a_transfer_removes_the_file_it_created() {
+fn worker_exit_removes_its_file_after_cancellation() {
     // ★ The gap this closes: a cancelled message was removed from the panel and left on disk. The registry is the only place
     // that knows the path — a sent file belongs to the user and must survive, so "delete on cancel" cannot be a guess.
     let state = crate::testing::state();
     let path = std::env::temp_dir().join(format!("synra-cancel-{}.txt", std::process::id()));
     std::fs::write(&path, b"a message").expect("a file");
     let id = TransferId::new();
-    state
-        .transfers
-        .record_with_temp(snapshot(id, "active"), path.clone());
-    state
-        .transfers
-        .track_cancel(id, synra_core::supervisor::Cancellation::new());
+    let cancel = synra_core::supervisor::Cancellation::new();
+    state.transfers.record_owned(
+        snapshot(id, "active"),
+        Some(path.clone()),
+        None,
+        None,
+        cancel,
+    );
     let subscriber = state.events.subscribe();
 
     super::super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
+    assert!(path.exists(), "the worker still owns its input");
+    super::super::finish_transfer(&state, id, synra_core::transfer::TransferOutcome::Cancelled);
 
     assert!(!path.exists(), "the file went with the transfer");
     let delivery = state.events.take(subscriber).expect("announced");

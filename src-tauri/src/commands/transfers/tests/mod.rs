@@ -10,7 +10,7 @@ mod consent;
 fn snapshot(transfer_id: TransferId, state: &str) -> TransferSnapshot {
     TransferSnapshot {
         transfer_id,
-        peer_device: DeviceId::new(),
+        peer_device: DeviceId::from_uuid(uuid::Uuid::from_u128(1)),
         peer_name: "Study PC".to_owned(),
         direction: "send".to_owned(),
         kind: "plugin-bundle".to_owned(),

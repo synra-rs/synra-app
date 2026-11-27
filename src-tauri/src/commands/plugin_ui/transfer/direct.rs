@@ -78,13 +78,15 @@ pub(crate) fn transfer_send(
     Ok(serde_json::json!({"transferId": outcome?.to_string()}))
 }
 
-/// The state of a transfer this shell still has a row for.
+/// Reads the current or retained state of a transfer this plugin started.
 pub(crate) fn transfer_status(
     state: &AppState,
+    session: &ValidatedSession,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, IpcError> {
     use synra_protocol::ids::TransferId;
 
+    require_grant(session, "file:transfer:send", "transfer.status")?;
     let id_text = string_arg(args, "transferId")?;
     let id = uuid::Uuid::parse_str(id_text)
         .map(TransferId::from_uuid)
@@ -93,27 +95,14 @@ pub(crate) fn transfer_status(
                 serde_json::json!({"field": "transferId", "reason": error.to_string()}),
             )
         })?;
-    let Some(snapshot) = state
+    let snapshot = state
         .transfers
-        .list()
-        .into_iter()
-        .find(|transfer| transfer.transfer_id == id)
-    else {
-        // A completed transfer is removed from the registry by `finish_transfer`; the façade keeps the final state of
-        // the transfers it started, so an unknown id here is usually "it is over" rather than "it never existed".
-        return Err(
-            IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
-                "transferId": id_text,
-                "reason": "no transfer by that id is in flight",
-            })),
-        );
-    };
-    Ok(serde_json::json!({
-        "transferId": snapshot.transfer_id.to_string(),
-        "state": transfer_state_name(&snapshot.state),
-        "receivedBytes": snapshot.received_bytes,
-        "totalBytes": snapshot.total_bytes,
-        "blocksDone": snapshot.blocks_done,
-        "blocksTotal": snapshot.blocks_total,
-    }))
+        .plugin_status(session.plugin_id(), id, transfers::unix_millis())
+        .ok_or_else(|| {
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
+                "transferId": id,
+                "reason": "transfer_not_found",
+            }))
+        })?;
+    serde_json::to_value(snapshot).map_err(internal)
 }

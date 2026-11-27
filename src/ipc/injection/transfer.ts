@@ -1,25 +1,4 @@
-/**
- * Transfers, over the plugin channel.
- *
- * # Why the page encodes the file itself
- *
- * `transfer.send` takes a `Blob`, and an IPC call is JSON. The first slice therefore sends the bytes as base64 and the
- * kernel decodes them into a temporary file before handing them to the same dial, block loop and progress events the
- * transfer panel uses. The cap below is what makes that honest: base64 in one message is a bridge for a screenshot or a
- * small document, not a channel for a 100 MiB video, and the chunked channel is what the design's large-file case needs.
- *
- * # Why the final state is kept here
- *
- * Because the kernel removes a completed transfer from its registry — the panel's row is gone, which is right for the
- * panel and wrong for a page that asked for an id and then wants to know how it ended. `send` records the state it
- * finished in, `status` prefers that, and `onProgress` replays it to a listener that attached after the send.
- *
- * # The limitation to be honest about
- *
- * `send` resolves when the transfer is **over**, not when it starts. A page that calls `onProgress` after `await send`
- * gets the final state (replayed) but no intermediate blocks, because there are none left. Live progress goes to a
- * listener attached before the send. Making `send` return early needs a worker thread, and that is a separate change.
- */
+/** Upload chunks and query the worker's transfer state through the plugin channel. */
 
 import type { TransferNamespace, TransferProgress, TransferStatus } from '@synra/client'
 import type { TransferId } from '@synra/protocol'
@@ -35,20 +14,10 @@ const MAX_TRANSFER_BYTES = 64 * 1024 * 1024
 /** How much of a file one `transfer.chunk` carries, matching the kernel's `MAX_PLUGIN_CHUNK_BYTES`. */
 const CHUNK_BYTES = 1024 * 1024
 
-/** What the kernel answers for a status. */
-interface RawStatus {
-  readonly transferId: string
-  readonly state: TransferStatus['state']
-  readonly receivedBytes: number
-  readonly totalBytes: number
-  readonly blocksDone?: number
-  readonly blocksTotal?: number
-}
-
 /** What one `transferUpdated` event carries. */
 interface TransferUpdated {
   readonly type: 'transferUpdated'
-  readonly payload: RawStatus
+  readonly payload: TransferStatus
 }
 
 /** What one `transferFinished` event carries. */
@@ -65,30 +34,10 @@ function isTransferEvent(payload: unknown): payload is TransferUpdated | Transfe
   return type === 'transferUpdated' || type === 'transferFinished'
 }
 
-/** How far along a status is, from the bytes or — when the sender only counted blocks — from the blocks. */
-function receivedOf(status: RawStatus): number {
-  if (status.receivedBytes > 0 || !status.blocksTotal)
-    return status.receivedBytes
-  return Math.round((status.totalBytes * (status.blocksDone ?? 0)) / status.blocksTotal)
-}
-
-/** The contract's status, with the derived byte count. */
-function statusOf(raw: RawStatus): TransferStatus {
-  return {
-    transferId: raw.transferId as TransferId,
-    state: raw.state,
-    receivedBytes: receivedOf(raw),
-    totalBytes: raw.totalBytes
-  }
-}
-
 /** The progress view of a status. */
 function progressOf(status: TransferStatus): TransferProgress {
   return {
-    transferId: status.transferId,
-    state: status.state,
-    receivedBytes: status.receivedBytes,
-    totalBytes: status.totalBytes,
+    ...status,
     ratio: status.totalBytes === 0 ? 0 : Math.min(1, status.receivedBytes / status.totalBytes)
   }
 }
@@ -105,15 +54,15 @@ async function base64Of(file: Blob): Promise<string> {
 
 /** The transfer namespace, over the plugin channel. */
 export function createTransferNamespace(context: InjectionContext, can: GrantCheck): TransferNamespace {
-  /** The final state of the transfers this page started, and any status a read answered. */
-  const known = new Map<string, TransferStatus>()
-
   const call = <T>(method: string, args: Readonly<Record<string, unknown>> = {}): Promise<T> =>
     context.bridge
       .invoke('plugin_ui_rpc', { token: context.token, method, args })
       .catch((reason: unknown) => {
         throw asSynraError(reason)
       }) as Promise<T>
+
+  const status = (id: TransferId): Promise<TransferStatus> =>
+    call<TransferStatus>('transfer.status', { transferId: id })
 
   return {
     send: async (request): Promise<TransferId> => {
@@ -139,17 +88,7 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
           await call('transfer.chunk', { uploadId, data })
         }
         const answer = await call<{ readonly transferId: string }>('transfer.finish', { uploadId })
-        const transferId = answer.transferId as TransferId
-        // ★ The call answers when the bytes have been handed to the sender, not when the peer has them: the worker owns
-        // the transfer from here. `status` and `onProgress` are how a page learns how it ended — the final state is not
-        // known yet, and inventing `completed` here would be the lie this cache exists to avoid.
-        known.set(answer.transferId, {
-          transferId,
-          state: 'transferring',
-          receivedBytes: 0,
-          totalBytes: request.file.size
-        })
-        return transferId
+        return answer.transferId as TransferId
       }
       catch (reason) {
         // Best effort: the first error is the one the page needs to see, and an abort that fails says nothing it can act on.
@@ -163,27 +102,21 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
       }
     },
 
-    status: async (id: TransferId): Promise<TransferStatus> => {
-      const cached = known.get(id)
-      if (cached !== undefined)
-        return cached
-      const raw = await call<RawStatus>('transfer.status', { transferId: id })
-      const status = statusOf(raw)
-      known.set(id, status)
-      return status
-    },
+    status,
 
     onProgress: (id: TransferId, handler: (progress: TransferProgress) => void): (() => void) => {
       let active = true
+      let revision = -1
       const emit = (status: TransferStatus): void => {
-        if (active)
+        if (active && status.transferId === id && status.revision > revision) {
+          revision = status.revision
           handler(progressOf(status))
+        }
       }
-
-      // ★ What is already known, so a listener that attached after `send` still gets an answer rather than silence.
-      const cached = known.get(id)
-      if (cached !== undefined)
-        queueMicrotask(() => emit(cached))
+      const report = (error: unknown): void => {
+        if (active)
+          console.error('Synra transfer progress', asSynraError(error))
+      }
 
       let off: (() => void) | undefined
       void context.bridge
@@ -191,16 +124,11 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
           if (!active || !isTransferEvent(payload))
             return
           if (payload.type === 'transferUpdated') {
-            if (payload.payload.transferId === id) {
-              const status = statusOf(payload.payload)
-              known.set(id, status)
-              emit(status)
-            }
+            emit(payload.payload)
             return
           }
-          const finished = known.get(id)
-          if (payload.payload.transferId === id && finished !== undefined)
-            emit(finished)
+          if (payload.payload.transferId === id)
+            void status(id).then(emit).catch(report)
         })
         .then((stop) => {
           if (active)
@@ -212,6 +140,7 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
           // Nothing to report to: the page's only log is the console, and a listener that never attached is not
           // something the author can act on.
         })
+      void status(id).then(emit).catch(report)
 
       return () => {
         active = false

@@ -131,19 +131,36 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
         "an id, not a completed send"
     );
 
-    // The worker fails against port 1 and removes its row; the test waits for that rather than for a fixed sleep.
-    //
-    // ★ Ten seconds rather than two. The condition is right, but the budget assumed an idle machine: with the rest of the
-    // suite running in parallel the worker can take longer than two seconds to be scheduled and to see the refused dial,
-    // and the test then failed with "the failed send left no row" on a run where nothing was wrong. A condition-poll with
-    // a generous ceiling is still a condition-poll; the assertion below is what decides, not the clock.
+    let id = finished["transferId"].as_str().expect("a transfer id");
+    // Wait for both the terminal state and removal of the worker's upload artifacts.
+    let cleaned_up = || {
+        !state
+            .paths
+            .cache_dir()
+            .join("plugin-transfers")
+            .read_dir()
+            .is_ok_and(|mut entries| entries.next().is_some())
+    };
     for _ in 0..1_000 {
-        if state.transfers.is_empty() {
+        if state.transfers.is_empty() && cleaned_up() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(state.transfers.is_empty(), "the failed send left no row");
+    let reopened = hosted_page_with(&state, &["file:transfer:send"]);
+    let status = super::super::plugin_ui_rpc_arc(
+        &state,
+        &reopened,
+        "transfer.status",
+        &serde_json::json!({"transferId": id}),
+    )
+    .expect("the reopened page can query its terminal record");
+    assert_eq!(status["state"], "failed");
+    assert_eq!(status["failure"]["kind"], "connection");
+    assert_eq!(status["receivedBytes"], 0);
+    assert_eq!(status["totalBytes"], 2);
+    assert!(status["endedAtMs"].is_u64());
     assert!(
         !state
             .paths

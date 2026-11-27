@@ -1,4 +1,5 @@
 use super::*;
+use synra_core::transfer::TransferOutcome;
 
 /// Closes a receive row whose transfer ended without a file.
 ///
@@ -6,33 +7,27 @@ use super::*;
 /// `FinishedTransfer` — so this is the only place that can tell the panel the row is over. It is not `completed`: nothing
 /// arrived.
 pub fn withdraw_received(state: &crate::state::AppState, transfer_id: TransferId) {
-    state.transfers.forget(&transfer_id);
-    state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+    if state.transfers.take_received(transfer_id).is_some() {
+        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
+    }
 }
 
 /// Announces a received transfer as completed and retires its row.
 ///
-/// The receiving half of a transfer has no worker to remove the row; without this the panel would show it as arriving
-/// for ever. A transfer that never registered a row is still finished: the announcement is how the panel learns the id
-/// is done.
+/// The listener retires the receive row after confirming the object.
 pub fn complete_received(
     state: &crate::state::AppState,
     transfer_id: synra_protocol::ids::TransferId,
 ) {
-    // The registry may not have the row — a transfer whose first blocks arrived before the reporter attached, or one
-    // whose connection ended badly. Finishing it is still right: the announcement is how the panel learns the id is done.
-    if let Some(mut snapshot) = state
-        .transfers
-        .list()
-        .into_iter()
-        .find(|row| row.transfer_id == transfer_id)
-    {
+    if let Some(mut snapshot) = state.transfers.take_received(transfer_id) {
         snapshot.state = "completed".to_owned();
         snapshot.received_bytes = snapshot.total_bytes;
         snapshot.blocks_done = snapshot.blocks_total;
-        announce_transfer(state, snapshot);
+        state.publish(synra_ipc::event::KernelEvent::TransferUpdated(Box::new(
+            snapshot,
+        )));
+        state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
     }
-    finish_transfer(state, transfer_id);
 }
 
 /// Removes a transfer and tells the interface it is over.
@@ -42,8 +37,12 @@ pub fn complete_received(
 pub(crate) fn finish_transfer(
     state: &crate::state::AppState,
     transfer_id: synra_protocol::ids::TransferId,
+    outcome: TransferOutcome,
 ) {
-    let (temp, directory) = state.transfers.owned_files(&transfer_id);
+    let Some((temp, directory)) = state.transfers.finish(transfer_id, outcome, unix_millis())
+    else {
+        return;
+    };
     if let Some(path) = temp {
         let _ = std::fs::remove_file(path);
     }
@@ -51,8 +50,6 @@ pub(crate) fn finish_transfer(
         // Nonrecursive: ownership of one upload directory never permits deleting unrelated contents.
         let _ = std::fs::remove_dir(directory);
     }
-    state.transfers.forget(&transfer_id);
-    state.transfers.untrack(&transfer_id);
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
 }
 

@@ -130,7 +130,7 @@ pub(crate) fn dispatch(
         PluginUiOp::TransferChunk => transfer_chunk(state, &session, args),
         PluginUiOp::TransferFinish => transfer_finish(state, arc, &session, args),
         PluginUiOp::TransferAbort => transfer_abort(state, &session, args),
-        PluginUiOp::TransferStatus => transfer_status(state, args),
+        PluginUiOp::TransferStatus => transfer_status(state, &session, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({
             "method": method,
             "reason": "the operation is on the plugin surface and this build does not implement it",

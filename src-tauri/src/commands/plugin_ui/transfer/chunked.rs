@@ -203,9 +203,12 @@ pub(crate) fn transfer_finish(
             address,
             sender,
             row,
-            Some(upload.path),
-            Some(upload.directory),
-        );
+            transfers::SendSource::PluginUpload {
+                owner: session.plugin_id().clone(),
+                path: upload.path,
+                directory: upload.directory,
+            },
+        )?;
         return Ok(serde_json::json!({"transferId": transfer_id.to_string()}));
     }
 
@@ -255,16 +258,4 @@ pub(crate) fn transfer_file_name(name: &str) -> Result<(), IpcError> {
         return Err(refused("the name must be one path component"));
     }
     Ok(())
-}
-
-/// The client's name for a transfer state.
-///
-/// The sender's snapshots say `queued` and `active`; the contract's union says `pending` and `transferring`. The rest are
-/// the same word in both places, so they pass through instead of being mapped twice.
-pub(crate) fn transfer_state_name(state: &str) -> &str {
-    match state {
-        "queued" => "pending",
-        "active" => "transferring",
-        other => other,
-    }
 }

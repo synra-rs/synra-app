@@ -112,6 +112,7 @@ pub fn send_over_with(
     row: TransferSnapshot,
     cancel: Option<&synra_core::supervisor::Cancellation>,
 ) -> Result<synra_protocol::ids::TransferId, IpcError> {
+    use synra_core::transfer::{TransferFailure, TransferOutcome};
     use synra_protocol::ErrorCode;
 
     let started = std::time::Instant::now();
@@ -119,6 +120,9 @@ pub fn send_over_with(
     let total_bytes = row.total_bytes;
     let transfer_id = row.transfer_id;
     let now_ms = unix_millis();
+    if cancel.is_none() {
+        announce_transfer(state, row.clone());
+    }
 
     let parts = state.host.lock().dialling_parts();
     let dialled = match synra_core::host::dial_peer(&parts.0, parts.1, address, to, now_ms) {
@@ -126,14 +130,16 @@ pub fn send_over_with(
         Err(error) => {
             // ★ A dial that never connected is still an attempt, and the one a user most wants counted: it is the failure
             // that happens before any block moves. `send_ready_since` records the other exits.
-            record_send(
-                state,
-                &kind,
-                total_bytes,
-                started.elapsed(),
-                SendOutcome::Failed,
-            );
-            finish_transfer(state, transfer_id);
+            let (outcome, metric) = if cancel.is_some_and(|cancel| cancel.is_cancelled()) {
+                (TransferOutcome::Cancelled, SendOutcome::Cancelled)
+            } else {
+                (
+                    TransferOutcome::Failed(TransferFailure::Connection),
+                    SendOutcome::Failed,
+                )
+            };
+            record_send(state, &kind, total_bytes, started.elapsed(), metric);
+            finish_transfer(state, transfer_id, outcome);
             return Err(IpcError::unknown(ErrorCode::TransferFailed).with_params(
                 serde_json::json!({"deviceId": to.to_string(), "detail": error.to_string()}),
             ));
