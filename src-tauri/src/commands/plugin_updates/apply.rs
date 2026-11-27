@@ -2,19 +2,21 @@
 
 use synra_ipc::{InstallReport, IpcError};
 use synra_protocol::PluginId;
+use synra_store::{PluginUpdateCheck, SynraDb};
 
 use crate::state::AppState;
 
 /// Prepares an automatic update before migration, preserving the verified bytes through the lifecycle switch.
 pub(crate) fn update_directory(
     state: &AppState,
-    plugin_id: &str,
-    version: &str,
+    check: &PluginUpdateCheck,
     path: &std::path::Path,
-    registry: Option<&str>,
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<InstallReport, IpcError> {
+    let plugin_id = &check.plugin_id;
+    let version = check.available_version.as_deref().ok_or_else(automatic_cancelled)?;
+    ensure_automatic_check(&state.db(), check, policy, cancel)?;
     let id = PluginId::parse(plugin_id).map_err(|error| {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"reason":error.to_string()}))
@@ -48,54 +50,39 @@ pub(crate) fn update_directory(
                 .with_params(serde_json::json!({"stage":"update-policy", "reason":reason})),
         );
     }
-    ensure_automatic_policy(state, registry, policy, cancel)?;
+    ensure_automatic_check(&state.db(), check, policy, cancel)?;
     super::super::plugins::migrate_and_unload(state, &id, Some(prepared.version()))?;
-    let outcome = ensure_automatic_policy(state, registry, policy, cancel).and_then(|()| {
+    let outcome = (|| {
         let plugins = state.plugin_set()?;
-        let set = plugins.lock();
+        let _set = plugins.lock();
         let mut db = state.db();
-        let result = if cancel.is_cancelled()
-            || super::configured_policy(&db) != Some(policy)
-            || !same_registry(&db, registry)
-        {
-            Err(automatic_cancelled())
-        } else {
-            prepared
-                .install(&mut db, synra_store::sqlite::now_ms())
-                .map_err(|error| install_error(&error))
-        };
-        drop(db);
-        drop(set);
-        result
-    });
+        ensure_automatic_check(&db, check, policy, cancel)?;
+        prepared
+            .install(&mut db, check, synra_store::sqlite::now_ms())
+            .map_err(|error| install_error(&error))
+    })();
     let report = super::super::plugins::complete_update(state, &id, outcome)?;
     super::super::plugins::announce_updated(state, &report);
     Ok(report)
 }
 
-fn ensure_automatic_policy(
-    state: &AppState,
-    registry: Option<&str>,
+pub(crate) fn ensure_automatic_check(
+    db: &SynraDb,
+    check: &PluginUpdateCheck,
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<(), IpcError> {
-    if cancel.is_cancelled()
-        || super::policy(state) != Some(policy)
-        || !same_registry(&state.db(), registry)
-    {
+    let current = synra_core::plugin_updates::automatic_check_is_current(db, check, policy, cancel)
+        .map_err(crate::state::internal)?;
+    if !current {
         return Err(automatic_cancelled());
     }
     Ok(())
 }
 
-fn same_registry(db: &synra_store::SynraDb, expected: Option<&str>) -> bool {
-    synra_core::plugin_updates::registry_setting(db)
-        .is_ok_and(|current| current.as_deref() == expected)
-}
-
 fn automatic_cancelled() -> IpcError {
     IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
-        serde_json::json!({"reason":"the automatic update was cancelled or its configuration changed"}),
+        serde_json::json!({"reason":"the automatic update was cancelled or its check or policy changed"}),
     )
 }
 

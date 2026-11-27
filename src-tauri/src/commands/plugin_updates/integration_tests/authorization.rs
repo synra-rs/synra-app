@@ -1,5 +1,22 @@
 use super::*;
 
+fn saved_check(state: &AppState, version: &str) -> PluginUpdateCheck {
+    let db = state.db();
+    let check = PluginUpdateCheck {
+        plugin_id: "@acme/hello".to_owned(),
+        current_version: "1.0.0".to_owned(),
+        checked_at_ms: 1,
+        request_order: db.begin_plugin_update_check().expect("reserve request"),
+        registry: synra_core::plugin_updates::registry_setting(&db).expect("registry"),
+        available_version: Some(version.to_owned()),
+        added_capabilities: Vec::new(),
+        attempts: 0,
+        retry_at_ms: None,
+    };
+    assert!(db.save_plugin_update_check(&check).expect("save check"));
+    check
+}
+
 #[test]
 fn revoking_a_publisher_stops_and_untrusts_its_installed_plugin() {
     // ★ The decision used to change only the row the installer consults, so the code already running stayed untouched
@@ -62,13 +79,13 @@ fn cancellation_policy_changes_and_mismatching_targets_leave_the_running_version
         if cancelled {
             cancel.cancel();
         }
+        let mut check = saved_check(&state, version);
+        check.plugin_id = id.to_owned();
         assert!(
             super::apply_automatic_update(
                 &state,
-                id,
-                version,
+                &check,
                 &next,
-                None,
                 UpdatePolicy::AutoAll,
                 &cancel
             )
@@ -112,8 +129,7 @@ fn a_changed_registry_or_revoked_candidate_leaves_the_running_version_untouched(
                 1,
             )
             .expect("source");
-        let expected =
-            synra_core::plugin_updates::registry_setting(&state.db()).expect("source snapshot");
+        let check = saved_check(&state, "1.1.0");
         if revoked {
             std::fs::write(state.paths.data_dir().join("revocations.json"), r#"{"revoked":[{"plugin":"@acme/hello","versions":["1.1.0"],"reason":"withdrawn"}]}"#).expect("revocations");
         } else {
@@ -129,10 +145,8 @@ fn a_changed_registry_or_revoked_candidate_leaves_the_running_version_untouched(
         assert!(
             super::apply_automatic_update(
                 &state,
-                "@acme/hello",
-                "1.1.0",
+                &check,
                 &next,
-                expected.as_deref(),
                 UpdatePolicy::AutoAll,
                 &Cancellation::new()
             )

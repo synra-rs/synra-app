@@ -57,6 +57,9 @@ fn the_daily_pass_applies_only_the_updates_the_user_and_verified_package_allow()
         if selected == "never" {
             assert_eq!(registry.requests.load(Ordering::SeqCst), 0);
         }
+        if applies {
+            assert_eq!(registry.requests.load(Ordering::SeqCst), 2, "one metadata request and one download");
+        }
         if applies && added == 2 {
             signed_source(&next, "1.2.0", seed, 2);
             publish(&registry, &next, "1.2.0");
@@ -80,4 +83,26 @@ fn the_daily_pass_applies_only_the_updates_the_user_and_verified_package_allow()
             "download cleaned up"
         );
     }
+}
+
+#[test]
+fn a_superseded_check_skips_the_automatic_download() {
+    let registry = Registry::start();
+    let (root, state) = installed_state();
+    let candidate = root.path().join("candidate");
+    signed_source(&candidate, "1.1.0", 7, 0);
+    publish(&registry, &candidate, "1.1.0");
+    state.db().set_config(crate::commands::registry::REGISTRY_KEY, &serde_json::json!(registry.base), 1)
+        .expect("registry");
+    state.db().set_config(AUTO_UPDATE_KEY, &serde_json::json!("auto-all"), 1).expect("policy");
+
+    let first = crate::commands::registry::check_update_at(&state, "@acme/hello", 1)
+        .expect("first check").expect("update");
+    let second = crate::commands::registry::check_update_at(&state, "@acme/hello", 1)
+        .expect("second check").expect("update");
+    assert_eq!(first.info.version, second.info.version);
+    assert!(!try_automatic(&state, &first, 1, &Cancellation::new()));
+    assert_eq!(registry.requests.load(Ordering::SeqCst), 2, "no stale download");
+    assert!(try_automatic(&state, &second, 1, &Cancellation::new()));
+    assert_eq!(registry.requests.load(Ordering::SeqCst), 3, "one current download");
 }

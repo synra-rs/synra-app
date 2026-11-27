@@ -165,13 +165,24 @@ pub fn check_update(
     plugin_id: &str,
 ) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
     check_update_at(state, plugin_id, synra_store::sqlite::now_ms())
+        .map(|result| result.map(|update| update.info))
+}
+
+/// A saved update and the exact registry metadata from which it was selected.
+pub(crate) struct CheckedRegistryUpdate {
+    pub(crate) check: synra_store::PluginUpdateCheck,
+    pub(crate) info: UpdateInfo,
+    pub(super) bases: Vec<Base>,
+    pub(super) base: Base,
+    pub(super) candidate: Version,
+    pub(super) index_url: Option<String>,
 }
 
 pub(crate) fn check_update_at(
     state: &AppState,
     plugin_id: &str,
     now_ms: i64,
-) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
+) -> Result<Option<CheckedRegistryUpdate>, synra_ipc::IpcError> {
     // Capture the source before fetching. The store checks it again in the write, so changing registries while a
     // request is in flight cannot publish an answer from the previous source.
     let registry = read_setting(state)?;
@@ -189,8 +200,13 @@ pub(crate) fn check_update_at(
     };
     let bases = bases_from_setting(registry.as_deref())?;
     let request_order = state.db().begin_plugin_update_check().map_err(crate::state::internal)?;
-    let document = packument_from_sources(state, plugin_id, &bases)?.packument;
-    let latest = document
+    let RegistryDocument {
+        base,
+        packument,
+        index_url,
+        ..
+    } = packument_from_sources(state, plugin_id, &bases)?;
+    let latest = packument
         .latest_upgrade(&active.version)
         .map_err(|error| crate::commands::plugin_updates::version_refusal(plugin_id, error))?;
     let added = latest
@@ -205,20 +221,28 @@ pub(crate) fn check_update_at(
                 .collect()
         })
         .unwrap_or_default();
-    crate::commands::plugin_updates::record(
-        state,
-        &synra_store::PluginUpdateCheck {
-            plugin_id: plugin.to_string(),
-            current_version: active.version,
-            checked_at_ms: now_ms,
-            request_order,
-            registry,
-            available_version: latest.map(|entry| entry.version.clone()),
-            added_capabilities: added,
-            attempts: 0,
-            retry_at_ms: None,
-        },
-    )
+    let check = synra_store::PluginUpdateCheck {
+        plugin_id: plugin.to_string(),
+        current_version: active.version,
+        checked_at_ms: now_ms,
+        request_order,
+        registry,
+        available_version: latest.map(|entry| entry.version.clone()),
+        added_capabilities: added,
+        attempts: 0,
+        retry_at_ms: None,
+    };
+    let info = crate::commands::plugin_updates::record(state, &check)?;
+    Ok(info
+        .zip(latest.cloned())
+        .map(|(info, candidate)| CheckedRegistryUpdate {
+            check,
+            info,
+            bases,
+            base,
+            candidate,
+            index_url,
+        }))
 }
 
 /// The capabilities in the manifest this device installed, read from the plugin's own directory.

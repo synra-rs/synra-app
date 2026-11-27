@@ -29,6 +29,7 @@ use crate::state::AppState;
 
 mod apply;
 pub(super) use apply::update_directory as apply_automatic_update;
+pub(super) use apply::ensure_automatic_check;
 pub use synra_core::plugin_updates::AUTO_UPDATE_KEY;
 pub(super) use synra_core::plugin_updates::configured_policy;
 #[cfg(test)]
@@ -80,50 +81,41 @@ pub fn check_all(state: &AppState, now_ms: i64, cancel: &Cancellation) -> Vec<Up
         if cancel.is_cancelled() || !enabled(state) {
             break;
         }
-        if let Ok(Some(info)) = super::registry::check_update_at(state, &plugin, now_ms) {
-            if try_automatic(state, &info, now_ms, cancel) {
+        if let Ok(Some(update)) = super::registry::check_update_at(state, &plugin, now_ms) {
+            if try_automatic(state, &update, now_ms, cancel) {
                 continue;
             }
-            updates.push(info);
+            if state
+                .db()
+                .is_plugin_update_check_current(&update.check)
+                .is_ok_and(|current| current)
+            {
+                updates.push(update.info);
+            }
         }
     }
     updates
 }
 
-fn try_automatic(state: &AppState, info: &UpdateInfo, now_ms: i64, cancel: &Cancellation) -> bool {
+fn try_automatic(
+    state: &AppState,
+    update: &super::registry::CheckedRegistryUpdate,
+    now_ms: i64,
+    cancel: &Cancellation,
+) -> bool {
     let Some(selected) = policy(state).filter(|policy| *policy != UpdatePolicy::NotifyOnly) else {
         return false;
     };
-    if info.needs_new_consent || cancel.is_cancelled() {
+    if update.info.needs_new_consent || cancel.is_cancelled() {
         return false;
     }
-    let check = state.db().plugin_update_check(info.plugin_id.as_str());
-    let check = match check {
-        Ok(Some(check))
-            if check.checked_at_ms == now_ms
-                && check.available_version.as_deref() == Some(info.version.as_str()) =>
-        {
-            check
-        }
-        Ok(_) => return false,
-        Err(error) => {
-            eprintln!("synra: automatic update check could not be read: {error}");
-            return false;
-        }
-    };
-    match super::registry::update_automatically(
-        state,
-        info.plugin_id.as_str(),
-        &info.version,
-        selected,
-        cancel,
-    ) {
+    match super::registry::update_automatically(state, update, selected, cancel) {
         Ok(_) => true,
         Err(error) => {
-            let recorded = record_failure(&state.db(), &check, selected, cancel, now_ms);
+            let recorded = record_failure(&state.db(), &update.check, selected, cancel, now_ms);
             eprintln!(
                 "synra: automatic update of {} failed: {error:?}; retry state: {recorded:?}",
-                info.plugin_id
+                update.info.plugin_id
             );
             false
         }

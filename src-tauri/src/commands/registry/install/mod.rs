@@ -136,28 +136,22 @@ pub fn update(state: &AppState, plugin_id: &str) -> Result<InstallReport, synra_
 /// Downloads the exact version checked, then lets the kernel admit its verified bytes under the selected policy.
 pub(crate) fn update_automatically(
     state: &AppState,
-    plugin_id: &str,
-    version: &str,
+    update: &CheckedRegistryUpdate,
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
-    let expected_registry = read_setting(state)?;
-    let bases = bases_from_setting(expected_registry.as_deref())?;
-    let registry = packument_from_sources(state, plugin_id, &bases)?;
-    let chosen = choose(&registry.packument, plugin_id, Some(version))?;
+    crate::commands::plugin_updates::ensure_automatic_check(&state.db(), &update.check, policy, cancel)?;
     let package = download(
         state,
-        &bases,
-        &registry.base,
-        chosen,
-        registry.index_url.as_deref(),
+        &update.bases,
+        &update.base,
+        &update.candidate,
+        update.index_url.as_deref(),
     )?;
     let outcome = crate::commands::plugin_updates::apply_automatic_update(
         state,
-        plugin_id,
-        version,
+        &update.check,
         package.path(),
-        expected_registry.as_deref(),
         policy,
         cancel,
     );
