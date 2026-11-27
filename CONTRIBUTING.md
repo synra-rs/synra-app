@@ -79,20 +79,22 @@ cargo test --no-default-features --features touchpad-plugin-tests --manifest-pat
 
 ### Starter 真实桌面验收
 
-先按独立 Starter 仓库的 README 构建 `dist/`，并确保本仓库前端与 facade 已构建。
-以下入口只存在于启用 `official-plugin-tests` 的 desktop debug 构建，通过生产命令安装、
-授予本机 debug 声明与设备列表读取能力、启用并打开真实插件窗口。
+当前独立 Starter 包通过应用的插件管理流程安装、授权、启用和打开。激活时，授权须覆盖实际 Wasm 导入。
+
+本机诊断夹具可使用下面的专用入口。夹具清单须恰好声明 `action:declare:debug` 和 `device:list`。
+先构建本仓库的前端与 facade，再启用 `official-plugin-tests` 构建 desktop debug 程序。
+入口通过生产命令安装夹具、授予这两项能力、启用并打开插件窗口。
 
 ```powershell
 $taskPreviousTauriConfig = $env:TAURI_CONFIG
 try {
   $env:TAURI_CONFIG = '{"identifier":"com.synra.ui-smoke","plugins":{"deep-link":{"desktop":{"schemes":[]}}}}'
-  cargo build --locked --manifest-path src-tauri/Cargo.toml --bin synra-app --features official-plugin-tests -j 1
+  cargo build --locked --manifest-path src-tauri/Cargo.toml --bin synra-app --features 'official-plugin-tests,tauri/custom-protocol' -j 1
 }
 finally {
   $env:TAURI_CONFIG = $taskPreviousTauriConfig
 }
-$taskStarterDist = (Resolve-Path ../synra-plugin-starter/dist).Path
+$taskStarterDist = (Resolve-Path .\path\to\starter-debug-fixture).Path
 ./src-tauri/target/debug/synra-app.exe --starter-ui-smoke $taskStarterDist
 ```
 

@@ -8,18 +8,11 @@ use synra_plugin_host::{
 };
 use synra_protocol::{ErrorCode, PluginId};
 
-const FULL_GRANTS: [&str; 7] = [
+const FULL_GRANTS: [&str; 8] = [
     "device:list",
     "device:send:*",
     "platform:open-url",
-    "platform:read-clipboard",
-    "platform:write-clipboard",
-    "action:declare:*",
-    "event:subscribe:_plugin.@synra-plugin/starter.*",
-];
-const WITHOUT_DEVICE_LIST: [&str; 6] = [
-    "device:send:*",
-    "platform:open-url",
+    "platform:open-path",
     "platform:read-clipboard",
     "platform:write-clipboard",
     "action:declare:*",
@@ -209,12 +202,12 @@ fn exercise_lifecycle(
     assert!(super::super::page_resource(state, &reloaded.label, &reloaded.url).is_err());
     assert!(super::super::stale_windows(state).contains(&reloaded.label));
 
-    crate::commands::plugins::plugins_consent_respond(
-        state,
-        ID,
-        &WITHOUT_DEVICE_LIST.map(str::to_owned),
-    )
-    .unwrap();
+    let without_device_list: Vec<String> = FULL_GRANTS
+        .into_iter()
+        .filter(|grant| *grant != "device:list")
+        .map(str::to_owned)
+        .collect();
+    crate::commands::plugins::plugins_consent_respond(state, ID, &without_device_list).unwrap();
     let restored = super::opened(state, ID);
     let fourth = state
         .hosted_ui
