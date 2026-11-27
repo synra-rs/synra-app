@@ -174,16 +174,7 @@ pub(crate) fn check_update_at(
 ) -> Result<Option<UpdateInfo>, synra_ipc::IpcError> {
     // Capture the source before fetching. The store checks it again in the write, so changing registries while a
     // request is in flight cannot publish an answer from the previous source.
-    let registry = state
-        .db()
-        .config()
-        .map_err(|error| {
-            synra_ipc::IpcError::unknown(ErrorCode::Internal)
-                .with_params(serde_json::json!({"detail": error.to_string()}))
-        })?
-        .into_iter()
-        .find(|row| row.key == REGISTRY_KEY)
-        .map(|row| row.value);
+    let registry = read_setting(state)?;
     let plugin = synra_protocol::PluginId::parse(plugin_id).map_err(|error| {
         synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument)
             .with_params(serde_json::json!({"pluginId": plugin_id, "detail": error.to_string()}))
@@ -196,7 +187,8 @@ pub(crate) fn check_update_at(
         return Err(synra_ipc::IpcError::unknown(ErrorCode::PluginNotInstalled)
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     };
-    let document = packument(state, plugin_id)?;
+    let bases = bases_from_setting(registry.as_deref())?;
+    let document = packument_from_sources(state, plugin_id, &bases)?.packument;
     let latest = document
         .latest_upgrade(&active.version)
         .map_err(|error| crate::commands::plugin_updates::version_refusal(plugin_id, error))?;

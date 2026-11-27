@@ -9,4 +9,4 @@ pub(crate) use disk::{
     choose, document_cache_path, load_document, max_age_ms, prune_directory, published_size,
     store_document,
 };
-pub(crate) use fetch::packument_with_base;
+pub(crate) use fetch::{packument_from_sources, packument_with_base};

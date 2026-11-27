@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Write as _;
 
 /// The on-disk form of a cached document, with the validators that let it be revalidated rather than re-fetched.
 ///
@@ -108,12 +109,19 @@ pub(crate) fn store_document(
         return;
     };
     let path = document_cache_path(state, url);
-    if let Some(parent) = path.parent()
-        && std::fs::create_dir_all(parent).is_err()
-    {
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    if std::fs::create_dir_all(parent).is_err() {
         return;
     }
-    let _ = std::fs::write(&path, text);
+    // Metadata readers can overlap; publish a complete document in one replacement.
+    let Ok(mut pending) = tempfile::NamedTempFile::new_in(parent) else {
+        return;
+    };
+    if pending.write_all(text.as_bytes()).is_ok() {
+        let _ = pending.persist(&path);
+    }
 }
 
 /// How long a cached document may sit on disk without being read.

@@ -9,9 +9,17 @@ pub(crate) fn packument_with_base(
     plugin_id: &str,
 ) -> Result<RegistryDocument, synra_ipc::IpcError> {
     let bases = bases(state)?;
+    packument_from_sources(state, plugin_id, &bases)
+}
+
+pub(crate) fn packument_from_sources(
+    state: &AppState,
+    plugin_id: &str,
+    bases: &[Base],
+) -> Result<RegistryDocument, synra_ipc::IpcError> {
     let mut last = None;
 
-    for base in &bases {
+    for base in bases {
         let path = match base.kind() {
             Kind::Npm => format!("/{}", plugin_id.replace('/', "%2F")),
             Kind::Static => format!("/{plugin_id}.json"),

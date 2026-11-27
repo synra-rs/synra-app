@@ -130,6 +130,7 @@ sysinfo = { version = "0.38", default-features = false, features = [ "system" ] 
 base64 = "0.22"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "1"
+tempfile = "3"
 sys-locale = "0.3.2"
 # The registry-document cache names its files by a hash of the URL, so a URL that differs by one character cannot read
 # another's document. Nothing is signed with it; it is a file-name function.
@@ -191,7 +192,6 @@ tauri-build = { version = "2", optional = true, features = [ ] }
 # The lint set mirrors the kernel's for the reasons in `synra-core/AGENTS.md`: the shell is where a command can
 # quietly grow into a business rule, and the shell is the one layer with a window on it.
 [dev-dependencies]
-tempfile = "3"
 # Assemble reviewable component fixtures for real page-to-Wasm error tests.
 wat = "=1.262.0"
 # Corrupt registration metadata through an independent real SQLite connection.

@@ -4,6 +4,17 @@ use synra_ipc::{InstallReport, InstallSourceDto, IpcError, PluginSnapshot};
 
 use crate::{commands, state::AppState};
 
+async fn read_registry<T: Send + 'static>(
+    state: tauri::State<'_, std::sync::Arc<AppState>>,
+    read: impl FnOnce(&AppState) -> Result<T, IpcError> + Send + 'static,
+) -> Result<T, IpcError> {
+    // Registry HTTP is blocking. Keep it off both the window thread and the async executor.
+    let state = std::sync::Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || read(&state))
+        .await
+        .map_err(crate::state::internal)?
+}
+
 #[tauri::command]
 pub fn plugins_list(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
@@ -98,11 +109,14 @@ pub fn plugins_reload(
 
 /// Asks the registry whether a newer version is published for an installed plugin.
 #[tauri::command]
-pub fn plugins_check_update(
+pub async fn plugins_check_update(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     plugin_id: String,
 ) -> Result<Option<synra_ipc::dto::UpdateInfo>, IpcError> {
-    commands::plugins::plugins_check_update(&state, &plugin_id)
+    read_registry(state, move |state| {
+        commands::plugins::plugins_check_update(state, &plugin_id)
+    })
+    .await
 }
 
 /// Searches the configured registry for plugins.
@@ -111,13 +125,10 @@ pub async fn plugins_catalog_search(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     query: synra_ipc::dto::CatalogQuery,
 ) -> Result<Vec<synra_ipc::dto::CatalogItem>, IpcError> {
-    // Registry HTTP is blocking. Keep it off both the window thread and the async executor.
-    let state = std::sync::Arc::clone(state.inner());
-    tauri::async_runtime::spawn_blocking(move || {
-        commands::plugins::plugins_catalog_search(&state, &query)
+    read_registry(state, move |state| {
+        commands::plugins::plugins_catalog_search(state, &query)
     })
     .await
-    .map_err(crate::state::internal)?
 }
 
 /// Searches the registry with only the text, as the contract's simpler entry names it.
@@ -144,12 +155,15 @@ pub async fn plugins_request_registry_search(
 
 /// Describes a registry package before any of it is downloaded.
 #[tauri::command]
-pub fn plugins_preview(
+pub async fn plugins_preview(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     plugin_id: String,
     version: Option<String>,
 ) -> Result<synra_ipc::dto::InstallPreviewDto, IpcError> {
-    commands::plugins::plugins_preview(&state, &plugin_id, version.as_deref())
+    read_registry(state, move |state| {
+        commands::plugins::plugins_preview(state, &plugin_id, version.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]

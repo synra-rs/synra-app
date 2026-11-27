@@ -62,7 +62,7 @@ pub fn install(
     version: Option<&str>,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let registry = packument_with_base(state, plugin_id)?;
+    let registry = packument_from_sources(state, plugin_id, &bases)?;
     let chosen = choose(&registry.packument, plugin_id, version)?;
 
     let package = download(
@@ -119,7 +119,7 @@ pub(crate) fn publisher_mismatch(
 /// As [`install`], plus `update` when the plugin is not installed.
 pub fn update(state: &AppState, plugin_id: &str) -> Result<InstallReport, synra_ipc::IpcError> {
     let bases = bases(state)?;
-    let registry = packument_with_base(state, plugin_id)?;
+    let registry = packument_from_sources(state, plugin_id, &bases)?;
     let chosen = choose(&registry.packument, plugin_id, None)?;
     let package = download(
         state,
@@ -141,13 +141,9 @@ pub(crate) fn update_automatically(
     policy: synra_plugin_api::update::UpdatePolicy,
     cancel: &synra_core::supervisor::Cancellation,
 ) -> Result<InstallReport, synra_ipc::IpcError> {
-    let expected_registry =
-        synra_core::plugin_updates::registry_setting(&state.db()).map_err(|error| {
-            synra_ipc::IpcError::unknown(ErrorCode::Internal)
-                .with_params(serde_json::json!({"detail": error.to_string()}))
-        })?;
-    let bases = bases(state)?;
-    let registry = packument_with_base(state, plugin_id)?;
+    let expected_registry = read_setting(state)?;
+    let bases = bases_from_setting(expected_registry.as_deref())?;
+    let registry = packument_from_sources(state, plugin_id, &bases)?;
     let chosen = choose(&registry.packument, plugin_id, Some(version))?;
     let package = download(
         state,

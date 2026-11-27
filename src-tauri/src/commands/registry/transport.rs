@@ -6,14 +6,17 @@ use super::*;
 /// mirror could plausibly fix (16 §4.2). A verification failure never falls back — it is not a network problem, and
 /// retrying it somewhere else would be skipping the check the design exists to keep.
 pub(crate) fn bases(state: &AppState) -> Result<Vec<Base>, synra_ipc::IpcError> {
-    let rows = state.db().config().map_err(|error| {
-        synra_ipc::IpcError::unknown(ErrorCode::Internal)
-            .with_params(serde_json::json!({"detail": error.to_string()}))
-    })?;
-    let value = rows
-        .iter()
-        .find(|row| row.key == REGISTRY_KEY)
-        .map(|row| serde_json::from_str::<serde_json::Value>(&row.value))
+    let setting = read_setting(state)?;
+    bases_from_setting(setting.as_deref())
+}
+
+pub(crate) fn read_setting(state: &AppState) -> Result<Option<String>, synra_ipc::IpcError> {
+    synra_core::plugin_updates::registry_setting(&state.db()).map_err(crate::state::internal)
+}
+
+pub(crate) fn bases_from_setting(setting: Option<&str>) -> Result<Vec<Base>, synra_ipc::IpcError> {
+    let value = setting
+        .map(serde_json::from_str::<serde_json::Value>)
         .transpose()
         .map_err(|error| invalid_configuration(None, error.to_string()))?;
     let config = validate_setting(value.as_ref())?;
