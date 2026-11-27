@@ -1,3 +1,5 @@
+import type { PluginCustomEventName } from '@synra/protocol'
+
 type EventMatcher = (name: string) => boolean
 
 const MAX_PATTERN_LENGTH = 240
@@ -14,6 +16,12 @@ function isPluginId(value: string): boolean {
   const [scope, name, extra] = value.slice(1).split('/')
   return scope !== undefined && name !== undefined && extra === undefined
     && isSlug(scope) && isSlug(name)
+}
+
+export function isCustomEventName(name: string): name is PluginCustomEventName {
+  const [prefix, owner, ...topic] = name.split('.')
+  return name.length <= MAX_PATTERN_LENGTH && prefix === '_plugin' && owner !== undefined && isPluginId(owner)
+    && topic.length > 0 && topic.every(part => part.length > 0 && !/[^\w-]/.test(part))
 }
 
 /** Compile patterns before attaching; the native host checks them independently. */

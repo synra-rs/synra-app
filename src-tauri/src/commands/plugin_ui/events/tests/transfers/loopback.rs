@@ -179,7 +179,7 @@ async fn plugin_upload_crosses_tcp_and_retains_the_verified_outcome_across_pages
         "reopened",
         21,
         "event.resync",
-        json!({ "streamId": reopened }),
+        json!({ "streamId": reopened, "afterSeq": 0 }),
     )
     .await
     .unwrap();

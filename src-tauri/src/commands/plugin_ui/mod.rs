@@ -39,6 +39,8 @@ mod window;
 
 #[cfg(any(feature = "tauri-shell", test))]
 pub(crate) use events::PluginEvents;
+#[cfg(any(feature = "tauri-shell", test))]
+pub(crate) use events::bind_custom_events;
 #[cfg(feature = "tauri-shell")]
 pub(crate) use events::{dispatch_event_rpc, project_events};
 #[cfg(test)]

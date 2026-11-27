@@ -1,17 +1,18 @@
-import type { SubscriptionOptions, Unsubscribe } from '@synra/client'
+import type { SubscriptionGap, SubscriptionOptions, Unsubscribe } from '@synra/client'
 import type { PluginEvent, PluginTransferStatus, SynraError, TransferId } from '@synra/protocol'
 import type { InjectionContext } from '../context'
 import type { GrantCheck } from '../grants'
 import { createSynraError } from '../../errors'
 import { asSynraError, denied, invalidArgument } from '../errors'
 import { decodePoll, decodeRecovery, DEVICE_TOPIC, TRANSFER_TOPIC } from './decode'
-import { compileEventPattern } from './pattern'
+import { compileEventPattern, isCustomEventName } from './pattern'
 
 interface Subscription {
   readonly id: number
   readonly matches: (event: PluginEvent) => boolean
   readonly handler: (payload: unknown) => void
   readonly onError: SubscriptionOptions['onError']
+  readonly onGap: SubscriptionOptions['onGap']
   phase: 'attaching' | 'active' | 'disposed'
   stream: string | undefined
 }
@@ -36,13 +37,15 @@ export class PageSubscriptions {
     const matches = compileEventPattern(pattern)
     if (matches === undefined)
       throw invalidArgument('invalid event pattern')
+    if (isCustomEventName(pattern) && !this.can(`event:subscribe:${pattern}`))
+      throw denied(`event:subscribe:${pattern}`)
     const required = TOPIC_GRANTS.filter(([name]) => matches(name))
     const first = required[0]
     if (first !== undefined && !required.some(([, grant]) => this.can(grant)))
       throw denied(first[1])
     return this.register({ pattern }, (frame) => {
-      const rule = TOPIC_GRANTS.find(([name]) => frame.name === name)
-      return matches(frame.name) && (rule === undefined || this.can(rule[1]))
+      const grant = isCustomEventName(frame.name) ? `event:subscribe:${frame.name}` : TOPIC_GRANTS.find(([name]) => frame.name === name)?.[1]
+      return matches(frame.name) && (grant === undefined || this.can(grant))
     }, payload => handler(payload as T), options)
   }
 
@@ -67,6 +70,7 @@ export class PageSubscriptions {
       matches,
       handler,
       onError: options?.onError,
+      onGap: options?.onGap,
       phase: 'attaching',
       stream: undefined
     }
@@ -161,7 +165,7 @@ export class PageSubscriptions {
       }
       try {
         if (recoverAt !== undefined) {
-          cursor.seq = await this.recover(stream, recoverAt)
+          cursor.seq = await this.recover(stream, cursor.seq, recoverAt)
           recoverAt = undefined
           continue
         }
@@ -200,8 +204,8 @@ export class PageSubscriptions {
     }
   }
 
-  private async recover(stream: string, minimum: number): Promise<number> {
-    const raw = await this.call('event.resync', { streamId: stream })
+  private async recover(stream: string, afterSeq: number, minimum: number): Promise<number> {
+    const raw = await this.call('event.resync', { streamId: stream, afterSeq })
     if (this.active(stream).length === 0)
       return minimum
     const snapshot = decodeRecovery(raw)
@@ -209,7 +213,23 @@ export class PageSubscriptions {
       throw createSynraError('protocol_violation', { reason: 'event recovery moved the cursor backwards' })
     for (const frame of snapshot.events)
       this.deliver(stream, frame)
+    for (const subscription of this.active(stream)) {
+      if (subscription.phase === 'active' && snapshot.unreplayedSubscriptionIds?.includes(subscription.id))
+        this.notifyGap(subscription, { afterSeq, throughSeq: snapshot.seq })
+    }
     return snapshot.seq
+  }
+
+  private notifyGap(subscription: Subscription, gap: SubscriptionGap): void {
+    try {
+      if (subscription.onGap === undefined)
+        console.warn('Synra custom events were missed', gap)
+      else
+        subscription.onGap(gap)
+    }
+    catch (cause) {
+      this.report(subscription, asSynraError(cause))
+    }
   }
 
   private deliver(stream: string, frame: PluginEvent): void {

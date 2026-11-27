@@ -89,17 +89,22 @@ pub(super) struct Stream {
 
 #[derive(Default)]
 struct Queue {
-    subscriptions: HashMap<u32, Selector>,
+    subscriptions: HashMap<u32, Selection>,
     messages: VecDeque<Message>,
     seq: u64,
     missed: bool,
+}
+
+struct Selection {
+    selector: Selector,
+    latest_custom: u64,
 }
 
 impl Queue {
     fn selects(&self, event: &PluginEvent) -> bool {
         self.subscriptions
             .values()
-            .any(|selector| selector.matches(event))
+            .any(|selection| selection.selector.matches(event))
     }
 }
 
@@ -118,7 +123,7 @@ impl Stream {
             .lock()
             .subscriptions
             .values()
-            .any(|selector| selector.observes(topic))
+            .any(|selection| selection.selector.observes(topic))
     }
 
     pub(super) fn selects_transfer(&self, id: TransferId) -> bool {
@@ -126,7 +131,11 @@ impl Stream {
             .lock()
             .subscriptions
             .values()
-            .any(|selector| selector.transfer(id))
+            .any(|selection| selection.selector.transfer(id))
+    }
+
+    pub(super) fn selects(&self, event: &PluginEvent) -> bool {
+        self.inner.lock().selects(event)
     }
 
     fn subscribe(&self, id: u32, selector: Selector) -> Result<(), IpcError> {
@@ -134,7 +143,13 @@ impl Stream {
         if queue.subscriptions.len() >= MAX_PATTERNS && !queue.subscriptions.contains_key(&id) {
             return Err(limit("too many logical subscriptions"));
         }
-        queue.subscriptions.insert(id, selector);
+        queue.subscriptions.insert(
+            id,
+            Selection {
+                selector,
+                latest_custom: 0,
+            },
+        );
         Ok(())
     }
 
@@ -156,7 +171,7 @@ impl Stream {
         messages.retain(|message| match message {
             Ok(envelope) => subscriptions
                 .values()
-                .any(|selector| selector.matches(&envelope.event)),
+                .any(|selection| selection.selector.matches(&envelope.event)),
             Err(_) => true,
         });
         false
@@ -170,24 +185,32 @@ impl Stream {
         self.wake.notify_one();
     }
 
-    pub(super) fn publish(&self, topic: Topic, at: i64, event: Result<PluginEvent, IpcError>) {
+    pub(super) fn publish(&self, at: i64, event: Result<PluginEvent, (Topic, IpcError)>) {
         let mut queue = self.inner.lock();
         let interested = match &event {
             Ok(event) => queue.selects(event),
-            Err(_) => queue
+            Err((topic, _)) => queue
                 .subscriptions
                 .values()
-                .any(|selector| selector.observes(topic)),
+                .any(|selection| selection.selector.observes(*topic)),
         };
         if !interested {
             return;
         }
         queue.seq = queue.seq.saturating_add(1);
-        let message = event.map(|event| PluginEventEnvelope {
-            seq: queue.seq,
-            at,
-            event,
-        });
+        let seq = queue.seq;
+        if let Ok(event @ PluginEvent::Custom(_)) = &event {
+            for selection in queue
+                .subscriptions
+                .values_mut()
+                .filter(|selection| selection.selector.matches(event))
+            {
+                selection.latest_custom = seq;
+            }
+        }
+        let message = event
+            .map(|event| PluginEventEnvelope { seq, at, event })
+            .map_err(|(_, error)| error);
         if queue.messages.len() == MAX_QUEUED {
             queue.messages.pop_front();
         }
@@ -204,15 +227,31 @@ impl Stream {
         self.wake.notify_one();
     }
 
-    pub(super) fn reset(&self, mut events: Vec<PluginEvent>) -> PluginEventRecovery {
+    pub(super) fn reset(
+        &self,
+        after_seq: u64,
+        mut events: Vec<PluginEvent>,
+    ) -> Result<PluginEventRecovery, IpcError> {
         let mut queue = self.inner.lock();
+        if after_seq > queue.seq {
+            return Err(super::invalid(
+                "event recovery cursor is ahead of the stream",
+            ));
+        }
         events.retain(|event| queue.selects(event));
+        let mut unreplayed_subscription_ids: Vec<_> = queue
+            .subscriptions
+            .iter()
+            .filter_map(|(id, selection)| (selection.latest_custom > after_seq).then_some(*id))
+            .collect();
+        unreplayed_subscription_ids.sort_unstable();
         queue.missed = false;
         queue.messages.clear();
-        PluginEventRecovery {
+        Ok(PluginEventRecovery {
             seq: queue.seq,
             events,
-        }
+            unreplayed_subscription_ids,
+        })
     }
 
     /// Hold one reader across the wait. Wake immediately on a projected event or final unsubscribe.

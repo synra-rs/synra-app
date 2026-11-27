@@ -150,5 +150,20 @@
       "valid": true,
       "matches": true
     }
-  ]
+  ],
+  "custom": {
+    "seq": 3,
+    "at": 26,
+    "name": "_plugin.@acme/chat.update",
+    "payload": {
+      "message": "测试🖱️"
+    }
+  },
+  "customRecovery": {
+    "seq": 8,
+    "events": [],
+    "unreplayedSubscriptionIds": [
+      2
+    ]
+  }
 }

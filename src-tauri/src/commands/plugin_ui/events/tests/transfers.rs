@@ -146,7 +146,7 @@ async fn real_worker_failure_only_reaches_the_authorized_owner_and_survives_reco
         "owner",
         20,
         "event.resync",
-        json!({ "streamId": owner }),
+        json!({ "streamId": owner, "afterSeq": actual["seq"] }),
     )
     .await
     .unwrap();
@@ -159,7 +159,7 @@ async fn real_worker_failure_only_reaches_the_authorized_owner_and_survives_reco
         "other",
         21,
         "event.resync",
-        json!({ "streamId": other }),
+        json!({ "streamId": other, "afterSeq": 0 }),
     )
     .await
     .unwrap();
@@ -206,7 +206,7 @@ async fn a_management_bus_gap_invalidates_the_page_even_without_a_retained_updat
         "reader",
         20,
         "event.resync",
-        json!({ "streamId": stream }),
+        json!({ "streamId": stream, "afterSeq": 0 }),
     )
     .await
     .unwrap();

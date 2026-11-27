@@ -14,6 +14,7 @@ use synra_protocol::{ErrorCode, TransferId, inbound::HandlePattern};
 use uuid::Uuid;
 
 use super::{authority, internal, transfer::owned_status};
+pub(crate) use projection::bind_custom_events;
 pub(crate) use projection::project_events;
 use selectors::Selector;
 pub(crate) use streams::PluginEvents;
@@ -52,6 +53,13 @@ struct Subscription {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Receive {
     stream_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Recover {
+    stream_id: String,
+    after_seq: u64,
 }
 
 fn invalid(error: impl std::fmt::Display) -> IpcError {
@@ -155,7 +163,7 @@ async fn event_rpc(
             serde_json::to_value(message?).map_err(internal)
         }
         PluginUiOp::EventResync => {
-            let args: Receive = serde_json::from_value(args.clone()).map_err(invalid)?;
+            let args: Recover = serde_json::from_value(args.clone()).map_err(invalid)?;
             let id = args.stream_id.parse::<Uuid>().map_err(invalid)?;
             let stream = state
                 .plugin_events
@@ -164,7 +172,7 @@ async fn event_rpc(
             let _projection = state.plugin_events.projection.lock();
             let snapshots = projection::snapshots(state, &stream, &session)?;
             validate_page(state, label, nonce)?;
-            serde_json::to_value(stream.reset(snapshots)).map_err(internal)
+            serde_json::to_value(stream.reset(args.after_seq, snapshots)?).map_err(internal)
         }
         _ => Err(IpcError::unknown(ErrorCode::Unsupported)),
     }

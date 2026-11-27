@@ -112,6 +112,7 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
                 &bridge_cancel,
             );
             let state = std::sync::Arc::new(state);
+            commands::plugin_ui::bind_custom_events(&state);
             {
                 // Pairing changes call back here, so the window learns about a request without polling.
                 let weak = std::sync::Arc::downgrade(&state);

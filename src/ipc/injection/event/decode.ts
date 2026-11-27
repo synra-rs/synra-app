@@ -2,6 +2,7 @@ import type { PluginDevicePlatform, PluginDeviceTarget, PluginEvent, PluginEvent
 import { createSynraError } from '../../errors'
 import { data } from '../../errors/shape'
 import { decodeTransferStatus } from '../transfer-status'
+import { isCustomEventName } from './pattern'
 
 export const DEVICE_TOPIC = 'device.changed' satisfies PluginEvent['name']
 export const TRANSFER_TOPIC = 'transfer.progress' satisfies PluginEvent['name']
@@ -45,6 +46,8 @@ function decodeEvent(raw: unknown): PluginEvent {
     return { name, payload: { devices: decodeDevices(data(payload, 'devices')) } }
   if (name === TRANSFER_TOPIC)
     return { name, payload: decodeTransferStatus(payload) }
+  if (typeof name === 'string' && isCustomEventName(name) && payload !== null && typeof payload === 'object' && !Array.isArray(payload))
+    return { name, payload: payload as Record<string, unknown> }
   return invalid('invalid plugin event topic')
 }
 
@@ -63,7 +66,13 @@ export function decodePoll(raw: unknown): PluginEventPoll {
 export function decodeRecovery(raw: unknown): PluginEventRecovery {
   const seq = data(raw, 'seq')
   const events = data(raw, 'events')
+  const ids = data(raw, 'unreplayedSubscriptionIds')
   if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0 || !Array.isArray(events))
     return invalid('invalid plugin event recovery')
-  return { seq, events: events.map(decodeEvent) }
+  const snapshots = events.map(decodeEvent)
+  if (ids === undefined)
+    return { seq, events: snapshots }
+  if (!Array.isArray(ids) || ids.length > 64 || !ids.every(id => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0 && id <= 0xFFFFFFFF))
+    return invalid('invalid event recovery subscriptions')
+  return { seq, events: snapshots, unreplayedSubscriptionIds: ids }
 }

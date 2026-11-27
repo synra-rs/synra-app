@@ -250,8 +250,18 @@ async fn resync_replaces_the_queued_history_after_overflow() {
     let first: PluginEventEnvelope =
         serde_json::from_value(next("event.poll").await.unwrap()).unwrap();
     assert_eq!(first.seq, 3);
-    let snapshot: PluginEventRecovery =
-        serde_json::from_value(next("event.resync").await.unwrap()).unwrap();
+    let snapshot: PluginEventRecovery = serde_json::from_value(
+        rpc(
+            &state,
+            "reader",
+            10,
+            "event.resync",
+            json!({"streamId": stream, "afterSeq": 0}),
+        )
+        .await
+        .unwrap(),
+    )
+    .unwrap();
     assert_eq!(snapshot.seq, 10);
     assert!(matches!(
         snapshot.events.as_slice(),
@@ -263,4 +273,5 @@ async fn resync_replaces_the_queued_history_after_overflow() {
     assert_eq!(after.seq, 11);
 }
 
+mod custom;
 mod transfers;
