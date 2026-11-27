@@ -84,6 +84,44 @@ function proxyTimeout(get: () => never): unknown {
 }
 
 describe('error shapes through App and testkit', () => {
+  async function rejectedByBoth(reason: unknown): Promise<unknown[]> {
+    const mock = createMockClient({ profile: APP_PROFILE, capabilities: ['device:list'] })
+    mock.stubFailure('device', 'list', reason)
+    const invoke = vi.fn(async () => {
+      throw reason
+    })
+    const facade = createInjection(context({ bridge: bridge({ invoke }) }))
+    const errors: unknown[] = []
+    for (const client of [facade, mock])
+      await client.device.list().catch((error: unknown) => errors.push(error))
+    expect(errors).toHaveLength(2)
+    return errors
+  }
+
+  it('redacts credential-bearing diagnostic keys and keeps the first normalized key', async () => {
+    const reason = synraError('internal', 'error.internal')
+    const details = {
+      'https://fixture-user:fixture-pass@registry.test/pkg?sig=fixture-first': 503,
+      'https://registry.test/pkg?sig=fixture-second': 504,
+      'phase': 'metadata'
+    }
+    for (const error of await rejectedByBoth({ ...reason, details })) {
+      expect(error).toMatchObject({ code: 'internal', details: { 'https://registry.test/pkg': 503, 'phase': 'metadata' } })
+      expect(JSON.stringify(error)).not.toContain('fixture-')
+    }
+  })
+
+  it.each([
+    `registry refused ${JSON.stringify({ token: 'fixture-quoted "value"', status: 503 })}`,
+    'registry refused {\'api-key\': \'fixture-single value\', \'status\': 503}',
+    `registry refused {"password":"${'fixture-cut '.repeat(90)}"}`
+  ])('redacts quoted credentials in a bridge rejection', async (message) => {
+    for (const error of await rejectedByBoth(new Error(message))) {
+      expect(error).toMatchObject({ code: 'internal', details: { detail: expect.stringContaining('[REDACTED]') } })
+      expect(JSON.stringify(error)).not.toContain('fixture-')
+    }
+  })
+
   it('checks every Core retry policy and normalizes it through each call path', async () => {
     for (const error of errorFixture.policies) {
       const mock = createMockClient({ profile: APP_PROFILE, capabilities: ['device:list'] })

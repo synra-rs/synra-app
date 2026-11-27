@@ -1,7 +1,10 @@
 import { data } from './shape'
 
 const SECRET_FIELD = /token|secret|password|passwd|credential|api[_-]?key|auth|cookie|private[_-]?key|signature|payload|clipboard|file_?data|keyring|^body$|^text$|^content$|^bytes$|^request$/i
+// Match escaped quotes and values cut off by the diagnostic limit.
+const QUOTED_FIELD = /(["'])([\w-]+)\1(\s*[:=]\s*)(?:"(?:[^"\\]|\\[\s\S])*(?:"|\\?$)|'(?:[^'\\]|\\[\s\S])*(?:'|\\?$))/g
 const MAX_STRING = 512
+const MAX_KEY = 64
 const MAX_CHARACTERS = 4096
 const MAX_NODES = 96
 const MAX_DEPTH = 4
@@ -25,6 +28,8 @@ export function diagnosticText(value: string): string {
         return '[invalid URL]'
       }
     })
+    .replace(QUOTED_FIELD, (field: string, quote: string, name: string, separator: string) =>
+      SECRET_FIELD.test(name) ? `${quote}${name}${quote}${separator}${quote}[REDACTED]${quote}` : field)
     .replace(/\b(authorization|proxy-authorization|cookie|set-cookie)(\s*[:=]\s*|\s+)[^\r\n]*/gi, '$1=[REDACTED]')
     .replace(/\b(authorization|bearer|token|password|secret|api[_-]?key)(\s*[:=]\s*|\s+)[^\s,;]+/gi, '$1=[REDACTED]')
     .slice(0, MAX_STRING)
@@ -69,7 +74,9 @@ export function diagnostic(value: unknown): unknown {
       for (const key of Object.keys(input).slice(0, Math.max(0, nodes))) {
         if (characters <= 0 || nodes <= 0)
           break
-        const name = key.slice(0, 64)
+        const name = diagnosticText(key).slice(0, Math.min(MAX_KEY, characters))
+        if (Object.hasOwn(output, name))
+          continue
         characters -= name.length
         Object.defineProperty(output, name, {
           value: SECRET_FIELD.test(key) ? '[REDACTED]' : visit(data(input, key), depth + 1),
