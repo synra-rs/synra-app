@@ -24,9 +24,9 @@ impl AppState {
         now_ms: i64,
     ) -> Result<Self, IpcError> {
         let started = std::time::Instant::now();
-        let identity = Identity::load(&db, platform, now_ms).map_err(internal)?;
-        // Written back because `load` generates one on a fresh installation, and a generated identity that is only in
-        // memory is a device that appears new to every peer on every start — which loses every pairing, silently.
+        let mut identity = Identity::load(&db, platform, now_ms).map_err(internal)?;
+        // Refresh the local platform on installations that previously stored a stale value.
+        platform.clone_into(&mut identity.platform);
         identity.store(&db, now_ms).map_err(internal)?;
         // ★ A previous run's uninstall may have left an artifact directory behind: a loaded engine held its wasm file
         // open, the row was already gone, and the user was told. This is the moment to finish it — the old process is

@@ -43,29 +43,7 @@ pub(super) fn app_state(app: &tauri::AppHandle) -> Result<AppState, String> {
     db.migrate()
         .map_err(|error| format!("the database could not be migrated: {error}"))?;
 
-    // ★ The platform string the kernel stores, taken from the build target rather than from `std::env::consts`.
-    //
-    // They usually agree, and they disagree in the cross-compiled case — and the identity records the platform at first
-    // launch, so a wrong answer here is written to disk and then believed by every peer for the life of the install.
-    //
-    // ★ Android is the case that made this matter.
-    //
-    // `std::env::consts::OS` answered `"android"` for this build all along; what it did not answer was a string the
-    // kernel's own vocabulary has a word for. `identity` stores what a peer is told, and a peer that is told "unknown"
-    // records a device it can never name again — so the arm exists and says "android".
-    let platform = if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "android") {
-        "android"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else {
-        "unknown"
-    };
-
-    let state = AppState::new(db, paths, platform, now_ms())
+    let state = AppState::new(db, paths, crate::host_environment::PLATFORM, now_ms())
         .map_err(|error| format!("the identity could not be prepared: {error:?}"))?;
 
     let plugins_started = std::time::Instant::now();

@@ -146,6 +146,21 @@ mod tests {
     }
 
     #[test]
+    fn reopening_refreshes_the_platform_without_replacing_the_device() {
+        let (_root, state) = testing::file_state();
+        identity_set_display_name(&state, "Living room").expect("a chosen name");
+        let original = identity_get(&state).expect("device");
+        let mut stale = state.identity.lock().clone();
+        stale.platform = "unknown".to_owned();
+        stale
+            .store(&state.db(), testing::FIXED_NOW_MS)
+            .expect("stored old platform metadata");
+
+        let reopened = testing::reopen(&state);
+        assert_eq!(identity_get(&reopened).expect("reopened device"), original);
+    }
+
+    #[test]
     fn a_rename_reaches_the_registry_so_peers_stop_seeing_the_old_name() {
         let state = testing::state();
         identity_set_display_name(&state, "Kitchen tablet").expect("a rename");

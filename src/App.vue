@@ -7,18 +7,18 @@
     <InputPrompt />
     <DebugConsole />
     <SearchPalette ref="searchPalette" />
-    <div class="grid-rows-[auto_minmax(0,1fr)] screen" :class="{ 'mobile-shell': isMobile }">
-      <WindowTitleBar />
-      <div class="desktop-shell grid grid-rows-[minmax(0,1fr)_auto] min-h-0 min-w-0 md:grid-cols-[15rem_minmax(0,1fr)]">
-        <AppNavigation :rail="rail" @search="searchPalette?.show($event)" />
-        <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="desktop-main [scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
+    <div class="screen" :data-layout="layout.size" :data-navigation="layout.navigation" :class="{ 'mobile-host': environment?.kind === 'mobile' }">
+      <WindowTitleBar v-if="environment?.kind === 'desktop'" />
+      <div class="app-shell">
+        <AppNavigation v-if="layout.navigation !== 'bottom'" :rail="layout.navigation === 'rail'" @search="searchPalette?.show($event)" />
+        <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
           <div class="mx-auto max-w-[1200px] min-w-0 w-full">
             <CrashNotice />
             <NoticeHost :online="online" />
             <RouterView />
           </div>
         </main>
-        <AppNavigation bottom :rail="rail" @search="searchPalette?.show($event)" />
+        <AppNavigation v-if="layout.navigation === 'bottom'" bottom :rail="false" @search="searchPalette?.show($event)" />
       </div>
     </div>
   </ConfigProvider>
@@ -27,16 +27,17 @@
 <script setup lang="ts">
 import type { DevicesSnapshot } from '@synra/protocol'
 import { synraAntdTheme } from '@synra/theme/antd'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { message as antdMessage, ConfigProvider } from 'ant-design-vue'
 import enUS from 'ant-design-vue/es/locale/en_US'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { isPrimaryRoute } from './app/back'
+import { hostEnvironment } from './app/host-environment'
 import { kernel } from './app/kernel'
 import { locale, watchSystemLocale } from './app/locale'
 import { useNetworkStatus } from './app/network'
+import { useHostBack } from './app/use-host-back'
+import { useViewportLayout } from './app/viewport'
 import AppNavigation from './components/AppNavigation.vue'
 import CrashNotice from './components/CrashNotice.vue'
 import DebugConsole from './components/DebugConsole.vue'
@@ -48,7 +49,6 @@ import TransferPrompt from './components/TransferPrompt.vue'
 import WindowTitleBar from './components/WindowTitleBar.vue'
 import { messages } from './messages'
 import { useDevicesStore } from './stores/devices'
-import { dismissActiveDialog } from './stores/dialogs'
 import { useSettingsStore } from './stores/settings'
 
 const route = useRoute()
@@ -60,89 +60,32 @@ const componentLocale = computed(() => locale.value === 'zh-CN' ? zhCN : enUS)
 const online = useNetworkStatus()
 const contentPane = ref<HTMLElement>()
 const searchPalette = ref<{ show: (trigger?: HTMLElement) => void }>()
-const rail = ref(false)
-const isMobile = ref(false)
-const isTauri = '__TAURI_INTERNALS__' in window
-let query: MediaQueryList | undefined
-let removeContextMenu: (() => void) | undefined
-let backResetTimer: ReturnType<typeof setTimeout> | undefined
-let lastBackAt = 0
-let stopBack: (() => void) | undefined
-let stopLocaleSync = (): void => {}
+const environment = computed(() => hostEnvironment(window, devices.identity?.platform))
+const layout = useViewportLayout()
+let stopStartup: (() => void) | undefined
 
 watch(locale, value => document.documentElement.lang = value, { immediate: true })
 watch(() => route.path, () => contentPane.value?.scrollTo({ top: 0, left: 0 }), { flush: 'post' })
+useHostBack(environment, router, () => {
+  void antdMessage.info(messages.app.backAgainToExit)
+})
 
-function apply(event: MediaQueryList | MediaQueryListEvent): void {
-  rail.value = !event.matches
-}
-
-onMounted(async () => {
-  stopLocaleSync = watchSystemLocale()
-  query = window.matchMedia('(min-width: 64rem)')
-  const phoneLike = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) || navigator.maxTouchPoints > 0
-  isMobile.value = isTauri && phoneLike ? true : !query.matches
-  rail.value = !isMobile.value && !query.matches
-  query.addEventListener('change', (event) => {
-    if (!isTauri || !phoneLike) {
-      apply(event)
-      isMobile.value = !event.matches
-    }
-  })
+onMounted(() => {
+  let active = true
+  const stopLocaleSync = watchSystemLocale()
   const preventContextMenu = (event: MouseEvent): void => event.preventDefault()
   document.addEventListener('contextmenu', preventContextMenu)
-  removeContextMenu = () => document.removeEventListener('contextmenu', preventContextMenu)
-  if (isMobile.value && isTauri) {
-    try {
-      const windowHandle = getCurrentWindow()
-      await windowHandle.setFullscreen(true)
-    }
-    catch {
-      // Mobile builds may not expose the desktop window API; safe-area CSS remains the fallback.
-    }
+  stopStartup = () => {
+    active = false
+    stopLocaleSync()
+    document.removeEventListener('contextmenu', preventContextMenu)
   }
-  if (isMobile.value && isTauri) {
-    const windowHandle = getCurrentWindow()
-    let allowClose = false
-    stopBack = await windowHandle.onCloseRequested(async (event) => {
-      if (allowClose) {
-        allowClose = false
-        return
-      }
-      event.preventDefault()
-      if (dismissActiveDialog())
-        return
-      if (!isPrimaryRoute(route.path, route.query, route.hash)) {
-        await router.back()
-        return
-      }
-      const now = Date.now()
-      if (now - lastBackAt < 1800) {
-        allowClose = true
-        await windowHandle.close()
-        return
-      }
-      lastBackAt = now
-      antdMessage.info(messages.app.backAgainToExit)
-      if (backResetTimer)
-        clearTimeout(backResetTimer)
-      backResetTimer = setTimeout(() => {
-        lastBackAt = 0
-      }, 1800)
-    })
-  }
-  const answer = await kernel.call<DevicesSnapshot>('devices_snapshot')
-  if (answer.ok)
-    devices.applySnapshot(answer.value)
-  await settings.read(kernel)
-})
 
-onUnmounted(() => {
-  stopLocaleSync()
-  stopBack?.()
-  removeContextMenu?.()
-  if (backResetTimer)
-    clearTimeout(backResetTimer)
-  query?.removeEventListener('change', apply)
+  void kernel.call<DevicesSnapshot>('devices_snapshot').then((answer) => {
+    if (active && answer.ok)
+      devices.applySnapshot(answer.value)
+  }).catch((error: unknown) => console.warn('Synra device snapshot', error))
+  void settings.read(kernel).catch((error: unknown) => console.warn('Synra settings', error))
 })
+onUnmounted(() => stopStartup?.())
 </script>

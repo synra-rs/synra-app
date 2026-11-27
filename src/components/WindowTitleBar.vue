@@ -1,5 +1,5 @@
 <template>
-  <header class="hidden h-11 min-h-11 shrink-0 items-center border-b border-line bg-glass px-3 md:flex" data-tauri-drag-region @dblclick="toggleMaximize">
+  <header class="h-11 min-h-11 flex shrink-0 items-center border-b border-line bg-glass px-3" data-tauri-drag-region @dblclick="toggleMaximize">
     <div class="min-w-0 row flex-1 gap-2" data-tauri-drag-region>
       <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
       <span class="truncate text-sm font-semibold">{{ messages.app.name }}</span>
@@ -22,22 +22,21 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Button as AButton } from 'ant-design-vue'
 import { onMounted, onUnmounted, ref } from 'vue'
+import { subscribeWhileActive } from '../app/native-listener'
 import { messages } from '../messages'
 
-const isTauri = '__TAURI_INTERNALS__' in window
-const windowHandle = isTauri ? getCurrentWindow() : undefined
+const windowHandle = getCurrentWindow()
 const maximized = ref(false)
 let unlistenResize: (() => void) | undefined
+const report = (error: unknown): void => console.warn('Synra window size', error)
 
 async function minimize(): Promise<void> {
-  await windowHandle?.minimize()
+  await windowHandle.minimize()
 }
 async function close(): Promise<void> {
-  await windowHandle?.close()
+  await windowHandle.close()
 }
 async function toggleMaximize(): Promise<void> {
-  if (!windowHandle)
-    return
   if (await windowHandle.isMaximized()) {
     await windowHandle.unmaximize()
   }
@@ -47,13 +46,19 @@ async function toggleMaximize(): Promise<void> {
   maximized.value = await windowHandle.isMaximized()
 }
 
-onMounted(async () => {
-  if (!windowHandle)
-    return
-  maximized.value = await windowHandle.isMaximized()
-  unlistenResize = await windowHandle.onResized(async () => {
-    maximized.value = await windowHandle.isMaximized()
-  })
+onMounted(() => {
+  unlistenResize = subscribeWhileActive(async (isActive) => {
+    async function refresh(): Promise<void> {
+      const next = await windowHandle.isMaximized()
+      if (isActive())
+        maximized.value = next
+    }
+    await refresh().catch(report)
+    return windowHandle.onResized(() => {
+      if (isActive())
+        void refresh().catch(report)
+    })
+  }, report)
 })
 onUnmounted(() => unlistenResize?.())
 </script>

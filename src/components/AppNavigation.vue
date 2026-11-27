@@ -1,5 +1,5 @@
 <template>
-  <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line md:hidden">
+  <nav v-if="bottom" :aria-label="messages.app.navigation" class="mobile-tabbar flex border-t border-line">
     <button type="button" class="mobile-search-entry synra-icon-button border-0 bg-transparent" :aria-label="messages.search.title" :title="messages.search.title" data-testid="mobile-search-entry" @click="emitSearch">
       <span :class="icons.search" aria-hidden="true" />
     </button>
@@ -9,7 +9,7 @@
       <span>{{ page.label }}</span>
     </button>
   </nav>
-  <aside v-else class="hidden min-h-0 min-w-0 flex-col overflow-hidden border-e border-line bg-glass px-2 py-3 md:flex">
+  <aside v-else class="min-h-0 min-w-0 flex flex-col overflow-hidden border-e border-line bg-glass px-2 py-3">
     <div class="row shrink-0 justify-end gap-2 px-2 pb-3">
       <ATooltip placement="right">
         <template #title>

@@ -29,12 +29,7 @@ pub(super) fn with_plugins_or_refuse(
     // `BackendKind::default_for` is the table the kernel keeps for exactly this question, and a shell that named
     // `WasmtimeCranelift` itself would be a second answer to it — one that is wrong on a phone, where a JIT costs build
     // time and a baseline compiler is the compromise the design document names.
-    let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
-        synra_plugin_host::HostKind::Mobile
-    } else {
-        synra_plugin_host::HostKind::Desktop
-    };
-    let kind = synra_plugin_host::BackendKind::default_for(host_kind);
+    let kind = synra_plugin_host::BackendKind::default_for(crate::host_environment::kind());
     match synra_plugin_host::engine::WasmtimeBackend::new(kind) {
         Ok(engine) => {
             // ★ The host, which this shell had never supplied.

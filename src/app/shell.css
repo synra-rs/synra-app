@@ -41,29 +41,37 @@ summary,
   position: fixed;
   inset: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   background: var(--synra-screen);
 }
 
-.desktop-shell {
+.app-shell {
+  display: grid;
+  grid-row: 2;
+  grid-template-columns: 15rem minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
 }
 
-.desktop-main {
-  min-height: 0;
-  min-width: 0;
+.screen[data-navigation="rail"] > .app-shell {
+  grid-template-columns: 6rem minmax(0, 1fr);
 }
 
-.screen.mobile-shell {
+.screen.mobile-host {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.screen[data-navigation="bottom"] {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  padding: env(safe-area-inset-top) 0 0;
 }
 
-.mobile-shell > .desktop-shell {
+.screen[data-navigation="bottom"] > .app-shell {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -71,21 +79,16 @@ summary,
   height: auto;
 }
 
-.mobile-shell > .desktop-shell > :first-child {
-  display: none;
-}
-
-.mobile-shell > .desktop-shell > main {
+.screen[data-navigation="bottom"] > .app-shell > main {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
   height: auto;
-  padding: 1.25rem;
-  padding-bottom: 1.5rem;
+  padding: 1.25rem max(1.25rem, env(safe-area-inset-right)) 1.5rem max(1.25rem, env(safe-area-inset-left));
   font-size: 1.125rem;
 }
 
-.mobile-shell > .desktop-shell > nav {
+.screen[data-navigation="bottom"] > .app-shell > nav {
   position: relative;
   flex: 0 0 auto;
   display: flex;
@@ -99,16 +102,12 @@ summary,
   backdrop-filter: blur(var(--synra-blur)) saturate(var(--synra-saturate));
 }
 
-.mobile-shell > .desktop-shell > nav button {
+.screen[data-navigation="bottom"] > .app-shell > nav button {
   min-height: 3.5rem;
   font-size: 0.875rem;
 }
 
-.mobile-shell {
-  padding-top: env(safe-area-inset-top);
-}
-
-.mobile-shell .mobile-tabbar button {
+.screen[data-navigation="bottom"] .mobile-tabbar button {
   appearance: none;
   -webkit-appearance: none;
   min-width: 0;
@@ -125,12 +124,12 @@ summary,
   transition: color var(--synra-duration-fast), background-color var(--synra-duration-fast);
 }
 
-.mobile-shell .mobile-tabbar button[aria-current="page"] {
+.screen[data-navigation="bottom"] .mobile-tabbar button[aria-current="page"] {
   color: var(--synra-primary-ink);
   background-color: color-mix(in oklab, var(--synra-primary) 14%, transparent);
 }
 
-.mobile-shell > .desktop-shell > nav .mobile-search-entry {
+.screen[data-navigation="bottom"] > .app-shell > nav .mobile-search-entry {
   position: absolute;
   right: max(0.75rem, env(safe-area-inset-right));
   bottom: calc(100% + 0.75rem);
@@ -146,39 +145,39 @@ summary,
   box-shadow: 0 0.5rem 1.25rem rgb(0 0 0 / 16%);
 }
 
-.mobile-shell > .desktop-shell > nav .mobile-search-entry:hover,
-.mobile-shell > .desktop-shell > nav .mobile-search-entry:focus-visible {
+.screen[data-navigation="bottom"] > .app-shell > nav .mobile-search-entry:hover,
+.screen[data-navigation="bottom"] > .app-shell > nav .mobile-search-entry:focus-visible {
   color: var(--synra-primary-ink);
   background: var(--synra-surface);
 }
 
-.mobile-shell > .desktop-shell > main > div {
+.screen[data-navigation="bottom"] > .app-shell > main > div {
   max-width: none;
 }
 
-.mobile-shell .ant-collapse-header,
-.mobile-shell .ant-collapse-content-box {
+.screen[data-navigation="bottom"] .ant-collapse-header,
+.screen[data-navigation="bottom"] .ant-collapse-content-box {
   font-size: 1.125rem;
 }
 
-.mobile-shell .ant-collapse-header {
+.screen[data-navigation="bottom"] .ant-collapse-header {
   min-height: 3.5rem;
   padding-block: 1rem;
 }
 
-.mobile-shell .ant-btn,
-.mobile-shell .ant-input,
-.mobile-shell .ant-select-selector {
+.screen[data-navigation="bottom"] .ant-btn,
+.screen[data-navigation="bottom"] .ant-input,
+.screen[data-navigation="bottom"] .ant-select-selector {
   min-height: 3rem;
   font-size: 1.0625rem;
 }
 
-.mobile-shell .ant-list-item {
+.screen[data-navigation="bottom"] .ant-list-item {
   padding-block: 0.9rem;
 }
 
 @supports not (backdrop-filter: blur(0)) {
-  .mobile-shell > .desktop-shell > nav {
+  .screen[data-navigation="bottom"] > .app-shell > nav {
     background-color: var(--synra-glass-base);
   }
 }

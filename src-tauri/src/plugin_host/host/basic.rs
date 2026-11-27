@@ -15,12 +15,7 @@ macro_rules! basic_host_methods {
         }
 
         fn host_kind(&self) -> String {
-            if cfg!(any(target_os = "android", target_os = "ios")) {
-                "mobile"
-            } else {
-                "desktop"
-            }
-            .to_owned()
+            $crate::host_environment::kind().as_str().to_owned()
         }
 
         fn locale(&self) -> String {

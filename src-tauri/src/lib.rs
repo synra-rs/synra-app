@@ -55,6 +55,7 @@ pub mod commands;
 pub mod crash;
 pub mod discovery;
 pub mod events;
+mod host_environment;
 pub mod input;
 pub mod instance;
 #[cfg(any(feature = "tauri-shell", test))]

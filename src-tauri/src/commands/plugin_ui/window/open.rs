@@ -109,11 +109,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
         == Some("dark");
     let sdk_version = synra_plugin_host::SDK_VERSION;
     let platform = platform_name()?;
-    let host_kind = if cfg!(any(target_os = "android", target_os = "ios")) {
-        "mobile"
-    } else {
-        "desktop"
-    };
+    let host_kind = crate::host_environment::kind().as_str();
     // The platform supplies the supported actions for the current desktop and policy.
     let platform_capabilities: Vec<String> = state
         .platform

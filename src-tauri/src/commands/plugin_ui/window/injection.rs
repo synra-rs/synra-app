@@ -114,7 +114,7 @@ pub(crate) fn initialization_script(
 /// says is impossible. A plugin that branches on the platform would take the `default` path on a machine this host does
 /// not have a name for — a plausible wrong answer, which is worse than "this page cannot open here".
 pub(crate) fn platform_name() -> Result<&'static str, IpcError> {
-    Ok(match std::env::consts::OS {
+    Ok(match crate::host_environment::PLATFORM {
         "windows" => "windows",
         "macos" => "macos",
         "linux" => "linux",

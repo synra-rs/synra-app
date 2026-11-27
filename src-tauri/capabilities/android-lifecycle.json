@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "android-lifecycle",
+  "description": "The Android main window can exit after system back confirmation.",
+  "windows": ["main"],
+  "platforms": ["android"],
+  "permissions": ["core:app:allow-exit"]
+}
