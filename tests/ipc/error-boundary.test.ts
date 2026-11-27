@@ -100,6 +100,20 @@ describe('untrusted error boundary', () => {
     expect(encoded).not.toContain('user:pass')
   })
 
+  it('does not reveal a long URL username when the diagnostic limit cuts before its authority delimiter', () => {
+    const username = 'q'.repeat(800)
+    const error = asSynraError(`unable to fetch https://${username}@example.test/path`)
+    expect(JSON.stringify(error)).not.toContain('q'.repeat(64))
+  })
+
+  it.each([
+    'Authorization: Bearer fixture-credential',
+    'ftp://user:fixture-credential@example.test/file'
+  ])('removes credentials from %s', (message) => {
+    const error = asSynraError(new Error(message))
+    expect(JSON.stringify(error)).not.toContain('fixture-credential')
+  })
+
   it('classifies a real namespace rejection and the host client consistently', async () => {
     const seam = bridge({ invoke: vi.fn(async () => {
       throw new Error('transport failed')

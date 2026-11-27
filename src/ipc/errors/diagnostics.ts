@@ -7,10 +7,14 @@ const MAX_NODES = 96
 const MAX_DEPTH = 4
 
 export function diagnosticText(value: string): string {
-  return value.slice(0, MAX_STRING)
-    .replace(/https?:\/\/[^\s"'<>]+/gi, (text) => {
+  const text = value.slice(0, MAX_STRING)
+  return text
+    .replace(/\b[a-z][a-z\d+.-]*:\/\/[^\s"'<>]+/gi, (address: string, offset: number) => {
+      // A cut authority can look like a hostname even though its username's `@` is beyond the limit.
+      if (value.length > text.length && offset + address.length === text.length)
+        return '[truncated URL]'
       try {
-        const url = new URL(text)
+        const url = new URL(address)
         url.username = ''
         url.password = ''
         url.search = ''
@@ -21,7 +25,9 @@ export function diagnosticText(value: string): string {
         return '[invalid URL]'
       }
     })
+    .replace(/\b(authorization|proxy-authorization|cookie|set-cookie)(\s*[:=]\s*|\s+)[^\r\n]*/gi, '$1=[REDACTED]')
     .replace(/\b(authorization|bearer|token|password|secret|api[_-]?key)(\s*[:=]\s*|\s+)[^\s,;]+/gi, '$1=[REDACTED]')
+    .slice(0, MAX_STRING)
 }
 
 /** Bounded diagnostic data, without stringifying an arbitrary bridge rejection. */
