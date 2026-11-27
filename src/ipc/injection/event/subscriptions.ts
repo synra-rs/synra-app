@@ -101,16 +101,33 @@ export class PageSubscriptions {
       }
       subscription.phase = 'active'
       this.startReceiving()
-      if (initial !== undefined) {
-        const snapshot = await initial()
-        if (this.subscriptions.has(subscription))
-          this.notify(subscription, snapshot)
-      }
+      if (initial !== undefined)
+        await this.readInitialSnapshot(subscription, initial)
     }
     catch (cause) {
       if (subscription.phase !== 'disposed') {
         this.stop(subscription)
         this.report(subscription, asSynraError(cause))
+      }
+    }
+  }
+
+  private async readInitialSnapshot(subscription: Subscription, read: () => Promise<unknown>): Promise<void> {
+    for (let attempt = 0; this.subscriptions.has(subscription); attempt++) {
+      try {
+        const snapshot = await read()
+        if (this.subscriptions.has(subscription))
+          this.notify(subscription, snapshot)
+        return
+      }
+      catch (cause) {
+        if (!this.subscriptions.has(subscription))
+          return
+        const error = asSynraError(cause)
+        const delay = RECOVERY_DELAYS_MS[attempt]
+        if (!error.retryable || delay === undefined)
+          throw error
+        await new Promise<void>(resolve => setTimeout(resolve, delay))
       }
     }
   }

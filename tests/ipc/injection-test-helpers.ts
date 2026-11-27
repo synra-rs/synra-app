@@ -1,5 +1,5 @@
 /**
- * The two factories every injection test is built from.
+ * Fixtures and factories for the plugin facade and its event stream.
  *
  * # Why this is not a `.test.ts`
  *
@@ -13,7 +13,8 @@ import type { Bridge } from '@/ipc/client'
 
 import type { InjectionContext } from '@/ipc/injection'
 
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
+import eventFixture from '../fixtures/plugin-event-contract.json'
 
 /**
  * A bridge that answers nothing and records what it was asked.
@@ -54,6 +55,46 @@ export function context(overrides: Partial<InjectionContext> = {}): InjectionCon
     // default of "everything" would make the tests pass on a host that supports nothing.
     platformCapabilities: [],
     ...overrides
+  }
+}
+
+export function streamFixture() {
+  const reads: { resolve: (value: unknown) => void, reject: (reason: unknown) => void }[] = []
+  let overlapping = false
+  const refresh = vi.fn<() => unknown>(() => ({ seq: 0, events: [] }))
+  const status = vi.fn<() => unknown>(() => eventFixture.transfer.payload)
+  const invoke = vi.fn(async (command: string, request?: Readonly<Record<string, unknown>>) => {
+    expect(command).toBe('plugin_ui_rpc')
+    switch (request?.method) {
+      case 'event.subscribe': return 'stream'
+      case 'event.poll': return new Promise((resolve, reject) => {
+        if (reads.length !== 0)
+          overlapping = true
+        reads.push({ resolve, reject })
+      })
+      case 'event.resync': return refresh()
+      case 'event.unsubscribe': return null
+      case 'device.list': return eventFixture.envelope.payload.devices
+      case 'transfer.status': return status()
+      default: throw new Error('unexpected event command')
+    }
+  })
+  const transport = bridge({ invoke })
+  return {
+    transport,
+    invoke,
+    refresh,
+    status,
+    async push(frame: unknown) {
+      await vi.waitFor(() => expect(reads).toHaveLength(1))
+      const read = reads.shift()
+      read?.resolve(frame)
+    },
+    async fail(error: unknown) {
+      await vi.waitFor(() => expect(reads).toHaveLength(1))
+      reads.shift()?.reject(error)
+    },
+    isOverlapping: () => overlapping
   }
 }
 

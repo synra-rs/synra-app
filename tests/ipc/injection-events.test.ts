@@ -4,47 +4,7 @@ import { createInjection } from '@/ipc/injection'
 import { compileEventPattern } from '@/ipc/injection/event/pattern'
 import { decodeTransferStatus } from '@/ipc/injection/transfer-status'
 import fixture from '../fixtures/plugin-event-contract.json'
-import { bridge, context } from './injection-test-helpers'
-
-function streamFixture() {
-  const reads: { resolve: (value: unknown) => void, reject: (reason: unknown) => void }[] = []
-  let overlapping = false
-  const refresh = vi.fn<() => unknown>(() => ({ seq: 0, events: [] }))
-  const status = vi.fn<() => unknown>(() => fixture.transfer.payload)
-  const invoke = vi.fn(async (command: string, request?: Readonly<Record<string, unknown>>) => {
-    expect(command).toBe('plugin_ui_rpc')
-    switch (request?.method) {
-      case 'event.subscribe': return 'stream'
-      case 'event.poll': return new Promise((resolve, reject) => {
-        if (reads.length !== 0)
-          overlapping = true
-        reads.push({ resolve, reject })
-      })
-      case 'event.resync': return refresh()
-      case 'event.unsubscribe': return null
-      case 'device.list': return fixture.envelope.payload.devices
-      case 'transfer.status': return status()
-      default: throw new Error('unexpected event command')
-    }
-  })
-  const transport = bridge({ invoke })
-  return {
-    transport,
-    invoke,
-    refresh,
-    status,
-    async push(frame: unknown) {
-      await vi.waitFor(() => expect(reads).toHaveLength(1))
-      const read = reads.shift()
-      read?.resolve(frame)
-    },
-    async fail(error: unknown) {
-      await vi.waitFor(() => expect(reads).toHaveLength(1))
-      reads.shift()?.reject(error)
-    },
-    isOverlapping: () => overlapping
-  }
-}
+import { bridge, context, streamFixture } from './injection-test-helpers'
 
 describe('patterns produced by Rust', () => {
   it.each(fixture.patterns)('$pattern receives $name only when Core matches', (vector) => {
@@ -189,6 +149,63 @@ describe('plugin page event stream', () => {
     off()
     stopBroad()
     await stream.push(null)
+  })
+
+  it('retries a timed-out initial transfer snapshot with the subscription still active', async () => {
+    const stream = streamFixture()
+    const app = createInjection(context({ granted: ['file:transfer:send'], bridge: stream.transport }))
+    const status = fixture.transfer.payload
+    const seen = vi.fn()
+    const onError = vi.fn()
+    let reply: (value: unknown) => void = () => {}
+    stream.status.mockImplementationOnce(() => {
+      throw synraError('timeout', 'error.timeout')
+    })
+    stream.status.mockImplementation(() => new Promise((resolve) => {
+      reply = resolve
+    }))
+    const off = app.transfer.onProgress(status.transferId, seen, { onError })
+
+    try {
+      await vi.waitFor(() => expect(stream.status).toHaveBeenCalledTimes(2))
+      await stream.push({ ...fixture.transfer, seq: 1 })
+      await vi.waitFor(() => expect(seen).toHaveBeenCalledWith({ ...status, ratio: 0.5 }))
+      reply({ ...status, revision: 1, state: 'transferring' })
+      await stream.push({ ...fixture.transfer, seq: 2 })
+      await vi.waitFor(() => {
+        expect(stream.invoke.mock.calls.filter(([, args]) => args?.method === 'event.poll')).toHaveLength(3)
+      })
+      expect(seen).toHaveBeenCalledTimes(1)
+      expect(onError).not.toHaveBeenCalled()
+      expect(stream.invoke.mock.calls.filter(([, args]) => args?.method === 'event.unsubscribe')).toHaveLength(0)
+    }
+    finally {
+      off()
+      await stream.push(null)
+    }
+  })
+
+  it('reports a persistently unavailable initial snapshot after bounded retries', async () => {
+    const stream = streamFixture()
+    const app = createInjection(context({ granted: ['file:transfer:send'], bridge: stream.transport }))
+    const refusal = synraError('timeout', 'error.timeout')
+    stream.status.mockImplementation(() => {
+      throw refusal
+    })
+    const seen = vi.fn()
+    const onError = vi.fn()
+    const off = app.transfer.onProgress(fixture.transfer.payload.transferId, seen, { onError })
+
+    try {
+      await vi.waitFor(() => expect(onError).toHaveBeenCalledExactlyOnceWith(refusal))
+      expect(stream.status).toHaveBeenCalledTimes(3)
+      expect(seen).not.toHaveBeenCalled()
+      expect(stream.invoke.mock.calls.filter(([, args]) => args?.method === 'event.unsubscribe')).toHaveLength(1)
+    }
+    finally {
+      off()
+      await stream.push(null)
+    }
   })
 
   it('recovers the retained terminal status after a missed host delivery and a retryable IPC error', async () => {

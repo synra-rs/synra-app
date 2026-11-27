@@ -59,6 +59,24 @@ describe('client method, platform and grant queries', () => {
     }
     expect(invoke).toHaveBeenCalledTimes(granted ? 1 : 0)
   })
+
+  it.each([false, true])('refuses a transfer grouping id after checking the grant (granted=%s)', async (granted) => {
+    const capabilities = granted ? ['file:transfer:send'] : []
+    const invoke = vi.fn()
+    const facade = createInjection(context({ granted: capabilities, bridge: bridge({ invoke }) }))
+    const mock = createMockClient({ profile: APP_PROFILE, capabilities })
+    mock.stub('transfer', 'send', 'fixture-transfer')
+    const request = { to: 'peer', file: new Blob(['x']), fileName: 'x.txt', contextId: 'group' }
+    const refusal = granted
+      ? { code: 'unsupported', details: { feature: 'transfer.send contextId' } }
+      : { code: 'capability_denied' }
+
+    for (const client of [facade, mock])
+      await expect(client.transfer.send(request)).rejects.toMatchObject(refusal)
+
+    expect(invoke).not.toHaveBeenCalled()
+    expect(mock.calls).toMatchObject([{ ns: 'transfer', method: 'send', args: [request], refused: refusal }])
+  })
 })
 
 function proxyTimeout(get: () => never): unknown {
