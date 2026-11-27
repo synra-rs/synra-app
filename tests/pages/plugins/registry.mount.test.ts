@@ -3,6 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { Segmented } from 'ant-design-vue'
 import { expect, it } from 'vitest'
 import { setLocalePreference } from '@/app/locale'
+import { useSettingsStore } from '@/stores/settings'
 import { registryFixture } from '../../ipc/registry-fixture'
 import { answer, click, ErrorNotice, messages, mocks, mountPage, RegistryDiscover, RegistryInstallDialog } from './workflow.testkit'
 
@@ -24,6 +25,31 @@ it('submits registry queries explicitly and opens the result without another id 
   await click(view, messages.plugins.workflow.details)
   expect(mocks.call).toHaveBeenCalledWith('plugins_preview', { pluginId: item.pluginId })
   expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
+})
+it('discards a pending search when a configuration event changes the registry', async () => {
+  const settings = useSettingsStore()
+  const source = 'plugins.registry'
+  settings.applySnapshot({ values: { [source]: 'https://old.example' }, overridden: [source] })
+  let finish!: (value: unknown) => void
+  const pending = new Promise(resolve => finish = resolve)
+  const fresh = { ...item, pluginId: '@acme/current-reader', title: 'Current reader' }
+  answer({
+    plugins_catalog_search: () => settings.value(source) === 'https://old.example'
+      ? pending
+      : { ok: true, value: [fresh] }
+  })
+  const { discover: view } = await discover()
+  await view.get('input').setValue('reader')
+  await click(view, messages.plugins.catalog.action)
+
+  settings.apply({ type: 'configUpdated', payload: { values: { [source]: 'https://current.example' }, overridden: [source] } })
+  finish({ ok: true, value: [item] })
+  await flushPromises()
+  expect(view.findAll('article')).toHaveLength(0)
+
+  await click(view, messages.plugins.catalog.action)
+  expect(view.get('article').text()).toContain(fresh.pluginId)
+  expect(mocks.call.mock.calls.filter(([command]) => command === 'plugins_catalog_search')).toHaveLength(2)
 })
 it('keeps a preview after failed installation and sends only one pending install', async () => {
   let finish!: (value: unknown) => void

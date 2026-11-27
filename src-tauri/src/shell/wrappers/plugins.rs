@@ -107,11 +107,17 @@ pub fn plugins_check_update(
 
 /// Searches the configured registry for plugins.
 #[tauri::command]
-pub fn plugins_catalog_search(
+pub async fn plugins_catalog_search(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     query: synra_ipc::dto::CatalogQuery,
 ) -> Result<Vec<synra_ipc::dto::CatalogItem>, IpcError> {
-    commands::plugins::plugins_catalog_search(&state, &query)
+    // Registry HTTP is blocking. Keep it off both the window thread and the async executor.
+    let state = std::sync::Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        commands::plugins::plugins_catalog_search(&state, &query)
+    })
+    .await
+    .map_err(crate::state::internal)?
 }
 
 /// Searches the registry with only the text, as the contract's simpler entry names it.
@@ -119,13 +125,13 @@ pub fn plugins_catalog_search(
 /// The endpoint is the same one [`plugins_catalog_search`] reaches; this command exists so a caller that has no paging
 /// or sort to state does not have to invent them. Registering it is what makes the contract's name true.
 #[tauri::command]
-pub fn plugins_request_registry_search(
+pub async fn plugins_request_registry_search(
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     query: String,
 ) -> Result<Vec<synra_ipc::dto::CatalogItem>, IpcError> {
-    commands::plugins::plugins_catalog_search(
-        &state,
-        &synra_ipc::dto::CatalogQuery {
+    plugins_catalog_search(
+        state,
+        synra_ipc::dto::CatalogQuery {
             query,
             registry: None,
             limit: None,
@@ -133,6 +139,7 @@ pub fn plugins_request_registry_search(
             sort: None,
         },
     )
+    .await
 }
 
 /// Describes a registry package before any of it is downloaded.
