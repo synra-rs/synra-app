@@ -143,7 +143,7 @@ pub(crate) fn packument_from_sources(
                 return Err(http_failure(response.status, &url, Operation::Metadata));
             }
             Err(refusal) => {
-                last = Some(network_failure(refusal, &url));
+                last = Some(network_failure(&refusal, &url));
             }
         }
     }

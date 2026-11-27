@@ -21,9 +21,8 @@ fn a_source_does_not_grant_plain_http_to_remote_artifacts() {
         .expect_err("scheme checked before DNS");
     assert_eq!(error.code, ErrorCode::SchemeNotAllowed);
     let base = source(&state, "static:https://bucket.example");
-    let error = artifact_client(&base, "http://127.0.0.1/plugin.tgz")
-        .err()
-        .expect("no HTTP downgrade");
+    let error =
+        artifact_client(&base, "http://127.0.0.1/plugin.tgz").expect_err("no HTTP downgrade");
     assert_eq!(error.code, ErrorCode::SchemeNotAllowed);
 }
 

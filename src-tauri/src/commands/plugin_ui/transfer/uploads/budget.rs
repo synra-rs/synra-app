@@ -47,6 +47,7 @@ impl Budget {
                 retry: None,
             },
         );
+        drop(holdings);
         Ok(Lease {
             id,
             holdings: Some(Arc::clone(&self.0)),
@@ -85,10 +86,10 @@ pub(super) struct Lease {
 
 impl Lease {
     pub(super) fn defer_cleanup(&mut self, paths: Paths) {
-        if let Some(holdings) = self.holdings.take() {
-            if let Some(holding) = holdings.lock().get_mut(&self.id) {
-                holding.retry = Some(paths);
-            }
+        if let Some(holdings) = self.holdings.take()
+            && let Some(holding) = holdings.lock().get_mut(&self.id)
+        {
+            holding.retry = Some(paths);
         }
     }
 }

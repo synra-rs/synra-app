@@ -128,6 +128,7 @@ impl Uploads {
             return Err(UploadError::Closed.into());
         }
         slots.active.insert(id, slot);
+        drop(slots);
         Ok((id, self.policy.chunk_bytes))
     }
 
@@ -201,14 +202,16 @@ impl Uploads {
                 .iter()
                 .filter_map(|(id, slot)| (slot.owner.nonce == nonce).then_some(*id))
                 .collect();
-            owned
+            let removed = owned
                 .into_iter()
                 .filter_map(|id| {
                     let slot = slots.active.remove(&id)?;
                     slot.detach();
                     Some(slot)
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            drop(slots);
+            removed
         };
         drop(removed);
     }

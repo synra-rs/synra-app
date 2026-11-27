@@ -140,6 +140,7 @@ async fn event_rpc(
             let stream = state
                 .plugin_events
                 .subscribe(nonce, subscription_id, selector)?;
+            drop(hosted);
             Ok(Value::String(stream.to_string()))
         }
         PluginUiOp::EventUnsubscribe => {

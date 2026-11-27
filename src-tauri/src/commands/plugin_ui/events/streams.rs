@@ -43,7 +43,9 @@ impl PluginEvents {
             .entry(nonce)
             .or_insert_with(|| Arc::new(Stream::new()));
         stream.subscribe(id, selector)?;
-        Ok(stream.id)
+        let stream_id = stream.id;
+        drop(streams);
+        Ok(stream_id)
     }
 
     pub(super) fn stream(&self, nonce: u128, id: Uuid) -> Option<Arc<Stream>> {
@@ -150,6 +152,7 @@ impl Stream {
                 latest_custom: 0,
             },
         );
+        drop(queue);
         Ok(())
     }
 
@@ -174,6 +177,7 @@ impl Stream {
                 .any(|selection| selection.selector.matches(&envelope.event)),
             Err(_) => true,
         });
+        drop(queue);
         false
     }
 

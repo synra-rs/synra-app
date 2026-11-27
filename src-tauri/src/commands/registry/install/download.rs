@@ -97,7 +97,7 @@ pub(crate) fn download(
                 return Err(http_failure(response.status, url, Operation::Download));
             }
             Err(refusal) => {
-                last = Some(network_failure(refusal, url));
+                last = Some(network_failure(&refusal, url));
             }
         }
     }

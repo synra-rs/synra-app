@@ -72,7 +72,7 @@ pub(crate) fn get_text(
                 return Err(http_failure(response.status, &url, operation));
             }
             Err(refusal) => {
-                last = Some(network_failure(refusal, &url));
+                last = Some(network_failure(&refusal, &url));
             }
         }
     }

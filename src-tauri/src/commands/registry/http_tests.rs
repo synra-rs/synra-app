@@ -98,9 +98,7 @@ fn an_integrity_failure_never_downloads_from_the_next_mirror() {
             "integrity": format!("sha256-{}", base64::engine::general_purpose::STANDARD.encode([0; 32])),
         }
     })).expect("valid package metadata and SRI encoding");
-    let error = download(&state, &bases, &bases[0], &chosen, None)
-        .err()
-        .expect("integrity refusal");
+    let error = download(&state, &bases, &bases[0], &chosen, None).expect_err("integrity refusal");
     assert_eq!(error.code, ErrorCode::IntegrityMismatch);
     assert!(
         server
@@ -111,8 +109,7 @@ fn an_integrity_failure_never_downloads_from_the_next_mirror() {
     assert_eq!(
         untouched
             .accept()
-            .err()
-            .expect("no fallback connection")
+            .expect_err("no fallback connection")
             .kind(),
         std::io::ErrorKind::WouldBlock
     );

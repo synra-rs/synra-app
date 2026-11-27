@@ -154,6 +154,7 @@ impl Transfers {
         if let Some(status) = entry.status {
             registry.terminal.add(id, status, now_ms);
         }
+        drop(registry);
         Some(entry.temp)
     }
 
@@ -169,7 +170,9 @@ impl Transfers {
             .get(&id)
             .and_then(|entry| entry.status.as_ref())
             .or_else(|| registry.terminal.get(id, now_ms))?;
-        (status.plugin == *owner).then(|| status.snapshot(id))
+        let snapshot = (status.plugin == *owner).then(|| status.snapshot(id));
+        drop(registry);
+        snapshot
     }
 
     #[cfg(any(feature = "tauri-shell", test))]
@@ -186,9 +189,8 @@ impl Transfers {
             .filter_map(|(id, entry)| entry.status.as_ref().map(|status| (*id, status)));
         let mut snapshots: Vec<_> = active
             .chain(registry.terminal.retained(now_ms))
-            .filter_map(|(id, status)| {
-                (status.plugin == *owner && selected(id)).then(|| status.snapshot(id))
-            })
+            .filter(|(id, status)| status.plugin == *owner && selected(*id))
+            .map(|(id, status)| status.snapshot(id))
             .collect();
         drop(registry);
         snapshots.sort_unstable_by_key(|status| status.transfer_id);
@@ -225,7 +227,9 @@ impl Transfers {
         if entry.snapshot.direction == "receive" {
             return Some(CancelTarget::Listener);
         }
-        entry.cancel.clone().map(CancelTarget::Worker)
+        let cancellation = entry.cancel.clone();
+        drop(registry);
+        cancellation.map(CancelTarget::Worker)
     }
 
     /// Every transfer, ordered by identifier.

@@ -65,7 +65,7 @@ async fn an_admitted_guest_event_reaches_only_a_granted_page() {
     pending(foreign.as_mut()).await;
 
     let quota = Quota::default();
-    {
+    let outcome = {
         let mut plugins = set.lock();
         plugins
             .load_with_lifecycle(
@@ -100,21 +100,19 @@ async fn an_admitted_guest_event_reaches_only_a_granted_page() {
             CallOutcome::Ok(_)
         ));
         plugins.mark_active(&emitter.id).unwrap();
-        assert!(matches!(
-            plugins
-                .call(
-                    &emitter.id,
-                    &Work::InvokeAction {
-                        name: "emit".to_owned(),
-                        args_json: r#"{"text":"hello🖱️"}"#.to_owned(),
-                    },
-                    budget,
-                    1
-                )
-                .unwrap(),
-            CallOutcome::Ok(_)
-        ));
-    }
+        let outcome = plugins.call(
+            &emitter.id,
+            &Work::InvokeAction {
+                name: "emit".to_owned(),
+                args_json: r#"{"text":"hello🖱️"}"#.to_owned(),
+            },
+            budget,
+            1,
+        );
+        drop(plugins);
+        outcome
+    };
+    assert!(matches!(outcome.unwrap(), CallOutcome::Ok(_)));
 
     let frame = tokio::time::timeout(
         DEADLINE,

@@ -33,7 +33,7 @@ pub(crate) fn http_failure(status: u16, url: &str, operation: Operation) -> IpcE
     })))
 }
 
-pub(crate) fn network_failure(refusal: synra_core::network::Refusal, url: &str) -> IpcError {
+pub(crate) fn network_failure(refusal: &synra_core::network::Refusal, url: &str) -> IpcError {
     offer_retry(
         IpcError::unknown(refusal.code).with_params(serde_json::json!({
             "url": url, "reason": refusal.message,

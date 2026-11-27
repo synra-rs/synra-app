@@ -107,7 +107,7 @@ pub(crate) fn transfer_begin(
     let (id, chunk_bytes) = state
         .uploads
         .begin(
-            &state.paths.cache_dir(),
+            state.paths.cache_dir(),
             OpenUpload {
                 owner: session.into(),
                 to,
