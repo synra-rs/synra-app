@@ -93,6 +93,7 @@ fn a_saved_check_publishes_its_card_and_a_negative_check_clears_it() {
         plugin_id: plugin.to_owned(),
         current_version: "1.0.0".to_owned(),
         checked_at_ms: 123,
+        request_order: state.db().begin_plugin_update_check().expect("reserve check"),
         registry: None,
         available_version: Some("2.0.0".to_owned()),
         added_capabilities: vec!["log:*".to_owned()],
@@ -112,6 +113,7 @@ fn a_saved_check_publishes_its_card_and_a_negative_check_clears_it() {
     check.available_version = None;
     check.added_capabilities.clear();
     check.checked_at_ms = 456;
+    check.request_order = state.db().begin_plugin_update_check().expect("reserve check");
     assert!(record(&state, &check).expect("negative result").is_none());
     let delivery = state.events.take(subscriber).expect("card event");
     let Some(KernelEvent::PluginUpdated(card)) = delivery.events().first() else {

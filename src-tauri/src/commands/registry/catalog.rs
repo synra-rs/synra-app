@@ -188,49 +188,32 @@ pub(crate) fn check_update_at(
             .with_params(serde_json::json!({"pluginId": plugin_id})));
     };
     let bases = bases_from_setting(registry.as_deref())?;
+    let request_order = state.db().begin_plugin_update_check().map_err(crate::state::internal)?;
     let document = packument_from_sources(state, plugin_id, &bases)?.packument;
     let latest = document
         .latest_upgrade(&active.version)
         .map_err(|error| crate::commands::plugin_updates::version_refusal(plugin_id, error))?;
-    let Some(latest) = latest else {
-        return crate::commands::plugin_updates::record(
-            state,
-            &synra_store::PluginUpdateCheck {
-                plugin_id: plugin.to_string(),
-                current_version: active.version,
-                checked_at_ms: now_ms,
-                registry,
-                available_version: None,
-                added_capabilities: Vec::new(),
-                attempts: 0,
-                retry_at_ms: None,
-            },
-        );
-    };
-    let installed = installed_capabilities(state, plugin_id);
-    let published: Vec<String> = latest
-        .synra
-        .as_ref()
+    let added = latest
+        .and_then(|entry| entry.synra.as_ref())
         .map(|manifest| {
+            let installed = installed_capabilities(state, plugin_id);
             manifest
                 .capabilities
                 .iter()
+                .filter(|declaration| !installed.contains(&declaration.cap))
                 .map(|declaration| declaration.cap.clone())
                 .collect()
         })
         .unwrap_or_default();
-    let added: Vec<String> = published
-        .into_iter()
-        .filter(|capability| !installed.contains(capability))
-        .collect();
     crate::commands::plugin_updates::record(
         state,
         &synra_store::PluginUpdateCheck {
             plugin_id: plugin.to_string(),
             current_version: active.version,
             checked_at_ms: now_ms,
+            request_order,
             registry,
-            available_version: Some(latest.version.clone()),
+            available_version: latest.map(|entry| entry.version.clone()),
             added_capabilities: added,
             attempts: 0,
             retry_at_ms: None,

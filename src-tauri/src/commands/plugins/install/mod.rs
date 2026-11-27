@@ -218,6 +218,7 @@ pub(crate) fn check_local_update(
             IpcError::unknown(synra_protocol::ErrorCode::PluginNotInstalled)
                 .with_params(serde_json::json!({"pluginId": plugin_id}))
         })?;
+    let request_order = state.db().begin_plugin_update_check().map_err(internal)?;
     let candidate = manifest_at(source).ok_or_else(|| {
         IpcError::unknown(synra_protocol::ErrorCode::InvalidArgument).with_params(
             serde_json::json!({
@@ -255,6 +256,7 @@ pub(crate) fn check_local_update(
             plugin_id: id.to_string(),
             current_version: active.version,
             checked_at_ms: now_ms,
+            request_order,
             registry: None,
             available_version: available.then_some(candidate.version),
             added_capabilities,

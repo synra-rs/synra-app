@@ -162,7 +162,7 @@ pub(super) fn record(
         return Err(
             IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
                 "pluginId": check.plugin_id,
-                "reason": "the installed version or registry changed while checking for updates",
+                "reason": "the installed version, registry or saved check changed while checking for updates",
             })),
         );
     }

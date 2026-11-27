@@ -23,12 +23,14 @@ fn changing_registries_announces_cards_without_the_previous_sources_updates() {
             ..Default::default()
         })
         .expect("version");
+    let request_order = state.db().begin_plugin_update_check().expect("reserve check");
     state
         .db()
         .save_plugin_update_check(&synra_store::PluginUpdateCheck {
             plugin_id: plugin.to_owned(),
             current_version: "1.0.0".to_owned(),
             checked_at_ms: 123,
+            request_order,
             registry: None,
             available_version: Some("2.0.0".to_owned()),
             added_capabilities: Vec::new(),
