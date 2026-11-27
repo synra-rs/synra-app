@@ -63,11 +63,11 @@ export type { HostKind, InjectionContext } from './context'
  * error here but `undefined` at runtime. `satisfies` rejects the extra field while still inferring the literal's type,
  * so a test can call into the result without casting.
  */
-export function createInjection(context: InjectionContext): SynraClient {
+export function createInjection(context: InjectionContext, lifetime?: EventTarget): SynraClient {
   const can = compileGrantCheck(context.granted)
   let requestCounter = 0
 
-  const event = createEventNamespace(context)
+  const event = createEventNamespace(context, can, lifetime)
 
   const synra = {
     env: createEnvNamespace(context, can),

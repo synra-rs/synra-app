@@ -42,15 +42,15 @@ describe('subscriptions', () => {
   // ★ Always a function, so an author never has to write `maybe?.()` and never leaks one.
   it('subscribe returns an unsubscribe even when the bridge refuses to attach', async () => {
     const failing = bridge({
-      listen: vi.fn(async () => {
+      invoke: vi.fn(async () => {
         throw new Error('no listener')
       })
     })
     const synra = createInjection(context({ bridge: failing }))
-    const off = synra.event.subscribe('anything', () => {
-      // Nothing is done with it.
-    })
+    const onError = vi.fn()
+    const off = synra.event.subscribe('anything', vi.fn(), { onError })
     expect(typeof off).toBe('function')
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'internal' })))
     expect(() => off()).not.toThrow()
   })
 
@@ -67,22 +67,32 @@ describe('subscriptions', () => {
   // be dropped, or the handler keeps firing for a subscription the author already cancelled — which shows up much
   // later as "my component updates after it unmounted".
   it('drops the listener that attaches after the caller unsubscribed', async () => {
-    let release: (off: () => void) => void = () => {
-      // Assigned below.
-    }
+    let acknowledge: (stream: string) => void = () => {}
+    const subscribe = new Promise<string>((resolve) => {
+      acknowledge = resolve
+    })
     const slow = bridge({
-      listen: vi.fn(() => new Promise<() => void>((resolve) => {
-        release = resolve
-      }))
+      invoke: vi.fn(async (_command, request) => {
+        if (request?.method === 'event.subscribe')
+          return subscribe
+        if (request?.method === 'event.unsubscribe')
+          return null
+        throw new Error('unexpected receive')
+      })
     })
     const synra = createInjection(context({ bridge: slow }))
     const handler = vi.fn()
     const off = synra.event.subscribe('anything', handler)
     off()
-    const attached = vi.fn()
-    release(attached)
-    await Promise.resolve()
-    expect(attached).toHaveBeenCalled()
+    off()
+    acknowledge('stream')
+    await vi.waitFor(() => expect(slow.invoke).toHaveBeenCalledTimes(2))
+    expect(slow.invoke).toHaveBeenLastCalledWith('plugin_ui_rpc', {
+      token: context().token,
+      method: 'event.unsubscribe',
+      args: { streamId: 'stream', subscriptionId: 1 }
+    })
+    expect(handler).not.toHaveBeenCalled()
   })
 })
 

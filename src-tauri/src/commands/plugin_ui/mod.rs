@@ -25,6 +25,8 @@ use synra_protocol::ErrorCode;
 use synra_protocol::ids::PluginId;
 
 mod authority;
+#[cfg(any(feature = "tauri-shell", test))]
+mod events;
 mod origin;
 
 const MAX_DEVICE_TARGETS: usize = 256;
@@ -35,6 +37,10 @@ mod storage;
 mod transfer;
 mod window;
 
+#[cfg(any(feature = "tauri-shell", test))]
+pub(crate) use events::PluginEvents;
+#[cfg(feature = "tauri-shell")]
+pub(crate) use events::{dispatch_event_rpc, project_events};
 #[cfg(test)]
 pub(crate) use platform::call_error;
 pub(crate) use rpc::*;

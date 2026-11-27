@@ -1,0 +1,91 @@
+{
+  "envelope": {
+    "seq": 1,
+    "at": 20,
+    "name": "device.changed",
+    "payload": {
+      "devices": [
+        {
+          "deviceId": "019482b2-b6a0-77ab-8a5d-63cd6f04d4f1",
+          "displayName": "Offline laptop",
+          "platform": "macos",
+          "online": false
+        }
+      ]
+    }
+  },
+  "patterns": [
+    {
+      "pattern": "device.changed",
+      "name": "device.changed",
+      "valid": true,
+      "matches": true
+    },
+    {
+      "pattern": "device.*",
+      "name": "device.changed",
+      "valid": true,
+      "matches": true
+    },
+    {
+      "pattern": "*.changed",
+      "name": "device.changed",
+      "valid": true,
+      "matches": true
+    },
+    {
+      "pattern": "*.changed",
+      "name": "device.failed",
+      "valid": true,
+      "matches": false
+    },
+    {
+      "pattern": "device.*",
+      "name": "device.link.changed",
+      "valid": true,
+      "matches": false
+    },
+    {
+      "pattern": "device.*",
+      "name": "device.",
+      "valid": true,
+      "matches": false
+    },
+    {
+      "pattern": "_plugin.@acme/chat.*",
+      "name": "_plugin.@acme/chat.update",
+      "valid": true,
+      "matches": true
+    },
+    {
+      "pattern": "_plugin.@acme/chat.*",
+      "name": "_plugin.@acme/notes.update",
+      "valid": true,
+      "matches": false
+    },
+    {
+      "pattern": "device.**",
+      "name": "device.changed",
+      "valid": false,
+      "matches": false
+    },
+    {
+      "pattern": "device..changed",
+      "name": "device.changed",
+      "valid": false,
+      "matches": false
+    },
+    {
+      "pattern": "device.ch*",
+      "name": "device.changed",
+      "valid": false,
+      "matches": false
+    },
+    {
+      "pattern": "*.*.*.*.*",
+      "name": "a.b.c.d.e",
+      "valid": false,
+      "matches": false
+    }
+  ]
+}

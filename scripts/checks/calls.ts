@@ -51,10 +51,8 @@ export function shellWrappers(source: string): Map<string, Wrapper> {
       if (!/^\w+$/.test(field) || type.length === 0)
         continue
 
-      if (field === 'state' || type.startsWith('tauri::State'))
-        continue
-
-      if (type.startsWith('tauri::AppHandle'))
+      // Tauri supplies these IPC arguments from the invocation context.
+      if (/^tauri::(?:State|AppHandle|Webview)(?:\s*<|$)/.test(type))
         continue
       const key = camelCase(field)
       declared.push(key)

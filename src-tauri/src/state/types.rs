@@ -199,6 +199,9 @@ pub struct AppState {
     /// version, and a token is a nonce: it says "some page holds this", not "this page is plugin X". The window that
     /// created the WebView knows both, so it records them here and `plugin_ui_ready` looks the label up.
     pub hosted_ui: Mutex<std::collections::HashMap<String, HostedUi>>,
+    /// Projected event streams scoped to live page sessions.
+    #[cfg(any(feature = "tauri-shell", test))]
+    pub(crate) plugin_events: crate::commands::plugin_ui::PluginEvents,
     /// The transfers this shell is running.
     ///
     /// Written by the worker that moves the chunks, read by `transfer_list`. A registry rather than a read from the link: a

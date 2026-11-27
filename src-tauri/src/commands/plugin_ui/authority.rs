@@ -17,11 +17,18 @@ pub(super) fn validate(state: &AppState, entry: &HostedUi) -> Result<ValidatedSe
         .map_err(super::internal)?;
     if !entry.authority.permits_ui() || current != Some(entry.authority) {
         state.ui_sessions.revoke(entry.nonce);
+        #[cfg(any(feature = "tauri-shell", test))]
+        state.plugin_events.close(entry.nonce);
         return Err(refused());
     }
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
-    state
+    let session = state
         .ui_sessions
         .validate(entry.nonce, &entry.plugin_id, &entry.version, now)
-        .map_err(|_| refused())
+        .map_err(|_| refused());
+    #[cfg(any(feature = "tauri-shell", test))]
+    if session.is_err() {
+        state.plugin_events.close(entry.nonce);
+    }
+    session
 }

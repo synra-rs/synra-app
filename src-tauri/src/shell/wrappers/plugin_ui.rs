@@ -20,13 +20,20 @@ pub fn plugin_ui_ready(
 ///
 /// `(async)` because this is the one command whose operations may do I/O — a network fetch, a transfer — and the
 /// plugin page that called it is not the window that must keep painting.
-#[tauri::command(async)]
-pub fn plugin_ui_rpc(
+#[tauri::command]
+pub async fn plugin_ui_rpc(
+    webview: tauri::Webview,
     state: tauri::State<'_, std::sync::Arc<AppState>>,
     token: String,
     method: String,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, IpcError> {
+    if let Some(result) =
+        commands::plugin_ui::dispatch_event_rpc(&state, webview.label(), &token, &method, &args)
+            .await
+    {
+        return result;
+    }
     commands::plugin_ui::plugin_ui_rpc_arc(state.inner(), &token, &method, &args)
 }
 

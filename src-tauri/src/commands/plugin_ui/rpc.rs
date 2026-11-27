@@ -111,7 +111,7 @@ pub(crate) fn dispatch(
     match op {
         PluginUiOp::DeviceList => {
             require_grant(&session, "device:list", method)?;
-            device_targets(state)
+            serde_json::to_value(device_targets(state)?).map_err(internal)
         }
         PluginUiOp::StorageGet => storage_get(state, &session, &plugin_id, args),
         PluginUiOp::StorageSet => storage_set(state, &session, &plugin_id, args),
@@ -145,28 +145,25 @@ pub(crate) fn dispatch(
 /// Because the plugin's `DeviceTarget` is a **different type** from the host's `DeviceCard` on purpose: a card carries a
 /// transfer summary, an address seen on the network, a blocked flag — things a plugin has no business knowing. Mapping in
 /// the interface would put that judgement in JavaScript; mapping here means the page cannot receive what it may not see.
-pub(crate) fn device_targets(state: &AppState) -> Result<serde_json::Value, IpcError> {
+pub(crate) fn device_targets(
+    state: &AppState,
+) -> Result<Vec<synra_ipc::event::PluginDeviceTarget>, IpcError> {
+    use synra_ipc::event::PluginDeviceTarget;
+
     let snapshot = crate::commands::devices::devices_snapshot(state)?;
-    let targets: Vec<serde_json::Value> = snapshot
+    let targets: Vec<PluginDeviceTarget> = snapshot
         .devices
         .iter()
-        .filter(|card| card.paired && !card.blocked)
+        .filter_map(|card| PluginDeviceTarget::from_card(card).transpose())
         .take(MAX_DEVICE_TARGETS + 1)
-        .map(|card| {
-            serde_json::json!({
-                "deviceId": card.device_id.to_string(),
-                "displayName": card.display_name,
-                "platform": card.platform,
-                "online": card.online,
-            })
-        })
-        .collect();
+        .collect::<Result<_, _>>()
+        .map_err(internal)?;
     if targets.len() > MAX_DEVICE_TARGETS {
         return Err(IpcError::unknown(ErrorCode::PayloadTooLarge).with_params(
             serde_json::json!({"method": "device.list", "maxDevices": MAX_DEVICE_TARGETS}),
         ));
     }
-    Ok(serde_json::Value::Array(targets))
+    Ok(targets)
 }
 
 // ── Storage ─────────────────────────────────────────────────────────────────────────────────────

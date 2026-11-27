@@ -135,6 +135,8 @@ impl AppState {
             events,
             ui_sessions: Arc::new(synra_plugin_ui::UiSessionRegistry::new()),
             hosted_ui: Mutex::new(std::collections::HashMap::new()),
+            #[cfg(any(feature = "tauri-shell", test))]
+            plugin_events: crate::commands::plugin_ui::PluginEvents::default(),
             transfers: crate::commands::transfers::Transfers::new(),
             inbound_cancels: Arc::new(Mutex::new(std::collections::HashSet::new())),
             registry_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),

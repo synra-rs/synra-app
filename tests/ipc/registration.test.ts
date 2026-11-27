@@ -69,6 +69,11 @@ function registeredInShell(): string[] {
 }
 
 describe('the commands the shell registers', () => {
+  it('reads the plugin RPC signature without Tauri-injected arguments', () => {
+    const rpc = readTauriWrappers(APP_ROOT).get('plugin_ui_rpc')
+    expect(rpc).toEqual({ declared: ['token', 'method', 'args'], required: ['token', 'method', 'args'] })
+  })
+
   it('registers exactly the names this test claims it does', () => {
     const actual = registeredInShell().sort()
 

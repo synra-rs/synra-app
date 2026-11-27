@@ -89,6 +89,8 @@ pub fn forget_window(state: &AppState, label: &str) {
     if let Some(entry) = entry {
         state.input.controller.close_plugin(&entry.plugin_id);
         let _ = state.ui_sessions.revoke(entry.nonce);
+        #[cfg(any(feature = "tauri-shell", test))]
+        state.plugin_events.close(entry.nonce);
     }
 }
 

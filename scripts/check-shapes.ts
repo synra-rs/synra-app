@@ -5,6 +5,7 @@ import { failures, notes } from './checks/common'
 import { checkCommandNames, checkFakeIsQuarantined, checkInjection, checkSingleDeclarations, checkTypeOnlyImports } from './checks/contracts'
 import { checkErrorContract } from './checks/error-contract'
 import { checkFacadeIsFresh } from './checks/facade'
+import { checkPluginEventContract } from './checks/plugin-event-contract'
 import { checkRegistryContract } from './checks/registry-contract'
 import { checkControlNames, checkCornerLadder, checkDevServerContract, checkDialogNames, checkFocusableNames, checkMobileViewportLock, checkNativeButtons, checkPageButtons, checkTerminalTouchPath, checkTouchBreakpoints } from './checks/ui'
 
@@ -16,6 +17,7 @@ await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 checkErrorContract()
 checkCapabilityContract()
+checkPluginEventContract()
 checkRegistryContract()
 await checkFacadeIsFresh()
 await checkPageButtons()

@@ -96,7 +96,7 @@ export function inject(seed: InjectionSeed, bridge: Bridge): SynraClient {
     appVersion: seed.appVersion,
     platformCapabilities: seed.platformCapabilities
   }
-  const client = createInjection(context)
+  const client = createInjection(context, window)
   // ★ The global is declared `readonly` in `@synra/client` (the host does not expect anyone to replace it), so the
   // assignment goes through a shape that says what is actually happening here: this module is the one writer.
   ;(window as unknown as { synra?: SynraClient }).synra = client

@@ -15,11 +15,12 @@ import type {
   EventNamespace,
   PickOptions
 } from '@synra/client'
-import type { DeviceId } from '@synra/protocol'
+import type { DeviceId, PluginDevicesChanged } from '@synra/protocol'
 
 import type { InjectionContext } from './context'
 import { BACKED } from './capabilities'
 import { asSynraError, unsupported } from './errors'
+import { decodeDevices, DEVICE_TOPIC } from './event/decode'
 
 /** The device namespace, over the bridge and the event namespace it reports changes through. */
 export function createDeviceNamespace(
@@ -40,8 +41,8 @@ export function createDeviceNamespace(
         // picker shows "no devices", and the real reason — a refused token, a wedged store — is nowhere.
         .catch((reason: unknown) => {
           throw asSynraError(reason)
-        }) as DeviceTarget[]
-      return targets
+        })
+      return decodeDevices(targets)
     },
     send: async () => {
       throw unsupported('device.send')
@@ -49,13 +50,8 @@ export function createDeviceNamespace(
     broadcast: async () => {
       throw unsupported('device.broadcast')
     },
-    onChange: (handler: (devices: DeviceTarget[]) => void) => {
-      let latest: DeviceTarget[] = []
-      return event.subscribe<{ readonly devices?: unknown }>('device.changed', (payload) => {
-        latest = (payload.devices as DeviceTarget[] | undefined) ?? latest
-        handler(latest)
-      })
-    },
+    onChange: (handler, options) =>
+      event.subscribe<PluginDevicesChanged>(DEVICE_TOPIC, payload => handler([...payload.devices]), options),
     // ★ Exists and refuses, on purpose.
     //
     // The library's own comment: an author who calls a missing method gets `TypeError: not a function`, which names

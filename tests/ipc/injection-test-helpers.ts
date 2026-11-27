@@ -60,14 +60,16 @@ export function context(overrides: Partial<InjectionContext> = {}): InjectionCon
 /** The call a feature name stands for, so the test can ask the object to do the thing. */
 export const CALLS: Readonly<Record<ClientFeature, (synra: SynraClient) => Promise<unknown>>> = {
   'event.subscribe': async (synra) => {
-    synra.event.subscribe('anything', () => {
+    const off = synra.event.subscribe('anything', () => {
       // Nothing is done with it; the point is that subscribing resolves.
     })
+    off()
   },
   'device.onChange': async (synra) => {
-    synra.device.onChange(() => {
+    const off = synra.device.onChange(() => {
       // Nothing is done with it; the point is that subscribing resolves.
     })
+    off()
   },
   'device.pick': async synra => synra.device.pick(),
   'transfer.onProgress': async (synra) => {

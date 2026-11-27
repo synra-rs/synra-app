@@ -131,4 +131,41 @@ fn native_acl_separates_host_and_plugin_commands_for_real_mapped_origins() {
             );
         }
     }
+    for command in [
+        "plugin:event|listen",
+        "plugin:event|emit",
+        "plugin:event|emit_to",
+    ] {
+        assert!(!allowed(command, &label, Some(&mapped)), "{command}");
+        assert!(!allowed(command, &label, None), "{command}");
+    }
+
+    let mobile_capabilities: BTreeMap<String, Capability> = [
+        include_str!("../../../../capabilities/mobile.json"),
+        include_str!("../../../../capabilities/plugin-pages.json"),
+    ]
+    .into_iter()
+    .map(|json| {
+        let capability: Capability = serde_json::from_str(json).unwrap();
+        (capability.identifier.clone(), capability)
+    })
+    .collect();
+    let android = Resolved::resolve(&manifests, mobile_capabilities, Target::Android)
+        .expect("Android ACL resolution");
+    let allows_plugin_label = |command| {
+        android
+            .allowed_commands
+            .get(command)
+            .is_some_and(|permissions| {
+                permissions.iter().any(|permission| {
+                    permission
+                        .windows
+                        .iter()
+                        .any(|pattern| pattern.matches(&label))
+                })
+            })
+    };
+    assert!(allows_plugin_label("plugin_ui_rpc"));
+    assert!(!allows_plugin_label("plugin:event|listen"));
+    assert!(!allows_plugin_label("devices_snapshot"));
 }

@@ -17,9 +17,9 @@
  */
 
 import type { ErrorCode } from '@synra/protocol'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createInjection } from '@/ipc/injection'
-import { CALLS, context, FEATURES } from './injection-test-helpers'
+import { bridge, CALLS, context, FEATURES } from './injection-test-helpers'
 
 describe('what the host advertises and what it does', () => {
   for (const feature of FEATURES) {
@@ -27,7 +27,16 @@ describe('what the host advertises and what it does', () => {
       // The grants that remove "denied" from the picture, so what is left is "the host cannot do this yet" and not
       // "this plugin was not allowed". The capability names are the manifest's (`platform:read-clipboard`), not the
       // method's (`clipboard.read`) — the two vocabularies are different on purpose.
-      const synra = createInjection(context({ granted: ['platform:read-clipboard'] }))
+      const invoke = vi.fn(async (_command, request) => {
+        switch (request?.method) {
+          case 'event.subscribe': return 'stream'
+          case 'event.unsubscribe': return null
+          case 'clipboard.read': return null
+          case 'network.fetch': return { status: 200, headers: {}, body: 'ok' }
+          default: throw new Error('unexpected command')
+        }
+      })
+      const synra = createInjection(context({ granted: ['platform:read-clipboard', 'device:list'], bridge: bridge({ invoke }) }))
       const advertised = synra.env.hostSupports(feature)
 
       const failure = await CALLS[feature](synra).then(

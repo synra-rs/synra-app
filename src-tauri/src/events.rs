@@ -100,7 +100,11 @@ pub fn spawn(
             }
             match events.take(subscriber) {
                 Some(delivery) => {
-                    for envelope in envelopes(&delivery, synra_store::sqlite::now_ms()) {
+                    let at = synra_store::sqlite::now_ms();
+                    if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+                        crate::commands::plugin_ui::project_events(&state, &delivery, at);
+                    }
+                    for envelope in envelopes(&delivery, at) {
                         #[cfg(not(mobile))]
                         if let KernelEvent::InputUpdated(snapshot) = &envelope.event
                             && snapshot.session.as_ref().is_some_and(|session| {
@@ -132,7 +136,14 @@ pub fn spawn(
                             #[cfg(not(desktop))]
                             let _ = (&mut tray_language, language);
                         }
-                        if app.emit(CHANNEL, &envelope).is_err() {
+                        if app
+                            .emit_to(
+                                tauri::EventTarget::webview_window("main"),
+                                CHANNEL,
+                                &envelope,
+                            )
+                            .is_err()
+                        {
                             // The window is gone. Nothing else can be delivered and the bus would only queue for a
                             // subscriber nobody reads.
                             return;
