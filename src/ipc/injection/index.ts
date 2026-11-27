@@ -36,10 +36,12 @@ import type { SynraClient } from '@synra/client'
 import type { ErrorCode, SynraError } from '@synra/protocol'
 
 import type { InjectionContext } from './context'
+import { errorSnapshot } from '../errors/shape'
 import { createDeviceNamespace } from './device'
 import { createEnvNamespace } from './env'
 import { isSynraErrorValue } from './errors'
 import { createEventNamespace } from './event'
+import { compileGrantCheck } from './grants'
 import { createLogNamespace } from './log'
 import { createNetworkNamespace } from './network'
 import { createClipboardNamespace, createPlatformNamespace } from './platform'
@@ -62,24 +64,24 @@ export type { HostKind, InjectionContext } from './context'
  * so a test can call into the result without casting.
  */
 export function createInjection(context: InjectionContext): SynraClient {
-  const granted = new Set(context.granted)
+  const can = compileGrantCheck(context.granted)
   let requestCounter = 0
 
   const event = createEventNamespace(context)
 
   const synra = {
-    env: createEnvNamespace(context, granted),
+    env: createEnvNamespace(context, can),
     log: createLogNamespace(),
     event,
-    device: createDeviceNamespace(context, event, granted),
+    device: createDeviceNamespace(context, event),
     storage: createStorageNamespace(context),
     network: createNetworkNamespace(context),
-    transfer: createTransferNamespace(context),
-    platform: createPlatformNamespace(context),
-    clipboard: createClipboardNamespace(context),
+    transfer: createTransferNamespace(context, can),
+    platform: createPlatformNamespace(context, can),
+    clipboard: createClipboardNamespace(context, can),
     self: createSelfNamespace(context),
     isSynraError: (value: unknown): value is SynraError => isSynraErrorValue(value),
-    isCode: (value: unknown, code: ErrorCode) => isSynraErrorValue(value) && value.code === code,
+    isCode: (value: unknown, code: ErrorCode) => errorSnapshot(value)?.code === code,
     // ★ The narrowing one, and it is not a spelling of `isCode`.
     //
     // `isCode` answers `boolean`, so a `catch` branch using it learns nothing about the value's type — an author would
@@ -90,7 +92,7 @@ export function createInjection(context: InjectionContext): SynraClient {
     // neither it nor `ready` — so an author copying the complete example got a method that does not exist. Found by
     // compiling that example (`synra-js` guard 8), not by reading either side.
     isCapabilityDenied: (value: unknown): value is SynraError & { code: 'capability_denied' } =>
-      isSynraErrorValue(value) && value.code === 'capability_denied',
+      errorSnapshot(value)?.code === 'capability_denied',
     /**
      * Tells the host the page has mounted.
      *

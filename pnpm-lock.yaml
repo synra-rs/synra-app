@@ -7,6 +7,7 @@ settings:
 overrides:
   '@synra/client': link:../synra-js/packages/client
   '@synra/protocol': link:../synra-js/packages/protocol
+  '@synra/testkit': link:../synra-js/packages/testkit
   '@synra/theme': link:../synra-js/packages/theme
 
 importers:
@@ -53,6 +54,9 @@ importers:
       '@iconify-json/carbon':
         specifier: ^1.2.28
         version: 1.2.28
+      '@synra/testkit':
+        specifier: link:../synra-js/packages/testkit
+        version: link:../synra-js/packages/testkit
       '@synra/theme':
         specifier: link:../synra-js/packages/theme
         version: link:../synra-js/packages/theme

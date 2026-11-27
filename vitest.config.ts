@@ -37,6 +37,9 @@ export default defineConfig({
       // then this alias is the one place that knows.
       '@synra/protocol': fileURLToPath(
         new URL('../synra-js/packages/protocol/src/index.ts', import.meta.url)
+      ),
+      '@synra/testkit': fileURLToPath(
+        new URL('../synra-js/packages/testkit/src/index.ts', import.meta.url)
       )
     }
   },

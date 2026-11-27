@@ -27,7 +27,7 @@ describe('what the host advertises and what it does', () => {
       // The grants that remove "denied" from the picture, so what is left is "the host cannot do this yet" and not
       // "this plugin was not allowed". The capability names are the manifest's (`platform:read-clipboard`), not the
       // method's (`clipboard.read`) — the two vocabularies are different on purpose.
-      const synra = createInjection(context({ granted: ['device.pick', 'platform:read-clipboard'] }))
+      const synra = createInjection(context({ granted: ['platform:read-clipboard'] }))
       const advertised = synra.env.hostSupports(feature)
 
       const failure = await CALLS[feature](synra).then(
@@ -70,8 +70,8 @@ describe('capabilities the plugin was refused', () => {
     })
   })
 
-  it('device.pick is refused as denied without the grant', async () => {
+  it('device.pick reports that the method is unavailable', async () => {
     const synra = createInjection(context({ granted: [] }))
-    await expect(synra.device.pick()).rejects.toMatchObject({ code: 'capability_denied' })
+    await expect(synra.device.pick()).rejects.toMatchObject({ code: 'unsupported' })
   })
 })

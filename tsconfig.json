@@ -11,7 +11,8 @@
       // package's own `exports` map is what keeps this repository's build independent of how that package is
       // published.
       "@synra/client": ["../synra-js/packages/client/src/index.ts"],
-      "@synra/protocol": ["../synra-js/packages/protocol/src/index.ts"]
+      "@synra/protocol": ["../synra-js/packages/protocol/src/index.ts"],
+      "@synra/testkit": ["../synra-js/packages/testkit/src/index.ts"]
     },
     "types": ["node"],
     "strict": true,

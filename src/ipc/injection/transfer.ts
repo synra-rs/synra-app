@@ -25,6 +25,7 @@ import type { TransferNamespace, TransferProgress, TransferStatus } from '@synra
 import type { TransferId } from '@synra/protocol'
 
 import type { InjectionContext } from './context'
+import type { GrantCheck } from './grants'
 import { KERNEL_EVENT_CHANNEL } from '../channel'
 import { asSynraError, denied, tooLarge, unsupported } from './errors'
 
@@ -103,8 +104,7 @@ async function base64Of(file: Blob): Promise<string> {
 }
 
 /** The transfer namespace, over the plugin channel. */
-export function createTransferNamespace(context: InjectionContext): TransferNamespace {
-  const granted = new Set(context.granted)
+export function createTransferNamespace(context: InjectionContext, can: GrantCheck): TransferNamespace {
   /** The final state of the transfers this page started, and any status a read answered. */
   const known = new Map<string, TransferStatus>()
 
@@ -117,7 +117,7 @@ export function createTransferNamespace(context: InjectionContext): TransferName
 
   return {
     send: async (request): Promise<TransferId> => {
-      if (!granted.has('file:transfer:send'))
+      if (!can('file:transfer:send'))
         throw denied('file:transfer:send')
       if (request.contextId !== undefined)
         throw unsupported('transfer.send contextId')

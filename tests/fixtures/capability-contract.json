@@ -1,0 +1,252 @@
+[
+  {
+    "grants": [],
+    "query": "platform:read-clipboard",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "platform:read-clipboard"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "platform:write-clipboard"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "platform:*"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "platform:clipboard:read"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "device:send:*"
+    ],
+    "query": "device:send:desktop_A",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "device:send:*"
+    ],
+    "query": "device:send:desktop_A:meta",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "network:fetch:**"
+    ],
+    "query": "network:fetch",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "network:fetch:**"
+    ],
+    "query": "network:fetch:example.test:POST",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "network:**:POST"
+    ],
+    "query": "network:fetch:example.test:POST",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "network:**:POST"
+    ],
+    "query": "network:fetch:example.test:GET",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "network:fetch:example.test:POST"
+    ],
+    "query": "network:fetch:example.test:POST",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "network:fetch:example.test:POST"
+    ],
+    "query": "network:fetch:Example.Test:POST",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "storage:**"
+    ],
+    "query": "network:fetch:example.test",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs:read:/data/*"
+    ],
+    "query": "fs:read:/data/leaf",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "fs:read:/data/*"
+    ],
+    "query": "fs:read:/data/nested/leaf",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs:read:/data/**"
+    ],
+    "query": "fs:read:/data/nested/leaf",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "event:emit:_plugin.@acme/chat.*"
+    ],
+    "query": "event:emit:_plugin.@acme/chat.open",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": true
+  },
+  {
+    "grants": [
+      "event:emit:_plugin.@acme/chat.*"
+    ],
+    "query": "event:emit:_plugin.@acme/chat.open.more",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "network:fetch:api.*.test"
+    ],
+    "query": "network:fetch:api.example.test",
+    "validGrants": true,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "*"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": false,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "**"
+    ],
+    "query": "platform:read-clipboard",
+    "validGrants": false,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "*:read"
+    ],
+    "query": "fs:read",
+    "validGrants": false,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "unknown:read"
+    ],
+    "query": "fs:read",
+    "validGrants": false,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs::read"
+    ],
+    "query": "fs:read",
+    "validGrants": false,
+    "validQuery": true,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs:**"
+    ],
+    "query": "fs:read\n",
+    "validGrants": true,
+    "validQuery": false,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs:**"
+    ],
+    "query": "fs:read:/data/file\n",
+    "validGrants": true,
+    "validQuery": false,
+    "allowed": false
+  },
+  {
+    "grants": [
+      "fs:**"
+    ],
+    "query": "fs:read:a:b:c:d:e",
+    "validGrants": true,
+    "validQuery": false,
+    "allowed": false
+  }
+]

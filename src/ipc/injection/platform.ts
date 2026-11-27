@@ -19,6 +19,7 @@
 import type { ClipboardNamespace, PlatformNamespace } from '@synra/client'
 
 import type { InjectionContext } from './context'
+import type { GrantCheck } from './grants'
 import { asSynraError, denied } from './errors'
 
 /** A namespace that has the context's token and bridge. */
@@ -32,18 +33,17 @@ function rpc(context: InjectionContext) {
 }
 
 /** The user's browser and notifications. */
-export function createPlatformNamespace(context: InjectionContext): PlatformNamespace {
-  const granted = new Set(context.granted)
+export function createPlatformNamespace(context: InjectionContext, can: GrantCheck): PlatformNamespace {
   const call = rpc(context)
 
   return {
     openUrl: async (url: string): Promise<void> => {
-      if (!granted.has('platform:open-url'))
+      if (!can('platform:open-url'))
         throw denied('platform:open-url')
       await call<null>('platform.openUrl', { url })
     },
     notify: async (request: { readonly title: string, readonly body: string }): Promise<void> => {
-      if (!granted.has('platform:notify'))
+      if (!can('platform:notify'))
         throw denied('platform:notify')
       await call<null>('platform.notify', { title: request.title, body: request.body })
     }
@@ -51,13 +51,12 @@ export function createPlatformNamespace(context: InjectionContext): PlatformName
 }
 
 /** The system clipboard. */
-export function createClipboardNamespace(context: InjectionContext): ClipboardNamespace {
-  const granted = new Set(context.granted)
+export function createClipboardNamespace(context: InjectionContext, can: GrantCheck): ClipboardNamespace {
   const call = rpc(context)
 
   return {
     read: async (): Promise<string> => {
-      if (!granted.has('platform:read-clipboard'))
+      if (!can('platform:read-clipboard'))
         throw denied('platform:read-clipboard')
       // ★ `null` is an empty clipboard, not a refusal. The contract says this method answers a string, and turning
       // "nothing is copied" into an error would make the ordinary case a `catch` for every caller.
@@ -65,7 +64,7 @@ export function createClipboardNamespace(context: InjectionContext): ClipboardNa
       return text ?? ''
     },
     write: async (text: string): Promise<void> => {
-      if (!granted.has('platform:write-clipboard'))
+      if (!can('platform:write-clipboard'))
         throw denied('platform:write-clipboard')
       await call<null>('clipboard.write', { text })
     }

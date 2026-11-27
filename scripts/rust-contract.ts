@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { readIpcContract } from './ipc-contract'
 
 /** Run a real serde producer in the workspace owning the host IPC contract. */
-export function rustContract(appRoot: string, example: 'error_contract' | 'registry_contract'): unknown {
+export function rustContract(appRoot: string, example: 'error_contract' | 'registry_contract' | 'capability_contract'): unknown {
   let core = dirname(readIpcContract(appRoot).path)
   while (!existsSync(join(core, 'crates', 'synra-ipc', 'Cargo.toml'))) {
     const parent = dirname(core)

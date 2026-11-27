@@ -28,6 +28,7 @@ packages:
 overrides:
   '@synra/client': link:../synra-js/packages/client
   '@synra/protocol': link:../synra-js/packages/protocol
+  '@synra/testkit': link:../synra-js/packages/testkit
   '@synra/theme': link:../synra-js/packages/theme
 
 # `esbuild` ships a native binary built by a postinstall script, and `vitest` does not run without it. pnpm 10 refuses

@@ -19,13 +19,12 @@ import type { DeviceId } from '@synra/protocol'
 
 import type { InjectionContext } from './context'
 import { BACKED } from './capabilities'
-import { asSynraError, denied, unsupported } from './errors'
+import { asSynraError, unsupported } from './errors'
 
 /** The device namespace, over the bridge and the event namespace it reports changes through. */
 export function createDeviceNamespace(
   context: InjectionContext,
-  event: EventNamespace,
-  granted: ReadonlySet<string>
+  event: EventNamespace
 ): DeviceNamespace {
   return {
     // ★ The only namespace that answers from the kernel today — and it answers through the plugin channel, not through
@@ -62,8 +61,6 @@ export function createDeviceNamespace(
     // The library's own comment: an author who calls a missing method gets `TypeError: not a function`, which names
     // neither side and cannot be handled. A refused method is an ordinary `catch`.
     pick: async (_options?: PickOptions): Promise<DeviceId | null> => {
-      if (!granted.has('device.pick'))
-        throw denied('device.pick')
       throw unsupported('device.pick')
     },
     // ★ Derived from the same table `hostSupports` reads.

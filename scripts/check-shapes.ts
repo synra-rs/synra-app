@@ -1,5 +1,6 @@
 import process from 'node:process'
 import { checkCommandArguments } from './checks/arguments'
+import { checkCapabilityContract } from './checks/capability-contract'
 import { failures, notes } from './checks/common'
 import { checkCommandNames, checkFakeIsQuarantined, checkInjection, checkSingleDeclarations, checkTypeOnlyImports } from './checks/contracts'
 import { checkErrorContract } from './checks/error-contract'
@@ -14,6 +15,7 @@ const called = await checkCommandNames()
 await checkCommandArguments(called)
 await checkFakeIsQuarantined()
 checkErrorContract()
+checkCapabilityContract()
 checkRegistryContract()
 await checkFacadeIsFresh()
 await checkPageButtons()

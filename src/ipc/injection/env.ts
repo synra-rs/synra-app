@@ -9,11 +9,12 @@
 import type { ClientFeature, EnvNamespace, PlatformCapability } from '@synra/client'
 
 import type { InjectionContext } from './context'
+import type { GrantCheck } from './grants'
 import { BACKED } from './capabilities'
 import { detectWebview } from './webview'
 
 /** The environment namespace, reading the context it was built with. */
-export function createEnvNamespace(context: InjectionContext, granted: ReadonlySet<string>): EnvNamespace {
+export function createEnvNamespace(context: InjectionContext, can: GrantCheck): EnvNamespace {
   const supported = new Set(context.platformCapabilities)
   // ★ Resolved once, at injection: the engine cannot change under a page, and a plugin may ask on every render.
   const webview = detectWebview(typeof navigator === 'undefined' ? '' : navigator.userAgent, context.platform)
@@ -34,6 +35,6 @@ export function createEnvNamespace(context: InjectionContext, granted: ReadonlyS
     platformSupports: (capability: PlatformCapability) => supported.has(capability),
     // ★ A snapshot, read from the one table. Synchronous because a render has to be able to branch on it.
     hostSupports: (feature: ClientFeature) => BACKED[feature] === true,
-    can: (capability: string) => granted.has(capability)
+    can
   }
 }
