@@ -15,6 +15,7 @@ interface Subscription {
   readonly onGap: SubscriptionOptions['onGap']
   phase: 'attaching' | 'active' | 'disposed'
   stream: string | undefined
+  awaitingInitialState: boolean
 }
 
 const TOPIC_GRANTS = [
@@ -72,7 +73,8 @@ export class PageSubscriptions {
       onError: options?.onError,
       onGap: options?.onGap,
       phase: 'attaching',
-      stream: undefined
+      stream: undefined,
+      awaitingInitialState: initial !== undefined
     }
     this.subscriptions.add(subscription)
     void this.attach(subscription, args, initial)
@@ -105,15 +107,13 @@ export class PageSubscriptions {
         await this.readInitialSnapshot(subscription, initial)
     }
     catch (cause) {
-      if (subscription.phase !== 'disposed') {
-        this.stop(subscription)
-        this.report(subscription, asSynraError(cause))
-      }
+      if (subscription.phase !== 'disposed')
+        this.fail(subscription, asSynraError(cause))
     }
   }
 
   private async readInitialSnapshot(subscription: Subscription, read: () => Promise<unknown>): Promise<void> {
-    for (let attempt = 0; this.subscriptions.has(subscription); attempt++) {
+    for (let attempt = 0; subscription.awaitingInitialState && this.subscriptions.has(subscription); attempt++) {
       try {
         const snapshot = await read()
         if (this.subscriptions.has(subscription))
@@ -121,15 +121,24 @@ export class PageSubscriptions {
         return
       }
       catch (cause) {
-        if (!this.subscriptions.has(subscription))
+        if (!subscription.awaitingInitialState || !this.subscriptions.has(subscription))
           return
         const error = asSynraError(cause)
         const delay = RECOVERY_DELAYS_MS[attempt]
-        if (!error.retryable || delay === undefined)
-          throw error
+        if (!error.retryable || delay === undefined) {
+          this.fail(subscription, error)
+          return
+        }
         await new Promise<void>(resolve => setTimeout(resolve, delay))
       }
     }
+  }
+
+  private fail(subscription: Subscription, error: SynraError): void {
+    if (subscription.phase === 'disposed')
+      return
+    this.stop(subscription)
+    this.report(subscription, error)
   }
 
   private stop(subscription: Subscription): void {
@@ -213,10 +222,8 @@ export class PageSubscriptions {
           await new Promise<void>(resolve => setTimeout(resolve, delay))
           continue
         }
-        for (const subscription of this.active(stream)) {
-          this.stop(subscription)
-          this.report(subscription, error)
-        }
+        for (const subscription of this.active(stream))
+          this.fail(subscription, error)
       }
     }
   }
@@ -258,6 +265,7 @@ export class PageSubscriptions {
   }
 
   private notify(subscription: Subscription, payload: unknown): void {
+    subscription.awaitingInitialState = false
     try {
       subscription.handler(payload)
     }
