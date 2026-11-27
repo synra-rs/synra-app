@@ -8,6 +8,17 @@ use super::super::{DesktopHost, PlatformAction, audit_sink};
 use super::{host, host_with, id};
 
 #[test]
+fn a_malformed_key_chord_is_a_bad_host_argument() {
+    let host = host_with(&[("platform:simulate-keys", true)]);
+    let plugin = id("@acme/notes");
+    let error = host
+        .platform(&plugin, PlatformAction::SimulateKeys, "Ctrl++")
+        .expect_err("the chord needs a main key");
+    assert_eq!(error.code, synra_plugin_host::CallError::BAD_ARGUMENT);
+    assert!(error.message.contains("empty part"));
+}
+
+#[test]
 fn a_plugin_can_store_something_in_the_shell_too() {
     // ★ The same five functions the daemon implements, over the same table.
     //

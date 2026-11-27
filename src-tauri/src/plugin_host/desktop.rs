@@ -114,10 +114,11 @@ pub(super) fn platform_refusal(error: &synra_platform::PlatformError) -> CallErr
     let code = match error {
         PlatformError::BadUrl { .. }
         | PlatformError::BadPath { .. }
+        | PlatformError::BadKeyChord(_)
         | PlatformError::TooLong { .. }
         | PlatformError::SimulateKeysNotGranted => CallError::BAD_ARGUMENT,
         PlatformError::Unsupported(_) | PlatformError::Unavailable(_) => CallError::NOT_IMPLEMENTED,
-        PlatformError::RunnerBusy { .. } => CallError::RATE_LIMITED,
+        PlatformError::RunnerBusy { .. } | PlatformError::KeyInputBusy => CallError::RATE_LIMITED,
         PlatformError::NoRecentInteraction { .. }
         | PlatformError::RateLimited { .. }
         | PlatformError::QuotaExceeded { .. }

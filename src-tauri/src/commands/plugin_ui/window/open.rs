@@ -114,9 +114,7 @@ pub fn open_request(state: &AppState, plugin_id: &str) -> Result<OpenDecision, I
     } else {
         "desktop"
     };
-    // ★ The platform's own answer, taken once. `supported_actions` is the askable list rather than a guess: it leaves
-    // out `simulate_keys` when the policy forbids it, so a button built on this answer cannot offer something the host
-    // would refuse.
+    // The platform supplies the supported actions for the current desktop and policy.
     let platform_capabilities: Vec<String> = state
         .platform
         .supported_actions()
