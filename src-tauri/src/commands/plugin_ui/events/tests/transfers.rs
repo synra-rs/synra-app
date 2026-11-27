@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use synra_ipc::PluginTransferStatus;
+use synra_ipc::dto::{PluginUploadAppend, PluginUploadOpened, PluginUploadSent};
 use synra_protocol::{DeviceId, TransferId};
 
 use super::{
     AppState, DEADLINE, ErrorCode, KernelEvent, json, page, pending, project_events, rpc, subscribe,
 };
 use crate::commands::plugin_ui::plugin_ui_rpc;
+
+mod loopback;
 
 fn send_to_refused_port(state: &Arc<AppState>) -> TransferId {
     let to = DeviceId::new();
@@ -21,29 +25,40 @@ fn send_to_refused_port(state: &Arc<AppState>) -> TransferId {
             paired_at_ms: crate::testing::FIXED_NOW_MS,
         })
         .unwrap();
+    upload(state, "20", to, b"a")
+}
+
+fn upload(state: &Arc<AppState>, token: &str, to: DeviceId, bytes: &[u8]) -> TransferId {
     let opened = plugin_ui_rpc(
         state,
-        "20",
+        token,
         "transfer.begin",
-        &json!({ "to": to, "fileName": "sample.bin", "totalBytes": 1 }),
+        &json!({ "to": to, "fileName": "sample.bin", "totalBytes": bytes.len() }),
     )
     .unwrap();
-    let upload = &opened["uploadId"];
-    plugin_ui_rpc(
-        state,
-        "20",
-        "transfer.chunk",
-        &json!({ "uploadId": upload, "offset": 0, "data": "YQ==" }),
-    )
-    .unwrap();
+    let opened: PluginUploadOpened = serde_json::from_value(opened).unwrap();
+    let mut offset = 0_u64;
+    for chunk in bytes.chunks(opened.chunk_bytes) {
+        let ack = plugin_ui_rpc(
+            state,
+            token,
+            "transfer.chunk",
+            &json!({ "uploadId": opened.upload_id, "offset": offset, "data": STANDARD.encode(chunk) }),
+        )
+        .unwrap();
+        let ack: PluginUploadAppend = serde_json::from_value(ack).unwrap();
+        offset += chunk.len() as u64;
+        assert_eq!(ack.written, offset);
+    }
     let accepted = plugin_ui_rpc(
         state,
-        "20",
+        token,
         "transfer.finish",
-        &json!({ "uploadId": upload }),
+        &json!({ "uploadId": opened.upload_id }),
     )
     .unwrap();
-    serde_json::from_value(accepted["transferId"].clone()).unwrap()
+    let accepted: PluginUploadSent = serde_json::from_value(accepted).unwrap();
+    accepted.transfer_id
 }
 
 #[tokio::test]

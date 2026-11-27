@@ -15,12 +15,16 @@ const PC: &str = "11111111-1111-4111-8111-111111111111";
 const DEADLINE: Duration = Duration::from_secs(2);
 
 fn page(state: &AppState, label: &str, nonce: u128, id: &str, grants: &[&str]) {
+    state
+        .db()
+        .insert_plugin(id, true, true, "installed", 1, 1)
+        .unwrap();
+    open_page(state, label, nonce, id, grants);
+}
+
+fn open_page(state: &AppState, label: &str, nonce: u128, id: &str, grants: &[&str]) {
     let plugin_id = PluginId::parse(id).unwrap();
-    let authority = {
-        let db = state.db();
-        db.insert_plugin(id, true, true, "installed", 1, 1).unwrap();
-        db.plugin_authority(id).unwrap().unwrap()
-    };
+    let authority = state.db().plugin_authority(id).unwrap().unwrap();
     state.ui_sessions.issue_with(
         &plugin_id,
         "1.0.0",
