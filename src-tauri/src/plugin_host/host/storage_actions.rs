@@ -63,8 +63,9 @@ macro_rules! storage_actions_host_methods {
         }
 
         fn fetch(&self, plugin: &PluginId, request_json: &str) -> Result<String, CallError> {
-            let client = fetcher_for(self, plugin)?;
-            client.fetch_plugin(request_json, &self.granted(plugin))
+            self.fetch_clients
+                .get(plugin)
+                .fetch_plugin(request_json, &self.granted(plugin))
         }
 
         fn transfer_send(

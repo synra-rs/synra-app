@@ -1,0 +1,121 @@
+[
+  {
+    "name": "absolute HTTPS with an explicit port",
+    "input": "https://127.0.0.1:8443/path?q=1",
+    "grants": ["network:fetch:127.0.0.1"],
+    "appCode": "ip_not_allowed"
+  },
+  {
+    "name": "mixed case and root dot on the requested host",
+    "input": "HTTP://API.EXAMPLE.TEST.:8443/path",
+    "method": "POST",
+    "grants": ["network:fetch:api.example.test:POST"],
+    "code": "scheme_not_allowed"
+  },
+  {
+    "name": "canonical IPv4 host spelling",
+    "input": "https://127.1/",
+    "grants": ["network:fetch:127.0.0.1:GET"],
+    "appCode": "ip_not_allowed"
+  },
+  {
+    "name": "internationalized DNS name",
+    "input": "http://例子.example/",
+    "grants": ["network:fetch:xn--fsqu00a.example"],
+    "code": "scheme_not_allowed"
+  },
+  {
+    "name": "userinfo before the granted destination",
+    "input": "http://user:example@api.example.test/",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "scheme_not_allowed"
+  },
+  {
+    "name": "userinfo resembling a granted destination",
+    "input": "https://api.example.test@other.example.test/",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "capability_denied",
+    "capability": "network:fetch:other.example.test:GET"
+  },
+  {
+    "name": "a destination that extends the granted hostname",
+    "input": "https://api.example.test.other.test/",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "capability_denied",
+    "capability": "network:fetch:api.example.test.other.test:GET"
+  },
+  {
+    "name": "a method-specific grant for another method",
+    "input": "https://api.example.test/",
+    "method": "PATCH",
+    "grants": ["network:fetch:api.example.test:POST"],
+    "code": "capability_denied",
+    "capability": "network:fetch:api.example.test:PATCH"
+  },
+  {
+    "name": "a wildcard method on a concrete hostname",
+    "input": "http://api.example.test/",
+    "method": "HEAD",
+    "grants": ["network:fetch:api.example.test:*"],
+    "code": "scheme_not_allowed"
+  },
+  {
+    "name": "the host call family grant alone",
+    "input": "https://api.example.test/",
+    "grants": ["network:fetch:*"],
+    "code": "capability_denied",
+    "capability": "network:fetch:api.example.test:GET"
+  },
+  {
+    "name": "a broad grant beside a concrete read-only grant",
+    "input": "https://127.0.0.1/",
+    "method": "POST",
+    "grants": ["network:fetch:127.0.0.1:GET", "network:fetch:**"],
+    "code": "capability_denied",
+    "capability": "network:fetch:127.0.0.1:POST"
+  },
+  {
+    "name": "plain HTTP without a grant",
+    "input": "http://api.example.test/",
+    "grants": [],
+    "code": "capability_denied",
+    "capability": "network:fetch:api.example.test:GET"
+  },
+  {
+    "name": "an unsupported URL scheme",
+    "input": "ftp://api.example.test/",
+    "grants": [],
+    "code": "invalid_argument"
+  },
+  {
+    "name": "an IPv6 literal",
+    "input": "https://[::1]:8443/",
+    "grants": ["network:fetch:**"],
+    "code": "invalid_argument"
+  },
+  {
+    "name": "an invalid port",
+    "input": "https://api.example.test:65536/",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "invalid_argument"
+  },
+  {
+    "name": "an HTTP URL without an authority",
+    "input": "https:///api.example.test/",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "invalid_argument"
+  },
+  {
+    "name": "a wildcard in the URL host",
+    "input": "https://*.example.test/",
+    "grants": ["network:fetch:**"],
+    "code": "invalid_argument"
+  },
+  {
+    "name": "an unsupported page request method",
+    "input": "http://api.example.test/",
+    "method": "OPTIONS",
+    "grants": ["network:fetch:api.example.test"],
+    "code": "invalid_argument"
+  }
+]

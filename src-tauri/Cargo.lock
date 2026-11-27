@@ -4441,6 +4441,7 @@ dependencies = [
  "synra-protocol",
  "synra-wit-codegen",
  "thiserror 2.0.21",
+ "url",
  "wasmtime",
  "wit-component",
  "wit-parser 0.247.0",

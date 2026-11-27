@@ -3,10 +3,7 @@ use super::*;
 //
 // ★ Why this goes through `PluginSet`'s host rather than building a fetcher here.
 //
-// `Host::fetch` is the same path the Wasm half uses: it reads the plugin's `network:fetch:<host>` grants, applies one
-// in-flight limit per plugin and reuses one client. A second fetcher in this module would have its own limit and its own
-// reading of the grants, so a page and an instance together could exceed what neither may alone — and the two could
-// disagree about which hosts the user allowed.
+// Pages and Wasm share `Host::fetch`. The host reads current grants and applies one in-flight limit per plugin.
 
 /// The wire code a host-call refusal carries, as an IPC code.
 ///
@@ -59,9 +56,13 @@ pub(crate) fn network_fetch(
     }
     let method = init
         .get("method")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("GET")
-        .to_owned();
+        .map_or(Some("GET"), serde_json::Value::as_str)
+        .filter(|method| matches!(*method, "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD"))
+        .ok_or_else(|| {
+            IpcError::unknown(ErrorCode::InvalidArgument).with_params(
+                serde_json::json!({"field": "method", "reason": "a supported HTTP method is required"}),
+            )
+        })?;
     let headers = init
         .get("headers")
         .cloned()

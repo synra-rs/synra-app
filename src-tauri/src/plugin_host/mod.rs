@@ -44,16 +44,12 @@ mod host;
 
 use apps::{app_capability, open_registered_app, registered_apps};
 pub use desktop::DesktopHost;
-#[cfg(test)]
-use desktop::host_of;
-use desktop::{failed, fetcher_for, not_implemented, platform_refusal};
+use desktop::{failed, not_implemented, platform_refusal};
 pub use host::audit_sink;
 
 #[cfg(test)]
 mod clipboard_tests;
 #[cfg(test)]
 mod event_tests;
-#[cfg(test)]
-mod scoped_fetch_tests;
 #[cfg(test)]
 mod tests;

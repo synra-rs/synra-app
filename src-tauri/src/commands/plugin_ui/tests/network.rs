@@ -3,8 +3,14 @@ use super::*;
 // ── Outbound network ────────────────────────────────────────────────────────────────────────────
 
 /// A state with a plugin engine, so `network.fetch` has a host to ask.
-fn network_page() -> (crate::testing::Root, Arc<crate::AppState>, String) {
+fn network_page(grants: &[String]) -> (crate::testing::Root, Arc<crate::AppState>, String) {
     let (root, state) = crate::testing::file_state();
+    test_authority(&state);
+    let decisions: Vec<_> = grants.iter().cloned().map(|grant| (grant, true)).collect();
+    state
+        .db()
+        .record_grants(plugin_id().as_str(), &decisions, 1, "scope")
+        .unwrap();
     let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
         Arc::clone(&state.db),
         Arc::clone(&state.platform),
@@ -13,7 +19,8 @@ fn network_page() -> (crate::testing::Root, Arc<crate::AppState>, String) {
     let state = state.with_plugins(Arc::new(Mutex::new(synra_core::dispatch::PluginSet::new(
         backend, host,
     ))));
-    let token = hosted_page(&state);
+    let capabilities: Vec<_> = grants.iter().map(String::as_str).collect();
+    let token = hosted_page_with(&state, &capabilities);
     (root, Arc::new(state), token)
 }
 
@@ -77,9 +84,8 @@ fn a_shell_with_no_plugin_engine_cannot_fetch() {
 
 #[test]
 fn a_plugin_without_a_network_grant_is_refused_by_the_host() {
-    // ★ The authority is the host's, not this module's: `fetcher_for` reads `network:fetch:<host>` from the grants and
-    // refuses an empty list rather than treating it as "any host".
-    let (_root, state, token) = network_page();
+    // The host checks the requested scope against stored grants.
+    let (_root, state, token) = network_page(&[]);
 
     let refused = super::super::plugin_ui_rpc(
         &state,
@@ -90,6 +96,52 @@ fn a_plugin_without_a_network_grant_is_refused_by_the_host() {
     .expect_err("no network grant");
 
     assert_eq!(refused.code, ErrorCode::CapabilityDenied);
+}
+
+#[test]
+fn network_scope_matches_the_shared_facade_and_testkit_cases() {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Scenario {
+        name: String,
+        input: String,
+        method: Option<String>,
+        grants: Vec<String>,
+        code: Option<ErrorCode>,
+        app_code: Option<ErrorCode>,
+        capability: Option<String>,
+    }
+
+    let scenarios: Vec<Scenario> = serde_json::from_str(include_str!(
+        "../../../../../tests/fixtures/network-scope.json"
+    ))
+    .expect("shared network scenarios");
+    for scenario in scenarios {
+        let (_root, state, token) = network_page(&scenario.grants);
+        let mut args = serde_json::json!({"input": scenario.input});
+        if let Some(method) = scenario.method {
+            args["init"] = serde_json::json!({"method": method});
+        }
+        let refused = super::super::plugin_ui_rpc(&state, &token, "network.fetch", &args)
+            .expect_err(&scenario.name);
+        let wire = serde_json::to_value(refused).unwrap();
+        let code = scenario.app_code.or(scenario.code).expect("host outcome");
+        assert_eq!(
+            wire["code"],
+            serde_json::json!(code),
+            "{}: {wire}",
+            scenario.name
+        );
+        if let Some(capability) = scenario.capability {
+            assert!(
+                wire["params"]["reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&capability),
+                "{wire}"
+            );
+        }
+    }
 }
 
 #[test]
