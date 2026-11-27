@@ -9,8 +9,7 @@ pub(crate) enum SendSource {
     Text(PathBuf),
     PluginUpload {
         owner: PluginId,
-        path: PathBuf,
-        directory: PathBuf,
+        spool: crate::commands::plugin_ui::UploadSpool,
     },
 }
 
@@ -34,26 +33,23 @@ pub(crate) fn start_send(
     row: TransferSnapshot,
     source: SendSource,
 ) -> Result<TransferId, IpcError> {
-    let (temp, cleanup_dir, owner) = match source {
+    let (temp, spool, owner) = match source {
         SendSource::UserFile => (None, None, None),
         SendSource::Text(path) => (Some(path), None, None),
-        SendSource::PluginUpload {
-            owner,
-            path,
-            directory,
-        } => (Some(path), Some(directory), Some(owner)),
+        SendSource::PluginUpload { owner, spool } => (None, Some(spool), Some(owner)),
     };
     let transfer_id = row.transfer_id;
     let cancel = synra_core::supervisor::Cancellation::new();
     state
         .transfers
-        .record_owned(row.clone(), temp, cleanup_dir, owner, cancel.clone());
+        .record_owned(row.clone(), temp, owner, cancel.clone());
     announce_transfer(state, row.clone());
 
     let thread_state = std::sync::Arc::clone(state);
     let spawned = std::thread::Builder::new()
         .name(format!("synra-send-{transfer_id}"))
         .spawn(move || {
+            let _spool = spool;
             if let Err(error) =
                 send_over_with(&thread_state, to, address, sender, row, Some(&cancel))
             {

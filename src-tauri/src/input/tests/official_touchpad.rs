@@ -50,7 +50,7 @@ impl Pointer for Probe {
     }
 }
 
-fn installed(effects: Option<Arc<Mutex<Effects>>>) -> (crate::testing::Root, AppState) {
+fn installed(effects: Option<Arc<Mutex<Effects>>>) -> (crate::testing::Root, Arc<AppState>) {
     let package = PathBuf::from(
         std::env::var_os("SYNRA_TOUCHPAD_PACKAGE")
             .expect("set SYNRA_TOUCHPAD_PACKAGE to CLI-built dist"),
@@ -105,7 +105,7 @@ fn installed(effects: Option<Arc<Mutex<Effects>>>) -> (crate::testing::Root, App
     assert_eq!(installed.plugin_id.as_str(), PLUGIN);
     commands::plugins::plugins_consent_respond(&state, PLUGIN, &GRANTS.map(str::to_owned)).unwrap();
     commands::plugins::plugins_enable(&state, PLUGIN).unwrap();
-    (root, state)
+    (root, Arc::new(state))
 }
 
 fn pair(state: &AppState, peer: &AppState, address: Option<SocketAddr>) {
@@ -122,7 +122,7 @@ fn pair(state: &AppState, peer: &AppState, address: Option<SocketAddr>) {
         .unwrap();
 }
 
-fn invoke(state: &AppState, token: &str, args: Value) -> Value {
+fn invoke(state: &Arc<AppState>, token: &str, args: Value) -> Value {
     commands::plugin_ui::plugin_ui_rpc(
         state,
         token,
@@ -132,7 +132,7 @@ fn invoke(state: &AppState, token: &str, args: Value) -> Value {
     .unwrap()
 }
 
-fn frame(state: &AppState, token: &str, time: u64, contacts: Value) {
+fn frame(state: &Arc<AppState>, token: &str, time: u64, contacts: Value) {
     invoke(
         state,
         token,

@@ -34,8 +34,6 @@ struct Entry {
     /// and must **not** be deleted, while a sent message was written by this shell and must be. The two look identical from the
     /// snapshot alone.
     temp: Option<std::path::PathBuf>,
-    /// Upload directory owned by this task; never inferred from a user's source file.
-    cleanup_dir: Option<std::path::PathBuf>,
     status: Option<OwnedStatus>,
     cancel: Option<Cancellation>,
 }
@@ -83,7 +81,6 @@ impl Transfers {
             Entry {
                 snapshot,
                 temp: None,
-                cleanup_dir: None,
                 status: None,
                 cancel: None,
             },
@@ -98,7 +95,6 @@ impl Transfers {
             Entry {
                 snapshot,
                 temp: Some(temp),
-                cleanup_dir: None,
                 status: None,
                 cancel: None,
             },
@@ -110,7 +106,6 @@ impl Transfers {
         &self,
         snapshot: TransferSnapshot,
         temp: Option<std::path::PathBuf>,
-        cleanup_dir: Option<std::path::PathBuf>,
         plugin: Option<PluginId>,
         cancel: Cancellation,
     ) {
@@ -120,7 +115,6 @@ impl Transfers {
             Entry {
                 snapshot,
                 temp,
-                cleanup_dir,
                 status,
                 cancel: Some(cancel),
             },
@@ -145,7 +139,7 @@ impl Transfers {
         id: TransferId,
         outcome: TransferOutcome,
         now_ms: u64,
-    ) -> Option<(Option<std::path::PathBuf>, Option<std::path::PathBuf>)> {
+    ) -> Option<Option<std::path::PathBuf>> {
         let mut registry = self.registry.lock();
         let entry = registry.active.get_mut(&id)?;
         if entry.snapshot.direction != "send"
@@ -160,7 +154,7 @@ impl Transfers {
         if let Some(status) = entry.status {
             registry.terminal.add(id, status, now_ms);
         }
-        Some((entry.temp, entry.cleanup_dir))
+        Some(entry.temp)
     }
 
     pub(crate) fn plugin_status(

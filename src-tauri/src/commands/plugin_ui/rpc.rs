@@ -37,11 +37,6 @@ pub fn plugin_ui_ready(state: &AppState, label: &str) -> Result<(), IpcError> {
 /// looks the entry up by that nonce. The page never gets to say which plugin it is — it presents a value only the host
 /// could have given it, and the host remembers the rest.
 ///
-/// # What is implemented, and what is only addressable
-///
-/// `device.list` and `storage.*` have bodies. The rest of the surface answers [`ErrorCode::Unsupported`] — an honest
-/// "this build does not do that yet", rather than an empty list or a promise nothing keeps.
-///
 /// # Errors
 ///
 /// [`ErrorCode::InvalidArgument`] when the token is not a decimal number or an operation's arguments are malformed,
@@ -49,32 +44,7 @@ pub fn plugin_ui_ready(state: &AppState, label: &str) -> Result<(), IpcError> {
 /// capability was not granted, [`ErrorCode::Unsupported`] for a method that is not on the plugin surface or is not built
 /// here, and [`ErrorCode::PayloadTooLarge`] when a write would exceed the plugin's storage quota.
 pub fn plugin_ui_rpc(
-    state: &AppState,
-    token: &str,
-    method: &str,
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, IpcError> {
-    dispatch(state, None, token, method, args)
-}
-
-/// [`plugin_ui_rpc`], with the managed state so a chunked transfer can finish on a worker.
-///
-/// # Why the two entries exist
-///
-/// Because only the Tauri command owns an `Arc<AppState>`, and a finished upload's send has to outlive the call. Everything
-/// else is shared; the difference is one optional reference that only `transfer.finish` uses.
-pub fn plugin_ui_rpc_arc(
     state: &std::sync::Arc<AppState>,
-    token: &str,
-    method: &str,
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, IpcError> {
-    dispatch(state, Some(state), token, method, args)
-}
-
-pub(crate) fn dispatch(
-    state: &AppState,
-    arc: Option<&std::sync::Arc<AppState>>,
     token: &str,
     method: &str,
     args: &serde_json::Value,
@@ -125,10 +95,9 @@ pub(crate) fn dispatch(
         PluginUiOp::NetworkFetch => network_fetch(state, &plugin_id, args),
         PluginUiOp::SelfActions => self_actions(state, &plugin_id),
         PluginUiOp::SelfInvoke => self_invoke(state, &plugin_id, args),
-        PluginUiOp::TransferSend => transfer_send(state, &session, args),
         PluginUiOp::TransferBegin => transfer_begin(state, &session, args),
         PluginUiOp::TransferChunk => transfer_chunk(state, &session, args),
-        PluginUiOp::TransferFinish => transfer_finish(state, arc, &session, args),
+        PluginUiOp::TransferFinish => transfer_finish(state, &session, args),
         PluginUiOp::TransferAbort => transfer_abort(state, &session, args),
         PluginUiOp::TransferStatus => transfer_status(state, &session, args),
         _ => Err(IpcError::unknown(ErrorCode::Unsupported).with_params(serde_json::json!({

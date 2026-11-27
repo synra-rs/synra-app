@@ -51,7 +51,7 @@ pub(crate) use window::stays_on_page;
 #[cfg(test)]
 pub(crate) use window::*;
 
-pub use rpc::{plugin_ui_ready, plugin_ui_rpc, plugin_ui_rpc_arc};
+pub use rpc::{plugin_ui_ready, plugin_ui_rpc};
 pub use transfer::Uploads;
 #[cfg(feature = "tauri-shell")]
 pub use window::serve;

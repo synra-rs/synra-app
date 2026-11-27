@@ -34,7 +34,7 @@ pub async fn plugin_ui_rpc(
     {
         return result;
     }
-    commands::plugin_ui::plugin_ui_rpc_arc(state.inner(), &token, &method, &args)
+    commands::plugin_ui::plugin_ui_rpc(state.inner(), &token, &method, &args)
 }
 
 /// Opens a plugin's page in its own WebView, under its own origin.

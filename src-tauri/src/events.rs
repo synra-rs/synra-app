@@ -90,6 +90,9 @@ pub fn spawn(
         while !cancel.is_cancelled() {
             if last_ui_sweep.elapsed() >= Duration::from_secs(1) {
                 if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+                    state
+                        .uploads
+                        .sweep(crate::commands::plugin_ui::upload_time_ms(&state));
                     for label in crate::commands::plugin_ui::stale_windows(&state) {
                         if let Some(window) = app.get_webview_window(&label) {
                             let _ = window.destroy();

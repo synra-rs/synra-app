@@ -39,16 +39,11 @@ pub(crate) fn finish_transfer(
     transfer_id: synra_protocol::ids::TransferId,
     outcome: TransferOutcome,
 ) {
-    let Some((temp, directory)) = state.transfers.finish(transfer_id, outcome, unix_millis())
-    else {
+    let Some(temp) = state.transfers.finish(transfer_id, outcome, unix_millis()) else {
         return;
     };
     if let Some(path) = temp {
         let _ = std::fs::remove_file(path);
-    }
-    if let Some(directory) = directory {
-        // Nonrecursive: ownership of one upload directory never permits deleting unrelated contents.
-        let _ = std::fs::remove_dir(directory);
     }
     state.publish(synra_ipc::event::KernelEvent::TransferFinished { transfer_id });
 }

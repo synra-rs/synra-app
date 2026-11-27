@@ -9,6 +9,7 @@
 import type { TransferId } from '@synra/protocol'
 import { describe, expect, it, vi } from 'vitest'
 
+import { createSynraError } from '@/ipc/errors'
 import { createInjection } from '@/ipc/injection'
 import { bridge, context } from './injection-test-helpers'
 
@@ -22,7 +23,8 @@ function channel(answers: Readonly<Record<string, unknown>>, onListen?: (callbac
       const method = payload?.method as string
       if (!(method in answers))
         throw Object.assign(new Error(`no answer for ${method}`), { code: 'unsupported', message: 'error.unsupported' })
-      return answers[method]
+      const answer = answers[method]
+      return typeof answer === 'function' ? answer(payload?.args) : answer
     }
   )
   const listen = vi.fn(async (_channel: string, callback: (payload: unknown) => void) => {
@@ -35,8 +37,8 @@ function channel(answers: Readonly<Record<string, unknown>>, onListen?: (callbac
 describe('transfer', () => {
   it('sends the blob as chunks and reads every status from the host', async () => {
     const answers = {
-      'transfer.begin': { uploadId: 'UPLOAD1' },
-      'transfer.chunk': {},
+      'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 3 },
+      'transfer.chunk': ({ offset, data }: { offset: number, data: string }) => ({ written: offset + atob(data).length, totalBytes: 5 }),
       'transfer.finish': { transferId: ID },
       'transfer.status': { transferId: ID, state: 'transferring', receivedBytes: 2, totalBytes: 5 }
     }
@@ -62,9 +64,14 @@ describe('transfer', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'plugin_ui_rpc', {
       token: '123456789012345678901234567890',
       method: 'transfer.chunk',
-      args: { uploadId: 'UPLOAD1', data: 'aGVsbG8=' }
+      args: { uploadId: 'UPLOAD1', offset: 0, data: 'aGVs' }
     })
     expect(invoke).toHaveBeenNthCalledWith(3, 'plugin_ui_rpc', {
+      token: '123456789012345678901234567890',
+      method: 'transfer.chunk',
+      args: { uploadId: 'UPLOAD1', offset: 3, data: 'bG8=' }
+    })
+    expect(invoke).toHaveBeenNthCalledWith(4, 'plugin_ui_rpc', {
       token: '123456789012345678901234567890',
       method: 'transfer.finish',
       args: { uploadId: 'UPLOAD1' }
@@ -78,7 +85,7 @@ describe('transfer', () => {
     })
     answers['transfer.status'] = { transferId: ID, state: 'completed', receivedBytes: 5, totalBytes: 5 }
     await expect(synra.transfer.status(id)).resolves.toMatchObject({ state: 'completed', receivedBytes: 5 })
-    expect(invoke).toHaveBeenNthCalledWith(5, 'plugin_ui_rpc', expect.objectContaining({
+    expect(invoke).toHaveBeenNthCalledWith(6, 'plugin_ui_rpc', expect.objectContaining({
       method: 'transfer.status',
       args: { transferId: ID }
     }))
@@ -94,16 +101,19 @@ describe('transfer', () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('refuses a file larger than the chunked channel carries', async () => {
-    const { bridge: seam, invoke } = channel({})
+  it('propagates the host size refusal before reading the blob', async () => {
+    const { bridge: seam, invoke } = channel({
+      'transfer.begin': () => { throw createSynraError('payload_too_large', { maxBytes: 40 }) }
+    })
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
-    // A shaped object rather than 64 real megabytes: `send` decides on `size` before it reads anything.
-    const huge = { size: 64 * 1024 * 1024 + 1, arrayBuffer: async () => new ArrayBuffer(0) } as unknown as Blob
+    const slice = vi.fn()
+    const huge = { size: 41, slice } as unknown as Blob
 
     await expect(
       synra.transfer.send({ to: 'peer', file: huge, fileName: 'big.bin' })
     ).rejects.toMatchObject({ code: 'payload_too_large' })
-    expect(invoke).not.toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('plugin_ui_rpc', expect.objectContaining({ method: 'transfer.begin' }))
+    expect(slice).not.toHaveBeenCalled()
   })
 
   it('refuses the grouping id this channel does not carry', async () => {
@@ -113,6 +123,18 @@ describe('transfer', () => {
     await expect(
       synra.transfer.send({ to: 'peer', file: new Blob(['x']), fileName: 'a.txt', contextId: 'c1' })
     ).rejects.toMatchObject({ code: 'unsupported' })
+  })
+
+  it('aborts an upload when the host acknowledgement disagrees with the written range', async () => {
+    const { bridge: seam, invoke } = channel({
+      'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 3 },
+      'transfer.chunk': { written: 1, totalBytes: 3 },
+      'transfer.abort': { aborted: true }
+    })
+    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const sending = synra.transfer.send({ to: 'peer', file: new Blob(['abc']), fileName: 'a.txt' })
+    await expect(sending).rejects.toMatchObject({ code: 'internal', details: { reason: 'invalid_upload_acknowledgement' } })
+    expect(invoke.mock.calls.map(([, payload]) => payload?.method)).toEqual(['transfer.begin', 'transfer.chunk', 'transfer.abort'])
   })
 
   it('uses the acknowledged bytes even when the last block is short', async () => {
@@ -171,8 +193,8 @@ describe('transfer', () => {
 
   it('reads the host terminal state for a listener attached after the send', async () => {
     const { bridge: seam } = channel({
-      'transfer.begin': { uploadId: 'UPLOAD1' },
-      'transfer.chunk': {},
+      'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 10 },
+      'transfer.chunk': { written: 2, totalBytes: 2 },
       'transfer.finish': { transferId: ID },
       'transfer.status': { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, blocksDone: 1, blocksTotal: 1, revision: 3, endedAtMs: 100 }
     })

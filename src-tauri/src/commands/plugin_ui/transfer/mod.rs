@@ -1,12 +1,12 @@
-mod chunked;
 mod direct;
-mod types;
+mod upload_rpc;
+mod uploads;
 
-pub(crate) use chunked::transfer_file_name;
-pub(crate) use chunked::{transfer_abort, transfer_begin, transfer_chunk, transfer_finish};
-pub(crate) use direct::{transfer_send, transfer_status};
-pub use types::Uploads;
-pub(crate) use types::{
-    MAX_PLUGIN_CHUNK_BYTES, MAX_PLUGIN_TRANSFER_BYTES, MAX_PLUGIN_UPLOAD_BYTES, Upload,
-    discard_upload,
-};
+pub(crate) use direct::transfer_status;
+#[cfg(feature = "tauri-shell")]
+pub(crate) use upload_rpc::upload_time_ms;
+pub(crate) use upload_rpc::{transfer_abort, transfer_begin, transfer_chunk, transfer_finish};
+pub(crate) use uploads::UploadSpool;
+pub use uploads::Uploads;
+#[cfg(feature = "tauri-shell")]
+pub(crate) use uploads::sweep_startup as sweep_upload_spool;

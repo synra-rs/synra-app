@@ -16,9 +16,7 @@ pub(super) fn validate(state: &AppState, entry: &HostedUi) -> Result<ValidatedSe
         .plugin_authority(entry.plugin_id.as_str())
         .map_err(super::internal)?;
     if !entry.authority.permits_ui() || current != Some(entry.authority) {
-        state.ui_sessions.revoke(entry.nonce);
-        #[cfg(any(feature = "tauri-shell", test))]
-        state.plugin_events.close(entry.nonce);
+        revoke(state, entry.nonce);
         return Err(refused());
     }
     let now = u64::try_from(synra_store::sqlite::now_ms()).unwrap_or_default();
@@ -26,9 +24,15 @@ pub(super) fn validate(state: &AppState, entry: &HostedUi) -> Result<ValidatedSe
         .ui_sessions
         .validate(entry.nonce, &entry.plugin_id, &entry.version, now)
         .map_err(|_| refused());
-    #[cfg(any(feature = "tauri-shell", test))]
     if session.is_err() {
-        state.plugin_events.close(entry.nonce);
+        revoke(state, entry.nonce);
     }
     session
+}
+
+pub(super) fn revoke(state: &AppState, nonce: u128) {
+    state.ui_sessions.revoke(nonce);
+    state.uploads.revoke(nonce);
+    #[cfg(any(feature = "tauri-shell", test))]
+    state.plugin_events.close(nonce);
 }

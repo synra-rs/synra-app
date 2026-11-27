@@ -30,11 +30,6 @@ export function denied(capability: string): SynraError {
   }
 }
 
-/** A refusal for a value the host will not take in one piece. */
-export function tooLarge(detail: string): SynraError {
-  return createSynraError('payload_too_large', { detail })
-}
-
 /** A refusal for an argument the host cannot accept. */
 export function invalidArgument(detail: string): SynraError {
   return createSynraError('invalid_argument', { detail })

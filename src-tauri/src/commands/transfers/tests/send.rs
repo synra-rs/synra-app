@@ -41,7 +41,6 @@ fn a_send_over_a_connected_link_reports_every_block_and_finishes() {
     state.transfers.record_owned(
         row.clone(),
         None,
-        None,
         Some(owner.clone()),
         synra_core::supervisor::Cancellation::new(),
     );
@@ -197,7 +196,7 @@ fn a_cancelled_send_stops_before_the_first_block_and_tells_the_peer() {
     let owner = synra_protocol::PluginId::parse("@acme/sender").unwrap();
     state
         .transfers
-        .record_owned(row.clone(), None, None, Some(owner.clone()), cancel.clone());
+        .record_owned(row.clone(), None, Some(owner.clone()), cancel.clone());
     cancel.cancel();
     let refused =
         super::super::send_ready_with(&state, peer, &mut sending, sender, row, Some(&cancel))

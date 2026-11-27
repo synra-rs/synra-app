@@ -70,9 +70,11 @@ fn platform_page(
 #[test]
 fn reading_the_clipboard_answers_with_the_platforms_text() {
     let (_root, state, token, runner) = platform_page(&["platform:read-clipboard"]);
+    let state = Arc::new(state);
 
-    let answer = super::super::plugin_ui_rpc(&state, &token, "clipboard.read", &serde_json::json!({}))
-        .expect("the clipboard");
+    let answer =
+        super::super::plugin_ui_rpc(&state, &token, "clipboard.read", &serde_json::json!({}))
+            .expect("the clipboard");
 
     assert_eq!(answer, serde_json::json!("from the clipboard"));
     assert_eq!(
@@ -87,6 +89,7 @@ fn writing_the_clipboard_without_the_write_grant_never_reaches_the_platform() {
     // ★ The gate, not the façade: the `denied` a page sees from `synra.clipboard.write` is an optimisation; the check
     // that matters is the one between a call and the user's clipboard.
     let (_root, state, token, runner) = platform_page(&["platform:read-clipboard"]);
+    let state = Arc::new(state);
 
     let refused = super::super::plugin_ui_rpc(
         &state,
@@ -113,6 +116,7 @@ fn writing_the_clipboard_without_the_write_grant_never_reaches_the_platform() {
 #[test]
 fn clipboard_write_delivers_text_to_the_process_stdin() {
     let (_root, state, token, runner) = platform_page(&["platform:write-clipboard"]);
+    let state = Arc::new(state);
     let text = "\"literal\"; $(1+2)\r\n中文🖱️";
     let answer = super::super::plugin_ui_rpc(
         &state,
@@ -131,6 +135,7 @@ fn clipboard_write_delivers_text_to_the_process_stdin() {
 #[test]
 fn oversized_clipboard_utf8_is_refused_before_a_process_starts() {
     let (_root, state, token, runner) = platform_page(&["platform:write-clipboard"]);
+    let state = Arc::new(state);
     let text = "选".repeat(synra_platform::MAX_CLIPBOARD_BYTES / 3 + 1);
     let error = super::super::plugin_ui_rpc(
         &state,
@@ -146,6 +151,7 @@ fn oversized_clipboard_utf8_is_refused_before_a_process_starts() {
 #[test]
 fn opening_a_url_hands_it_to_the_platform() {
     let (_root, state, token, runner) = platform_page(&["platform:open-url"]);
+    let state = Arc::new(state);
 
     let answer = super::super::plugin_ui_rpc(
         &state,
@@ -172,6 +178,7 @@ fn opening_a_url_hands_it_to_the_platform() {
 #[test]
 fn a_url_the_platform_refuses_never_reaches_the_runner() {
     let (_root, state, token, runner) = platform_page(&["platform:open-url"]);
+    let state = Arc::new(state);
 
     let refused = super::super::plugin_ui_rpc(
         &state,
@@ -197,6 +204,7 @@ fn a_url_the_platform_refuses_never_reaches_the_runner() {
 #[test]
 fn a_notification_carries_its_title_and_body() {
     let (_root, state, token, runner) = platform_page(&["platform:notify"]);
+    let state = Arc::new(state);
 
     super::super::plugin_ui_rpc(
         &state,

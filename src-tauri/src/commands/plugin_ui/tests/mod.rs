@@ -155,7 +155,7 @@ fn action_page(
     args_json: &str,
 ) -> (
     crate::testing::Root,
-    crate::AppState,
+    Arc<crate::AppState>,
     String,
     Arc<ScriptedBackend>,
 ) {
@@ -175,7 +175,7 @@ fn action_page(
 fn action_page_on(
     backend: Backend,
     wasm: Vec<u8>,
-) -> (crate::testing::Root, crate::AppState, String) {
+) -> (crate::testing::Root, Arc<crate::AppState>, String) {
     let (root, state) = crate::testing::file_state();
     let plugin = plugin_id();
     state
@@ -217,16 +217,16 @@ fn action_page_on(
 
     let state = state.with_plugins(Arc::new(Mutex::new(set)));
     let token = hosted_page(&state);
-    (root, state, token)
+    (root, Arc::new(state), token)
 }
 
 // ── Transfers ───────────────────────────────────────────────────────────────────────────────────
 
 /// A page holding the transfer-send grant.
-fn transfer_page() -> (crate::testing::Root, crate::AppState, String) {
+fn transfer_page() -> (crate::testing::Root, Arc<crate::AppState>, String) {
     let (root, state) = crate::testing::file_state();
     let token = hosted_page_with(&state, &["file:transfer:send"]);
-    (root, state, token)
+    (root, Arc::new(state), token)
 }
 
 mod actions;

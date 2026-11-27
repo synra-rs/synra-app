@@ -120,7 +120,7 @@ impl AppState {
             bundles_written: AtomicU64::new(0),
             listener: None,
             transfer_desk: Arc::new(crate::transfer_desk::TransferDesk::new()),
-            uploads: crate::commands::plugin_ui::Uploads::new(),
+            uploads: crate::commands::plugin_ui::Uploads::default(),
             started_at_ms: now_ms,
             started: std::time::Instant::now(),
             uptime_reported: Mutex::new(0),

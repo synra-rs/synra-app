@@ -4,7 +4,11 @@ use super::*;
 
 /// A state with the plugin installed (the storage table's foreign key needs the row) and a page holding both storage
 /// capabilities.
-fn storage_page() -> (crate::testing::Root, crate::AppState, String) {
+fn storage_page() -> (
+    crate::testing::Root,
+    std::sync::Arc<crate::AppState>,
+    String,
+) {
     let (root, state) = crate::testing::file_state();
     state
         .db()
@@ -18,7 +22,7 @@ fn storage_page() -> (crate::testing::Root, crate::AppState, String) {
         )
         .expect("a plugin row");
     let token = hosted_page_with(&state, &["storage:local:read", "storage:local:write"]);
-    (root, state, token)
+    (root, std::sync::Arc::new(state), token)
 }
 
 #[test]
@@ -56,7 +60,8 @@ fn storage_round_trips_through_the_channel() {
         serde_json::Value::Null
     );
     assert_eq!(
-        super::super::plugin_ui_rpc(&state, &token, "storage.keys", &serde_json::json!({})).expect("keys"),
+        super::super::plugin_ui_rpc(&state, &token, "storage.keys", &serde_json::json!({}))
+            .expect("keys"),
         serde_json::json!(["draft"])
     );
     assert_eq!(
@@ -91,6 +96,7 @@ fn storage_round_trips_through_the_channel() {
 fn a_storage_call_without_the_capability_is_refused() {
     // ★ The gate, not the façade's `env.can`: a page that somehow called the method directly still reaches this check.
     let (_root, state) = crate::testing::file_state();
+    let state = std::sync::Arc::new(state);
     state
         .db()
         .insert_plugin(

@@ -66,7 +66,7 @@ fn cancelling_a_send_leaves_finalization_to_its_worker() {
     let cancel = synra_core::supervisor::Cancellation::new();
     state
         .transfers
-        .record_owned(snapshot(id, "active"), None, None, None, cancel.clone());
+        .record_owned(snapshot(id, "active"), None, None, cancel.clone());
     let subscriber = state.events.subscribe();
 
     super::super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");
@@ -111,13 +111,9 @@ fn worker_exit_removes_its_file_after_cancellation() {
     std::fs::write(&path, b"a message").expect("a file");
     let id = TransferId::new();
     let cancel = synra_core::supervisor::Cancellation::new();
-    state.transfers.record_owned(
-        snapshot(id, "active"),
-        Some(path.clone()),
-        None,
-        None,
-        cancel,
-    );
+    state
+        .transfers
+        .record_owned(snapshot(id, "active"), Some(path.clone()), None, cancel);
     let subscriber = state.events.subscribe();
 
     super::super::transfer_cancel(&state, &id.to_string()).expect("it is in flight");

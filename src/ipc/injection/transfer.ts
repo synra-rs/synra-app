@@ -6,13 +6,8 @@ import type { TransferId } from '@synra/protocol'
 import type { InjectionContext } from './context'
 import type { GrantCheck } from './grants'
 import { KERNEL_EVENT_CHANNEL } from '../channel'
-import { asSynraError, denied, tooLarge, unsupported } from './errors'
-
-/** The largest file the chunked channel will carry, matching the kernel's `MAX_PLUGIN_UPLOAD_BYTES`. */
-const MAX_TRANSFER_BYTES = 64 * 1024 * 1024
-
-/** How much of a file one `transfer.chunk` carries, matching the kernel's `MAX_PLUGIN_CHUNK_BYTES`. */
-const CHUNK_BYTES = 1024 * 1024
+import { asSynraError, denied, unsupported } from './errors'
+import { uploadFile } from './transfer-upload'
 
 /** What one `transferUpdated` event carries. */
 interface TransferUpdated {
@@ -42,16 +37,6 @@ function progressOf(status: TransferStatus): TransferProgress {
   }
 }
 
-/** Converts a Blob to base64 without spreading a whole file into one call (which overflows the argument stack). */
-async function base64Of(file: Blob): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  const chunk = 0x8000
-  let binary = ''
-  for (let offset = 0; offset < bytes.length; offset += chunk)
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk))
-  return btoa(binary)
-}
-
 /** The transfer namespace, over the plugin channel. */
 export function createTransferNamespace(context: InjectionContext, can: GrantCheck): TransferNamespace {
   const call = <T>(method: string, args: Readonly<Record<string, unknown>> = {}): Promise<T> =>
@@ -70,36 +55,7 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
         throw denied('file:transfer:send')
       if (request.contextId !== undefined)
         throw unsupported('transfer.send contextId')
-      if (request.file.size > MAX_TRANSFER_BYTES)
-        throw tooLarge(`the file is ${request.file.size} bytes, and the channel carries at most ${MAX_TRANSFER_BYTES}`)
-
-      // ★ One message per chunk, not one message for the file: a `transfer.send` carrying a whole 64 MiB blob as base64
-      // would be an 85 MiB IPC message, which is not a channel. The upload is aborted on any failure so the host does
-      // not keep a partial file in its cache directory.
-      const { uploadId } = await call<{ readonly uploadId: string }>('transfer.begin', {
-        to: request.to,
-        fileName: request.fileName,
-        totalBytes: request.file.size
-      })
-
-      try {
-        for (let offset = 0; offset < request.file.size; offset += CHUNK_BYTES) {
-          const data = await base64Of(request.file.slice(offset, offset + CHUNK_BYTES))
-          await call('transfer.chunk', { uploadId, data })
-        }
-        const answer = await call<{ readonly transferId: string }>('transfer.finish', { uploadId })
-        return answer.transferId as TransferId
-      }
-      catch (reason) {
-        // Best effort: the first error is the one the page needs to see, and an abort that fails says nothing it can act on.
-        try {
-          await call('transfer.abort', { uploadId })
-        }
-        catch {
-          // The upload is gone either way — the host removes it on its own when it expires or the session ends.
-        }
-        throw reason
-      }
+      return uploadFile(call, request)
     },
 
     status,

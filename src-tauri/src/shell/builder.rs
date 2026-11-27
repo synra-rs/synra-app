@@ -98,6 +98,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             }
             crate::crash::note("setup: opening the state");
             let state = app_state(app.handle())?;
+            if cfg!(mobile) || instance_request.is_some() {
+                commands::plugin_ui::sweep_upload_spool(&state.paths.cache_dir());
+            }
             crate::crash::note("setup: state ready");
             // ★ The event bridge, started before the state is moved into the window. It holds a clone of the bus, so a
             // command that publishes later finds a subscriber waiting — a bridge started after the first command would

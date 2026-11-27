@@ -3,7 +3,7 @@ use super::*;
 // ── Outbound network ────────────────────────────────────────────────────────────────────────────
 
 /// A state with a plugin engine, so `network.fetch` has a host to ask.
-fn network_page() -> (crate::testing::Root, crate::AppState, String) {
+fn network_page() -> (crate::testing::Root, Arc<crate::AppState>, String) {
     let (root, state) = crate::testing::file_state();
     let host = Arc::new(crate::plugin_host::DesktopHost::with_platform(
         Arc::clone(&state.db),
@@ -14,14 +14,14 @@ fn network_page() -> (crate::testing::Root, crate::AppState, String) {
         backend, host,
     ))));
     let token = hosted_page(&state);
-    (root, state, token)
+    (root, Arc::new(state), token)
 }
 
 #[test]
 fn a_per_request_timeout_is_refused_rather_than_ignored() {
     // ★ Accepting `timeoutMs` and using the host's default would be a promise nothing keeps: a plugin that sets 500 ms
     // to bound a render would wait the client's own timeout and report it as a slow network.
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let token = hosted_page(&state);
 
     let refused = super::super::plugin_ui_rpc(
@@ -39,7 +39,7 @@ fn a_per_request_timeout_is_refused_rather_than_ignored() {
 fn a_byte_body_is_refused_before_the_request_is_made() {
     // The wire request carries a string; a `Uint8Array` cannot cross it, and silently dropping it would send a bodyless
     // request that the server answers differently.
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let token = hosted_page(&state);
 
     let refused = super::super::plugin_ui_rpc(
@@ -61,7 +61,7 @@ fn a_byte_body_is_refused_before_the_request_is_made() {
 fn a_shell_with_no_plugin_engine_cannot_fetch() {
     // The page can exist without the engine (it is a window over the kernel); the answer is the honest "this build has
     // no plugin engine", not a network error that sends the author to their own code.
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let token = hosted_page(&state);
 
     let refused = super::super::plugin_ui_rpc(

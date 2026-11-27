@@ -61,8 +61,14 @@ fn command_failures_keep_limits_and_cleanup_state_in_ui_errors() {
             Desktop::MacOs,
             Box::new(RefusingCommand(error)),
         ));
-        let error = super::super::super::plugin_ui_rpc(&state, &token, "clipboard.read", &serde_json::json!({}))
-            .expect_err("command refusal");
+        let state = Arc::new(state);
+        let error = super::super::super::plugin_ui_rpc(
+            &state,
+            &token,
+            "clipboard.read",
+            &serde_json::json!({}),
+        )
+        .expect_err("command refusal");
         assert_eq!(error.code, code);
         assert_eq!(error.params["kind"], kind);
         assert!(

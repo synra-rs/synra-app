@@ -88,6 +88,8 @@ fn stop_background(app: &tauri::AppHandle) {
         }
     }
     if let Some(state) = app.try_state::<std::sync::Arc<AppState>>() {
+        state.ui_sessions.revoke_all();
+        state.uploads.close();
         if !state.input.shutdown() {
             eprintln!("synra: the pointer did not finish releasing before the shutdown deadline");
         }

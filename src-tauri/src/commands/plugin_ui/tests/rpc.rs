@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn a_token_that_is_not_a_number_is_an_argument_error() {
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
 
     let refused = super::super::plugin_ui_rpc(
         &state,
@@ -19,7 +19,7 @@ fn a_token_that_is_not_a_number_is_an_argument_error() {
 fn a_token_no_hosted_page_holds_is_refused() {
     // ★ The check that makes the token the credential: the state knows a page exists (another one), and this token is
     // still refused — so "some page exists" is not what is being checked.
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let _other = hosted_page(&state);
 
     let refused = super::super::plugin_ui_rpc(&state, "42", "device.list", &serde_json::json!({}))
@@ -30,11 +30,12 @@ fn a_token_no_hosted_page_holds_is_refused() {
 
 #[test]
 fn an_unknown_method_is_refused_by_name() {
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let token = hosted_page(&state);
 
-    let refused = super::super::plugin_ui_rpc(&state, &token, "device.explode", &serde_json::json!({}))
-        .expect_err("that is not an operation");
+    let refused =
+        super::super::plugin_ui_rpc(&state, &token, "device.explode", &serde_json::json!({}))
+            .expect_err("that is not an operation");
 
     assert_eq!(refused.code, ErrorCode::Unsupported);
     assert_eq!(
@@ -50,7 +51,7 @@ fn an_unknown_method_is_refused_by_name() {
 fn a_method_on_the_surface_with_no_body_is_unsupported() {
     // ★ Addressable, not implemented. The alternative — an empty list or a resolved promise — would be a host that
     // claims to fetch something and does not.
-    let state = crate::testing::state();
+    let state = std::sync::Arc::new(crate::testing::state());
     let token = hosted_page(&state);
 
     let refused = super::super::plugin_ui_rpc(
@@ -67,6 +68,7 @@ fn a_method_on_the_surface_with_no_body_is_unsupported() {
 #[test]
 fn device_list_answers_the_four_fields_a_plugin_may_see() {
     let (_root, state) = crate::testing::file_state();
+    let state = std::sync::Arc::new(state);
     state
         .db()
         .pair_device(&synra_store::Paired {
@@ -119,6 +121,7 @@ fn device_list_answers_the_four_fields_a_plugin_may_see() {
 #[test]
 fn device_list_requires_its_current_page_grant() {
     let (_root, state) = crate::testing::file_state();
+    let state = std::sync::Arc::new(state);
     let token = hosted_page(&state);
     let error = super::super::plugin_ui_rpc(&state, &token, "device.list", &serde_json::json!({}))
         .expect_err("a valid page is not a device-list grant");
@@ -128,6 +131,7 @@ fn device_list_requires_its_current_page_grant() {
 #[test]
 fn device_list_refuses_an_oversized_reply_instead_of_silently_dropping_targets() {
     let (_root, state) = crate::testing::file_state();
+    let state = std::sync::Arc::new(state);
     for index in 1..=257 {
         state
             .db()

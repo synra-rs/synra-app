@@ -52,6 +52,7 @@ fn exercise_starter() {
         Backend::new(Arc::new(engine)),
         host,
     ))));
+    let state = Arc::new(state);
     const ID: &str = "@synra-plugin/starter";
     let installed =
         crate::commands::plugins::install_directory(&state, &package).expect("production install");
@@ -127,7 +128,7 @@ fn exercise_starter() {
 }
 
 fn call(
-    state: &crate::AppState,
+    state: &Arc<crate::AppState>,
     token: &str,
     action: &str,
     args: serde_json::Value,
@@ -141,7 +142,7 @@ fn call(
 }
 
 fn exercise_lifecycle(
-    state: &crate::AppState,
+    state: &Arc<crate::AppState>,
     package: &std::path::Path,
     request: &super::OpenRequest,
     token: &str,

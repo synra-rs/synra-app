@@ -37,7 +37,7 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
         &state,
         &token,
         "transfer.chunk",
-        &serde_json::json!({"uploadId": upload, "data": encoded(b"hello")}),
+        &serde_json::json!({"uploadId": upload, "offset": 0, "data": encoded(b"hello")}),
     )
     .expect("the chunk is appended");
 
@@ -47,7 +47,7 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
         &state,
         &token,
         "transfer.chunk",
-        &serde_json::json!({"uploadId": upload, "data": encoded(b"!")}),
+        &serde_json::json!({"uploadId": upload, "offset": 5, "data": encoded(b"!")}),
     )
     .expect_err("over the declared size");
     assert_eq!(refused.code, ErrorCode::PayloadTooLarge);
@@ -57,7 +57,7 @@ fn a_page_uploads_a_file_in_chunks_and_the_host_keeps_it_until_finished() {
         &state,
         &token,
         "transfer.chunk",
-        &serde_json::json!({"uploadId": "not-an-upload", "data": encoded(b"x")}),
+        &serde_json::json!({"uploadId": "not-an-upload", "offset": 0, "data": encoded(b"x")}),
     )
     .expect_err("no such upload");
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
@@ -99,7 +99,7 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
         .expect("a paired device");
     let state = std::sync::Arc::new(state);
 
-    let begun = super::super::plugin_ui_rpc_arc(
+    let begun = super::super::plugin_ui_rpc(
         &state,
         &token,
         "transfer.begin",
@@ -111,15 +111,15 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
         .and_then(|value| value.as_str())
         .expect("an upload id")
         .to_owned();
-    super::super::plugin_ui_rpc_arc(
+    super::super::plugin_ui_rpc(
         &state,
         &token,
         "transfer.chunk",
-        &serde_json::json!({"uploadId": upload, "data": "aGk="}),
+        &serde_json::json!({"uploadId": upload, "offset": 0, "data": "aGk="}),
     )
     .expect("the chunk is appended");
 
-    let finished = super::super::plugin_ui_rpc_arc(
+    let finished = super::super::plugin_ui_rpc(
         &state,
         &token,
         "transfer.finish",
@@ -149,7 +149,7 @@ fn a_chunked_transfer_finished_with_the_managed_state_answers_before_the_dial() 
     }
     assert!(state.transfers.is_empty(), "the failed send left no row");
     let reopened = hosted_page_with(&state, &["file:transfer:send"]);
-    let status = super::super::plugin_ui_rpc_arc(
+    let status = super::super::plugin_ui_rpc(
         &state,
         &reopened,
         "transfer.status",
@@ -203,4 +203,23 @@ fn a_chunked_transfer_the_page_never_finishes_uses_no_send() {
     .expect_err("the declared bytes never arrived");
     assert_eq!(refused.code, ErrorCode::InvalidArgument);
     assert!(state.transfers.is_empty(), "nothing was sent");
+}
+
+#[test]
+fn a_generation_change_reclaims_the_staged_upload_without_an_rpc() {
+    let (_root, state, token) = transfer_page();
+    let args = serde_json::json!({
+        "to": "11111111-1111-4111-8111-111111111111",
+        "fileName": "received.bin",
+        "totalBytes": 1,
+    });
+    super::super::plugin_ui_rpc(&state, &token, "transfer.begin", &args).unwrap();
+    let spool = state.paths.cache_dir().join("plugin-transfers");
+    assert_eq!(std::fs::read_dir(&spool).unwrap().count(), 1);
+    state
+        .db()
+        .set_plugin_enabled(plugin_id().as_str(), false, 1)
+        .unwrap();
+    assert_eq!(super::super::stale_windows(&state), ["page-rpc"]);
+    assert_eq!(std::fs::read_dir(&spool).unwrap().count(), 0);
 }
