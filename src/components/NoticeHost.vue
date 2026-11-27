@@ -129,9 +129,9 @@ function review(notice: Notice): void {
     : '/plugins')
 }
 
-/** A link this build does not understand is a warning rather than a success. */
+/** Refusals need a warning style. */
 function alertType(notice: Notice): 'warning' | 'success' {
-  return notice.message === 'notice.unknownLink' ? 'warning' : 'success'
+  return notice.message === 'notice.unknownLink' || notice.message === 'notice.invalidPluginVersion' ? 'warning' : 'success'
 }
 
 function headline(value: Notice): string {
@@ -152,6 +152,8 @@ function headline(value: Notice): string {
   }
   if (value.message === 'notice.dropIgnored')
     return messages.notices.dropIgnored
+  if (value.message === 'notice.invalidPluginVersion')
+    return messages.notices.invalidPluginVersion(String(value.params.pluginId ?? ''))
   if (value.message === 'notice.updates')
     return messages.notices.updates(Number(value.params.count ?? 0))
   if (value.message === 'notice.unknownLink')
@@ -160,6 +162,8 @@ function headline(value: Notice): string {
 }
 
 function detail(value: Notice): string | undefined {
+  if (value.message === 'notice.invalidPluginVersion')
+    return typeof value.params.reason === 'string' ? value.params.reason : undefined
   if (value.message === 'notice.received') {
     const path = value.params.path
     return typeof path === 'string' ? messages.notices.savedTo(path) : undefined

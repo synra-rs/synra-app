@@ -226,7 +226,10 @@ pub(crate) fn check_local_update(
             }),
         )
     })?;
-    let available = synra_registry::is_newer(&candidate.version, &active.version);
+    let available =
+        synra_plugin_api::manifest::compare_versions(&candidate.version, &active.version)
+            .map_err(|error| crate::commands::plugin_updates::version_refusal(plugin_id, error))?
+            .is_gt();
     let added_capabilities = if available {
         let installed = installed_manifest(state, plugin_id)
             .map(|manifest| {

@@ -16,6 +16,7 @@ export const notices = {
   /** The package is older than what is installed; a double-click is not an instruction to downgrade. */
   newerInstalled: (pluginId: string, installed: string, offered: string): string =>
     `${pluginId} ${installed} is newer than ${offered}; nothing was replaced.`,
+  invalidPluginVersion: (pluginId: string): string => `Cannot open the package for ${pluginId} because a version is invalid.`,
   /** A drop that did not install anything: this shell has no destination for other files yet. */
   dropIgnored: 'Only .synra packages can be dropped here.',
   /** The daily background check found newer versions; it installed nothing. */

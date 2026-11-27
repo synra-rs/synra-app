@@ -9,6 +9,7 @@
 
 use std::cmp::Ordering;
 use std::path::PathBuf;
+use synra_plugin_api::manifest::{ManifestError, PluginVersion};
 
 /// What opening a package should do, given what is installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,18 +26,19 @@ pub enum PackageAction {
 
 /// Decides what a package means against the version currently in effect.
 ///
-/// The comparison is the kernel's own (`compare_plugin_versions`), not a string compare: `1.10.0` is newer than
-/// `1.9.0`, and a page that got that wrong would offer an update that moves backwards.
-#[must_use]
-pub fn action(installed: Option<&str>, offered: &str) -> PackageAction {
+/// # Errors
+/// Reports malformed SemVer in the offered package or installed metadata.
+pub fn action(installed: Option<&str>, offered: &str) -> Result<PackageAction, ManifestError> {
+    let offered = PluginVersion::parse(offered)?;
     let Some(installed) = installed else {
-        return PackageAction::Install;
+        return Ok(PackageAction::Install);
     };
-    match synra_core::compare_plugin_versions(installed, offered) {
+    let installed = PluginVersion::parse(installed)?;
+    Ok(match installed.cmp_precedence(&offered) {
         Ordering::Less => PackageAction::Update,
         Ordering::Equal => PackageAction::AlreadyInstalled,
         Ordering::Greater => PackageAction::NewerInstalled,
-    }
+    })
 }
 
 /// The `.synra` file an argument list names, if it names one.
@@ -65,21 +67,31 @@ mod tests {
 
     #[test]
     fn a_package_is_installed_updated_or_left_alone_by_its_version() {
-        assert_eq!(action(None, "1.0.0"), PackageAction::Install);
-        assert_eq!(action(Some("1.0.0"), "2.0.0"), PackageAction::Update);
+        assert_eq!(action(None, "1.0.0"), Ok(PackageAction::Install));
+        assert_eq!(action(Some("1.0.0"), "2.0.0"), Ok(PackageAction::Update));
         assert_eq!(
             action(Some("1.9.0"), "1.10.0"),
-            PackageAction::Update,
+            Ok(PackageAction::Update),
             "version order, not string order"
         );
         assert_eq!(
             action(Some("2.0.0"), "2.0.0"),
-            PackageAction::AlreadyInstalled
+            Ok(PackageAction::AlreadyInstalled)
         );
         assert_eq!(
             action(Some("2.0.0"), "1.0.0"),
-            PackageAction::NewerInstalled
+            Ok(PackageAction::NewerInstalled)
         );
+        assert_eq!(
+            action(Some("1.0.0-rc.2"), "1.0.0-rc.10"),
+            Ok(PackageAction::Update)
+        );
+        assert_eq!(
+            action(Some("1.0.0+build.1"), "1.0.0+build.9"),
+            Ok(PackageAction::AlreadyInstalled)
+        );
+        assert!(action(Some("2026-11-27"), "1.0.0").is_err());
+        assert!(action(None, "1.0.0-01").is_err());
     }
 
     #[test]

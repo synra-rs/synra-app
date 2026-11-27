@@ -175,6 +175,11 @@ pub(super) fn record(
     Ok(result)
 }
 
+pub(super) fn version_refusal(plugin_id: &str, error: impl std::fmt::Display) -> IpcError {
+    IpcError::unknown(ErrorCode::InvalidArgument)
+        .with_params(serde_json::json!({"pluginId": plugin_id, "reason": error.to_string()}))
+}
+
 /// Tells the interface how many updates the pass found.
 pub fn announce(state: &AppState, updates: &[UpdateInfo]) {
     if updates.is_empty() {

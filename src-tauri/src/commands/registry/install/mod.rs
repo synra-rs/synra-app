@@ -120,12 +120,7 @@ pub(crate) fn publisher_mismatch(
 pub fn update(state: &AppState, plugin_id: &str) -> Result<InstallReport, synra_ipc::IpcError> {
     let bases = bases(state)?;
     let registry = packument_with_base(state, plugin_id)?;
-    let chosen = registry.packument.latest().ok_or_else(|| {
-        synra_ipc::IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-            "pluginId": plugin_id,
-            "reason": "the registry has no `latest` tag for it",
-        }))
-    })?;
+    let chosen = choose(&registry.packument, plugin_id, None)?;
     let package = download(
         state,
         &bases,

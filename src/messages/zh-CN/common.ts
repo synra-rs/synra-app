@@ -20,6 +20,7 @@ export const common = {
   'notices.updated': (pluginId, version) => `已将 ${pluginId} 更新到 ${version}。`,
   'notices.alreadyInstalled': (pluginId, version) => `已安装 ${pluginId} ${version}，无需重复安装。`,
   'notices.newerInstalled': (pluginId, installed, offered) => `${pluginId} 已安装的 ${installed} 比 ${offered} 更新，未替换。`,
+  'notices.invalidPluginVersion': pluginId => `${pluginId} 的版本无效，无法打开插件包。`,
   'notices.dropIgnored': '这里只接受 .synra 插件包。',
   'notices.updates': count => `${count} 个插件有可用更新。`,
   'notices.more': count => `还有 ${count} 条更早通知`,

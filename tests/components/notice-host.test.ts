@@ -129,6 +129,18 @@ describe('the notice host', () => {
     wrapper.unmount()
   })
 
+  it('shows the reason an invalid version prevented opening a package', async () => {
+    const pluginId = '@acme/hello'
+    const reason = 'Invalid prerelease identifier in 1.0.0-01'
+    useNoticesStore().apply(notice('notice.invalidPluginVersion', { pluginId, reason }))
+    const { wrapper } = mountHost()
+    await flushPromises()
+
+    expect(bodyText()).toContain(messages.notices.invalidPluginVersion(pluginId))
+    expect(bodyText()).toContain(reason)
+    wrapper.unmount()
+  })
+
   it('takes a package notice to the plugins page', async () => {
     // ★ The notice says what landed; the next step is on another page. A sentence with no way there is half an answer.
     useNoticesStore().apply(notice('notice.installed', { pluginId: '@acme/hello', version: '1.2.0' }))

@@ -54,8 +54,39 @@ fn an_update_check_names_the_version_and_the_new_permission() {
         "the new manifest asks for a device permission"
     );
     assert_eq!(update.added_capabilities, ["device:send:*"]);
-    // The installed version is not in the document, so the same check against itself cannot be exercised here; the
-    // equal-version branch is a string comparison and fails closed (no update) rather than inventing one.
+}
+
+#[test]
+fn update_discovery_distinguishes_equal_precedence_and_invalid_versions() {
+    let (root, state) = testing::file_state();
+    let state = with_engine(state);
+    let source = package(root.path());
+    plugins_install(
+        &state,
+        &InstallSourceDto::Path {
+            path: source.to_string_lossy().into_owned(),
+        },
+    )
+    .unwrap();
+    for version in ["1.0.0+build.9", "1.0.0-01"] {
+        let document = serde_json::json!({
+            "name":"@acme/hello", "dist-tags":{"latest":version},
+            "versions":{(version):{"name":"@acme/hello","version":version,"dist":{"tarball":"https://example.com/hello.tgz"}}}
+        }).to_string();
+        let (base, _served) = serve(move |_| (200, document.clone().into_bytes()));
+        state
+            .db()
+            .set_config("plugins.registry", &serde_json::json!(base), 1_000)
+            .unwrap();
+        let result = plugins_check_update(&state, "@acme/hello");
+        if version.ends_with("-01") {
+            let denied = result.unwrap_err();
+            assert_eq!(denied.code, synra_protocol::ErrorCode::InvalidArgument);
+            assert!(denied.params["reason"].as_str().unwrap().contains(version));
+        } else {
+            assert!(result.unwrap().is_none());
+        }
+    }
 }
 
 #[test]
@@ -77,8 +108,17 @@ fn a_local_reload_removes_data_before_reinstalling_the_same_directory() {
     let report = plugins_update(&state, "@acme/hello", Some(true)).expect("the local reload runs");
 
     assert_eq!(report.version, "1.0.0");
-    assert!(!data.join("state.txt").exists(), "reload deleted the requested data");
-    assert!(state.paths.plugin_dir("@acme/hello").join("manifest.json").exists());
+    assert!(
+        !data.join("state.txt").exists(),
+        "reload deleted the requested data"
+    );
+    assert!(
+        state
+            .paths
+            .plugin_dir("@acme/hello")
+            .join("manifest.json")
+            .exists()
+    );
 }
 
 #[test]
@@ -134,7 +174,8 @@ fn a_migration_that_refuses_stops_the_update_and_leaves_the_old_version() {
     );
 
     let source = write_update_source(root.path(), "2.0.0");
-    let refused = super::super::update_directory(&state, ID, &source).expect_err("the migration refused");
+    let refused =
+        super::super::update_directory(&state, ID, &source).expect_err("the migration refused");
     assert_eq!(refused.code, synra_protocol::ErrorCode::PluginTrapped);
     let reason = refused.params["reason"]
         .as_str()

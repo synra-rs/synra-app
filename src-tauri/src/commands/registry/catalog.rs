@@ -198,8 +198,8 @@ pub(crate) fn check_update_at(
     };
     let document = packument(state, plugin_id)?;
     let latest = document
-        .latest()
-        .filter(|latest| synra_registry::is_newer(&latest.version, &active.version));
+        .latest_upgrade(&active.version)
+        .map_err(|error| crate::commands::plugin_updates::version_refusal(plugin_id, error))?;
     let Some(latest) = latest else {
         return crate::commands::plugin_updates::record(
             state,

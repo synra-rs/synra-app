@@ -4415,6 +4415,7 @@ dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
  "jsonschema",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -4479,7 +4480,6 @@ name = "synra-registry"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "semver",
  "serde",
  "serde_json",
  "synra-plugin-api",

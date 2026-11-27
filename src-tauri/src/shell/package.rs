@@ -20,7 +20,7 @@ pub(super) fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                 &manifest.version,
             );
             match action {
-                crate::launch::PackageAction::Install => {
+                Ok(crate::launch::PackageAction::Install) => {
                     let source = synra_ipc::InstallSourceDto::Path {
                         path: package.display().to_string(),
                     };
@@ -43,7 +43,7 @@ pub(super) fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                         }
                     }
                 }
-                crate::launch::PackageAction::Update => {
+                Ok(crate::launch::PackageAction::Update) => {
                     match commands::plugins::update_directory(&state, id, package) {
                         Ok(report) => {
                             state.publish(synra_ipc::event::KernelEvent::Notice {
@@ -63,16 +63,16 @@ pub(super) fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                         }
                     }
                 }
-                crate::launch::PackageAction::AlreadyInstalled => {
+                Ok(crate::launch::PackageAction::AlreadyInstalled) => {
                     state.publish(synra_ipc::event::KernelEvent::Notice {
                         message: "notice.alreadyInstalled".to_owned(),
                         params: serde_json::json!({
                             "pluginId": id,
-                            "version": manifest.version,
+                            "version": active.as_ref().map_or(manifest.version.as_str(), |row| row.version.as_str()),
                         }),
                     });
                 }
-                crate::launch::PackageAction::NewerInstalled => {
+                Ok(crate::launch::PackageAction::NewerInstalled) => {
                     // ★ A double-clicked older package is not an instruction to downgrade. The window still comes
                     // forward, and the notice says why nothing changed.
                     state.publish(synra_ipc::event::KernelEvent::Notice {
@@ -82,6 +82,12 @@ pub(super) fn open_package(app: &tauri::AppHandle, package: &std::path::Path) {
                             "installed": active.as_ref().map_or("", |row| row.version.as_str()),
                             "offered": manifest.version,
                         }),
+                    });
+                }
+                Err(error) => {
+                    state.publish(synra_ipc::event::KernelEvent::Notice {
+                        message: "notice.invalidPluginVersion".to_owned(),
+                        params: serde_json::json!({ "pluginId": id, "reason": error.to_string() }),
                     });
                 }
             }
