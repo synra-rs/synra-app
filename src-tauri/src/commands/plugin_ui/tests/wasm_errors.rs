@@ -10,7 +10,7 @@ fn data(text: &str) -> String {
     text.bytes().map(|byte| format!("\\{byte:02x}")).collect()
 }
 
-fn component(code: &str, details: Option<&str>) -> Vec<u8> {
+fn component(code: &str, details: Option<&str>, invoke: &str) -> Vec<u8> {
     let code_data = data(code);
     let code_len = code.len();
     let flag = u8::from(details.is_some());
@@ -46,7 +46,7 @@ fn component(code: &str, details: Option<&str>) -> Vec<u8> {
     (func (export "synra:plugin/lifecycle@1.0.0#on-event") (param i32 i32) (result i32) (i32.const 0))
     (func (export "synra:plugin/share@1.0.0#can-handle") (param i32 i32) (result i32) (i32.const 0))
     (func (export "synra:plugin/share@1.0.0#execute") (param i32 i32 i32 i32) (result i32) (call $answer))
-    (func (export "synra:plugin/actions@1.0.0#invoke") (param i32 i32 i32 i32) (result i32) (call $answer)))
+    (func (export "synra:plugin/actions@1.0.0#invoke") (param i32 i32 i32 i32) (result i32) {invoke}))
 "#)).expect("core fixture");
     synra_testkit::component::encode(module).expect("complete production WIT component")
 }
@@ -94,8 +94,10 @@ fn real_wasm_failures_reach_the_page_with_optional_details_and_source_codes() {
         ),
         ("notImplemented", ErrorCode::Unsupported, None, None),
     ] {
-        let (_root, state, token) =
-            action_page_on(Backend::new(backend.clone()), component(code, details));
+        let (_root, state, token) = action_page_on(
+            Backend::new(backend.clone()),
+            component(code, details, "(call $answer)"),
+        );
         let before = state
             .plugin_set()
             .expect("plugins")
@@ -175,4 +177,28 @@ fn execution_limits_use_the_shared_plugin_error_diagnostics() {
         assert_eq!(error.details.as_ref().expect("diagnostics")["kind"], kind);
         assert_eq!(backend.calls(), 1);
     }
+}
+
+#[test]
+fn real_memory_ceiling_reaches_the_page_as_a_budget_diagnostic() {
+    let backend = Arc::new(WasmtimeBackend::new(BackendKind::WasmtimeCranelift).expect("engine"));
+    let quota = synra_plugin_host::quota::Quota::default();
+    let pages = quota.max_memory_bytes.div_ceil(64 * 1024);
+    let action = format!("(drop (memory.grow (i32.const {pages}))) (call $answer)");
+    let (_root, state, token) = action_page_on(
+        Backend::new(backend),
+        component("unexpected", None, &action),
+    );
+    let error = super::super::plugin_ui_rpc(
+        &state,
+        &token,
+        "self.invoke",
+        &serde_json::json!({"action":"send"}),
+    )
+    .expect_err("the host ceiling must stop the real action");
+    assert_eq!(error.code, ErrorCode::PluginTrapped);
+    assert_eq!(
+        error.details,
+        Some(serde_json::json!({"kind":"memoryExceeded","limit":quota.max_memory_bytes}))
+    );
 }
