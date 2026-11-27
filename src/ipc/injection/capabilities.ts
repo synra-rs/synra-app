@@ -18,12 +18,6 @@ import type { ClientFeature } from '@synra/client'
 export const BACKED: Readonly<Record<ClientFeature, boolean>> = {
   'device.onChange': true,
   'event.subscribe': true,
-  // ★ Implemented, even though no transfer ever runs.
-  //
-  // The method exists and returns a real unsubscribe, which is what `hostSupports` is being asked about. What is missing
-  // is the transfer underneath: `transfer.send` refuses, and it refuses before an author could rely on seeing progress.
-  // Reporting this false while the call succeeds is the inconsistency the biconditional test exists to catch — a
-  // `supported` list that says no to something that works leaves an author guarding against a failure that never comes.
   'transfer.onProgress': true,
   'device.pick': false,
   // ★ True since outbound requests went over the plugin channel: the host's own fetcher enforces the

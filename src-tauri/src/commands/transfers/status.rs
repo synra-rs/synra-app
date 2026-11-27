@@ -88,6 +88,13 @@ impl TerminalStatuses {
             .iter()
             .find_map(|(key, record)| (*key == id && is_retained(record, now_ms)).then_some(record))
     }
+
+    #[cfg(any(feature = "tauri-shell", test))]
+    pub(super) fn retained(&self, now_ms: u64) -> impl Iterator<Item = (TransferId, &OwnedStatus)> {
+        self.0
+            .iter()
+            .filter_map(move |(id, record)| is_retained(record, now_ms).then_some((*id, record)))
+    }
 }
 
 fn is_retained(status: &OwnedStatus, now_ms: u64) -> bool {

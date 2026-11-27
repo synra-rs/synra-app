@@ -1,29 +1,44 @@
 //! Session RPC and authorization for the plugin event projection.
 
+mod projection;
+mod selectors;
 mod streams;
 
 use crate::{AppState, state::HostedUi};
 use serde::Deserialize;
 use serde_json::Value;
 use std::time::Duration;
-use synra_core::bus::Delivery;
-use synra_ipc::event::{KernelEvent, PluginDevicesChanged, PluginEvent};
 use synra_ipc::{IpcError, PluginUiOp};
 use synra_plugin_ui::ValidatedSession;
-use synra_protocol::{ErrorCode, inbound::HandlePattern};
+use synra_protocol::{ErrorCode, TransferId, inbound::HandlePattern};
 use uuid::Uuid;
 
-use super::{authority, device_targets, internal, require_grant};
+use super::{authority, internal, transfer::owned_status};
+pub(crate) use projection::project_events;
+use selectors::Selector;
 pub(crate) use streams::PluginEvents;
 
-const DEVICE_GRANT: &str = "device:list";
 const POLL_DEADLINE: Duration = Duration::from_secs(20);
 
 #[derive(Deserialize)]
+#[serde(untagged)]
+enum Subscribe {
+    Pattern(PatternSubscription),
+    Transfer(TransferSubscription),
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Subscribe {
+struct PatternSubscription {
     subscription_id: u32,
     pattern: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TransferSubscription {
+    subscription_id: u32,
+    transfer_id: TransferId,
 }
 
 #[derive(Deserialize)]
@@ -92,10 +107,20 @@ async fn event_rpc(
     match op {
         PluginUiOp::EventSubscribe => {
             let args: Subscribe = serde_json::from_value(args.clone()).map_err(invalid)?;
-            let pattern = HandlePattern::parse(&args.pattern).map_err(invalid)?;
-            if pattern.matches(PluginEvent::DEVICES_CHANGED) {
-                require_grant(&session, DEVICE_GRANT, op.as_str())?;
+            let (subscription_id, selector) = match args {
+                Subscribe::Pattern(args) => (
+                    args.subscription_id,
+                    Selector::Pattern(HandlePattern::parse(&args.pattern).map_err(invalid)?),
+                ),
+                Subscribe::Transfer(args) => {
+                    (args.subscription_id, Selector::Transfer(args.transfer_id))
+                }
+            };
+            selector.allows(&session)?;
+            if let Selector::Transfer(id) = &selector {
+                owned_status(state, &session, *id)?;
             }
+            let _projection = state.plugin_events.projection.lock();
             // Keep the reservation alive across registration, so closing this window cannot leave a new stream behind.
             let hosted = state.hosted_ui.lock();
             if !hosted
@@ -106,12 +131,13 @@ async fn event_rpc(
             }
             let stream = state
                 .plugin_events
-                .subscribe(nonce, args.subscription_id, pattern)?;
+                .subscribe(nonce, subscription_id, selector)?;
             Ok(Value::String(stream.to_string()))
         }
         PluginUiOp::EventUnsubscribe => {
             let args: Subscription = serde_json::from_value(args.clone()).map_err(invalid)?;
             let stream_id = args.stream_id.parse::<Uuid>().map_err(invalid)?;
+            let _projection = state.plugin_events.projection.lock();
             state
                 .plugin_events
                 .unsubscribe(nonce, stream_id, args.subscription_id);
@@ -136,56 +162,11 @@ async fn event_rpc(
                 .stream(nonce, id)
                 .ok_or_else(|| invalid("the event stream has been closed"))?;
             let _projection = state.plugin_events.projection.lock();
-            if !stream.matches(PluginEvent::DEVICES_CHANGED) {
-                return Ok(Value::Null);
-            }
-            require_grant(&session, DEVICE_GRANT, op.as_str())?;
-            let devices = device_targets(state)?;
+            let snapshots = projection::snapshots(state, &stream, &session)?;
             validate_page(state, label, nonce)?;
-            let event = PluginEvent::DevicesChanged(PluginDevicesChanged { devices });
-            serde_json::to_value(stream.reset(synra_store::sqlite::now_ms(), event))
-                .map_err(internal)
+            serde_json::to_value(stream.reset(snapshots)).map_err(internal)
         }
         _ => Err(IpcError::unknown(ErrorCode::Unsupported)),
-    }
-}
-
-/// Project one coherent paired-device snapshot after a change or a gap in the host bus.
-pub(crate) fn project_events(state: &AppState, delivery: &Delivery<KernelEvent>, at: i64) {
-    if delivery.missed() == 0
-        && !delivery.events().iter().any(|event| {
-            matches!(
-                event,
-                KernelEvent::DeviceCardUpdated(_) | KernelEvent::DeviceRemoved { .. }
-            )
-        })
-    {
-        return;
-    }
-    let topic = PluginEvent::DEVICES_CHANGED;
-    let candidates = state.plugin_events.interested(topic);
-    if candidates.is_empty() {
-        return;
-    }
-    let _projection = state.plugin_events.projection.lock();
-    let projected = device_targets(state)
-        .map(|devices| PluginEvent::DevicesChanged(PluginDevicesChanged { devices }));
-    for (nonce, stream) in candidates {
-        let entry = state
-            .hosted_ui
-            .lock()
-            .values()
-            .find(|entry| entry.nonce == nonce)
-            .cloned();
-        let Some(entry) = entry else {
-            state.plugin_events.close(nonce);
-            continue;
-        };
-        if authority::validate(state, &entry).is_ok_and(|session| {
-            require_grant(&session, DEVICE_GRANT, PluginUiOp::EventPoll.as_str()).is_ok()
-        }) {
-            stream.publish(topic, at, &projected);
-        }
     }
 }
 

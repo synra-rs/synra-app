@@ -172,6 +172,29 @@ impl Transfers {
         (status.plugin == *owner).then(|| status.snapshot(id))
     }
 
+    #[cfg(any(feature = "tauri-shell", test))]
+    pub(crate) fn plugin_statuses(
+        &self,
+        owner: &PluginId,
+        now_ms: u64,
+        selected: impl Fn(TransferId) -> bool,
+    ) -> Vec<PluginTransferStatus> {
+        let registry = self.registry.lock();
+        let active = registry
+            .active
+            .iter()
+            .filter_map(|(id, entry)| entry.status.as_ref().map(|status| (*id, status)));
+        let mut snapshots: Vec<_> = active
+            .chain(registry.terminal.retained(now_ms))
+            .filter_map(|(id, status)| {
+                (status.plugin == *owner && selected(id)).then(|| status.snapshot(id))
+            })
+            .collect();
+        drop(registry);
+        snapshots.sort_unstable_by_key(|status| status.transfer_id);
+        snapshots
+    }
+
     /// Drops a transfer, answering the file the caller should delete.
     ///
     /// Returning the path rather than deleting it here keeps this type free of the filesystem: the registry's job is to know

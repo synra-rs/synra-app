@@ -4,30 +4,11 @@ import type { TransferNamespace, TransferProgress, TransferStatus } from '@synra
 import type { TransferId } from '@synra/protocol'
 
 import type { InjectionContext } from './context'
+import type { PageSubscriptions } from './event/subscriptions'
 import type { GrantCheck } from './grants'
-import { KERNEL_EVENT_CHANNEL } from '../channel'
 import { asSynraError, denied, unsupported } from './errors'
+import { decodeTransferStatus } from './transfer-status'
 import { uploadFile } from './transfer-upload'
-
-/** What one `transferUpdated` event carries. */
-interface TransferUpdated {
-  readonly type: 'transferUpdated'
-  readonly payload: TransferStatus
-}
-
-/** What one `transferFinished` event carries. */
-interface TransferFinished {
-  readonly type: 'transferFinished'
-  readonly payload: { readonly transferId: string }
-}
-
-/** Whether a payload is a transfer event this namespace understands. */
-function isTransferEvent(payload: unknown): payload is TransferUpdated | TransferFinished {
-  if (payload === null || typeof payload !== 'object')
-    return false
-  const type = (payload as { type?: unknown }).type
-  return type === 'transferUpdated' || type === 'transferFinished'
-}
 
 /** The progress view of a status. */
 function progressOf(status: TransferStatus): TransferProgress {
@@ -38,7 +19,7 @@ function progressOf(status: TransferStatus): TransferProgress {
 }
 
 /** The transfer namespace, over the plugin channel. */
-export function createTransferNamespace(context: InjectionContext, can: GrantCheck): TransferNamespace {
+export function createTransferNamespace(context: InjectionContext, can: GrantCheck, subscriptions: PageSubscriptions): TransferNamespace {
   const call = <T>(method: string, args: Readonly<Record<string, unknown>> = {}): Promise<T> =>
     context.bridge
       .invoke('plugin_ui_rpc', { token: context.token, method, args })
@@ -47,7 +28,7 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
       }) as Promise<T>
 
   const status = (id: TransferId): Promise<TransferStatus> =>
-    call<TransferStatus>('transfer.status', { transferId: id })
+    call<unknown>('transfer.status', { transferId: id }).then(decodeTransferStatus)
 
   return {
     send: async (request): Promise<TransferId> => {
@@ -60,48 +41,15 @@ export function createTransferNamespace(context: InjectionContext, can: GrantChe
 
     status,
 
-    onProgress: (id: TransferId, handler: (progress: TransferProgress) => void): (() => void) => {
-      let active = true
+    onProgress: (id, handler, options) => {
       let revision = -1
       const emit = (status: TransferStatus): void => {
-        if (active && status.transferId === id && status.revision > revision) {
+        if (status.transferId === id && status.revision > revision) {
           revision = status.revision
           handler(progressOf(status))
         }
       }
-      const report = (error: unknown): void => {
-        if (active)
-          console.error('Synra transfer progress', asSynraError(error))
-      }
-
-      let off: (() => void) | undefined
-      void context.bridge
-        .listen(KERNEL_EVENT_CHANNEL, (payload: unknown) => {
-          if (!active || !isTransferEvent(payload))
-            return
-          if (payload.type === 'transferUpdated') {
-            emit(payload.payload)
-            return
-          }
-          if (payload.payload.transferId === id)
-            void status(id).then(emit).catch(report)
-        })
-        .then((stop) => {
-          if (active)
-            off = stop
-          else
-            stop()
-        })
-        .catch(() => {
-          // Nothing to report to: the page's only log is the console, and a listener that never attached is not
-          // something the author can act on.
-        })
-      void status(id).then(emit).catch(report)
-
-      return () => {
-        active = false
-        off?.()
-      }
+      return subscriptions.subscribeTransfer(id, emit, () => status(id), options)
     }
   }
 }

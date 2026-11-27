@@ -16,7 +16,7 @@ import { bridge, context } from './injection-test-helpers'
 const ID = 'b7f7f0c2-4a7e-4f1a-9a9a-2e2b6c1d0a11'
 
 /** A bridge whose `invoke` answers by method and whose `listen` hands back the callback for driving events. */
-function channel(answers: Readonly<Record<string, unknown>>, onListen?: (callback: (payload: unknown) => void) => void) {
+function channel(answers: Readonly<Record<string, unknown>>) {
   const invoke = vi.fn<(command: string, payload?: Readonly<Record<string, unknown>>) => Promise<unknown>>(
     async (command, payload) => {
       expect(command).toBe('plugin_ui_rpc')
@@ -27,11 +27,7 @@ function channel(answers: Readonly<Record<string, unknown>>, onListen?: (callbac
       return typeof answer === 'function' ? answer(payload?.args) : answer
     }
   )
-  const listen = vi.fn(async (_channel: string, callback: (payload: unknown) => void) => {
-    onListen?.(callback)
-    return () => {}
-  })
-  return { bridge: bridge({ invoke, listen }), invoke }
+  return { bridge: bridge({ invoke }), invoke }
 }
 
 describe('transfer', () => {
@@ -40,7 +36,7 @@ describe('transfer', () => {
       'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 3 },
       'transfer.chunk': ({ offset, data }: { offset: number, data: string }) => ({ written: offset + atob(data).length, totalBytes: 5 }),
       'transfer.finish': { transferId: ID },
-      'transfer.status': { transferId: ID, state: 'transferring', receivedBytes: 2, totalBytes: 5 }
+      'transfer.status': { transferId: ID, state: 'transferring', receivedBytes: 2, totalBytes: 5, blocksDone: 1, blocksTotal: 2, revision: 2, endedAtMs: undefined as number | undefined }
     }
     const { bridge: seam, invoke } = channel(answers)
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
@@ -83,7 +79,7 @@ describe('transfer', () => {
       receivedBytes: 2,
       totalBytes: 5
     })
-    answers['transfer.status'] = { transferId: ID, state: 'completed', receivedBytes: 5, totalBytes: 5 }
+    answers['transfer.status'] = { transferId: ID, state: 'completed', receivedBytes: 5, totalBytes: 5, blocksDone: 2, blocksTotal: 2, revision: 4, endedAtMs: 100 }
     await expect(synra.transfer.status(id)).resolves.toMatchObject({ state: 'completed', receivedBytes: 5 })
     expect(invoke).toHaveBeenNthCalledWith(6, 'plugin_ui_rpc', expect.objectContaining({
       method: 'transfer.status',
@@ -145,7 +141,8 @@ describe('transfer', () => {
         receivedBytes: 68,
         totalBytes: 100,
         blocksDone: 3,
-        blocksTotal: 4
+        blocksTotal: 4,
+        revision: 4
       }
     })
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
@@ -157,56 +154,28 @@ describe('transfer', () => {
     })
   })
 
-  it('delivers live progress for the transfer it was asked about', async () => {
-    let listener: ((payload: unknown) => void) | undefined
-    const { bridge: seam } = channel({
-      'transfer.status': { transferId: ID, state: 'pending', receivedBytes: 0, totalBytes: 10, blocksDone: 0, blocksTotal: 10, revision: 0 }
-    }, (callback) => {
-      listener = callback
-    })
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
-    const seen: unknown[] = []
-
-    const off = synra.transfer.onProgress(ID as TransferId, progress => seen.push(progress))
-
-    listener?.({
-      type: 'transferUpdated',
-      payload: { transferId: ID, state: 'transferring', receivedBytes: 5, totalBytes: 10, blocksDone: 5, blocksTotal: 10, revision: 5 }
-    })
-    listener?.({
-      type: 'transferUpdated',
-      payload: { transferId: 'another', state: 'transferring', receivedBytes: 0, totalBytes: 10 }
-    })
-
-    await Promise.resolve()
-    expect(seen).toEqual([
-      { transferId: ID, state: 'transferring', receivedBytes: 5, totalBytes: 10, blocksDone: 5, blocksTotal: 10, revision: 5, ratio: 0.5 }
-    ])
-
-    off()
-    listener?.({
-      type: 'transferUpdated',
-      payload: { transferId: ID, state: 'completed', receivedBytes: 10, totalBytes: 10 }
-    })
-    expect(seen).toHaveLength(1)
-  })
-
   it('reads the host terminal state for a listener attached after the send', async () => {
+    let finishPoll: (frame: unknown) => void = () => {}
     const { bridge: seam } = channel({
       'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 10 },
       'transfer.chunk': { written: 2, totalBytes: 2 },
       'transfer.finish': { transferId: ID },
+      'event.subscribe': 'stream',
+      'event.unsubscribe': null,
+      'event.poll': () => new Promise(resolve => finishPoll = resolve),
       'transfer.status': { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, blocksDone: 1, blocksTotal: 1, revision: 3, endedAtMs: 100 }
     })
     const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
 
     await synra.transfer.send({ to: 'peer', file: new Blob(['hi']), fileName: 'a.txt' })
     const seen: unknown[] = []
-    synra.transfer.onProgress(ID as TransferId, progress => seen.push(progress))
+    const off = synra.transfer.onProgress(ID as TransferId, progress => seen.push(progress))
     await vi.waitFor(() => {
       expect(seen).toEqual([
         { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, blocksDone: 1, blocksTotal: 1, revision: 3, endedAtMs: 100, ratio: 1 }
       ])
     })
+    off()
+    finishPoll(null)
   })
 })

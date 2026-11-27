@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use synra_capability::CapabilitySet;
-use synra_ipc::event::{KernelEvent, PluginEventEnvelope};
+use synra_ipc::event::{KernelEvent, PluginEvent, PluginEventEnvelope, PluginEventRecovery};
 use synra_protocol::ids::PluginId;
 
 use super::{AppState, ErrorCode, IpcError, dispatch_event_rpc, project_events};
@@ -246,11 +246,17 @@ async fn resync_replaces_the_queued_history_after_overflow() {
     let first: PluginEventEnvelope =
         serde_json::from_value(next("event.poll").await.unwrap()).unwrap();
     assert_eq!(first.seq, 3);
-    let snapshot: PluginEventEnvelope =
+    let snapshot: PluginEventRecovery =
         serde_json::from_value(next("event.resync").await.unwrap()).unwrap();
-    assert_eq!(snapshot.seq, 11);
+    assert_eq!(snapshot.seq, 10);
+    assert!(matches!(
+        snapshot.events.as_slice(),
+        [PluginEvent::DevicesChanged(_)]
+    ));
     device_change(&state, 12);
     let after: PluginEventEnvelope =
         serde_json::from_value(next("event.poll").await.unwrap()).unwrap();
-    assert_eq!(after.seq, 12);
+    assert_eq!(after.seq, 11);
 }
+
+mod transfers;

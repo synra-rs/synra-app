@@ -1,4 +1,5 @@
 use super::super::*;
+use super::TRANSFER_GRANT;
 use crate::commands::transfers;
 
 /// Reads the current or retained state of a transfer this plugin started.
@@ -9,7 +10,7 @@ pub(crate) fn transfer_status(
 ) -> Result<serde_json::Value, IpcError> {
     use synra_protocol::ids::TransferId;
 
-    require_grant(session, "file:transfer:send", "transfer.status")?;
+    require_grant(session, TRANSFER_GRANT, "transfer.status")?;
     let id_text = string_arg(args, "transferId")?;
     let id = uuid::Uuid::parse_str(id_text)
         .map(TransferId::from_uuid)
@@ -18,14 +19,20 @@ pub(crate) fn transfer_status(
                 serde_json::json!({"field": "transferId", "reason": error.to_string()}),
             )
         })?;
-    let snapshot = state
+    let snapshot = owned_status(state, session, id)?;
+    serde_json::to_value(snapshot).map_err(internal)
+}
+
+pub(crate) fn owned_status(
+    state: &AppState,
+    session: &ValidatedSession,
+    id: synra_protocol::TransferId,
+) -> Result<synra_ipc::PluginTransferStatus, IpcError> {
+    state
         .transfers
         .plugin_status(session.plugin_id(), id, transfers::unix_millis())
         .ok_or_else(|| {
-            IpcError::unknown(ErrorCode::InvalidArgument).with_params(serde_json::json!({
-                "transferId": id,
-                "reason": "transfer_not_found",
-            }))
-        })?;
-    serde_json::to_value(snapshot).map_err(internal)
+            IpcError::unknown(ErrorCode::InvalidArgument)
+                .with_params(serde_json::json!({"transferId": id, "reason": "transfer_not_found"}))
+        })
 }

@@ -1,8 +1,10 @@
-import type { PluginDevicePlatform, PluginDeviceTarget, PluginEventEnvelope } from '@synra/protocol'
+import type { PluginDevicePlatform, PluginDeviceTarget, PluginEvent, PluginEventPoll, PluginEventRecovery } from '@synra/protocol'
 import { createSynraError } from '../../errors'
 import { data } from '../../errors/shape'
+import { decodeTransferStatus } from '../transfer-status'
 
-export const DEVICE_TOPIC = 'device.changed' satisfies PluginEventEnvelope['name']
+export const DEVICE_TOPIC = 'device.changed' satisfies PluginEvent['name']
+export const TRANSFER_TOPIC = 'transfer.progress' satisfies PluginEvent['name']
 
 const PLATFORMS: ReadonlySet<string> = new Set<PluginDevicePlatform>([
   'windows',
@@ -36,13 +38,32 @@ export function decodeDevices(raw: unknown): PluginDeviceTarget[] {
   })
 }
 
-export function decodeEnvelope(raw: unknown): PluginEventEnvelope {
+function decodeEvent(raw: unknown): PluginEvent {
   const name = data(raw, 'name')
+  const payload = data(raw, 'payload')
+  if (name === DEVICE_TOPIC)
+    return { name, payload: { devices: decodeDevices(data(payload, 'devices')) } }
+  if (name === TRANSFER_TOPIC)
+    return { name, payload: decodeTransferStatus(payload) }
+  return invalid('invalid plugin event topic')
+}
+
+export function decodePoll(raw: unknown): PluginEventPoll {
+  if (data(raw, 'resync') === true)
+    return { resync: true }
   const seq = data(raw, 'seq')
   const at = data(raw, 'at')
-  if (name !== DEVICE_TOPIC || typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1
+  if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1
     || typeof at !== 'number' || !Number.isSafeInteger(at)) {
     return invalid('invalid plugin event envelope')
   }
-  return { name, seq, at, payload: { devices: decodeDevices(data(data(raw, 'payload'), 'devices')) } }
+  return { ...decodeEvent(raw), seq, at }
+}
+
+export function decodeRecovery(raw: unknown): PluginEventRecovery {
+  const seq = data(raw, 'seq')
+  const events = data(raw, 'events')
+  if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0 || !Array.isArray(events))
+    return invalid('invalid plugin event recovery')
+  return { seq, events: events.map(decodeEvent) }
 }

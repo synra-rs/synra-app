@@ -36,7 +36,7 @@ describe('what the host advertises and what it does', () => {
           default: throw new Error('unexpected command')
         }
       })
-      const synra = createInjection(context({ granted: ['platform:read-clipboard', 'device:list'], bridge: bridge({ invoke }) }))
+      const synra = createInjection(context({ granted: ['platform:read-clipboard', 'device:list', 'file:transfer:send'], bridge: bridge({ invoke }) }))
       const advertised = synra.env.hostSupports(feature)
 
       const failure = await CALLS[feature](synra).then(

@@ -14,6 +14,63 @@
       ]
     }
   },
+  "transfer": {
+    "seq": 2,
+    "at": 25,
+    "name": "transfer.progress",
+    "payload": {
+      "transferId": "b7f7f0c2-4a7e-4f1a-9a9a-2e2b6c1d0a11",
+      "state": "failed",
+      "receivedBytes": 2,
+      "totalBytes": 4,
+      "blocksDone": 1,
+      "blocksTotal": 2,
+      "revision": 3,
+      "endedAtMs": 24,
+      "failure": {
+        "kind": "peer_aborted",
+        "reason": "too_large"
+      }
+    }
+  },
+  "recovery": {
+    "seq": 7,
+    "events": [
+      {
+        "name": "device.changed",
+        "payload": {
+          "devices": [
+            {
+              "deviceId": "019482b2-b6a0-77ab-8a5d-63cd6f04d4f1",
+              "displayName": "Offline laptop",
+              "platform": "macos",
+              "online": false
+            }
+          ]
+        }
+      },
+      {
+        "name": "transfer.progress",
+        "payload": {
+          "transferId": "b7f7f0c2-4a7e-4f1a-9a9a-2e2b6c1d0a11",
+          "state": "failed",
+          "receivedBytes": 2,
+          "totalBytes": 4,
+          "blocksDone": 1,
+          "blocksTotal": 2,
+          "revision": 3,
+          "endedAtMs": 24,
+          "failure": {
+            "kind": "peer_aborted",
+            "reason": "too_large"
+          }
+        }
+      }
+    ]
+  },
+  "resync": {
+    "resync": true
+  },
   "patterns": [
     {
       "pattern": "device.changed",
@@ -86,6 +143,12 @@
       "name": "a.b.c.d.e",
       "valid": false,
       "matches": false
+    },
+    {
+      "pattern": "transfer.*",
+      "name": "transfer.progress",
+      "valid": true,
+      "matches": true
     }
   ]
 }

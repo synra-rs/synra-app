@@ -67,7 +67,7 @@ export function createInjection(context: InjectionContext, lifetime?: EventTarge
   const can = compileGrantCheck(context.granted)
   let requestCounter = 0
 
-  const event = createEventNamespace(context, can, lifetime)
+  const { namespace: event, subscriptions } = createEventNamespace(context, can, lifetime)
 
   const synra = {
     env: createEnvNamespace(context, can),
@@ -76,7 +76,7 @@ export function createInjection(context: InjectionContext, lifetime?: EventTarge
     device: createDeviceNamespace(context, event),
     storage: createStorageNamespace(context),
     network: createNetworkNamespace(context),
-    transfer: createTransferNamespace(context, can),
+    transfer: createTransferNamespace(context, can, subscriptions),
     platform: createPlatformNamespace(context, can),
     clipboard: createClipboardNamespace(context, can),
     self: createSelfNamespace(context),

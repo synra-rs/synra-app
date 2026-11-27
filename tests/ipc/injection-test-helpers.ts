@@ -75,9 +75,10 @@ export const CALLS: Readonly<Record<ClientFeature, (synra: SynraClient) => Promi
   'transfer.onProgress': async (synra) => {
     // ★ The id comes first. A call written the other way round typechecks against a one-argument signature and then
     // subscribes nothing — the failure this file exists to prevent, in the test for the guard itself.
-    synra.transfer.onProgress('transfer-1', () => {
+    const off = synra.transfer.onProgress('transfer-1', () => {
       // Nothing is done with it.
     })
+    off()
   },
   'network.fetch': async synra => synra.network.fetch('https://example.invalid'),
   'clipboard.read': async synra => synra.clipboard.read()

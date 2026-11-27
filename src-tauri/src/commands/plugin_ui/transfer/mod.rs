@@ -2,6 +2,10 @@ mod direct;
 mod upload_rpc;
 mod uploads;
 
+pub(crate) const TRANSFER_GRANT: &str = "file:transfer:send";
+
+#[cfg(any(feature = "tauri-shell", test))]
+pub(crate) use direct::owned_status;
 pub(crate) use direct::transfer_status;
 #[cfg(feature = "tauri-shell")]
 pub(crate) use upload_rpc::upload_time_ms;

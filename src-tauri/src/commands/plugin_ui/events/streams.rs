@@ -3,10 +3,12 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use synra_ipc::IpcError;
-use synra_ipc::event::{PluginEvent, PluginEventEnvelope};
-use synra_protocol::{ErrorCode, inbound::HandlePattern};
+use synra_ipc::event::{PluginEvent, PluginEventEnvelope, PluginEventPoll, PluginEventRecovery};
+use synra_protocol::{ErrorCode, TransferId};
 use tokio::sync::Notify;
 use uuid::Uuid;
+
+use super::selectors::{Selector, Topic};
 
 const MAX_PATTERNS: usize = 64;
 const MAX_QUEUED: usize = 8;
@@ -34,13 +36,13 @@ impl PluginEvents {
         &self,
         nonce: u128,
         id: u32,
-        pattern: HandlePattern,
+        selector: Selector,
     ) -> Result<Uuid, IpcError> {
         let mut streams = self.streams.lock();
         let stream = streams
             .entry(nonce)
             .or_insert_with(|| Arc::new(Stream::new()));
-        stream.subscribe(id, pattern)?;
+        stream.subscribe(id, selector)?;
         Ok(stream.id)
     }
 
@@ -69,13 +71,11 @@ impl PluginEvents {
         }
     }
 
-    pub(super) fn interested(&self, topic: &str) -> Vec<(u128, Arc<Stream>)> {
+    pub(super) fn open(&self) -> Vec<(u128, Arc<Stream>)> {
         self.streams
             .lock()
             .iter()
-            .filter_map(|(nonce, stream)| {
-                stream.matches(topic).then(|| (*nonce, Arc::clone(stream)))
-            })
+            .map(|(nonce, stream)| (*nonce, Arc::clone(stream)))
             .collect()
     }
 }
@@ -89,16 +89,17 @@ pub(super) struct Stream {
 
 #[derive(Default)]
 struct Queue {
-    subscriptions: HashMap<u32, HandlePattern>,
+    subscriptions: HashMap<u32, Selector>,
     messages: VecDeque<Message>,
     seq: u64,
+    missed: bool,
 }
 
 impl Queue {
-    fn matches(&self, topic: &str) -> bool {
+    fn selects(&self, event: &PluginEvent) -> bool {
         self.subscriptions
             .values()
-            .any(|pattern| pattern.matches(topic))
+            .any(|selector| selector.matches(event))
     }
 }
 
@@ -112,16 +113,28 @@ impl Stream {
         }
     }
 
-    pub(super) fn matches(&self, topic: &str) -> bool {
-        self.inner.lock().matches(topic)
+    pub(super) fn observes(&self, topic: Topic) -> bool {
+        self.inner
+            .lock()
+            .subscriptions
+            .values()
+            .any(|selector| selector.observes(topic))
     }
 
-    fn subscribe(&self, id: u32, pattern: HandlePattern) -> Result<(), IpcError> {
+    pub(super) fn selects_transfer(&self, id: TransferId) -> bool {
+        self.inner
+            .lock()
+            .subscriptions
+            .values()
+            .any(|selector| selector.transfer(id))
+    }
+
+    fn subscribe(&self, id: u32, selector: Selector) -> Result<(), IpcError> {
         let mut queue = self.inner.lock();
         if queue.subscriptions.len() >= MAX_PATTERNS && !queue.subscriptions.contains_key(&id) {
             return Err(limit("too many logical subscriptions"));
         }
-        queue.subscriptions.insert(id, pattern);
+        queue.subscriptions.insert(id, selector);
         Ok(())
     }
 
@@ -143,7 +156,7 @@ impl Stream {
         messages.retain(|message| match message {
             Ok(envelope) => subscriptions
                 .values()
-                .any(|pattern| pattern.matches(envelope.event.name())),
+                .any(|selector| selector.matches(&envelope.event)),
             Err(_) => true,
         });
         false
@@ -157,13 +170,20 @@ impl Stream {
         self.wake.notify_one();
     }
 
-    pub(super) fn publish(&self, topic: &str, at: i64, event: &Result<PluginEvent, IpcError>) {
+    pub(super) fn publish(&self, topic: Topic, at: i64, event: Result<PluginEvent, IpcError>) {
         let mut queue = self.inner.lock();
-        if !queue.matches(topic) {
+        let interested = match &event {
+            Ok(event) => queue.selects(event),
+            Err(_) => queue
+                .subscriptions
+                .values()
+                .any(|selector| selector.observes(topic)),
+        };
+        if !interested {
             return;
         }
         queue.seq = queue.seq.saturating_add(1);
-        let message = event.clone().map(|event| PluginEventEnvelope {
+        let message = event.map(|event| PluginEventEnvelope {
             seq: queue.seq,
             at,
             event,
@@ -176,25 +196,30 @@ impl Stream {
         self.wake.notify_one();
     }
 
-    pub(super) fn reset(&self, at: i64, event: PluginEvent) -> Option<PluginEventEnvelope> {
+    pub(super) fn invalidate(&self) {
         let mut queue = self.inner.lock();
-        if !queue.matches(event.name()) {
-            return None;
-        }
+        queue.missed = true;
         queue.messages.clear();
-        queue.seq = queue.seq.saturating_add(1);
-        Some(PluginEventEnvelope {
+        drop(queue);
+        self.wake.notify_one();
+    }
+
+    pub(super) fn reset(&self, mut events: Vec<PluginEvent>) -> PluginEventRecovery {
+        let mut queue = self.inner.lock();
+        events.retain(|event| queue.selects(event));
+        queue.missed = false;
+        queue.messages.clear();
+        PluginEventRecovery {
             seq: queue.seq,
-            at,
-            event,
-        })
+            events,
+        }
     }
 
     /// Hold one reader across the wait. Wake immediately on a projected event or final unsubscribe.
     pub(super) async fn poll(
         &self,
         deadline: Duration,
-    ) -> Result<Option<PluginEventEnvelope>, IpcError> {
+    ) -> Result<Option<PluginEventPoll>, IpcError> {
         let _reader = self
             .reader
             .try_lock()
@@ -206,8 +231,11 @@ impl Stream {
                     if queue.subscriptions.is_empty() {
                         return Ok(None);
                     }
+                    if queue.missed {
+                        return Ok(Some(PluginEventPoll::Reconcile { resync: true }));
+                    }
                     if let Some(message) = queue.messages.pop_front() {
-                        return message.map(Some);
+                        return message.map(|envelope| Some(PluginEventPoll::Event(envelope)));
                     }
                 }
                 self.wake.notified().await;

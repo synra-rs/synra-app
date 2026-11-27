@@ -54,13 +54,9 @@ describe('subscriptions', () => {
     expect(() => off()).not.toThrow()
   })
 
-  it('onProgress returns an unsubscribe even though transfers do not start', () => {
+  it('onProgress refuses a page without the send grant', () => {
     const synra = createInjection(context())
-    const off = synra.transfer.onProgress('transfer-1', () => {
-      // Nothing is done with it.
-    })
-    expect(typeof off).toBe('function')
-    expect(() => off()).not.toThrow()
+    expect(() => synra.transfer.onProgress('transfer-1', vi.fn())).toThrow(expect.objectContaining({ code: 'capability_denied' }))
   })
 
   // ★ The race: the caller unsubscribes before the listener finishes attaching. The one that arrives afterwards has to
