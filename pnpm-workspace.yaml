@@ -13,6 +13,9 @@ minimumReleaseAgeExcludePrune: true
 # An override says the one thing that is true: when something asks for `@synra/client`, resolve it to this directory.
 minimumReleaseAgeExclude:
   - pinia
+  - '@eslint/config-array@0.23.7'
+  - '@tauri-apps/api@2.13.0'
+  - eslint@10.16.0
 
 trustPolicy: no-downgrade
 shellEmulator: true
