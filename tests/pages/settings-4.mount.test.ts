@@ -5,11 +5,18 @@ import { answer, ErrorNotice, IDENTITY, messages, mocks, mountPage, NO_METRICS, 
 
 describe('the settings page', () => {
   it('keeps a rejected draft in its own section and retries the same edit explicitly', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      config_set: null
+    })
     const fallback = mocks.call.getMockImplementation()!
     let refused = true
     mocks.call.mockImplementation((command: string, args?: unknown) => command === 'config_set' && refused
-      ? { ok: false, error: { code: 'invalidArgument', message: 'error.invalidArgument', retryable: false } }
+      ? {
+          ok: false,
+          error: { code: 'invalidArgument', message: 'error.invalidArgument', retryable: false }
+        }
       : fallback(command, args))
     const wrapper = await mountPage()
     try {
@@ -32,15 +39,28 @@ describe('the settings page', () => {
     }
   })
   it('checks a submitted rename without writing it twice after a failed status read', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, identity_set_display_name: null })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      identity_set_display_name: null
+    })
     const fallback = mocks.call.getMockImplementation()!
     let reads = 0
     mocks.call.mockImplementation((command: string, args?: unknown) => {
       if (command === 'identity_get') {
         reads++
-        if (reads === 2)
-          return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: true } }
-        return { ok: true, value: reads > 2 ? { ...IDENTITY, displayName: 'Desk' } : IDENTITY }
+        if (reads === 2) {
+          return {
+            ok: false,
+            error: { code: 'internal', message: 'error.internal', retryable: true }
+          }
+        }
+        return {
+          ok: true,
+          value: reads > 2
+            ? { ...IDENTITY, displayName: 'Desk' }
+            : IDENTITY
+        }
       }
       return fallback(command, args)
     })
@@ -64,7 +84,10 @@ describe('the settings page', () => {
     }
   })
   it('keeps editing when navigation is cancelled and only discards after an explicit decision', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()
@@ -80,7 +103,9 @@ describe('the settings page', () => {
       expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
       const leaving = testRouter().push('/')
       await flushPromises()
-      const button = [...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')].find(value => value.textContent === messages.settings.edit.discard)!
+      const button = [
+        ...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')
+      ].find(value => value.textContent === messages.settings.edit.discard)!
       button.click()
       await leaving
       expect(testRouter().currentRoute.value.path).toBe('/')
@@ -91,7 +116,10 @@ describe('the settings page', () => {
     }
   })
   it('keeps the draft and route when saving before navigation fails', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()
@@ -99,7 +127,9 @@ describe('the settings page', () => {
       await wrapper.get('#registry-0').setValue('https://draft.example')
       const leaving = testRouter().push('/')
       await flushPromises()
-      const button = [...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')].find(value => value.textContent === messages.settings.edit.saveAll)!
+      const button = [
+        ...document.querySelectorAll<HTMLButtonElement>('.ant-modal-footer button')
+      ].find(value => value.textContent === messages.settings.edit.saveAll)!
       button.click()
       await leaving
       await flushPromises()
@@ -112,7 +142,11 @@ describe('the settings page', () => {
     }
   })
   it('does not submit a registry draft while an input method is composing', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, config_set: null })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      config_set: null
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()
@@ -127,7 +161,10 @@ describe('the settings page', () => {
     }
   })
   it('pauses metrics on hidden windows and category changes then resumes once', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     vi.useFakeTimers()
     const wrapper = await mountPage()
     const count = () => mocks.call.mock.calls.filter(([command]) => command === 'diag_metrics').length
@@ -156,7 +193,10 @@ describe('the settings page', () => {
     }
   })
   it('discards old metric responses and never overlaps pending requests when reopened', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     const fallback = mocks.call.getMockImplementation()!
     let finish: ((value: unknown) => void) | undefined
     let requests = 0
@@ -177,7 +217,18 @@ describe('the settings page', () => {
       await openCategory(wrapper, 'diagnostics')
       await vi.advanceTimersByTimeAsync(20000)
       expect(requests).toBe(1)
-      finish!({ ok: true, value: { ...NO_METRICS, values: [{ key: { name: 'old_series', labels: [] }, value: { kind: 'counter', value: 10 } }] } })
+      finish!({
+        ok: true,
+        value: {
+          ...NO_METRICS,
+          values: [
+            {
+              key: { name: 'old_series', labels: [] },
+              value: { kind: 'counter', value: 10 }
+            }
+          ]
+        }
+      })
       await flushPromises()
       expect(requests).toBe(2)
       expect(wrapper.text()).not.toContain('old_series')
@@ -189,7 +240,11 @@ describe('the settings page', () => {
     }
   })
   it('keeps diagnostic errors independent when another tool succeeds', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY, diag_logs_tail: ['recent log'] })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY,
+      diag_logs_tail: ['recent log']
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()
@@ -206,7 +261,10 @@ describe('the settings page', () => {
     }
   })
   it('opens the section a query asked for', async () => {
-    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    answer({
+      identity_get: IDENTITY,
+      config_get: { values: {}, overridden: [] }
+    })
     const wrapper = await mountPage('/settings?category=diagnostics')
     try {
       await flushPromises()
@@ -218,7 +276,10 @@ describe('the settings page', () => {
     }
   })
   it('ignores a query that names no section', async () => {
-    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    answer({
+      identity_get: IDENTITY,
+      config_get: { values: {}, overridden: [] }
+    })
     const wrapper = await mountPage('/settings?category=not-a-section')
     try {
       await flushPromises()

@@ -23,7 +23,15 @@ import ErrorNotice from '@/components/ErrorNotice.vue'
 function router() {
   return createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/devices', '/plugins', '/settings'].map(path => ({ path, component: { template: '<div />' } }))
+    routes: [
+      '/',
+      '/devices',
+      '/plugins',
+      '/settings'
+    ].map(path => ({
+      path,
+      component: { template: '<div />' }
+    }))
   })
 }
 
@@ -32,7 +40,9 @@ async function mountNotice(actions: readonly SuggestedAction[]) {
   await instance.push('/')
   const wrapper = mount(ErrorNotice, {
     props: { code: 'unavailable', actions },
-    global: { plugins: [instance] }
+    global: {
+      plugins: [instance]
+    }
   })
   await flushPromises()
   return { wrapper, instance }
@@ -42,7 +52,9 @@ describe('error notice actions', () => {
   it('keeps the plugin id when sending the reader to plugins', async () => {
     // ★ The kernel names one plugin. `PluginsPage` opens the row for `?plugin=`; without the id this button means
     // "go look through the list".
-    const { wrapper, instance } = await mountNotice([{ kind: 'installPlugin', pluginId: '@acme/hello' }])
+    const { wrapper, instance } = await mountNotice([
+      { kind: 'installPlugin', pluginId: '@acme/hello' }
+    ])
     const button = wrapper.findAll('button').find(candidate => candidate.text() === 'Open plugins')
     expect(button, 'the plugins button is missing').toBeDefined()
 
@@ -55,7 +67,9 @@ describe('error notice actions', () => {
 
   it('encodes a plugin id that would otherwise break the query', async () => {
     // Scope-qualified ids are the normal case (`@acme/hello`), and `/` inside a query value would be read as a path.
-    const { wrapper, instance } = await mountNotice([{ kind: 'installPlugin', pluginId: 'a b&c' }])
+    const { wrapper, instance } = await mountNotice([
+      { kind: 'installPlugin', pluginId: 'a b&c' }
+    ])
     const button = wrapper.findAll('button').find(candidate => candidate.text() === 'Open plugins')!
     await button.trigger('click')
     await flushPromises()
@@ -66,7 +80,9 @@ describe('error notice actions', () => {
   it('keeps the settings section when sending the reader to settings', async () => {
     // ★ `SettingsPage` opens the column for `?category=` and ignores a value it does not know. Dropping the section sent
     // every "open settings" to the first column, even when the kernel named a different one.
-    const { wrapper, instance } = await mountNotice([{ kind: 'openSettings', section: 'security' }])
+    const { wrapper, instance } = await mountNotice([
+      { kind: 'openSettings', section: 'security' }
+    ])
     const button = wrapper.findAll('button').find(candidate => candidate.text() === 'Open settings')
     expect(button, 'the settings button is missing').toBeDefined()
 
@@ -79,7 +95,9 @@ describe('error notice actions', () => {
 
   it('renders a capability request as a direction, not a button', async () => {
     // There is no screen for "grant this capability", so the notice must not offer a control that does nothing.
-    const { wrapper } = await mountNotice([{ kind: 'requestCapability', capability: 'network:fetch:api.example.com' }])
+    const { wrapper } = await mountNotice([
+      { kind: 'requestCapability', capability: 'network:fetch:api.example.com' }
+    ])
     const texts = wrapper.findAll('button').map(button => button.text())
     expect(texts).not.toContain('Ask for the permission')
     expect(wrapper.text()).toContain('Ask for the permission')
@@ -95,7 +113,12 @@ describe('error notice actions', () => {
   async function mountWith(params: unknown, detail?: string) {
     const instance = router()
     await instance.push('/')
-    const wrapper = mount(ErrorNotice, { props: { code: 'invalid_argument', params, detail }, global: { plugins: [instance] } })
+    const wrapper = mount(ErrorNotice, {
+      props: { code: 'invalid_argument', params, detail },
+      global: {
+        plugins: [instance]
+      }
+    })
     await flushPromises()
     return wrapper
   }

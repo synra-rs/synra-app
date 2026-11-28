@@ -24,7 +24,10 @@ describe('calling a command', () => {
     const client = new KernelClient(seam)
 
     const result = await client.call<{ devices: unknown[] }>('devices_snapshot')
-    expect(result).toEqual({ ok: true, value: { devices: [] } })
+    expect(result).toEqual({
+      ok: true,
+      value: { devices: [] }
+    })
     expect(commands).toEqual(['devices_snapshot'])
   })
 
@@ -41,7 +44,9 @@ describe('calling a command', () => {
     }
 
     await new KernelClient(seam).call('devices_snapshot', { deviceId: 'dev_a' })
-    expect(seen).toEqual([{ deviceId: 'dev_a' }])
+    expect(seen).toEqual([
+      { deviceId: 'dev_a' }
+    ])
   })
 
   it('reports a resolved error object as a failure', async () => {
@@ -75,7 +80,9 @@ describe('calling a command', () => {
     expect(result.error.code).toBe('internal')
     expect(result.error.retryable).toBe(true)
     // And the detail is carried, so a diagnostic report can say what the bridge said.
-    expect(result.error.params).toEqual({ detail: expect.stringContaining('the bridge fell over') })
+    expect(result.error.params).toEqual({
+      detail: expect.stringContaining('the bridge fell over')
+    })
   })
 
   it('passes through a rejection that is already an error', async () => {
@@ -150,6 +157,8 @@ describe('subscribing to an event', () => {
     await client.subscribe('kernel-event', payload => seen.push(payload))
 
     listeners.get('kernel-event')?.({ seq: 1 })
-    expect(seen).toEqual([{ seq: 1 }])
+    expect(seen).toEqual([
+      { seq: 1 }
+    ])
   })
 })

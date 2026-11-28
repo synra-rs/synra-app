@@ -12,7 +12,9 @@ export async function checkCommandArguments(called: ReadonlySet<string>): Promis
   catch (error) {
     failures.push({
       check: 'command-arguments',
-      detail: error instanceof Error ? error.message : String(error)
+      detail: error instanceof Error
+        ? error.message
+        : String(error)
     })
     return
   }
@@ -74,7 +76,9 @@ export async function checkCommandArguments(called: ReadonlySet<string>): Promis
     const command = match[1]
     if (command === undefined)
       continue
-    claimed.set(command, [...(match[2] ?? '').matchAll(/['"](\w+)['"]/g)].map(key => key[1] ?? ''))
+    claimed.set(command, [
+      ...(match[2] ?? '').matchAll(/['"](\w+)['"]/g)
+    ].map(key => key[1] ?? ''))
   }
   if (claimed.size === 0) {
     failures.push({

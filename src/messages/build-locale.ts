@@ -9,8 +9,12 @@ export function buildLocale(entries: LocaleEntries): Messages {
       const path = `${prefix}${key}`
       if (key === 'icon')
         return [key, value]
-      if (value !== null && typeof value === 'object')
-        return [key, visit(value as Readonly<Record<string, unknown>>, `${path}.`)]
+      if (value !== null && typeof value === 'object') {
+        return [
+          key,
+          visit(value as Readonly<Record<string, unknown>>, `${path}.`)
+        ]
+      }
       const translated = translations[path]
       if (typeof translated !== typeof value)
         throw new TypeError(`Invalid translation: ${path}`)

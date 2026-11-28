@@ -25,7 +25,10 @@ function deferred<T>() {
 
 function setup(invoke: (command: string, args?: unknown) => Promise<unknown>) {
   const scope = effectScope()
-  const kernel = new KernelClient({ invoke, listen: async () => () => {} })
+  const kernel = new KernelClient({
+    invoke,
+    listen: async () => () => {}
+  })
   const catalog = scope.run(() => useCatalog(kernel))!
   return { scope, catalog }
 }
@@ -53,7 +56,15 @@ describe('registry search state', () => {
       expect(catalog.busy.value).toBe(false)
       await catalog.search()
       expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', {
-        query: { query: field === 'text' ? 'next' : 'first', sort: field === 'sort' ? 'name' : 'relevance', offset: 0 }
+        query: {
+          query: field === 'text'
+            ? 'next'
+            : 'first',
+          sort: field === 'sort'
+            ? 'name'
+            : 'relevance',
+          offset: 0
+        }
       })
     }
     finally {
@@ -75,7 +86,9 @@ describe('registry search state', () => {
       expect(new Set(catalog.results.value.map(item => item.pluginId)).size).toBe(39)
       expect(catalog.hasMore.value).toBe(true)
       await catalog.loadMore()
-      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', { query: { query: 'plugin', sort: 'relevance', offset: 40 } })
+      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', {
+        query: { query: 'plugin', sort: 'relevance', offset: 40 }
+      })
       expect(catalog.hasMore.value).toBe(false)
       expect(catalog.results.value).toHaveLength(39)
     }
@@ -98,7 +111,9 @@ describe('registry search state', () => {
       expect(catalog.error.value?.code).toBe('timeout')
       expect(catalog.hasMore.value).toBe(true)
       await catalog.retry()
-      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', { query: { query: 'plugin', sort: 'relevance', offset: 20 } })
+      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', {
+        query: { query: 'plugin', sort: 'relevance', offset: 20 }
+      })
       expect(catalog.results.value).toHaveLength(21)
       expect(catalog.error.value).toBeUndefined()
     }
@@ -119,7 +134,9 @@ describe('registry search state', () => {
       await catalog.search()
       expect(catalog.results.value).toHaveLength(20)
       await catalog.retry()
-      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', { query: { query: 'plugin', sort: 'relevance', offset: 0 } })
+      expect(invoke).toHaveBeenLastCalledWith('plugins_catalog_search', {
+        query: { query: 'plugin', sort: 'relevance', offset: 0 }
+      })
       expect(catalog.results.value.map(item => item.pluginId)).toEqual(['@acme/p40'])
     }
     finally {

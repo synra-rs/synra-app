@@ -91,5 +91,18 @@ export const usePairingStore = defineStore('pairing', () => {
     error.value = undefined
   }
 
-  return { snapshot, visible, peerName, error, busy, unreachable, apply, read, start, respond, cancel, close }
+  return {
+    snapshot,
+    visible,
+    peerName,
+    error,
+    busy,
+    unreachable,
+    apply,
+    read,
+    start,
+    respond,
+    cancel,
+    close
+  }
 })

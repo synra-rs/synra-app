@@ -13,7 +13,7 @@
         Above the actions, because it explains them — "check the invitation" reads differently once you know it was
         the device id that did not parse.
       -->
-      <p v-if="detail" data-testid="error-detail" class="m-0 break-words text-sm">
+      <p v-if="detail" data-testid="error-detail" class="text-sm m-0 break-words">
         {{ detail }}
       </p>
       <!--
@@ -30,7 +30,7 @@
       <div
         v-if="actions.length > 0"
         data-testid="error-actions"
-        class="row flex-wrap gap-2 pt-1"
+        class="pt-1 row flex-wrap gap-2"
         :class="{ 'pt-2': detail }"
       >
         <template v-for="(action, index) in actions" :key="index">

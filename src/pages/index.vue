@@ -37,47 +37,47 @@
 </style>
 
 <template>
-  <section class="mx-auto max-w-3xl min-w-0 stack gap-6 pb-4" data-page-width="reading">
+  <section class="mx-auto pb-4 stack gap-6 max-w-3xl min-w-0" data-page-width="reading">
     <PageHeader :title="messages.home.title">
       <AButton @click="router.push('/devices')">
         {{ wire.state === 'none' ? messages.home.wire.action : messages.home.inFlight.action }}
       </AButton>
     </PageHeader>
     <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="load" />
-    <section class="min-w-0 stack gap-3 border-t border-line pt-4" :aria-label="messages.home.wire.label">
+    <section class="pt-4 border-t border-line stack gap-3 min-w-0" :aria-label="messages.home.wire.label">
       <div class="row-between flex-wrap gap-2">
         <span class="text-sm text-ink-dim">{{ messages.home.wire.label }}</span>
         <span class="text-base font-medium">{{ state.headline }}</span>
       </div>
-      <div class="min-w-0 row gap-3">
-        <span class="max-w-1/3 min-w-0 truncate text-base" :title="devices.identity?.displayName">
+      <div class="row gap-3 min-w-0">
+        <span class="text-base max-w-1/3 min-w-0 truncate" :title="devices.identity?.displayName">
           {{ devices.identity?.displayName ?? messages.app.name }}
         </span>
-        <span class="relative h-0.5 max-w-24 min-w-6 flex-1 rounded-pill bg-line" aria-hidden="true">
-          <span class="absolute start-0 inset-y-0 rounded-pill bg-primary" :class="[wireWidth, wireLive && 'shadow-glow']" />
+        <span class="rounded-pill bg-line flex-1 h-0.5 max-w-24 min-w-6 relative" aria-hidden="true">
+          <span class="rounded-pill bg-primary start-0 inset-y-0 absolute" :class="[wireWidth, wireLive && 'shadow-glow']" />
         </span>
-        <span class="max-w-1/3 min-w-0 truncate text-end text-base" :class="wirePeerName ? 'text-ink' : 'text-ink-dim'" :title="wirePeerName">
+        <span class="text-base text-end max-w-1/3 min-w-0 truncate" :class="wirePeerName ? 'text-ink' : 'text-ink-dim'" :title="wirePeerName">
           {{ wirePeerName ?? messages.home.wire.action }}
         </span>
       </div>
-      <p v-if="'detail' in state" class="m-0 text-sm text-ink-dim">
+      <p v-if="'detail' in state" class="text-sm text-ink-dim m-0">
         {{ state.detail }}
       </p>
     </section>
-    <section class="min-w-0 stack gap-3 border-t border-line pt-4">
-      <h2 class="m-0 text-base font-medium">
+    <section class="pt-4 border-t border-line stack gap-3 min-w-0">
+      <h2 class="text-base font-medium m-0">
         {{ messages.home.inFlight.title }}
       </h2>
-      <p v-if="transfers.length === 0" class="m-0 py-2 text-base text-ink-dim">
+      <p v-if="transfers.length === 0" class="text-base text-ink-dim m-0 py-2">
         {{ messages.home.inFlight.empty }}
       </p>
       <AList v-else size="small">
         <AList.Item v-for="transfer in transfers" :key="transfer.transferId" :style="{ paddingInline: 0 }">
-          <div class="min-w-0 w-full stack gap-2">
+          <div class="stack gap-2 min-w-0 w-full">
             <div class="home-transfer-row row-between gap-3">
-              <div class="min-w-0 stack gap-0.5">
-                <span class="truncate text-base">{{ transfer.peerName }}</span>
-                <span v-if="transfer.fileName" class="truncate text-sm text-ink-dim">{{ transfer.fileName }}</span>
+              <div class="stack gap-0.5 min-w-0">
+                <span class="text-base truncate">{{ transfer.peerName }}</span>
+                <span v-if="transfer.fileName" class="text-sm text-ink-dim truncate">{{ transfer.fileName }}</span>
               </div>
               <div class="home-transfer-actions row gap-2">
                 <ATag class="m-0">
@@ -125,27 +125,27 @@
         </AList.Item>
       </AList>
     </section>
-    <section class="min-w-0 stack gap-3 border-t border-line pt-4">
-      <h2 class="m-0 text-base font-medium">
+    <section class="pt-4 border-t border-line stack gap-3 min-w-0">
+      <h2 class="text-base font-medium m-0">
         {{ messages.home.received.title }}
       </h2>
-      <p v-if="intents.length === 0" class="m-0 py-2 text-base text-ink-dim">
+      <p v-if="intents.length === 0" class="text-base text-ink-dim m-0 py-2">
         {{ messages.home.received.empty }}
       </p>
       <AList v-else size="small">
         <AList.Item v-for="intent in intents" :key="intent.intentId" :style="{ paddingInline: 0 }">
-          <div class="min-w-0 w-full stack gap-2">
-            <div class="min-w-0 row flex-wrap gap-3">
+          <div class="stack gap-2 min-w-0 w-full">
+            <div class="row flex-wrap gap-3 min-w-0">
               <ATag class="m-0" :color="intentStateColor(intent.state)">
                 {{ intentStateLabel(intent.state) }}
               </ATag>
-              <span v-if="intent.pluginId" class="max-w-full min-w-0 break-all text-sm text-ink-dim font-mono">{{ intent.pluginId }}</span>
+              <span v-if="intent.pluginId" class="text-sm text-ink-dim font-mono max-w-full min-w-0 break-all">{{ intent.pluginId }}</span>
             </div>
-            <p v-if="intent.retry" class="m-0 text-sm text-ink-dim">
+            <p v-if="intent.retry" class="text-sm text-ink-dim m-0">
               {{ retryLabel(intent.retry) }}
             </p>
             <div v-for="candidate in intent.candidates" :key="candidate.deviceId" class="row-between gap-2">
-              <span class="min-w-0 truncate text-sm">
+              <span class="text-sm min-w-0 truncate">
                 {{ candidate.title }} · {{ deviceName(candidate.deviceId) }}
                 <span class="text-ink-dim font-mono" :title="candidate.deviceId">{{ candidate.deviceId }}</span>
                 <span v-if="!candidate.online" class="text-ink-dim"> · {{ messages.home.received.offline }}</span>
@@ -169,26 +169,26 @@
                 {{ messages.home.received.decline }}
               </AButton>
             </div>
-            <p v-if="intent.error" class="m-0 text-sm">
+            <p v-if="intent.error" class="text-sm m-0">
               <span class="text-error">{{ intentError(intent) }}</span>
             </p>
-            <div v-if="intent.traceId || intent.startedAtMs !== undefined" class="min-w-0 stack gap-1">
+            <div v-if="intent.traceId || intent.startedAtMs !== undefined" class="stack gap-1 min-w-0">
               <button
                 type="button"
-                class="min-h-11 self-start border-0 bg-transparent px-0 text-sm text-ink-dim focusable md:min-h-8 hover:text-ink"
+                class="text-sm text-ink-dim px-0 focusable border-0 bg-transparent min-h-11 self-start hover:text-ink md:min-h-8"
                 :aria-expanded="expanded === intent.intentId"
                 @click="toggleExpanded(intent.intentId)"
               >
                 {{ messages.home.received.details }}
               </button>
-              <div v-if="expanded === intent.intentId" class="stack gap-1 text-sm">
-                <div v-if="intent.startedAtMs !== undefined" class="row flex-wrap items-baseline gap-2">
+              <div v-if="expanded === intent.intentId" class="text-sm stack gap-1">
+                <div v-if="intent.startedAtMs !== undefined" class="row flex-wrap gap-2 items-baseline">
                   <span class="text-ink-dim">{{ messages.home.received.startedAt }}</span>
-                  <span class="min-w-0 break-all font-mono">{{ formatClock(intent.startedAtMs) }}</span>
+                  <span class="font-mono min-w-0 break-all">{{ formatClock(intent.startedAtMs) }}</span>
                 </div>
-                <div v-if="intent.traceId" class="row flex-wrap items-center gap-2">
+                <div v-if="intent.traceId" class="row flex-wrap gap-2 items-center">
                   <span class="text-ink-dim">{{ messages.home.received.trace }}</span>
-                  <span class="min-w-0 select-text break-all font-mono" :data-testid="`trace-${intent.intentId}`">{{ intent.traceId }}</span>
+                  <span class="font-mono min-w-0 select-text break-all" :data-testid="`trace-${intent.intentId}`">{{ intent.traceId }}</span>
                   <AButton size="small" :data-testid="`copy-${intent.intentId}`" @click="copyTrace(intent.intentId, intent.traceId)">
                     {{ copiedTrace === intent.traceId
                       ? messages.home.received.copied
@@ -203,24 +203,24 @@
         </AList.Item>
       </AList>
     </section>
-    <section class="min-w-0 stack gap-3 border-t border-line pt-4">
-      <h2 class="m-0 text-base font-medium">
+    <section class="pt-4 border-t border-line stack gap-3 min-w-0">
+      <h2 class="text-base font-medium m-0">
         {{ messages.home.receivedFiles.title }}
       </h2>
-      <p v-if="received.length === 0" class="m-0 py-2 text-base text-ink-dim">
+      <p v-if="received.length === 0" class="text-base text-ink-dim m-0 py-2">
         {{ messages.home.receivedFiles.empty }}
       </p>
       <AList v-else size="small">
         <AList.Item v-for="file in received" :key="file.path" :style="{ paddingInline: 0 }">
           <div class="row-between gap-3">
-            <div class="min-w-0 stack gap-0.5">
-              <span class="truncate text-base" :title="file.fileName">{{ file.fileName }}</span>
-              <span class="break-all text-sm text-ink-dim font-mono" :title="file.path">{{ file.path }}</span>
+            <div class="stack gap-0.5 min-w-0">
+              <span class="text-base truncate" :title="file.fileName">{{ file.fileName }}</span>
+              <span class="text-sm text-ink-dim font-mono break-all" :title="file.path">{{ file.path }}</span>
               <span class="text-sm text-ink-dim" :title="formatDateTime(file.receivedAtMs)">
                 {{ messages.home.receivedFiles.receivedAt }} {{ formatDateTime(file.receivedAtMs) }}
               </span>
             </div>
-            <span class="shrink-0 text-sm text-ink-dim">{{ formatBytes(file.bytes) }}</span>
+            <span class="text-sm text-ink-dim shrink-0">{{ formatBytes(file.bytes) }}</span>
           </div>
         </AList.Item>
       </AList>

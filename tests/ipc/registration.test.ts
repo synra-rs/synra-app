@@ -65,13 +65,18 @@ function declaredInContract(): string[] {
 
 /** Commands that have a dispatcher route, a Tauri handler and a wrapper. */
 function registeredInShell(): string[] {
-  return [...readTauriWrappers(APP_ROOT).keys()]
+  return [
+    ...readTauriWrappers(APP_ROOT).keys()
+  ]
 }
 
 describe('the commands the shell registers', () => {
   it('reads the plugin RPC signature without Tauri-injected arguments', () => {
     const rpc = readTauriWrappers(APP_ROOT).get('plugin_ui_rpc')
-    expect(rpc).toEqual({ declared: ['token', 'method', 'args'], required: ['token', 'method', 'args'] })
+    expect(rpc).toEqual({
+      declared: ['token', 'method', 'args'],
+      required: ['token', 'method', 'args']
+    })
   })
 
   it('registers exactly the names this test claims it does', () => {
@@ -94,7 +99,10 @@ describe('the commands the shell registers', () => {
     // ★ The assertion that makes the gap visible rather than absent. Read from the contract, so a command added there
     // and forgotten here fails — which is what the test in `synra-ipc` says it does and cannot.
     const declared = declaredInContract()
-    const accounted = new Set<string>([...REGISTERED, ...Object.keys(NOT_YET_REGISTERED)])
+    const accounted = new Set<string>([
+      ...REGISTERED,
+      ...Object.keys(NOT_YET_REGISTERED)
+    ])
 
     const missing = declared.filter(name => !accounted.has(name))
     expect(missing, 'declared by the contract and neither registered nor listed as waiting').toEqual([])

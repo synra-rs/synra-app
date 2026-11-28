@@ -10,7 +10,11 @@ export function data(value: unknown, key: string): unknown {
     return undefined
   try {
     const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    return descriptor === undefined ? undefined : 'value' in descriptor ? descriptor.value : INACCESSIBLE
+    return descriptor === undefined
+      ? undefined
+      : 'value' in descriptor
+        ? descriptor.value
+        : INACCESSIBLE
   }
   catch {
     return INACCESSIBLE
@@ -93,10 +97,18 @@ export function errorSnapshot(value: unknown): ErrorSnapshot | undefined {
       code,
       message,
       retryable,
-      ...(traceId === undefined ? {} : { traceId }),
-      ...(details === undefined ? {} : { details }),
-      ...(params === undefined ? {} : { params }),
-      ...(actions === undefined ? {} : { actions: copied })
+      ...(traceId === undefined
+        ? {}
+        : { traceId }),
+      ...(details === undefined
+        ? {}
+        : { details }),
+      ...(params === undefined
+        ? {}
+        : { params }),
+      ...(actions === undefined
+        ? {}
+        : { actions: copied })
     }
   }
   catch {

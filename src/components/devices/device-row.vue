@@ -36,13 +36,13 @@ article:focus-within .device-details-action,
 </style>
 
 <template>
-  <article class="min-w-0 border-b border-line py-3">
-    <div class="min-w-0 row-between flex-wrap gap-3">
-      <div class="min-w-0 stack flex-1 gap-1">
-        <h3 class="m-0 truncate text-base font-medium" :title="card.displayName">
+  <article class="py-3 border-b border-line min-w-0">
+    <div class="row-between flex-wrap gap-3 min-w-0">
+      <div class="stack flex-1 gap-1 min-w-0">
+        <h3 class="text-base font-medium m-0 truncate" :title="card.displayName">
           {{ card.displayName }}
         </h3>
-        <div class="row flex-wrap gap-x-3 gap-y-1 text-sm text-ink-dim">
+        <div class="text-sm text-ink-dim row flex-wrap gap-x-3 gap-y-1">
           <span>{{ card.platform }}</span>
           <span>{{ card.online ? messages.devices.online : messages.devices.offline }}</span>
           <ATag v-if="card.blocked" color="warning">
@@ -55,7 +55,7 @@ article:focus-within .device-details-action,
           not line up is the block's own right edge: it is as wide as its contents, and a paired device has no Pair
           button, so the two rows' Details buttons settled at different x while both were "right aligned".
       -->
-      <div class="device-actions row flex-wrap items-center justify-end gap-2">
+      <div class="device-actions row flex-wrap gap-2 items-center justify-end">
         <AButton v-if="!card.paired && !card.blocked" type="primary" :aria-label="messages.devices.pairingWith(card.displayName)" @click="emit('pair', card)">
           {{ messages.devices.pairing }}
         </AButton>
@@ -65,8 +65,8 @@ article:focus-within .device-details-action,
         </AButton>
       </div>
     </div>
-    <div v-if="expanded" :id="detailsId" class="mt-4 min-w-0 stack gap-4" role="region" :aria-label="messages.devices.detailsFor(card.displayName)">
-      <dl class="grid m-0 gap-x-6 gap-y-3 text-base sm:grid-cols-[auto_minmax(0,1fr)]">
+    <div v-if="expanded" :id="detailsId" class="mt-4 stack gap-4 min-w-0" role="region" :aria-label="messages.devices.detailsFor(card.displayName)">
+      <dl class="text-base m-0 gap-x-6 gap-y-3 grid sm:grid-cols-[auto_minmax(0,1fr)]">
         <dt class="text-ink-dim">
           {{ messages.devices.name }}
         </dt>
@@ -76,14 +76,14 @@ article:focus-within .device-details-action,
         <dt class="text-ink-dim">
           {{ messages.devices.deviceId }}
         </dt>
-        <dd class="m-0 break-all font-mono">
+        <dd class="font-mono m-0 break-all">
           {{ card.deviceId }}
         </dd>
         <template v-if="card.address">
           <dt class="text-ink-dim">
             {{ messages.devices.address }}
           </dt>
-          <dd class="m-0 break-all font-mono">
+          <dd class="font-mono m-0 break-all">
             {{ card.address }}
           </dd>
         </template>

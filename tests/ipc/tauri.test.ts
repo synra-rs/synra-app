@@ -20,7 +20,11 @@ import { hasTauriInternals, TauriKernel } from '@/ipc/tauri'
 
 /** A page the way Tauri leaves it: the low-level IPC injected, the ergonomic globals not. */
 function aTauriPage(): object {
-  return { __TAURI_INTERNALS__: { invoke: () => undefined } }
+  return {
+    __TAURI_INTERNALS__: {
+      invoke: () => undefined
+    }
+  }
 }
 
 /** A page the way a browser leaves it. */
@@ -39,7 +43,9 @@ function aRecordingApi(): { api: TauriApi, calls: unknown[][], deliver: (payload
     },
     api: {
       invoke: (command, args) => {
-        calls.push(args === undefined ? [command] : [command, args])
+        calls.push(args === undefined
+          ? [command]
+          : [command, args])
         return Promise.resolve({ ok: true })
       },
       listen: (event, handler) => {
@@ -96,14 +102,21 @@ describe('what the Tauri bridge adds on top of the API', () => {
     const { api, calls } = aRecordingApi()
     await new TauriKernel(() => Promise.resolve(api)).invoke('identity_get')
 
-    expect(calls).toEqual([['identity_get']])
+    expect(calls).toEqual([
+      ['identity_get']
+    ])
   })
 
   it('passes the arguments it was given', async () => {
     const { api, calls } = aRecordingApi()
     await new TauriKernel(() => Promise.resolve(api)).invoke('devices_forget', { deviceId: 'dev_1' })
 
-    expect(calls).toEqual([['devices_forget', { deviceId: 'dev_1' }]])
+    expect(calls).toEqual([
+      [
+        'devices_forget',
+        { deviceId: 'dev_1' }
+      ]
+    ])
   })
 
   it('unwraps the event Tauri delivers', async () => {
@@ -117,7 +130,9 @@ describe('what the Tauri bridge adds on top of the API', () => {
       seen.push(payload)
     })
 
-    expect(calls).toEqual([['listen', 'kernel-event']])
+    expect(calls).toEqual([
+      ['listen', 'kernel-event']
+    ])
 
     const envelope = { seq: 7, at: 0, type: 'logLine' }
     deliver(envelope)

@@ -14,14 +14,42 @@ afterEach(() => {
 })
 
 it.each([
-  ['system', ['zh-CN'], 'zh-CN'],
-  ['system', ['zh-Hant-TW'], 'zh-CN'],
-  ['system', ['de-DE', 'zh_CN', 'en'], 'zh-CN'],
-  ['system', ['en-GB', 'zh-CN'], 'en'],
-  ['system', ['fr-FR'], 'en'],
+  [
+    'system',
+    ['zh-CN'],
+    'zh-CN'
+  ],
+  [
+    'system',
+    ['zh-Hant-TW'],
+    'zh-CN'
+  ],
+  [
+    'system',
+    ['de-DE', 'zh_CN', 'en'],
+    'zh-CN'
+  ],
+  [
+    'system',
+    ['en-GB', 'zh-CN'],
+    'en'
+  ],
+  [
+    'system',
+    ['fr-FR'],
+    'en'
+  ],
   ['system', [], 'en'],
-  ['en', ['zh-CN'], 'en'],
-  ['zh-CN', ['en-US'], 'zh-CN']
+  [
+    'en',
+    ['zh-CN'],
+    'en'
+  ],
+  [
+    'zh-CN',
+    ['en-US'],
+    'zh-CN'
+  ]
 ] as const)('resolves %s with %j to %s', (preference, languages, expected) => {
   expect(resolveLocale(preference, languages)).toBe(expected)
 })

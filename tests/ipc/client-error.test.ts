@@ -34,7 +34,14 @@ describe('whether a value is an error', () => {
   it('refuses the things a bridge might send instead', () => {
     // A string, a number, null and a bare Error are all shapes a WebView bridge can produce for a failure, and none of
     // them is renderable — so each becomes `internal` through `bridgeFailure` rather than being read as a code.
-    for (const value of ['a string', 42, null, undefined, [], new Error('boom')]) {
+    for (const value of [
+      'a string',
+      42,
+      null,
+      undefined,
+      [],
+      new Error('boom')
+    ]) {
       expect(isIpcError(value)).toBe(false)
     }
   })
@@ -49,7 +56,9 @@ describe('whether a value is an error', () => {
         params: { field: 'name' },
         details: 'the name was empty',
         retryable: false,
-        actions: [{ kind: 'openSettings', section: 'plugins' }]
+        actions: [
+          { kind: 'openSettings', section: 'plugins' }
+        ]
       })
     ).toBe(true)
   })
@@ -64,9 +73,15 @@ describe('the error type the interface uses', () => {
       code: 'timeout',
       message: 'error.timeout',
       retryable: true,
-      details: { pluginCode: 'hostFailed', pluginDetails: { cleanupPending: true } }
+      details: {
+        pluginCode: 'hostFailed',
+        pluginDetails: { cleanupPending: true }
+      }
     }
     expect(error.message).toMatch(/^error\./)
-    expect(error.details).toEqual({ pluginCode: 'hostFailed', pluginDetails: { cleanupPending: true } })
+    expect(error.details).toEqual({
+      pluginCode: 'hostFailed',
+      pluginDetails: { cleanupPending: true }
+    })
   })
 })

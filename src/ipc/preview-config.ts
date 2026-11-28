@@ -9,7 +9,9 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function browserStorage(): StorageLike | undefined {
   try {
-    return typeof window === 'undefined' ? undefined : window.localStorage
+    return typeof window === 'undefined'
+      ? undefined
+      : window.localStorage
   }
   catch {
     return undefined
@@ -34,7 +36,10 @@ export class PreviewConfig {
   }
 
   snapshot(): ConfigSnapshot {
-    return { values: structuredClone(this.#values), overridden: Object.keys(this.#values) }
+    return {
+      values: structuredClone(this.#values),
+      overridden: Object.keys(this.#values)
+    }
   }
 
   value(key: string): unknown {
@@ -46,7 +51,10 @@ export class PreviewConfig {
       || (patch.unset !== undefined && (!Array.isArray(patch.unset) || !patch.unset.every(key => typeof key === 'string')))) {
       return 'invalid'
     }
-    const next = { ...this.#values, ...(patch.set as Record<string, unknown> | undefined) }
+    const next = {
+      ...this.#values,
+      ...(patch.set as Record<string, unknown> | undefined)
+    }
     for (const key of (patch.unset ?? []) as string[])
       delete next[key]
     try {

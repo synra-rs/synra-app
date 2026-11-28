@@ -5,7 +5,7 @@
       means the component does not depend on a caller four levels up, which is precisely how `ErrorNotice` became the
       one control a thumb could miss (16.151).
   -->
-  <div v-if="error || saved || checkRequired" class="min-w-0 stack gap-2" aria-live="polite">
+  <div v-if="error || saved || checkRequired" class="stack gap-2 min-w-0" aria-live="polite">
     <ErrorNotice v-if="error" :code="error.code" :params="error.params" :detail="registryDetail(registryProblem(error.details))" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
     <span v-else-if="saved" class="text-sm text-ink-dim">{{ messages.settings.edit.saved }}</span>
     <template v-if="checkRequired">

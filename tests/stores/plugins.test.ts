@@ -38,17 +38,29 @@ describe('the plugins store', () => {
   it('takes the startup snapshot as the whole picture', () => {
     const store = usePluginsStore()
 
-    store.applySnapshot([card('a'), card('b')])
+    store.applySnapshot([
+      card('a'),
+      card('b')
+    ])
 
     expect(store.plugins.map(p => p.pluginId)).toEqual(['a', 'b'])
   })
 
   it('applies a card event, replacing in place', () => {
     const store = usePluginsStore()
-    store.applySnapshot([card('a'), card('b')])
+    store.applySnapshot([
+      card('a'),
+      card('b')
+    ])
 
-    expect(store.apply({ type: 'pluginUpdated', payload: card('b', { enabled: true }) })).toBe(true)
-    expect(store.apply({ type: 'pluginUpdated', payload: card('c') })).toBe(true)
+    expect(store.apply({
+      type: 'pluginUpdated',
+      payload: card('b', { enabled: true })
+    })).toBe(true)
+    expect(store.apply({
+      type: 'pluginUpdated',
+      payload: card('c')
+    })).toBe(true)
 
     expect(store.plugins.map(p => p.pluginId)).toEqual(['a', 'b', 'c'])
     expect(store.plugin('b')?.enabled).toBe(true)
@@ -56,7 +68,9 @@ describe('the plugins store', () => {
 
   it('refuses an event about something else', () => {
     const store = usePluginsStore()
-    store.applySnapshot([card('a')])
+    store.applySnapshot([
+      card('a')
+    ])
 
     expect(store.apply({ type: 'deviceCardUpdated', payload: {} } as never)).toBe(false)
     expect(store.plugins).toHaveLength(1)
@@ -65,7 +79,10 @@ describe('the plugins store', () => {
   it('marks one card faulted when the ladder says so, and leaves the rest alone', () => {
     // ★ The event carries no card. Only the two fields the ladder decided change: the state word and its reason.
     const store = usePluginsStore()
-    store.applySnapshot([card('a', { state: 'active' }), card('b', { state: 'active' })])
+    store.applySnapshot([
+      card('a', { state: 'active' }),
+      card('b', { state: 'active' })
+    ])
 
     expect(store.markHealth('a', 'faulted', 'it trapped five times')).toBe(true)
 
@@ -78,16 +95,18 @@ describe('the plugins store', () => {
     // ★ `degraded` is not `faulted`: the plugin still runs, at a reduced quota. The card's state stays `active`; the
     // health report is where the sentence belongs.
     const store = usePluginsStore()
-    store.applySnapshot([card('a', {
-      state: 'active',
-      health: {
-        health: 'good',
-        explanation: 'ordinary',
-        callsAdmitted: 4,
-        callsRefused: 0,
-        usage: null
-      }
-    })])
+    store.applySnapshot([
+      card('a', {
+        state: 'active',
+        health: {
+          health: 'good',
+          explanation: 'ordinary',
+          callsAdmitted: 4,
+          callsRefused: 0,
+          usage: null
+        }
+      })
+    ])
 
     expect(store.markHealth('a', 'degraded', 'it asked too often')).toBe(true)
 
@@ -100,7 +119,10 @@ describe('the plugins store', () => {
   it('forgets a card, which is what an uninstall leaves behind', () => {
     // The kernel has no removal event: a card for a plugin that no longer exists would be a card about nothing.
     const store = usePluginsStore()
-    store.applySnapshot([card('a'), card('b')])
+    store.applySnapshot([
+      card('a'),
+      card('b')
+    ])
 
     store.forget('a')
 

@@ -45,7 +45,9 @@ export class PageSubscriptions {
     if (first !== undefined && !required.some(([, grant]) => this.can(grant)))
       throw denied(first[1])
     return this.register({ pattern }, (frame) => {
-      const grant = isCustomEventName(frame.name) ? `event:subscribe:${frame.name}` : TOPIC_GRANTS.find(([name]) => frame.name === name)?.[1]
+      const grant = isCustomEventName(frame.name)
+        ? `event:subscribe:${frame.name}`
+        : TOPIC_GRANTS.find(([name]) => frame.name === name)?.[1]
       return matches(frame.name) && (grant === undefined || this.can(grant))
     }, payload => handler(payload as T), options)
   }

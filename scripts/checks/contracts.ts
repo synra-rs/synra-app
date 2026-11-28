@@ -139,7 +139,10 @@ export async function checkCommandNames(): Promise<ReadonlySet<string>> {
     rustText = contract.source
   }
   catch (cause) {
-    failures.push({ check: 'command-names', detail: String(cause) })
+    failures.push({
+      check: 'command-names',
+      detail: String(cause)
+    })
     return called
   }
   // The macro's arms are `"name" => Domain, Interface, Shape, mutating;`. The name is the first quoted string on the

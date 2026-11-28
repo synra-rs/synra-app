@@ -50,7 +50,10 @@ export default defineConfig({
    * the other two icons rendered. Deriving the list from the same object the sidebar renders from means the two can
    * never disagree, and adding a page stays one edit.
    */
-  safelist: [...Object.values(nav).map(page => page.icon), icons.search],
+  safelist: [
+    ...Object.values(nav).map(page => page.icon),
+    icons.search
+  ],
 
   preflights: [
     {

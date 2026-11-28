@@ -32,7 +32,9 @@ export const useNoticesStore = defineStore('notices', () => {
     const notice: Notice = {
       id: ++nextId,
       message: event.payload.message,
-      params: typeof params === 'object' && params !== null ? params as Record<string, unknown> : {}
+      params: typeof params === 'object' && params !== null
+        ? params as Record<string, unknown>
+        : {}
     }
     if (items.value.length >= 3)
       dropped.value += 1
@@ -51,5 +53,11 @@ export const useNoticesStore = defineStore('notices', () => {
       dropped.value = 0
   }
 
-  return { apply, dismiss, items, dropped, latest }
+  return {
+    apply,
+    dismiss,
+    items,
+    dropped,
+    latest
+  }
 })

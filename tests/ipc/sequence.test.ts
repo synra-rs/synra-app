@@ -25,12 +25,19 @@ import { isDelta, SequenceTracker } from '@/ipc/sequence'
 
 /** A minimal event, for the cases that only care about the sequence number. */
 function logLine(line = 'x'): KernelEvent {
-  return { type: 'logLine', payload: { level: 'info', line } }
+  return {
+    type: 'logLine',
+    payload: { level: 'info', line }
+  }
 }
 
 /** A log event with a sequence number. */
 function envelope(seq: number): SequencedKernelEvent {
-  return { seq, at: 0, ...logLine() }
+  return {
+    seq,
+    at: 0,
+    ...logLine()
+  }
 }
 
 describe('the sequence tracker', () => {
@@ -147,8 +154,16 @@ describe('the sequence tracker', () => {
   it('is judged by its sequence, not its timestamp', () => {
     // Two events in the same millisecond are ordinary, and the clock moves. Ordering is by sequence number.
     const tracker = new SequenceTracker()
-    const first: SequencedKernelEvent = { seq: 1, at: 1_000, ...logLine('a') }
-    const second: SequencedKernelEvent = { seq: 2, at: 999, ...logLine('b') }
+    const first: SequencedKernelEvent = {
+      seq: 1,
+      at: 1_000,
+      ...logLine('a')
+    }
+    const second: SequencedKernelEvent = {
+      seq: 2,
+      at: 999,
+      ...logLine('b')
+    }
 
     expect(tracker.observe(first.seq)).toEqual({ kind: 'apply' })
     expect(tracker.observe(second.seq)).toEqual({ kind: 'apply' })
@@ -176,7 +191,10 @@ describe('deltas', () => {
     // Every event carries an **absolute** value (progress is a ratio rather than a byte count), so applying it twice
     // changes nothing. The function exists so a future event carrying a delta has to say so.
     const events: readonly KernelEvent[] = [
-      { type: 'deviceRemoved', payload: { deviceId: 'd' } },
+      {
+        type: 'deviceRemoved',
+        payload: { deviceId: 'd' }
+      },
       logLine(),
       {
         type: 'pluginInstallProgress',

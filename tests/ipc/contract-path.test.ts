@@ -10,7 +10,9 @@ let workspace: string
 let appRoot: string
 
 function checkout(root: string, ...layout: string[]): string {
-  const path = join(root, 'crates', 'synra-ipc', 'src', ...(layout.length === 0 ? ['command.rs'] : layout))
+  const path = join(root, 'crates', 'synra-ipc', 'src', ...(layout.length === 0
+    ? ['command.rs']
+    : layout))
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, SOURCE)
   return path

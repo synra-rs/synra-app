@@ -39,6 +39,13 @@ export function usePublishers() {
     await read()
     return true
   }
-  return reactive({ list, error, errors, deciding, read, decide })
+  return reactive({
+    list,
+    error,
+    errors,
+    deciding,
+    read,
+    decide
+  })
 }
 export type Publishers = ReturnType<typeof usePublishers>

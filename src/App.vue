@@ -11,7 +11,7 @@
       <WindowTitleBar v-if="environment?.kind === 'desktop'" />
       <div class="app-shell">
         <AppNavigation v-if="layout.navigation !== 'bottom'" :rail="layout.navigation === 'rail'" @search="searchPalette?.show($event)" />
-        <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="[scrollbar-gutter:stable] min-h-0 min-w-0 overflow-auto overscroll-contain px-4 py-5 text-base focusable lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
+        <main ref="contentPane" tabindex="0" :aria-label="messages.app.content" class="text-base px-4 py-5 focusable overscroll-contain min-h-0 min-w-0 [scrollbar-gutter:stable] overflow-auto lg:px-10 md:px-8 sm:px-6 focus-visible:ring-inset">
           <div class="mx-auto max-w-[1200px] min-w-0 w-full">
             <CrashNotice />
             <NoticeHost :online="online" />
@@ -56,7 +56,9 @@ const router = useRouter()
 const devices = useDevicesStore()
 const settings = useSettingsStore()
 const componentTheme = synraAntdTheme()
-const componentLocale = computed(() => locale.value === 'zh-CN' ? zhCN : enUS)
+const componentLocale = computed(() => locale.value === 'zh-CN'
+  ? zhCN
+  : enUS)
 const online = useNetworkStatus()
 const contentPane = ref<HTMLElement>()
 const searchPalette = ref<{ show: (trigger?: HTMLElement) => void }>()

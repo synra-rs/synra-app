@@ -12,8 +12,12 @@ import { messages } from '@/messages'
 import { useDevicesStore } from '@/stores/devices'
 import { useSettingsStore } from '@/stores/settings'
 
-const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('@/app/kernel', () => ({ kernel: { call } }))
+const { call } = vi.hoisted(() => ({
+  call: vi.fn()
+}))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call }
+}))
 
 afterEach(() => {
   setLocalePreference('system')
@@ -21,19 +25,54 @@ afterEach(() => {
 })
 
 it('restores language before visiting settings and updates navigation, document and controls together', async () => {
-  window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {}
+  })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   call.mockImplementation(async (command: string) => {
-    if (command === 'config_get')
-      return { ok: true, value: { values: { 'ui.locale': 'zh-CN' }, overridden: ['ui.locale'] } }
-    if (command === 'devices_snapshot')
-      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    if (command === 'config_get') {
+      return {
+        ok: true,
+        value: {
+          values: { 'ui.locale': 'zh-CN' },
+          overridden: ['ui.locale']
+        }
+      }
+    }
+    if (command === 'devices_snapshot') {
+      return {
+        ok: true,
+        value: { identity: IDENTITY, devices: [], scanning: undefined }
+      }
+    }
     throw new Error(`Unexpected command: ${command}`)
   })
   const pinia = createPinia()
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push('/')
-  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, RouterView: true } } })
+  const wrapper = mount(App, {
+    global: {
+      plugins: [pinia, router],
+      stubs: {
+        CrashNotice: true,
+        NoticeHost: true,
+        TransferPrompt: true,
+        RouterView: true
+      }
+    }
+  })
   try {
     await flushPromises()
     expect(call).toHaveBeenCalledWith('config_get')
@@ -41,7 +80,13 @@ it('restores language before visiting settings and updates navigation, document 
     expect(wrapper.text()).toContain('设置')
     expect(document.documentElement.lang).toBe('zh-CN')
     expect(wrapper.findComponent(ConfigProvider).props('locale')?.locale).toBe('zh-cn')
-    useSettingsStore(pinia).apply({ type: 'configUpdated', payload: { values: { 'ui.locale': 'en' }, overridden: ['ui.locale'] } })
+    useSettingsStore(pinia).apply({
+      type: 'configUpdated',
+      payload: {
+        values: { 'ui.locale': 'en' },
+        overridden: ['ui.locale']
+      }
+    })
     await flushPromises()
     expect(wrapper.text()).toContain('Home')
     expect(wrapper.text()).toContain('Settings')
@@ -58,19 +103,51 @@ it('gives the search entry a full-size target', async () => {
   // an icon size change would have moved the target. Asserted on the class: jsdom has no layout.
   //
   // ★ `md:min-h-8` as well, matching `DeviceRow` and `SettingsRow`: the floor is for a thumb, not a desktop pointer.
-  window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {}
+  })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   call.mockImplementation(async (command: string) => {
-    if (command === 'config_get')
-      return { ok: true, value: { values: {}, overridden: [] } }
-    if (command === 'devices_snapshot')
-      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    if (command === 'config_get') {
+      return {
+        ok: true,
+        value: { values: {}, overridden: [] }
+      }
+    }
+    if (command === 'devices_snapshot') {
+      return {
+        ok: true,
+        value: { identity: IDENTITY, devices: [], scanning: undefined }
+      }
+    }
     throw new Error(`Unexpected command: ${command}`)
   })
   const pinia = createPinia()
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push('/')
-  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, RouterView: true } } })
+  const wrapper = mount(App, {
+    global: {
+      plugins: [pinia, router],
+      stubs: {
+        CrashNotice: true,
+        NoticeHost: true,
+        TransferPrompt: true,
+        RouterView: true
+      }
+    }
+  })
   try {
     await flushPromises()
     const entry = wrapper.get('[data-testid="search-entry"]')
@@ -85,9 +162,22 @@ it('gives the search entry a full-size target', async () => {
 })
 
 it('keeps search visible without adding a fifth mobile tab', async () => {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push('/')
-  const wrapper = mount(AppNavigation, { props: { rail: false, bottom: true }, global: { plugins: [router] } })
+  const wrapper = mount(AppNavigation, {
+    props: { rail: false, bottom: true },
+    global: {
+      plugins: [router]
+    }
+  })
   try {
     const search = wrapper.get('[data-testid="mobile-search-entry"]')
     expect(wrapper.findAll('button')).toHaveLength(5)
@@ -105,19 +195,51 @@ it('names the page menu, so its four links are not offered from nowhere', async 
   //   "Home", "Devices", "Plugins", "Settings" as four links with nothing saying they are this window's pages —
   //   `bsk_inspect`'s tree showed a bare `menu` above them. The name is `messages.app.navigation`, the same object the
   //   four labels come from, so a page rename cannot leave the name behind.
-  window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {}
+  })
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   call.mockImplementation(async (command: string) => {
-    if (command === 'config_get')
-      return { ok: true, value: { values: {}, overridden: [] } }
-    if (command === 'devices_snapshot')
-      return { ok: true, value: { identity: IDENTITY, devices: [], scanning: undefined } }
+    if (command === 'config_get') {
+      return {
+        ok: true,
+        value: { values: {}, overridden: [] }
+      }
+    }
+    if (command === 'devices_snapshot') {
+      return {
+        ok: true,
+        value: { identity: IDENTITY, devices: [], scanning: undefined }
+      }
+    }
     throw new Error(`Unexpected command: ${command}`)
   })
   const pinia = createPinia()
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push('/')
-  const wrapper = mount(App, { global: { plugins: [pinia, router], stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, RouterView: true } } })
+  const wrapper = mount(App, {
+    global: {
+      plugins: [pinia, router],
+      stubs: {
+        CrashNotice: true,
+        NoticeHost: true,
+        TransferPrompt: true,
+        RouterView: true
+      }
+    }
+  })
   try {
     await flushPromises()
     const menu = wrapper.findAll('[role="menu"]').find(candidate => candidate.find('[role="menuitem"]').exists())
@@ -135,9 +257,22 @@ it('still names the device when the sidebar is a rail', async () => {
   globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   const pinia = createPinia()
   useDevicesStore(pinia).applySnapshot({ identity: IDENTITY, devices: [] })
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push('/')
-  const wrapper = mount(AppNavigation, { props: { rail: true }, global: { plugins: [pinia, router] } })
+  const wrapper = mount(AppNavigation, {
+    props: { rail: true },
+    global: {
+      plugins: [pinia, router]
+    }
+  })
   try {
     await flushPromises()
     // The rail is the state where the name is gone from the text.

@@ -1,35 +1,35 @@
 <template>
-  <section class="min-w-0 stack gap-2" :aria-label="messages.plugins.audit.title" data-plugin-audit>
+  <section class="stack gap-2 min-w-0" :aria-label="messages.plugins.audit.title" data-plugin-audit>
     <h3 ref="summary" tabindex="-1" class="sr-only">
       {{ messages.plugins.audit.title }}
     </h3>
     <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="retryAudit" />
-    <p v-if="loading" role="status" class="m-0 text-sm text-ink-dim">
+    <p v-if="loading" role="status" class="text-sm text-ink-dim m-0">
       {{ messages.plugins.audit.loading }}
     </p>
-    <ul v-if="rows?.length" class="m-0 stack list-none gap-3 p-0 text-sm">
-      <li v-for="(entry, index) in rows" :key="`${entry.atMs}-${entry.capability}-${index}`" class="min-w-0 stack gap-1">
-        <div class="min-w-0 row flex-wrap gap-2">
-          <span class="min-w-0 whitespace-normal break-all font-mono">{{ entry.capability }}</span>
+    <ul v-if="rows?.length" class="text-sm m-0 p-0 list-none stack gap-3">
+      <li v-for="(entry, index) in rows" :key="`${entry.atMs}-${entry.capability}-${index}`" class="stack gap-1 min-w-0">
+        <div class="row flex-wrap gap-2 min-w-0">
+          <span class="font-mono min-w-0 whitespace-normal break-all">{{ entry.capability }}</span>
           <span :class="entry.allowed ? 'text-ink-dim' : 'text-danger'">
             {{ entry.allowed ? messages.plugins.audit.allowed : messages.plugins.audit.refused }}
           </span>
           <span class="text-ink-dim">{{ formatTime(entry.atMs) }}</span>
         </div>
-        <span v-if="!entry.allowed && entry.reason" class="break-all text-ink-dim font-mono">{{ entry.reason }}</span>
+        <span v-if="!entry.allowed && entry.reason" class="text-ink-dim font-mono break-all">{{ entry.reason }}</span>
         <details>
-          <summary class="min-h-11 cursor-pointer py-3 text-ink-dim">
+          <summary class="text-ink-dim py-3 min-h-11 cursor-pointer">
             {{ messages.plugins.audit.details }}
           </summary>
-          <div class="min-w-0 stack gap-1 pt-1 text-ink-dim">
+          <div class="text-ink-dim pt-1 stack gap-1 min-w-0">
             <time :datetime="new Date(entry.atMs).toISOString()" class="break-all">{{ new Date(entry.atMs).toISOString() }}</time>
             <span v-if="entry.elapsedMs !== undefined">{{ messages.plugins.audit.elapsed(entry.elapsedMs) }}</span>
-            <span v-if="entry.traceId" class="break-all font-mono">{{ messages.plugins.audit.trace }} {{ entry.traceId }}</span>
+            <span v-if="entry.traceId" class="font-mono break-all">{{ messages.plugins.audit.trace }} {{ entry.traceId }}</span>
           </div>
         </details>
       </li>
     </ul>
-    <p v-else-if="rows !== undefined && !loading && !error" class="m-0 text-sm text-ink-dim">
+    <p v-else-if="rows !== undefined && !loading && !error" class="text-sm text-ink-dim m-0">
       {{ messages.plugins.audit.empty }}
     </p>
     <div v-if="rows?.length" class="row flex-wrap gap-2">
@@ -40,8 +40,8 @@
         {{ messages.plugins.audit.clear }}
       </AButton>
     </div>
-    <div v-if="confirming" class="stack gap-2 border border-line rounded-surface p-3" role="group" :aria-label="messages.plugins.audit.clear">
-      <p class="m-0 text-sm">
+    <div v-if="confirming" class="p-3 border border-line rounded-surface stack gap-2" role="group" :aria-label="messages.plugins.audit.clear">
+      <p class="text-sm m-0">
         {{ messages.plugins.audit.clearDetail }}
       </p>
       <div class="row gap-2">
@@ -72,7 +72,10 @@ const summary = ref<HTMLElement>()
 const clearButton = ref<{ $el: HTMLButtonElement }>()
 const cancelButton = ref<{ $el: HTMLButtonElement }>()
 
-watch([() => props.active, () => props.pluginId], () => {
+watch([
+  () => props.active,
+  () => props.pluginId
+], () => {
   confirming.value = false
 })
 

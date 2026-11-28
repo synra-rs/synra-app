@@ -10,16 +10,47 @@ import TransferPrompt from '@/components/TransferPrompt.vue'
 import { messages } from '@/messages'
 import { useIntentsStore } from '@/stores/intents'
 
-const { call } = vi.hoisted(() => ({ call: vi.fn() }))
-vi.mock('@/app/kernel', () => ({ kernel: { call } }))
+const { call } = vi.hoisted(() => ({
+  call: vi.fn()
+}))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call }
+}))
 
 function transfer(id: string, overrides: Partial<TransferSnapshot> = {}): TransferSnapshot {
-  return { transferId: id, peerDevice: `peer-${id}`, peerName: `Peer ${id}`, direction: 'receive', kind: 'file', state: 'offered', fileName: `${id}.txt`, receivedBytes: 0, totalBytes: 10, blocksDone: 0, blocksTotal: 1, startedAtMs: 1, ...overrides }
+  return {
+    transferId: id,
+    peerDevice: `peer-${id}`,
+    peerName: `Peer ${id}`,
+    direction: 'receive',
+    kind: 'file',
+    state: 'offered',
+    fileName: `${id}.txt`,
+    receivedBytes: 0,
+    totalBytes: 10,
+    blocksDone: 0,
+    blocksTotal: 1,
+    startedAtMs: 1,
+    ...overrides
+  }
 }
 
 function mountPrompt() {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] })
-  return mount(TransferPrompt, { attachTo: document.body, global: { plugins: [router] } })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/:pathMatch(.*)*',
+        component: { template: '<div />' }
+      }
+    ]
+  })
+  return mount(TransferPrompt, {
+    attachTo: document.body,
+    global: {
+      plugins: [router]
+    }
+  })
 }
 
 function offer(...rows: TransferSnapshot[]): void {
@@ -70,7 +101,17 @@ it.each([true, false])('submits one %s answer and remembers only an explicit acc
 })
 
 it('keeps a refused request and its choice visible without retrying a different operation', async () => {
-  call.mockResolvedValue({ ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true, actions: [{ kind: 'retry' }] } })
+  call.mockResolvedValue({
+    ok: false,
+    error: {
+      code: 'timeout',
+      message: 'error.timeout',
+      retryable: true,
+      actions: [
+        { kind: 'retry' }
+      ]
+    }
+  })
   offer(transfer('first'))
   const wrapper = mountPrompt()
   try {
@@ -103,12 +144,18 @@ it('clears authorization and a late failure when the queue advances while replyi
     await accept.trigger('click')
     await accept.trigger('click')
     expect(call).toHaveBeenCalledTimes(1)
-    useIntentsStore().apply({ type: 'transferFinished', payload: { transferId: 'first' } })
+    useIntentsStore().apply({
+      type: 'transferFinished',
+      payload: { transferId: 'first' }
+    })
     await flushPromises()
     expect(wrapper.text()).toContain('second.txt')
     expect(wrapper.findComponent(ACheckbox).props('checked')).toBe(false)
     expect(document.activeElement).toBe(wrapper.element)
-    finish({ ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } })
+    finish({
+      ok: false,
+      error: { code: 'timeout', message: 'error.timeout', retryable: true }
+    })
     await flushPromises()
     expect(wrapper.findComponent(ErrorNotice).exists()).toBe(false)
     expect(wrapper.text()).not.toContain(messages.transfers.prompt.answered)
@@ -121,7 +168,10 @@ it('does not submit an expired request and can read away a stale prompt', async 
   const wrapper = mountPrompt()
   try {
     const accept = wrapper.findAll('button').find(node => node.text() === messages.transfers.prompt.accept)!
-    useIntentsStore().apply({ type: 'transferFinished', payload: { transferId: 'first' } })
+    useIntentsStore().apply({
+      type: 'transferFinished',
+      payload: { transferId: 'first' }
+    })
     await accept.trigger('click')
     expect(call).not.toHaveBeenCalled()
     offer(transfer('second'))
@@ -138,7 +188,10 @@ it('does not submit an expired request and can read away a stale prompt', async 
 
 it('keeps a status read failure separate and does not resend an accepted response', async () => {
   call.mockImplementation(async (command: string) => command === 'transfer_list'
-    ? { ok: false, error: { code: 'timeout', message: 'error.timeout', retryable: true } }
+    ? {
+        ok: false,
+        error: { code: 'timeout', message: 'error.timeout', retryable: true }
+      }
     : { ok: true, value: null })
   offer(transfer('first'))
   const wrapper = mountPrompt()
@@ -161,7 +214,10 @@ it('hands keyboard focus to the next request without grabbing focus on arrival',
     expect(wrapper.element.contains(document.activeElement)).toBe(false)
     const reject = wrapper.findAll('button').find(node => node.text() === messages.transfers.prompt.reject)!
     reject.element.focus()
-    useIntentsStore().apply({ type: 'transferFinished', payload: { transferId: 'first' } })
+    useIntentsStore().apply({
+      type: 'transferFinished',
+      payload: { transferId: 'first' }
+    })
     await flushPromises()
     expect(document.activeElement?.textContent).toBe(messages.transfers.prompt.reject)
     expect(wrapper.text()).toContain('second.txt')

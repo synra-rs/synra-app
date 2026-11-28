@@ -47,7 +47,9 @@ describe('injecting the façade into a plugin page', () => {
   it('answers platformSupports from the seed rather than from a guess', () => {
     // ★ The list is the host's own answer, carried in the seed because the method is synchronous. A façade that returned
     // a constant would tell every plugin its host supports everything — or nothing.
-    const client = inject(seed({ platformCapabilities: ['notify'] }), bridge())
+    const client = inject(seed({
+      platformCapabilities: ['notify']
+    }), bridge())
 
     expect(client.env.platformSupports('notify')).toBe(true)
     expect(client.env.platformSupports('open_url')).toBe(false)
@@ -65,7 +67,12 @@ describe('injecting the façade into a plugin page', () => {
   it('answers the environment from the seed rather than from the machine', () => {
     // ★ The failure this guards is the one the façade used to have: `platform()` returned the hardcoded `'windows'` on
     // every machine. These answers are the host's, and a test machine must not leak into them.
-    const client = inject(seed({ platform: 'android', hostKind: 'mobile', darkMode: false, locale: 'en' }), bridge())
+    const client = inject(seed({
+      platform: 'android',
+      hostKind: 'mobile',
+      darkMode: false,
+      locale: 'en'
+    }), bridge())
 
     expect(client.env.platform()).toBe('android')
     expect(client.env.hostKind()).toBe('mobile')

@@ -1,5 +1,5 @@
 <template>
-  <section class="mx-auto max-w-[1088px] min-w-0 stack gap-5 pb-4" data-page-width="form">
+  <section class="mx-auto pb-4 stack gap-5 max-w-[1088px] min-w-0" data-page-width="form">
     <PageHeader :title="messages.settings.title">
       <span v-if="hasDrafts" class="text-sm text-ink-dim" role="status">{{ messages.settings.edit.unsaved }}</span>
     </PageHeader>
@@ -9,21 +9,21 @@
         {{ messages.actions.retry }}
       </AButton>
     </div>
-    <div class="grid min-w-0 items-start gap-6 lg:grid-cols-[max-content_minmax(0,1fr)] lg:gap-8">
+    <div class="gap-6 grid min-w-0 items-start lg:gap-8 lg:grid-cols-[max-content_minmax(0,1fr)]">
       <nav :aria-label="messages.settings.navigation" class="min-w-0">
         <label for="settings-category" class="sr-only lg:hidden">{{ messages.settings.navigation }}</label>
         <ASelect id="settings-category" class="w-full lg:hidden" data-testid="settings-category" :value="category" :options="categories" @change="selectCategory" />
-        <AMenu class="hidden overflow-hidden border border-line rounded-surface lg:block [&_.ant-menu]:bg-transparent" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
+        <AMenu class="border border-line rounded-surface hidden overflow-hidden [&_.ant-menu]:bg-transparent lg:block" :aria-label="messages.settings.navigation" mode="inline" :selected-keys="[category]" @click="({ key }) => selectCategory(key)">
           <AMenu.Item v-for="item in categories" :key="item.value">
             {{ item.label }}{{ item.value === 'plugins' && pluginDrafts ? ' •' : '' }}
           </AMenu.Item>
         </AMenu>
       </nav>
-      <div class="max-w-3xl min-w-0 w-full stack gap-6 border border-line rounded-surface bg-glass p-5">
-        <h2 :ref="setCategoryHeading" tabindex="-1" class="sr-only m-0 text-base font-semibold">
+      <div class="p-5 border border-line rounded-surface bg-glass stack gap-6 max-w-3xl min-w-0 w-full">
+        <h2 :ref="setCategoryHeading" tabindex="-1" class="text-base font-semibold m-0 sr-only">
           {{ categories.find(item => item.value === category)?.label }}
         </h2>
-        <div v-show="category === 'general'" class="min-w-0 stack gap-7" data-testid="settings-general">
+        <div v-show="category === 'general'" class="stack gap-7 min-w-0" data-testid="settings-general">
           <SettingsGroup :title="messages.settings.preferences">
             <SettingsRow :label="messages.settings.field.name" for-id="device-name">
               <template v-if="renaming">
@@ -41,8 +41,8 @@
                 </div>
                 <span v-if="nameConflict" class="text-warning text-sm">{{ messages.settings.edit.conflict }}</span>
               </template>
-              <div v-else-if="identity" class="min-w-0 row flex-wrap justify-end gap-2">
-                <span class="min-w-0 break-all text-base">{{ identity.displayName }}</span>
+              <div v-else-if="identity" class="row flex-wrap gap-2 min-w-0 justify-end">
+                <span class="text-base min-w-0 break-all">{{ identity.displayName }}</span>
                 <AButton :disabled="busy.name" @click="startRename">
                   {{ messages.settings.field.rename }}
                 </AButton>
@@ -85,12 +85,12 @@
             </SettingsRow>
           </SettingsGroup>
         </div>
-        <div v-show="category === 'security'" class="min-w-0 stack gap-7" data-testid="settings-security">
+        <div v-show="category === 'security'" class="stack gap-7 min-w-0" data-testid="settings-security">
           <SettingsGroup :title="messages.settings.trusted.title">
-            <p class="m-0 pb-3 text-sm text-ink-dim">
+            <p class="text-sm text-ink-dim m-0 pb-3">
               {{ messages.settings.trusted.detail }}
             </p>
-            <p v-if="!trusted.length" class="m-0 py-3 text-base text-ink-dim">
+            <p v-if="!trusted.length" class="text-base text-ink-dim m-0 py-3">
               {{ messages.settings.trusted.empty }}
             </p>
             <SettingsRow v-for="device in trusted" :key="device.id" :label="device.name">
@@ -101,12 +101,12 @@
             <SettingsFeedback :error="errors.trusted" :saved="saved.trusted" :check-required="needsRead.trusted" :busy="busy.trusted" @check="checkSetting('trusted')" />
           </SettingsGroup>
         </div>
-        <div v-show="category === 'plugins'" class="min-w-0 stack gap-7" data-testid="settings-plugins">
+        <div v-show="category === 'plugins'" class="stack gap-7 min-w-0" data-testid="settings-plugins">
           <SettingsGroup :title="messages.settings.registry.title">
-            <div class="min-w-0 stack gap-3 pb-4">
-              <div v-for="(url, index) in registryUrls" :key="index" class="min-w-0 row items-start gap-2">
-                <div class="min-w-0 flex-1">
-                  <label :for="`registry-${index}`" class="mb-1 block text-sm text-ink-dim">{{ messages.settings.registry.source(index + 1) }}</label>
+            <div class="pb-4 stack gap-3 min-w-0">
+              <div v-for="(url, index) in registryUrls" :key="index" class="row gap-2 min-w-0 items-start">
+                <div class="flex-1 min-w-0">
+                  <label :for="`registry-${index}`" class="text-sm text-ink-dim mb-1 block">{{ messages.settings.registry.source(index + 1) }}</label>
                   <AInput :id="`registry-${index}`" :value="url" :disabled="!configReady || busy.registry || needsRead.registry" :placeholder="messages.settings.registry.placeholder" allow-clear @update:value="(value: string) => updateRegistry(index, value)" @press-enter="(event: KeyboardEvent) => { if (!event.isComposing) saveRegistry() }" />
                 </div>
                 <AButton v-if="registryUrls.length > 1" class="mt-5" :disabled="busy.registry || needsRead.registry" :aria-label="messages.settings.registry.removeSource(index + 1)" @click="registryUrls = registryUrls.filter((_, at) => at !== index)">
@@ -156,28 +156,28 @@
           </SettingsGroup>
         </div>
         <SettingsDiagnostics v-if="diagnosticsVisited" v-show="category === 'diagnostics'" :active="category === 'diagnostics'" />
-        <div v-show="category === 'about'" class="min-w-0 stack gap-7" data-testid="settings-about">
+        <div v-show="category === 'about'" class="stack gap-7 min-w-0" data-testid="settings-about">
           <SettingsGroup title="Synra">
             <SettingsRow :label="messages.settings.field.platform">
               <span class="text-base">{{ identity?.platform }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.field.deviceId">
-              <span class="max-w-full break-all text-sm text-ink-dim font-mono">{{ identity?.deviceId }}</span>
+              <span class="text-sm text-ink-dim font-mono max-w-full break-all">{{ identity?.deviceId }}</span>
             </SettingsRow>
             <SettingsRow :label="messages.settings.preference.theme">
               <span class="text-base text-ink-dim">{{ messages.settings.themeFixed }}</span>
             </SettingsRow>
           </SettingsGroup>
           <SettingsGroup :title="messages.settings.field.version">
-            <div class="min-w-0 row gap-2 whitespace-nowrap py-4 first:pt-0">
-              <span class="shrink-0 text-base font-medium">{{ messages.settings.field.frontend }}</span>
-              <span class="shrink-0 text-base text-ink-dim" aria-hidden="true">-</span>
-              <span class="min-w-0 truncate text-base font-mono">v{{ buildStamp.version }}({{ buildStamp.shortHash || '—' }})</span>
+            <div class="py-4 row gap-2 min-w-0 whitespace-nowrap first:pt-0">
+              <span class="text-base font-medium shrink-0">{{ messages.settings.field.frontend }}</span>
+              <span class="text-base text-ink-dim shrink-0" aria-hidden="true">-</span>
+              <span class="text-base font-mono min-w-0 truncate">v{{ buildStamp.version }}({{ buildStamp.shortHash || '—' }})</span>
             </div>
-            <div class="min-w-0 row gap-2 whitespace-nowrap py-4">
-              <span class="shrink-0 text-base font-medium">{{ messages.settings.field.core }}</span>
-              <span class="shrink-0 text-base text-ink-dim" aria-hidden="true">-</span>
-              <span class="min-w-0 truncate text-base font-mono" :title="coreBuildStamp.hash || undefined">v{{ coreBuildStamp.version }}({{ coreBuildStamp.shortHash || '—' }})</span>
+            <div class="py-4 row gap-2 min-w-0 whitespace-nowrap">
+              <span class="text-base font-medium shrink-0">{{ messages.settings.field.core }}</span>
+              <span class="text-base text-ink-dim shrink-0" aria-hidden="true">-</span>
+              <span class="text-base font-mono min-w-0 truncate" :title="coreBuildStamp.hash || undefined">v{{ coreBuildStamp.version }}({{ coreBuildStamp.shortHash || '—' }})</span>
             </div>
           </SettingsGroup>
         </div>

@@ -192,6 +192,11 @@ describe('resetting for a reload', () => {
     dispatcher.on('logLine', vi.fn())
     dispatcher.accept(logLine(1))
     dispatcher.accept(logLine(3))
-    expect(dispatcher.report()).toEqual({ last: 3, gaps: 1, unknown: 0, stale: true })
+    expect(dispatcher.report()).toEqual({
+      last: 3,
+      gaps: 1,
+      unknown: 0,
+      stale: true
+    })
   })
 })

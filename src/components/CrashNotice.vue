@@ -15,11 +15,11 @@
       <div class="stack gap-2">
         <span>{{ messages.crash.detail(notices.length) }}</span>
 
-        <ul v-if="details" class="m-0 stack gap-2 p-0">
+        <ul v-if="details" class="m-0 p-0 stack gap-2">
           <li
             v-for="report in notices"
             :key="`${report.atMs}-${report.location ?? ''}`"
-            class="stack gap-1 text-sm"
+            class="text-sm stack gap-1"
           >
             <span class="text-ink-dim font-mono">
               {{ formatDateTime(report.atMs) }} · {{ report.version }}

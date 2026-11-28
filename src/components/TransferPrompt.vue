@@ -8,35 +8,35 @@
 </style>
 
 <template>
-  <section v-if="prompt && visible" ref="panel" class="transfer-prompt ring-warning fixed z-50 min-w-0 stack gap-3 overflow-y-auto overscroll-contain rounded-surface bg-surface p-4 shadow-lg ring-1" aria-labelledby="transfer-prompt-title" tabindex="-1">
+  <section v-if="prompt && visible" ref="panel" class="transfer-prompt ring-warning p-4 overscroll-contain rounded-surface bg-surface stack gap-3 min-w-0 ring-1 shadow-lg fixed z-50 overflow-y-auto" aria-labelledby="transfer-prompt-title" tabindex="-1">
     <div class="stack gap-1" role="status" aria-live="polite" aria-atomic="true">
-      <h2 id="transfer-prompt-title" class="m-0 text-base font-medium">
+      <h2 id="transfer-prompt-title" class="text-base font-medium m-0">
         {{ messages.transfers.prompt.title }}
       </h2>
       <span v-if="offered.length > 1" class="text-sm text-ink-dim">{{ messages.transfers.prompt.pending(offered.length) }}</span>
-      <span class="break-words text-base font-medium">{{ prompt.peerName }}</span>
-      <span class="line-clamp-2 break-all text-base">{{ prompt.fileName }}</span>
+      <span class="text-base font-medium break-words">{{ prompt.peerName }}</span>
+      <span class="text-base break-all line-clamp-2">{{ prompt.fileName }}</span>
     </div>
     <details class="text-sm text-ink-dim">
       <summary class="synra-choice min-h-8 cursor-pointer">
         {{ messages.transfers.prompt.details }}
       </summary>
-      <dl class="m-0 stack gap-1 pt-2">
+      <dl class="m-0 pt-2 stack gap-1">
         <dt>{{ messages.transfers.prompt.fileName }}</dt>
         <dd class="m-0 break-all">
           {{ prompt.fileName }}
         </dd>
         <dt>{{ messages.transfers.prompt.deviceId }}</dt>
-        <dd class="m-0 break-all font-mono">
+        <dd class="font-mono m-0 break-all">
           {{ prompt.peerDevice }}
         </dd>
         <dt>{{ messages.transfers.prompt.transferId }}</dt>
-        <dd class="m-0 break-all font-mono">
+        <dd class="font-mono m-0 break-all">
           {{ prompt.transferId }}
         </dd>
       </dl>
     </details>
-    <p class="m-0 text-sm text-ink-dim">
+    <p class="text-sm text-ink-dim m-0">
       {{ messages.transfers.prompt.detail }}
     </p>
     <ACheckbox v-model:checked="always" :disabled="busy || answered">
@@ -51,7 +51,7 @@
         {{ messages.transfers.prompt.reject }}
       </AButton>
     </div>
-    <p v-else class="m-0 text-sm text-ink-dim" role="status">
+    <p v-else class="text-sm text-ink-dim m-0" role="status">
       {{ messages.transfers.prompt.answered }}
     </p>
     <div class="stack gap-2">

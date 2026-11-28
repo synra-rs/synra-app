@@ -70,7 +70,10 @@ describe('routing an event to its handler', () => {
     })
 
     dispatcher.accept(logLine(7))
-    expect(received).toEqual({ type: 'logLine', payload: { level: 'info', line: 'x' } })
+    expect(received).toEqual({
+      type: 'logLine',
+      payload: { level: 'info', line: 'x' }
+    })
     expect(received).not.toHaveProperty('seq')
   })
 

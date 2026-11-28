@@ -20,7 +20,7 @@
   <span
     :class="(panel as { isActive?: boolean }).isActive ? 'i-carbon-chevron-down' : 'i-carbon-chevron-right'"
     aria-hidden="true"
-    class="shrink-0 text-ink-dim"
+    class="text-ink-dim shrink-0"
   />
 </template>
 

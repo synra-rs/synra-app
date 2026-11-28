@@ -17,7 +17,9 @@ describe('the search box', () => {
   })
 
   it('finds a plugin by title and by id', async () => {
-    usePluginsStore().applySnapshot([snapshot()])
+    usePluginsStore().applySnapshot([
+      snapshot()
+    ])
 
     const { wrapper } = mountPalette()
     await open(wrapper)
@@ -30,7 +32,9 @@ describe('the search box', () => {
   })
 
   it('groups what it found instead of returning one flat list', async () => {
-    usePluginsStore().applySnapshot([snapshot()])
+    usePluginsStore().applySnapshot([
+      snapshot()
+    ])
 
     const { wrapper } = mountPalette()
     await open(wrapper)
@@ -64,8 +68,21 @@ describe('the search box', () => {
 
   it('takes a device to the devices page', async () => {
     useDevicesStore().applySnapshot({
-      identity: { deviceId: 'self', displayName: 'This device', platform: 'Windows', kernelVersion: '0.1.0' },
-      devices: [{ deviceId: 'peer-1', displayName: 'Studio laptop', platform: 'macOS', online: true, paired: true }]
+      identity: {
+        deviceId: 'self',
+        displayName: 'This device',
+        platform: 'Windows',
+        kernelVersion: '0.1.0'
+      },
+      devices: [
+        {
+          deviceId: 'peer-1',
+          displayName: 'Studio laptop',
+          platform: 'macOS',
+          online: true,
+          paired: true
+        }
+      ]
     } as never)
 
     const { router, wrapper } = mountPalette()
@@ -108,7 +125,9 @@ describe('the search box', () => {
     await open(wrapper)
     await type('i')
 
-    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    const options = [
+      ...document.querySelectorAll<HTMLElement>('[role="option"]')
+    ]
     expect(options.length).toBeGreaterThan(1)
     const selectedRow = options.find(row => row.getAttribute('aria-selected') === 'true')
     expect(selectedRow, 'nothing is selected on arrival').toBeDefined()

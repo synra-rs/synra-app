@@ -69,12 +69,16 @@ export function useDiagnostics(active: Ref<boolean>) {
     return { ms, within: ms <= 500 }
   })
   function seriesKey(key: SeriesKey): string {
-    return key.labels.length ? `${key.name}{${key.labels.map(([name, value]) => `${name}=${value}`).join(',')}}` : key.name
+    return key.labels.length
+      ? `${key.name}{${key.labels.map(([name, value]) => `${name}=${value}`).join(',')}}`
+      : key.name
   }
   function seriesValue(value: MetricValue): string {
     if (value.kind !== 'histogram')
       return String(value.value)
-    return messages.settings.metrics.histogram(value.value.count, value.value.count === 0 ? '—' : (value.value.sum / value.value.count).toFixed(2))
+    return messages.settings.metrics.histogram(value.value.count, value.value.count === 0
+      ? '—'
+      : (value.value.sum / value.value.count).toFixed(2))
   }
   const exportAudit = ref(false)
   const exportDebug = ref(false)
@@ -88,7 +92,13 @@ export function useDiagnostics(active: Ref<boolean>) {
     errors.export = undefined
     exported.value = undefined
     const answer = await kernel.call<DiagExportResult>('diag_export', {
-      options: { includeAudit: exportAudit.value, includeDebugLogs: exportDebug.value, ...(exportDebug.value ? { logLines: exportLines.value } : {}) }
+      options: {
+        includeAudit: exportAudit.value,
+        includeDebugLogs: exportDebug.value,
+        ...(exportDebug.value
+          ? { logLines: exportLines.value }
+          : {})
+      }
     })
     exporting.value = false
     if (disposed)
@@ -146,7 +156,13 @@ export function useDiagnostics(active: Ref<boolean>) {
   })
   const visibleProbes = computed(() => (probeReport.value?.results ?? []).filter(result => !onlyProblems.value || result.status !== 'ok'))
   function probeColor(status: string): string {
-    return status === 'ok' ? 'green' : status === 'warn' ? 'orange' : status === 'fail' ? 'red' : 'default'
+    return status === 'ok'
+      ? 'green'
+      : status === 'warn'
+        ? 'orange'
+        : status === 'fail'
+          ? 'red'
+          : 'default'
   }
   async function runProbes(): Promise<void> {
     if (probing.value)
@@ -206,5 +222,40 @@ export function useDiagnostics(active: Ref<boolean>) {
     stopTimer()
     document.removeEventListener('visibilitychange', updateVisibility)
   })
-  return { openPanels, errors, metrics, metricsAt, refreshing, metricsEnabled, loadMetrics, startup, seriesKey, seriesValue, exportAudit, exportDebug, exportLines, exporting, exported, exportDiagnostics, confirmDismiss, crashesDismissed, dismissing, crashes, loadingCrashes, dismissCrashes, showCrashes, probeReport, probing, onlyProblems, probesSummary, visibleProbes, probeColor, runProbes, logLines, logAsked, loadingLogs, loadLogs }
+  return {
+    openPanels,
+    errors,
+    metrics,
+    metricsAt,
+    refreshing,
+    metricsEnabled,
+    loadMetrics,
+    startup,
+    seriesKey,
+    seriesValue,
+    exportAudit,
+    exportDebug,
+    exportLines,
+    exporting,
+    exported,
+    exportDiagnostics,
+    confirmDismiss,
+    crashesDismissed,
+    dismissing,
+    crashes,
+    loadingCrashes,
+    dismissCrashes,
+    showCrashes,
+    probeReport,
+    probing,
+    onlyProblems,
+    probesSummary,
+    visibleProbes,
+    probeColor,
+    runProbes,
+    logLines,
+    logAsked,
+    loadingLogs,
+    loadLogs
+  }
 }

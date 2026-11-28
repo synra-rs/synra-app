@@ -1,6 +1,15 @@
 /** Browser observers used by mounted Ant Design controls. Install for every test. */
 export function installBrowserApis(): void {
-  window.matchMedia = (media: string) => ({ matches: false, media, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) as MediaQueryList
+  window.matchMedia = (media: string) => ({
+    matches: false,
+    media,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent: () => false
+  }) as MediaQueryList
   const observer = class {
     observe() {}
     unobserve() {}

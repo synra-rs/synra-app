@@ -64,10 +64,27 @@ export function decodeTransferStatus(raw: unknown): PluginTransferStatus {
   const revision = count(raw, 'revision')
   if (receivedBytes > totalBytes || blocksDone > blocksTotal)
     return invalid()
-  const status: PluginTransferStatus = { transferId, state, receivedBytes, totalBytes, blocksDone, blocksTotal, revision }
-  if (state === 'failed')
-    return { ...status, endedAtMs: count(raw, 'endedAtMs'), failure: failureOf(data(raw, 'failure')) }
-  if (state === 'completed' || state === 'cancelled')
-    return { ...status, endedAtMs: count(raw, 'endedAtMs') }
+  const status: PluginTransferStatus = {
+    transferId,
+    state,
+    receivedBytes,
+    totalBytes,
+    blocksDone,
+    blocksTotal,
+    revision
+  }
+  if (state === 'failed') {
+    return {
+      ...status,
+      endedAtMs: count(raw, 'endedAtMs'),
+      failure: failureOf(data(raw, 'failure'))
+    }
+  }
+  if (state === 'completed' || state === 'cancelled') {
+    return {
+      ...status,
+      endedAtMs: count(raw, 'endedAtMs')
+    }
+  }
   return status
 }

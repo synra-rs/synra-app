@@ -54,7 +54,14 @@ describe('dialog back coordination', () => {
       const higherVisible = useDialogVisibility(higherOpen, 20, higherDismiss)
       lowerOpen.value = true
       higherOpen.value = true
-      return { lowerOpen, higherOpen, lowerDismiss, higherDismiss, lowerVisible, higherVisible }
+      return {
+        lowerOpen,
+        higherOpen,
+        lowerDismiss,
+        higherDismiss,
+        lowerVisible,
+        higherVisible
+      }
     })!
 
     expect(result.lowerVisible.value).toBe(false)

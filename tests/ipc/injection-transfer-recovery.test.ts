@@ -10,13 +10,31 @@ describe('the first transfer status from an active subscription', () => {
   })
 
   it.each([
-    { source: 'live delivery before rejection', cursor: 1, resync: false, alreadyWaiting: false },
-    { source: 'recovery before rejection', cursor: 7, resync: true, alreadyWaiting: false },
-    { source: 'live delivery during retry delay', cursor: 1, resync: false, alreadyWaiting: true }
+    {
+      source: 'live delivery before rejection',
+      cursor: 1,
+      resync: false,
+      alreadyWaiting: false
+    },
+    {
+      source: 'recovery before rejection',
+      cursor: 7,
+      resync: true,
+      alreadyWaiting: false
+    },
+    {
+      source: 'live delivery during retry delay',
+      cursor: 1,
+      resync: false,
+      alreadyWaiting: true
+    }
   ])('keeps receiving after $source supplies the initial state', async ({ cursor, resync, alreadyWaiting }) => {
     vi.useFakeTimers()
     const stream = streamFixture()
-    const app = createInjection(context({ granted: ['file:transfer:send'], bridge: stream.transport }))
+    const app = createInjection(context({
+      granted: ['file:transfer:send'],
+      bridge: stream.transport
+    }))
     const terminal = fixture.transfer.payload
     const current = {
       transferId: terminal.transferId,
@@ -32,7 +50,12 @@ describe('the first transfer status from an active subscription', () => {
     stream.status.mockImplementationOnce(() => new Promise((_, reject) => {
       rejectInitial = reject
     })).mockRejectedValue(refusal)
-    stream.refresh.mockReturnValue({ seq: cursor, events: [{ name: fixture.transfer.name, payload: current }] })
+    stream.refresh.mockReturnValue({
+      seq: cursor,
+      events: [
+        { name: fixture.transfer.name, payload: current }
+      ]
+    })
     const seen = vi.fn()
     const onError = vi.fn()
     const off = app.transfer.onProgress(terminal.transferId, seen, { onError })
@@ -44,7 +67,9 @@ describe('the first transfer status from an active subscription', () => {
         await vi.advanceTimersByTimeAsync(0)
         expect(stream.status).toHaveBeenCalledOnce()
       }
-      await stream.push(resync ? fixture.resync : { ...fixture.transfer, seq: cursor, payload: current })
+      await stream.push(resync
+        ? fixture.resync
+        : { ...fixture.transfer, seq: cursor, payload: current })
       await vi.advanceTimersByTimeAsync(0)
       expect(seen).toHaveBeenCalledExactlyOnceWith({ ...current, ratio: 0.5 })
 
@@ -67,7 +92,10 @@ describe('the first transfer status from an active subscription', () => {
 
   it('skips failure callbacks for a subscription unsubscribed by another handler', async () => {
     const stream = streamFixture()
-    const app = createInjection(context({ granted: ['file:transfer:send'], bridge: stream.transport }))
+    const app = createInjection(context({
+      granted: ['file:transfer:send'],
+      bridge: stream.transport
+    }))
     const { transferId } = fixture.transfer.payload
     let stopSecond = () => {}
     const onFirstError = vi.fn(() => stopSecond())

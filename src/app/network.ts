@@ -17,10 +17,14 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
  * cannot be used twice.
  */
 export function useNetworkStatus(): Ref<boolean> {
-  const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+  const online = ref(typeof navigator === 'undefined'
+    ? true
+    : navigator.onLine)
 
   function update(): void {
-    online.value = typeof navigator === 'undefined' ? true : navigator.onLine
+    online.value = typeof navigator === 'undefined'
+      ? true
+      : navigator.onLine
   }
 
   onMounted(() => {

@@ -21,7 +21,10 @@ import { useSettingsDraft } from '@/components/settings/use-settings-draft'
  */
 function source<T extends object>(initial: T) {
   const state = reactive({ value: initial }) as { value: T }
-  return { state, read: () => toRaw(state.value) as T }
+  return {
+    state,
+    read: () => toRaw(state.value) as T
+  }
 }
 
 describe('use settings draft', () => {
@@ -108,7 +111,9 @@ describe('use settings draft', () => {
   it('edits a copy, not the object in the store', () => {
     // `copy` is `structuredClone`, and the source object is passed by reference. Without the clone, editing the buffer
     // would edit the store's object directly and `dirty` would never go true.
-    const s = source({ nested: { name: 'a' } })
+    const s = source({
+      nested: { name: 'a' }
+    })
     const draft = useSettingsDraft(s.read)
     expect(draft.value.value).not.toBe(s.state.value)
     expect(draft.value.value.nested).not.toBe(s.state.value.nested)

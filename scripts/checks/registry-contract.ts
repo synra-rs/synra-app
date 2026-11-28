@@ -11,6 +11,9 @@ export function checkRegistryContract(): void {
     notes.push('registry-contract: actual Rust configuration decisions and errors match the frontend fixture')
   }
   catch (cause) {
-    failures.push({ check: 'registry-contract', detail: String(cause) })
+    failures.push({
+      check: 'registry-contract',
+      detail: String(cause)
+    })
   }
 }

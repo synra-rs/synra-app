@@ -35,7 +35,9 @@ export function snapshot(devices: DeviceCard[], scanning?: DevicesSnapshot['scan
       nameIsDefault: false
     },
     devices,
-    ...(scanning === undefined ? {} : { scanning })
+    ...(scanning === undefined
+      ? {}
+      : { scanning })
   }
 }
 

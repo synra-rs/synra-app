@@ -23,8 +23,18 @@ beforeEach(() => setActivePinia(createPinia()))
 
 const PLAN: SyncPlanDto = {
   targets: [
-    { deviceId: 'd1', displayName: 'Pixel 8', online: true, needsArtifact: true },
-    { deviceId: 'd2', displayName: 'Tablet', online: false, needsArtifact: false }
+    {
+      deviceId: 'd1',
+      displayName: 'Pixel 8',
+      online: true,
+      needsArtifact: true
+    },
+    {
+      deviceId: 'd2',
+      displayName: 'Tablet',
+      online: false,
+      needsArtifact: false
+    }
   ]
 } as unknown as SyncPlanDto
 
@@ -57,7 +67,10 @@ afterEach(() => {
 
 async function mountSync(run: (id: string, kind: string) => Promise<unknown>) {
   const wrapper = mount(PluginSync, {
-    props: { plugin: snapshot(), operations: operations(run) },
+    props: {
+      plugin: snapshot(),
+      operations: operations(run)
+    },
     attachTo: document.body
   })
   await flushPromises()
@@ -66,7 +79,9 @@ async function mountSync(run: (id: string, kind: string) => Promise<unknown>) {
 
 it('reads the plan when it opens, and offers to send when a target needs the artifact', async () => {
   const run = vi.fn(async (_id: string, kind: string) =>
-    kind === 'syncPlan' ? { ok: true, value: PLAN } : { ok: true, value: {} }
+    kind === 'syncPlan'
+      ? { ok: true, value: PLAN }
+      : { ok: true, value: {} }
   )
   const wrapper = await mountSync(run)
   try {
@@ -90,7 +105,16 @@ it('does not offer to send when no online target needs anything', async () => {
   // The plan is readable but there is nothing to do: sending would be a round trip that changes nothing.
   const run = vi.fn(async () => ({
     ok: true,
-    value: { targets: [{ deviceId: 'd1', displayName: 'Pixel 8', online: true, needsArtifact: false }] }
+    value: {
+      targets: [
+        {
+          deviceId: 'd1',
+          displayName: 'Pixel 8',
+          online: true,
+          needsArtifact: false
+        }
+      ]
+    }
   }))
   const wrapper = await mountSync(run)
   try {
@@ -122,7 +146,9 @@ it('drops a plan that arrives after the plugin version changed', async () => {
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
-    await wrapper.setProps({ plugin: snapshot({ version: '2.0.0' }) })
+    await wrapper.setProps({
+      plugin: snapshot({ version: '2.0.0' })
+    })
     await flushPromises()
 
     resolvePlan?.({ ok: true, value: PLAN })

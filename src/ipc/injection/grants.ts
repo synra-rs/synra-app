@@ -1,5 +1,16 @@
 /** Core DSL parsing and matching. Rust producer vectors calibrate this local precheck. */
-const DOMAINS = new Set(['log', 'event', 'device', 'storage', 'network', 'fs', 'file', 'platform', 'action', 'ui'])
+const DOMAINS = new Set([
+  'log',
+  'event',
+  'device',
+  'storage',
+  'network',
+  'fs',
+  'file',
+  'platform',
+  'action',
+  'ui'
+])
 
 function parseCapability(text: string): readonly string[] | undefined {
   // Only ASCII is accepted, so a valid input's character count is its byte count.
@@ -14,8 +25,11 @@ function parseCapability(text: string): readonly string[] | undefined {
       return undefined
     if (part === '*' || part === '**')
       continue
-    if (index === 1 ? !/^[a-z]/.test(part) || part.length > 64 || /[^a-z0-9-]/.test(part) : /[^\w.@/*-]/.test(part))
+    if (index === 1
+      ? !/^[a-z]/.test(part) || part.length > 64 || /[^a-z0-9-]/.test(part)
+      : /[^\w.@/*-]/.test(part)) {
       return undefined
+    }
   }
   return parts
 }

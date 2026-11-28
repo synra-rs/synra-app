@@ -54,12 +54,23 @@ beforeEach(() => {
 
 it('routes diagnostic frames without starting snapshot reads', async () => {
   const { client, invoke, listeners } = harness()
-  const line = { atMs: 1, direction: 'sent', peer: 'peer', label: 'pair', bytes: 4 }
+  const line = {
+    atMs: 1,
+    direction: 'sent',
+    peer: 'peer',
+    label: 'pair',
+    bytes: 4
+  }
   const observe = vi.fn()
   const unsubscribe = subscribeWireLines(observe)
   const started = await startEvents(client)
   invoke.mockClear()
-  listeners.get(KERNEL_EVENT_CHANNEL)!({ seq: 1, at: 1, type: 'debugWire', payload: line })
+  listeners.get(KERNEL_EVENT_CHANNEL)!({
+    seq: 1,
+    at: 1,
+    type: 'debugWire',
+    payload: line
+  })
   expect(observe).toHaveBeenCalledWith(line)
   expect(invoke).not.toHaveBeenCalled()
   unsubscribe()
@@ -83,9 +94,24 @@ describe('the event stream', () => {
     })
     await startEvents(client)
     const store = useDevicesStore()
-    const snapshot: DevicesSnapshot = { identity: { ...IDENTITY }, devices: [card(PEER_ID)] }
-    deliver?.({ seq: 1, at: 1, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } })
-    deliver?.({ seq: 2, at: 2, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } })
+    const snapshot: DevicesSnapshot = {
+      identity: { ...IDENTITY },
+      devices: [
+        card(PEER_ID)
+      ]
+    }
+    deliver?.({
+      seq: 1,
+      at: 1,
+      type: 'pairingUpdated',
+      payload: { phase: 'done', outcome: 'paired' }
+    })
+    deliver?.({
+      seq: 2,
+      at: 2,
+      type: 'pairingUpdated',
+      payload: { phase: 'done', outcome: 'paired' }
+    })
     pending[1]?.(snapshot)
     await nextTick()
     await nextTick()
@@ -102,12 +128,25 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'pairingUpdated',
-      payload: { phase: 'asked', ask: { code: '000123', deviceId: PEER_ID, displayName: 'PC', platform: 'desktop' } }
+      payload: {
+        phase: 'asked',
+        ask: {
+          code: '000123',
+          deviceId: PEER_ID,
+          displayName: 'PC',
+          platform: 'desktop'
+        }
+      }
     } satisfies SequencedKernelEvent)
     expect(store.visible).toBe(true)
     expect(store.snapshot.ask?.code).toBe('000123')
     invoke.mockClear()
-    listeners.get(KERNEL_EVENT_CHANNEL)?.({ seq: 2, at: 2, type: 'pairingUpdated', payload: { phase: 'done', outcome: 'paired' } } satisfies SequencedKernelEvent)
+    listeners.get(KERNEL_EVENT_CHANNEL)?.({
+      seq: 2,
+      at: 2,
+      type: 'pairingUpdated',
+      payload: { phase: 'done', outcome: 'paired' }
+    } satisfies SequencedKernelEvent)
     expect(invoke).toHaveBeenCalledWith('devices_snapshot', {})
     expect(store.snapshot.outcome).toBe('paired')
   })
@@ -206,7 +245,13 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'intentUpdated',
-      payload: { intentId: 'intent-1', state: 'succeeded', pluginId: '@acme/hello', candidates: [], startedAtMs: 0 }
+      payload: {
+        intentId: 'intent-1',
+        state: 'succeeded',
+        pluginId: '@acme/hello',
+        candidates: [],
+        startedAtMs: 0
+      }
     } as unknown as SequencedKernelEvent)
 
     expect(intents.intent('intent-1')?.state).toBe('succeeded')
@@ -221,7 +266,10 @@ describe('the event stream', () => {
       seq: 1,
       at: 1,
       type: 'configUpdated',
-      payload: { values: { 'ui.theme': 'dark' }, overridden: ['ui.theme'] }
+      payload: {
+        values: { 'ui.theme': 'dark' },
+        overridden: ['ui.theme']
+      }
     } as unknown as SequencedKernelEvent)
 
     expect(settings.value('ui.theme')).toBe('dark')

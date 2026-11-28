@@ -16,7 +16,12 @@ import { setLocalePreference } from '@/app/locale'
 import { messages } from '@/messages'
 
 /** The strings `Health::as_str` produces, in `budget.rs`. */
-const HEALTH_RUNGS = ['good', 'overreaching', 'degraded', 'faulted'] as const
+const HEALTH_RUNGS = [
+  'good',
+  'overreaching',
+  'degraded',
+  'faulted'
+] as const
 
 beforeEach(() => {
   setLocalePreference('en')
@@ -62,7 +67,14 @@ describe.each(['en', 'zh-CN'] as const)('plugin health labels (%s)', (language) 
 
   // ★ Exactly what `life_state` in `src-tauri/src/commands/plugins.rs` can return. `unavailable` had no entry, so a
   // plugin the shell could not start showed the wire name; the other five in the old table never arrived at all.
-  it.each(['active', 'disabled', 'awaiting_consent', 'unreadable', 'faulted', 'unavailable'] as const)(
+  it.each([
+    'active',
+    'disabled',
+    'awaiting_consent',
+    'unreadable',
+    'faulted',
+    'unavailable'
+  ] as const)(
     'names the plugin state %s',
     (state) => {
       const label = messages.plugins.states[state]

@@ -8,7 +8,18 @@ export type Operation = 'name' | 'language' | 'startup' | 'wire' | 'cancel' | 'n
 export function useSettingsWrites(isDisposed: () => boolean, reset: (operation: Operation) => void) {
   const settings = useSettingsStore()
   const errors = reactive<Partial<Record<Operation, IpcError | undefined>>>({})
-  const operationFlags = (): Record<Operation, boolean> => ({ name: false, language: false, startup: false, wire: false, cancel: false, notify: false, trusted: false, registry: false, policy: false, retention: false })
+  const operationFlags = (): Record<Operation, boolean> => ({
+    name: false,
+    language: false,
+    startup: false,
+    wire: false,
+    cancel: false,
+    notify: false,
+    trusted: false,
+    registry: false,
+    policy: false,
+    retention: false
+  })
   const busy = reactive(operationFlags())
   const saved = reactive(operationFlags())
   const needsRead = reactive(operationFlags())
@@ -63,5 +74,14 @@ export function useSettingsWrites(isDisposed: () => boolean, reset: (operation: 
       busy[operation] = false
     }
   }
-  return { errors, busy, saved, needsRead, anyBusy, configReady, checkSetting, writeSetting }
+  return {
+    errors,
+    busy,
+    saved,
+    needsRead,
+    anyBusy,
+    configReady,
+    checkSetting,
+    writeSetting
+  }
 }

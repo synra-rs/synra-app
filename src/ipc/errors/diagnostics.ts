@@ -29,7 +29,9 @@ export function diagnosticText(value: string): string {
       }
     })
     .replace(QUOTED_FIELD, (field: string, quote: string, name: string, separator: string) =>
-      SECRET_FIELD.test(name) ? `${quote}${name}${quote}${separator}${quote}[REDACTED]${quote}` : field)
+      SECRET_FIELD.test(name)
+        ? `${quote}${name}${quote}${separator}${quote}[REDACTED]${quote}`
+        : field)
     .replace(/\b(authorization|proxy-authorization|cookie|set-cookie)(\s*[:=]\s*|\s+)[^\r\n]*/gi, '$1=[REDACTED]')
     .replace(/\b(authorization|bearer|token|password|secret|api[_-]?key)(\s*[:=]\s*|\s+)[^\s,;]+/gi, '$1=[REDACTED]')
     .slice(0, MAX_STRING)
@@ -50,8 +52,11 @@ export function diagnostic(value: unknown): unknown {
     }
     if (input === null || typeof input === 'boolean')
       return input
-    if (typeof input === 'number')
-      return Number.isFinite(input) ? input : null
+    if (typeof input === 'number') {
+      return Number.isFinite(input)
+        ? input
+        : null
+    }
     if (typeof input !== 'object')
       return '[unavailable]'
     if (seen.has(input))
@@ -79,7 +84,9 @@ export function diagnostic(value: unknown): unknown {
           continue
         characters -= name.length
         Object.defineProperty(output, name, {
-          value: SECRET_FIELD.test(key) ? '[REDACTED]' : visit(data(input, key), depth + 1),
+          value: SECRET_FIELD.test(key)
+            ? '[REDACTED]'
+            : visit(data(input, key), depth + 1),
           enumerable: true
         })
       }

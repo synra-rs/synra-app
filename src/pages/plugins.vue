@@ -16,7 +16,7 @@
 </style>
 
 <template>
-  <section class="mx-auto max-w-[1200px] min-w-0 stack gap-5 pb-4" data-page-width="workspace">
+  <section class="mx-auto pb-4 stack gap-5 max-w-[1200px] min-w-0" data-page-width="workspace">
     <PageHeader :title="messages.plugins.title">
       <ADropdown :trigger="['click']">
         <AButton class="plugin-header-more" :aria-label="messages.plugins.workflow.more" data-testid="plugins-more">
@@ -36,19 +36,19 @@
       </AButton>
     </PageHeader>
     <ASegmented v-model:value="category" class="self-start" :options="categories" data-testid="plugin-category" />
-    <div v-if="library.note" class="stack gap-2 border-b border-line pb-3" role="status">
-      <p class="m-0 text-base">
+    <div v-if="library.note" class="pb-3 border-b border-line stack gap-2" role="status">
+      <p class="text-base m-0">
         {{ library.note }}
       </p>
-      <p v-for="warning in library.warnings" :key="warning" class="m-0 text-sm text-warn">
+      <p v-for="warning in library.warnings" :key="warning" class="text-sm text-warn m-0">
         {{ warning }}
       </p>
     </div>
-    <div v-if="pendingPublisher" class="stack gap-2 border border-line rounded-control p-3">
-      <p class="m-0 text-base">
+    <div v-if="pendingPublisher" class="p-3 border border-line rounded-control stack gap-2">
+      <p class="text-base m-0">
         {{ messages.plugins.publisherPrompt.title }}
       </p>
-      <p class="m-0 break-all text-sm text-ink-dim font-mono">
+      <p class="text-sm text-ink-dim font-mono m-0 break-all">
         {{ pendingPublisher.id }} · {{ pendingPublisher.fingerprint }}
       </p>
       <div class="row flex-wrap gap-2">
@@ -69,15 +69,15 @@
         {{ messages.plugins.leftBehind(library.leftovers.length) }}
       </summary>
       <ul class="m-0 ps-5">
-        <li v-for="path in library.leftovers" :key="path" class="break-all font-mono">
+        <li v-for="path in library.leftovers" :key="path" class="font-mono break-all">
           {{ path }}
         </li>
       </ul>
     </details>
     <ErrorNotice v-if="library.error" :code="library.error.code" :actions="library.error.actions" @retry="library.load" />
-    <div v-show="category === 'installed'" class="min-w-0 stack gap-3" data-testid="plugin-installed-view">
+    <div v-show="category === 'installed'" class="stack gap-3 min-w-0" data-testid="plugin-installed-view">
       <AInput ref="filterInput" v-model:value="filter" class="max-w-md" :aria-label="messages.plugins.filterPlaceholder" :placeholder="messages.plugins.filterPlaceholder" allow-clear />
-      <p v-if="library.loading && !store.plugins.length" class="m-0 text-base text-ink-dim" role="status">
+      <p v-if="library.loading && !store.plugins.length" class="text-base text-ink-dim m-0" role="status">
         {{ messages.plugins.workflow.loading }}
       </p>
       <AEmpty v-else-if="!store.plugins.length" :description="messages.plugins.empty">
@@ -97,8 +97,8 @@
     <RegistryDiscover v-show="category === 'discover'" data-testid="plugin-discover-view" @installed="installed" @details="showDetails" />
     <PluginDetail v-if="targetPlugin" :key="targetPlugin.pluginId" :plugin="targetPlugin" :library="library" :initial-tab="detailTab" :initial-action="detailAction" @close="leaveTarget" />
     <PluginInstallConsent v-if="consentPlugin" :plugin="consentPlugin" :library="library" @close="consentPluginId = ''" />
-    <div v-else-if="targetId && !library.loading" class="stack items-start gap-2" data-testid="plugin-target">
-      <p class="m-0 text-base">
+    <div v-else-if="targetId && !library.loading" class="stack gap-2 items-start" data-testid="plugin-target">
+      <p class="text-base m-0">
         {{ messages.plugins.notFound(targetId) }}
       </p><AButton @click="leaveTarget">
         {{ messages.plugins.showAll }}
@@ -153,8 +153,13 @@ const reloadingId = ref('')
 const removingPlugin = computed(() => store.plugin(removingId.value))
 const reloadingPlugin = computed(() => store.plugin(reloadingId.value))
 let detailTrigger: HTMLElement | undefined
-const categories = computed(() => [{ label: messages.plugins.categories.installed, value: 'installed' }, { label: messages.plugins.categories.discover, value: 'discover' }])
-const targetId = computed(() => typeof route.query.plugin === 'string' ? route.query.plugin : '')
+const categories = computed(() => [
+  { label: messages.plugins.categories.installed, value: 'installed' },
+  { label: messages.plugins.categories.discover, value: 'discover' }
+])
+const targetId = computed(() => typeof route.query.plugin === 'string'
+  ? route.query.plugin
+  : '')
 const targetPlugin = computed(() => store.plugin(targetId.value))
 const consentPlugin = computed(() => store.plugin(consentPluginId.value))
 const visiblePlugins = computed(() => {
@@ -170,13 +175,22 @@ function onRemoved(id: string): void {
   if (targetId.value === id)
     void leaveTarget()
 }
-onMounted(() => Promise.all([library.load(), publishers.read()]))
+onMounted(() => Promise.all([
+  library.load(),
+  publishers.read()
+]))
 
 function showDetails(id: string, tab = 'overview', action = ''): void {
   detailAction.value = action
-  detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  detailTrigger = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : undefined
   detailTab.value = tab
-  void router.replace({ path: route.path, query: { ...route.query, plugin: id }, hash: route.hash })
+  void router.replace({
+    path: route.path,
+    query: { ...route.query, plugin: id },
+    hash: route.hash
+  })
 }
 async function leaveTarget(): Promise<void> {
   detailAction.value = ''
@@ -206,7 +220,10 @@ async function installed(report: InstallReport): Promise<void> {
   installOpen.value = false
   library.note = messages.plugins.workflow.installedHelp
   library.warnings = report.warnings ?? []
-  await Promise.all([library.load(), publishers.read()])
+  await Promise.all([
+    library.load(),
+    publishers.read()
+  ])
   consentPluginId.value = report.pluginId
   const known = publishers.list.find(publisher => publisher.publisherId === report.publisherId)
   if (report.publisherId && report.fingerprint && known?.trust !== 'trusted')

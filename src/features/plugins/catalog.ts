@@ -20,7 +20,13 @@ export function useCatalog(client: KernelClient, source?: () => string | undefin
   let alive = true
   let lastReadMore = false
 
-  watch([text, sort, ...(source === undefined ? [] : [source])], () => {
+  watch([
+    text,
+    sort,
+    ...(source === undefined
+      ? []
+      : [source])
+  ], () => {
     revision++
     results.value = []
     searched.value = false
@@ -54,14 +60,21 @@ export function useCatalog(client: KernelClient, source?: () => string | undefin
       error.value = outcome.failure
       return
     }
-    const known = new Set(more ? results.value.map(item => item.pluginId) : [])
+    const known = new Set(more
+      ? results.value.map(item => item.pluginId)
+      : [])
     const incoming = outcome.value.filter((item) => {
       if (known.has(item.pluginId))
         return false
       known.add(item.pluginId)
       return true
     })
-    results.value = more ? [...results.value, ...incoming] : incoming
+    results.value = more
+      ? [
+          ...results.value,
+          ...incoming
+        ]
+      : incoming
     // Server offsets count rows, including duplicates; displayed row count is not a valid continuation cursor.
     offset = start + outcome.value.length
     hasMore.value = outcome.value.length === PAGE_SIZE
@@ -75,7 +88,11 @@ export function useCatalog(client: KernelClient, source?: () => string | undefin
     searched,
     error,
     state: computed(() => error.value?.registryProblem?.kind
-      ?? (error.value ? 'failed' : busy.value ? 'loading' : searched.value ? 'ready' : 'idle')),
+      ?? (error.value
+        ? 'failed'
+        : busy.value
+          ? 'loading'
+          : searched.value ? 'ready' : 'idle')),
     hasMore,
     searching: computed(() => busy.value === 'search'),
     loadingMore: computed(() => busy.value === 'more'),

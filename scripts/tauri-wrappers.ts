@@ -6,7 +6,11 @@ import { shellWrappers } from './checks/calls'
 export function readTauriWrappers(appRoot: string): ReturnType<typeof shellWrappers> {
   const directory = join(appRoot, 'src-tauri', 'src', 'shell', 'wrappers')
   const source = readFileSync(join(directory, 'mod.rs'), 'utf8')
-  const modules = [...source.matchAll(/^mod (\w+);$/gm)].flatMap(([, name]) => name ? [name] : [])
+  const modules = [
+    ...source.matchAll(/^mod (\w+);$/gm)
+  ].flatMap(([, name]) => name
+    ? [name]
+    : [])
   const dispatch = 'match invoke.message.command() {'
   const start = source.indexOf(dispatch)
   const end = source.indexOf('_ => return false', start)
@@ -18,7 +22,11 @@ export function readTauriWrappers(appRoot: string): ReturnType<typeof shellWrapp
   for (const [, names, module] of routes.matchAll(/([^,]+)=>\s*(\w+)::dispatch\s*,/g)) {
     if (!names || !module || !modules.includes(module) || commands.has(module))
       throw new Error(`invalid Tauri dispatch route for ${module}`)
-    commands.set(module, [...names.matchAll(/"(\w+)"/g)].flatMap(([, name]) => name ? [name] : []))
+    commands.set(module, [
+      ...names.matchAll(/"(\w+)"/g)
+    ].flatMap(([, name]) => name
+      ? [name]
+      : []))
   }
 
   const wrappers: ReturnType<typeof shellWrappers> = new Map()
@@ -28,7 +36,9 @@ export function readTauriWrappers(appRoot: string): ReturnType<typeof shellWrapp
     const signatures = shellWrappers(implementation)
     const handler = /generate_handler!\[([\s\S]*?)\]/.exec(implementation)?.[1]
     const registered = handler?.split(',').map(name => name.trim()).filter(Boolean) ?? []
-    const expected = [...signatures.keys()].sort().join(',')
+    const expected = [
+      ...signatures.keys()
+    ].sort().join(',')
     if (signatures.size === 0 || registered.sort().join(',') !== expected || commands.get(module)?.sort().join(',') !== expected)
       throw new Error(`${path} has different commands in its dispatch routes, handler and wrapper signatures`)
     for (const [name, signature] of signatures) {

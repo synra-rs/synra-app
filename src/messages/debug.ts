@@ -30,7 +30,9 @@ export const debug = {
   pause: 'Pause',
   resume: 'Resume',
   paused: 'Paused',
-  newLines: (count: number) => `${count} new ${count === 1 ? 'line' : 'lines'}`,
+  newLines: (count: number) => `${count} new ${count === 1
+    ? 'line'
+    : 'lines'}`,
   jumpLatest: 'Jump to latest',
   viewingHistory: 'Viewing history',
   empty: 'No traffic yet. Scan, pair, or send something.',

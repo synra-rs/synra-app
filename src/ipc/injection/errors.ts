@@ -26,7 +26,9 @@ export function unsupported(feature: string): SynraError {
 export function denied(capability: string): SynraError {
   return {
     ...createSynraError('capability_denied', { capability }),
-    actions: [{ kind: 'requestCapability', capability }]
+    actions: [
+      { kind: 'requestCapability', capability }
+    ]
   }
 }
 

@@ -21,7 +21,9 @@ import SettingsRow from '@/components/settings/SettingsRow.vue'
 
 describe('settings row', () => {
   it('points its label at the field when it has an id', () => {
-    const wrapper = mount(SettingsRow, { props: { label: 'Device name', forId: 'device-name' } })
+    const wrapper = mount(SettingsRow, {
+      props: { label: 'Device name', forId: 'device-name' }
+    })
     const label = wrapper.get('label')
     expect(label.attributes('for')).toBe('device-name')
     expect(label.text()).toBe('Device name')
@@ -30,21 +32,27 @@ describe('settings row', () => {
 
   it('renders plain text when there is no field to point at', () => {
     // A `<label for="undefined">` is worse than no label: the browser scrolls nowhere and the association is false.
-    const wrapper = mount(SettingsRow, { props: { label: 'About' } })
+    const wrapper = mount(SettingsRow, {
+      props: { label: 'About' }
+    })
     expect(wrapper.find('label').exists()).toBe(false)
     expect(wrapper.text()).toContain('About')
     wrapper.unmount()
   })
 
   it('shows the description under the label when one is given', () => {
-    const wrapper = mount(SettingsRow, { props: { label: 'Policy', description: 'When updates may install.' } })
+    const wrapper = mount(SettingsRow, {
+      props: { label: 'Policy', description: 'When updates may install.' }
+    })
     expect(wrapper.text()).toContain('When updates may install.')
     wrapper.unmount()
   })
 
   it('leaves the description out when there is none', () => {
     // Otherwise an empty paragraph adds a gap under every bare row.
-    const wrapper = mount(SettingsRow, { props: { label: 'Policy' } })
+    const wrapper = mount(SettingsRow, {
+      props: { label: 'Policy' }
+    })
     expect(wrapper.findAll('p')).toHaveLength(0)
     wrapper.unmount()
   })
@@ -61,7 +69,9 @@ describe('settings row', () => {
   })
 
   it('leaves the feedback row out when nothing is slotted', () => {
-    const wrapper = mount(SettingsRow, { props: { label: 'Policy' } })
+    const wrapper = mount(SettingsRow, {
+      props: { label: 'Policy' }
+    })
     // Two columns only: the label column and the control column.
     expect(wrapper.findAll('.sm\\:col-span-2')).toHaveLength(0)
     wrapper.unmount()

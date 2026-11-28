@@ -15,7 +15,11 @@ describe('permission display', () => {
   })
 
   it('shows no permissions when the plugin requests none', async () => {
-    answer({ plugins_list: [card({ requested: [], granted: [], denied: [] })] })
+    answer({
+      plugins_list: [
+        card({ requested: [], granted: [], denied: [] })
+      ]
+    })
     const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
     await clickBody(messages.plugins.workflow.permissions, 'tab')
     const permissions = wrapper.getComponent(PluginPermissions)

@@ -19,7 +19,9 @@ const native = vi.hoisted(() => ({
   stopResize: vi.fn(),
   isMaximized: vi.fn()
 }))
-vi.mock('@/app/kernel', () => ({ kernel: { call: native.call } }))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call: native.call }
+}))
 vi.mock('@tauri-apps/api/app', () => ({ onBackButtonPress: native.listenBack, exit: native.exit }))
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: native.window }))
 
@@ -48,7 +50,11 @@ function media(widthRem: number) {
       return sidebar
     if (selector === '(min-width: 64rem)')
       return wide
-    return { matches: false, addListener: vi.fn(), removeListener: vi.fn() }
+    return {
+      matches: false,
+      addListener: vi.fn(),
+      removeListener: vi.fn()
+    }
   }))
   return {
     resize(rem: number) {
@@ -74,28 +80,58 @@ function touchNavigator(userAgent: string): void {
 }
 
 async function render(platform: string, nativeShell: boolean) {
-  vi.stubGlobal('__TAURI_INTERNALS__', nativeShell ? {} : undefined)
+  vi.stubGlobal('__TAURI_INTERNALS__', nativeShell
+    ? {}
+    : undefined)
   native.call.mockImplementation(async (command: string) => {
-    if (command === 'devices_snapshot')
-      return { ok: true, value: { identity: { ...IDENTITY, platform }, devices: [] } }
-    if (command === 'config_get')
-      return { ok: true, value: { values: {}, overridden: [] } }
+    if (command === 'devices_snapshot') {
+      return {
+        ok: true,
+        value: {
+          identity: { ...IDENTITY, platform },
+          devices: []
+        }
+      }
+    }
+    if (command === 'config_get') {
+      return {
+        ok: true,
+        value: { values: {}, overridden: [] }
+      }
+    }
     throw new Error(`unexpected ${command}`)
   })
   const pinia = createPinia()
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/', component: { template: '<div />' } }]
+    routes: [
+      {
+        path: '/',
+        component: { template: '<div />' }
+      }
+    ]
   })
   await router.push('/')
   const wrapper = mount(App, {
     attachTo: document.body,
     global: {
       plugins: [pinia, router],
-      stubs: { CrashNotice: true, NoticeHost: true, TransferPrompt: true, PairingPrompt: true, InputPrompt: true, DebugConsole: true, SearchPalette: true }
+      stubs: {
+        CrashNotice: true,
+        NoticeHost: true,
+        TransferPrompt: true,
+        PairingPrompt: true,
+        InputPrompt: true,
+        DebugConsole: true,
+        SearchPalette: true
+      }
     }
   })
-  return { wrapper, router, devices: useDevicesStore(pinia) }
+  return {
+    wrapper,
+    router,
+    devices: useDevicesStore(pinia)
+  }
 }
 
 beforeEach(() => {
@@ -190,7 +226,9 @@ describe('viewport and native host', () => {
 
   it('uses the registered Android event to leave a direct link in a wide layout', async () => {
     media(72)
-    native.listenBack.mockResolvedValue({ unregister: vi.fn() })
+    native.listenBack.mockResolvedValue({
+      unregister: vi.fn()
+    })
     const { wrapper, router } = await render('android', true)
     try {
       await flushPromises()

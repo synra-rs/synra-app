@@ -1,17 +1,17 @@
 <template>
   <AModal :open="visible" :width="600" :title="messages.plugins.workflow.details" :footer="null" :closable="!installing" :mask-closable="!installing" :keyboard="!installing" @cancel="$emit('close')">
     <div class="stack gap-4">
-      <p v-if="loading" class="m-0 text-base text-ink-dim" role="status">
+      <p v-if="loading" class="text-base text-ink-dim m-0" role="status">
         {{ messages.plugins.workflow.loading }}
       </p>
       <template v-if="preview">
-        <h3 class="m-0 text-lg font-semibold">
+        <h3 class="text-lg font-semibold m-0">
           {{ preview.title }}
         </h3>
-        <p v-if="preview.description" class="m-0 text-base">
+        <p v-if="preview.description" class="text-base m-0">
           {{ preview.description }}
         </p>
-        <dl class="grid grid-cols-[auto_minmax(0,1fr)] m-0 gap-2 text-base">
+        <dl class="text-base m-0 gap-2 grid grid-cols-[auto_minmax(0,1fr)]">
           <dt class="text-ink-dim">
             {{ messages.plugins.workflow.source }}
           </dt><dd class="m-0">
@@ -19,7 +19,7 @@
           </dd>
           <dt class="text-ink-dim">
             {{ messages.plugins.pluginId }}
-          </dt><dd class="m-0 break-all font-mono">
+          </dt><dd class="font-mono m-0 break-all">
             {{ preview.pluginId }}
           </dd>
           <dt class="text-ink-dim">
@@ -33,24 +33,24 @@
             {{ preview.publisherName || preview.publisher }}
           </dd>
         </dl>
-        <p v-if="preview.publisherKey" class="m-0 break-all text-sm text-ink-dim">
+        <p v-if="preview.publisherKey" class="text-sm text-ink-dim m-0 break-all">
           {{ messages.plugins.preview.directoryKey }}: <code>{{ preview.publisherKey }}</code>
         </p>
-        <div v-for="capability in preview.capabilities" :key="capability" class="stack gap-1 border-b border-line pb-2">
-          <span class="text-base">{{ capabilityPurpose(capability) }}</span><code class="break-all text-sm text-ink-dim">{{ capability }}</code>
+        <div v-for="capability in preview.capabilities" :key="capability" class="pb-2 border-b border-line stack gap-1">
+          <span class="text-base">{{ capabilityPurpose(capability) }}</span><code class="text-sm text-ink-dim break-all">{{ capability }}</code>
         </div>
-        <p v-if="!preview.capabilities.length" class="m-0 text-base text-ink-dim">
+        <p v-if="!preview.capabilities.length" class="text-base text-ink-dim m-0">
           {{ messages.plugins.preview.none }}
         </p>
-        <p class="m-0 text-sm text-ink-dim">
+        <p class="text-sm text-ink-dim m-0">
           {{ preview.hasUi ? messages.plugins.preview.ui : messages.plugins.preview.headless }}
         </p>
-        <p v-if="preview.sizeBytes !== undefined" class="m-0 text-sm text-ink-dim">
+        <p v-if="preview.sizeBytes !== undefined" class="text-sm text-ink-dim m-0">
           {{ messages.plugins.preview.size.replace('{size}', formatBytes(preview.sizeBytes)) }}
         </p>
       </template>
       <ErrorNotice v-if="error" :code="error.code" :detail="error.detail" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
-      <div class="row justify-end gap-2">
+      <div class="row gap-2 justify-end">
         <AButton :disabled="installing" @click="$emit('close')">
           {{ messages.plugins.workflow.close }}
         </AButton>

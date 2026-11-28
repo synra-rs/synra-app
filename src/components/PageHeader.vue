@@ -19,11 +19,11 @@
 </style>
 
 <template>
-  <header class="page-header min-w-0 row-between flex-wrap gap-3 border-b border-line pb-4">
-    <h1 class="m-0 min-w-0 text-lg font-semibold leading-tight">
+  <header class="page-header pb-4 border-b border-line row-between flex-wrap gap-3 min-w-0">
+    <h1 class="text-lg leading-tight font-semibold m-0 min-w-0">
       {{ title }}
     </h1>
-    <div v-if="$slots.default" class="page-header-actions min-w-0 row flex-wrap gap-2">
+    <div v-if="$slots.default" class="page-header-actions row flex-wrap gap-2 min-w-0">
       <slot />
     </div>
   </header>

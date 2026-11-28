@@ -21,7 +21,10 @@ it('requires explicit approval for a zero-permission plugin and retains it acros
   await bridge.invoke('plugins_enable', args)
   const before = await bridge.invoke('plugins_list') as readonly PluginSnapshot[]
   expect(before.find(plugin => plugin.pluginId === args.pluginId)?.state).toBe('awaiting_consent')
-  expect(await bridge.invoke('plugins_consent_respond', { ...args, granted: ['log:*'] })).toMatchObject({ code: 'invalid_argument' })
+  expect(await bridge.invoke('plugins_consent_respond', {
+    ...args,
+    granted: ['log:*']
+  })).toMatchObject({ code: 'invalid_argument' })
   expect(await bridge.invoke('plugins_consent_respond', { ...args, granted: [] })).toMatchObject({ state: 'active', granted: [] })
   await bridge.invoke('plugins_disable', args)
   await bridge.invoke('plugins_enable', args)

@@ -15,7 +15,9 @@ const autostart = vi.hoisted(() => ({
   enable: vi.fn(),
   disable: vi.fn()
 }))
-vi.mock('@/app/kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call: mocks.call, subscribe: mocks.subscribe }
+}))
 vi.mock('@tauri-apps/plugin-autostart', () => ({
   isEnabled: autostart.isEnabled,
   enable: autostart.enable,
@@ -49,7 +51,10 @@ function answer(byCommand: Record<string, unknown>) {
     }
     return command in answers
       ? { ok: true, value: answers[command] }
-      : { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+      : {
+          ok: false,
+          error: { code: 'internal', message: 'error.internal', retryable: false }
+        }
   })
 }
 let routerInstance: ReturnType<typeof createRouter>
@@ -57,10 +62,24 @@ function testRouter() {
   return routerInstance
 }
 async function mountPage(path = '/settings') {
-  routerInstance = createRouter({ history: createMemoryHistory(), routes: [{ path: '/settings', component: SettingsPage }, { path: '/', component: { template: '<p>Home</p>' } }] })
+  routerInstance = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/settings', component: SettingsPage },
+      {
+        path: '/',
+        component: { template: '<p>Home</p>' }
+      }
+    ]
+  })
   await routerInstance.push(path)
   await routerInstance.isReady()
-  return mount(RouterView, { attachTo: document.body, global: { plugins: [routerInstance] } })
+  return mount(RouterView, {
+    attachTo: document.body,
+    global: {
+      plugins: [routerInstance]
+    }
+  })
 }
 async function openCategory(wrapper: VueWrapper, category: string): Promise<void> {
   const select = wrapper.findAllComponents({ name: 'ASelect' }).find(value => value.attributes('data-testid') === 'settings-category')!
@@ -68,7 +87,10 @@ async function openCategory(wrapper: VueWrapper, category: string): Promise<void
   await flushPromises()
 }
 it('names every diagnostics panel without the library arrow word', async () => {
-  answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+  answer({
+    config_get: { values: {}, overridden: [] },
+    identity_get: IDENTITY
+  })
   const wrapper = await mountPage('/settings?category=diagnostics')
   try {
     await flushPromises()

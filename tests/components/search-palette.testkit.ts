@@ -44,14 +44,34 @@ function mountPalette() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', component: { template: '<div />' } },
-      { path: '/devices', component: { template: '<div />' } },
-      { path: '/plugins', component: { template: '<div />' } },
-      { path: '/settings', component: { template: '<div />' } },
-      { path: '/:pathMatch(.*)*', component: { template: '<div />' } }
+      {
+        path: '/',
+        component: { template: '<div />' }
+      },
+      {
+        path: '/devices',
+        component: { template: '<div />' }
+      },
+      {
+        path: '/plugins',
+        component: { template: '<div />' }
+      },
+      {
+        path: '/settings',
+        component: { template: '<div />' }
+      },
+      {
+        path: '/:pathMatch(.*)*',
+        component: { template: '<div />' }
+      }
     ]
   })
-  const wrapper = mount(SearchPalette, { global: { plugins: [router] }, attachTo: document.body })
+  const wrapper = mount(SearchPalette, {
+    global: {
+      plugins: [router]
+    },
+    attachTo: document.body
+  })
   mounted.push(wrapper)
   return { router, wrapper }
 }

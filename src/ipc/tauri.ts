@@ -101,7 +101,9 @@ export class TauriKernel implements Bridge {
     const api = await this.api()
     // Passing `undefined` rather than `{}` matters: a command with no parameters and a command given an empty object are
     // different calls on Tauri's side.
-    return args === undefined ? api.invoke(command) : api.invoke(command, { ...args })
+    return args === undefined
+      ? api.invoke(command)
+      : api.invoke(command, { ...args })
   }
 
   /**

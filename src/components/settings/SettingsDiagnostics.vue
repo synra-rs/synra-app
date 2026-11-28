@@ -1,24 +1,24 @@
 <template>
-  <div class="min-w-0 stack gap-5" data-testid="settings-diagnostics">
+  <div class="stack gap-5 min-w-0" data-testid="settings-diagnostics">
     <ACollapse v-model:active-key="openPanels" ghost>
       <template #expandIcon="panel">
         <CollapseArrow :panel="panel" />
       </template>
       <ACollapse.Panel key="device" :header="`设备信息 · ${deviceDetails[0]?.value ?? ''}`" force-render>
-        <div class="stack gap-2 text-sm">
-          <p class="m-0 text-ink-dim">
+        <div class="text-sm stack gap-2">
+          <p class="text-ink-dim m-0">
             {{ messages.settings.diagnostics.deviceDetail }}
           </p>
           <AList size="small" bordered>
             <AList.Item v-for="item in deviceDetails" :key="item.label">
               <span class="text-ink-dim">{{ item.label }}</span>
-              <span class="ms-auto max-w-[65%] break-all text-end font-mono">{{ item.value }}</span>
+              <span class="font-mono ms-auto text-end max-w-[65%] break-all">{{ item.value }}</span>
             </AList.Item>
           </AList>
         </div>
       </ACollapse.Panel>
       <ACollapse.Panel key="metrics" :header="messages.settings.metrics.title">
-        <div class="min-w-0 stack gap-3">
+        <div class="stack gap-3 min-w-0">
           <div class="row-between flex-wrap gap-2">
             <span class="text-sm text-ink-dim">{{ messages.settings.metrics.detail }}</span>
             <AButton :loading="refreshing" :disabled="!metricsEnabled" @click="loadMetrics">
@@ -26,13 +26,13 @@
             </AButton>
           </div>
           <SettingsFeedback :error="errors.metrics" />
-          <p v-if="metricsAt" class="m-0 text-sm text-ink-dim" role="status">
+          <p v-if="metricsAt" class="text-sm text-ink-dim m-0" role="status">
             {{ messages.settings.metrics.updated(formatDateTime(metricsAt)) }} · {{ metricsEnabled && !errors.metrics ? messages.settings.metrics.live : messages.settings.metrics.paused }}
           </p>
-          <p v-if="metrics && metrics.overflowedTotal > 0" class="m-0 text-sm text-ink-dim">
+          <p v-if="metrics && metrics.overflowedTotal > 0" class="text-sm text-ink-dim m-0">
             {{ messages.settings.metrics.overflow(metrics.overflowedTotal, metrics.maxSeriesPerMetric) }}
           </p>
-          <div v-if="startup" class="row flex-wrap items-baseline gap-2 text-sm">
+          <div v-if="startup" class="text-sm row flex-wrap gap-2 items-baseline">
             <span class="text-ink-dim">{{ messages.settings.metrics.startup }}</span>
             <span class="font-mono">{{ startup.ms.toFixed(0) }} ms</span>
             <span :class="startup.within ? 'text-ink-dim' : 'text-error'">
@@ -43,7 +43,7 @@
           <AList v-else-if="metrics" size="small">
             <AList.Item v-for="series in metrics.values" :key="seriesKey(series.key)" :style="{ paddingInline: 0 }">
               <div class="row-between gap-3">
-                <span class="min-w-0 truncate text-sm font-mono">{{ seriesKey(series.key) }}</span>
+                <span class="text-sm font-mono min-w-0 truncate">{{ seriesKey(series.key) }}</span>
                 <span class="text-base font-mono">{{ seriesValue(series.value) }}</span>
               </div>
             </AList.Item>
@@ -53,10 +53,10 @@
       <ACollapse.Panel key="probes" :header="messages.settings.diagnostics.probesTitle">
         <SettingsFeedback :error="errors.probes" />
         <div class="stack gap-2">
-          <p class="m-0 text-sm text-ink-dim">
+          <p class="text-sm text-ink-dim m-0">
             {{ messages.settings.diagnostics.probesDetail }}
           </p>
-          <div class="row items-center gap-2">
+          <div class="row gap-2 items-center">
             <AButton :loading="probing" @click="runProbes">
               {{ messages.settings.diagnostics.probes }}
             </AButton>
@@ -69,9 +69,9 @@
           >
             {{ messages.settings.diagnostics.onlyProblems }}
           </ACheckbox>
-          <ul v-if="probeReport" class="m-0 flex flex-col list-none gap-2 p-0">
+          <ul v-if="probeReport" class="m-0 p-0 list-none flex flex-col gap-2">
             <li v-for="result in visibleProbes" :key="result.name" class="stack gap-1">
-              <div class="row items-center gap-2">
+              <div class="row gap-2 items-center">
                 <ATag :color="probeColor(result.status)">
                   {{ messages.settings.diagnostics.probeStatus(result.status) }}
                 </ATag>
@@ -89,8 +89,8 @@
             {{ messages.settings.metrics.refresh }}
           </AButton>
           <SettingsFeedback :error="errors.logs" />
-          <pre v-if="logLines.length" class="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all text-sm font-mono">{{ logLines.join('\n') }}</pre>
-          <p v-else-if="logAsked" class="m-0 text-sm text-ink-dim">
+          <pre v-if="logLines.length" class="text-sm font-mono m-0 max-h-64 whitespace-pre-wrap break-all overflow-auto">{{ logLines.join('\n') }}</pre>
+          <p v-else-if="logAsked" class="text-sm text-ink-dim m-0">
             {{ messages.settings.diagnostics.logsEmpty }}
           </p>
         </div>
@@ -98,10 +98,10 @@
       <ACollapse.Panel key="crashes" :header="messages.settings.diagnostics.crashesTitle">
         <SettingsFeedback :error="errors.crashes" />
         <div class="stack gap-2">
-          <p class="m-0 text-sm text-ink-dim">
+          <p class="text-sm text-ink-dim m-0">
             {{ messages.settings.diagnostics.dismissDetail }}
           </p>
-          <div class="row items-center gap-2">
+          <div class="row gap-2 items-center">
             <AButton danger :loading="dismissing" :disabled="loadingCrashes" @click="confirmDismiss = true">
               {{ messages.settings.diagnostics.dismissCrashes }}
             </AButton>
@@ -112,14 +112,14 @@
               {{ messages.settings.diagnostics.dismissed }}
             </span>
           </div>
-          <ul v-if="crashes" class="m-0 stack gap-2 p-0">
+          <ul v-if="crashes" class="m-0 p-0 stack gap-2">
             <li v-if="crashes.length === 0" class="text-sm text-ink-dim">
               {{ messages.settings.diagnostics.crashesEmpty }}
             </li>
             <li
               v-for="report in crashes"
               :key="`${report.atMs}-${report.location ?? ''}`"
-              class="stack gap-1 text-sm"
+              class="text-sm stack gap-1"
             >
               <span class="text-ink-dim font-mono">
                 {{ formatDateTime(report.atMs) }} · {{ report.version }}
@@ -132,7 +132,7 @@
       </ACollapse.Panel>
       <ACollapse.Panel key="export" :header="messages.settings.diagnostics.export">
         <div class="stack gap-3">
-          <p class="m-0 text-sm text-ink-dim">
+          <p class="text-sm text-ink-dim m-0">
             {{ messages.settings.diagnostics.detail }}
           </p>
           <SettingsFeedback :error="errors.export" />
@@ -208,9 +208,20 @@ const deviceDetails = computed(() => {
     { label: 'Language', value: nav.language || '—' },
     { label: 'Viewport', value: `${window.innerWidth} × ${window.innerHeight}` },
     { label: 'Screen', value: `${screen.width} × ${screen.height} @ ${window.devicePixelRatio}x` },
-    { label: 'Touch points', value: String(nav.maxTouchPoints) },
-    { label: 'Tauri runtime', value: '__TAURI_INTERNALS__' in window ? 'yes' : 'no' },
-    { label: 'Online', value: navigator.onLine ? 'yes' : 'no' }
+    {
+      label: 'Touch points',
+      value: String(nav.maxTouchPoints)
+    },
+    {
+      label: 'Tauri runtime',
+      value: '__TAURI_INTERNALS__' in window
+        ? 'yes'
+        : 'no'
+    },
+    {
+      label: 'Online',
+      value: navigator.onLine ? 'yes' : 'no'
+    }
   ]
 })
 const confirmVisible = useDialogVisibility(confirmDismiss, 60, () => {

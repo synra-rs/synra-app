@@ -31,7 +31,13 @@ export function useSearchPalette() {
   }
   const activeId = ref<string>()
 
-  const SETTINGS_SECTIONS = ['general', 'security', 'plugins', 'diagnostics', 'about'] as const
+  const SETTINGS_SECTIONS = [
+    'general',
+    'security',
+    'plugins',
+    'diagnostics',
+    'about'
+  ] as const
 
   function optionDomId(id: string): string {
     return `search-option-${encodeURIComponent(id)}`
@@ -89,9 +95,18 @@ export function useSearchPalette() {
   }))
 
   const grouped = computed(() => {
-    const order = ['plugins', 'settings', 'devices', 'pages'] as const
+    const order = [
+      'plugins',
+      'settings',
+      'devices',
+      'pages'
+    ] as const
     return order
-      .map(id => ({ id, label: GROUP_LABELS.value[id], items: results.value.filter(item => item.group === id) }))
+      .map(id => ({
+        id,
+        label: GROUP_LABELS.value[id],
+        items: results.value.filter(item => item.group === id)
+      }))
       .filter(group => group.items.length > 0)
   })
 
@@ -100,7 +115,9 @@ export function useSearchPalette() {
   })
 
   function show(trigger?: HTMLElement): void {
-    const candidate = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : undefined)
+    const candidate = trigger ?? (document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : undefined)
     returnFocus.value = candidate?.isConnected ? candidate : undefined
     open.value = true
     query.value = ''
@@ -188,5 +205,17 @@ export function useSearchPalette() {
   onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
   onUnmounted(() => window.removeEventListener('keydown', onGlobalKeydown))
 
-  return { open, query, setField, activeId, results, grouped, optionDomId, show, close, choose, onKeydown }
+  return {
+    open,
+    query,
+    setField,
+    activeId,
+    results,
+    grouped,
+    optionDomId,
+    show,
+    close,
+    choose,
+    onKeydown
+  }
 }

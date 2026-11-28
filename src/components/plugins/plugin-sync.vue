@@ -11,48 +11,48 @@
     :keyboard="!sending"
     @cancel="close"
   >
-    <div class="min-w-0 stack gap-4">
-      <p v-if="busy" role="status" class="m-0 text-base text-ink-dim">
+    <div class="stack gap-4 min-w-0">
+      <p v-if="busy" role="status" class="text-base text-ink-dim m-0">
         {{ sending ? messages.plugins.syncing : messages.plugins.sync.planning }}
       </p>
       <ErrorNotice v-if="error" :code="error.code" :actions="error.actions" @retry="readPlan" />
-      <p v-if="stale" class="m-0 text-base text-ink-dim">
+      <p v-if="stale" class="text-base text-ink-dim m-0">
         {{ messages.plugins.sync.stale }}
       </p>
-      <ul v-if="plan?.targets.length" class="m-0 stack list-none gap-3 p-0" data-sync-targets>
-        <li v-for="target in plan.targets" :key="target.deviceId" class="min-w-0 stack gap-1">
-          <div class="min-w-0 row-between flex-wrap gap-2 text-base">
+      <ul v-if="plan?.targets.length" class="m-0 p-0 list-none stack gap-3" data-sync-targets>
+        <li v-for="target in plan.targets" :key="target.deviceId" class="stack gap-1 min-w-0">
+          <div class="text-base row-between flex-wrap gap-2 min-w-0">
             <span class="min-w-0 break-all">{{ target.displayName || target.deviceId }}</span>
             <span class="text-sm text-ink-dim">{{ target.online ? messages.plugins.sync.online : messages.plugins.sync.offline }}</span>
           </div>
-          <p class="m-0 break-all text-sm text-ink-dim">
+          <p class="text-sm text-ink-dim m-0 break-all">
             {{ target.needsArtifact ? messages.plugins.sync.needed : messages.plugins.sync.current }}
             <span v-if="target.version" class="block">{{ messages.plugins.version }} {{ target.version }}</span>
           </p>
         </li>
       </ul>
-      <p v-if="plan && !plan.targets.length" class="m-0 text-base text-ink-dim">
+      <p v-if="plan && !plan.targets.length" class="text-base text-ink-dim m-0">
         {{ messages.plugins.sync.noDevices }}
       </p>
-      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact)" class="m-0 text-base text-ink-dim">
+      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact)" class="text-base text-ink-dim m-0">
         {{ messages.plugins.syncNothing }}
       </p>
-      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact && target.online) && !report" class="m-0 text-base text-ink-dim">
+      <p v-else-if="plan && !plan.targets.some(target => target.needsArtifact && target.online) && !report" class="text-base text-ink-dim m-0">
         {{ messages.plugins.sync.noneOnline }}
       </p>
       <div v-if="report" class="stack gap-2" role="status" data-sync-report>
-        <p class="m-0 text-base">
+        <p class="text-base m-0">
           {{ messages.plugins.syncDone(report.updated, report.unchanged, report.failures?.length ?? 0) }}
         </p>
-        <ul v-if="report.failures?.length" class="m-0 stack list-none gap-3 p-0">
-          <li v-for="failure in report.failures" :key="failure.deviceId" class="min-w-0 stack gap-1">
-            <span class="break-all text-base">{{ deviceName(failure.deviceId) }}</span>
+        <ul v-if="report.failures?.length" class="m-0 p-0 list-none stack gap-3">
+          <li v-for="failure in report.failures" :key="failure.deviceId" class="stack gap-1 min-w-0">
+            <span class="text-base break-all">{{ deviceName(failure.deviceId) }}</span>
             <ErrorNotice :code="failureOf(failure.error).code" />
             <details class="text-sm text-ink-dim">
-              <summary class="min-h-11 cursor-pointer py-3">
+              <summary class="py-3 min-h-11 cursor-pointer">
                 {{ messages.plugins.sync.failureDetails }}
               </summary>
-              <p class="m-0 break-all font-mono">
+              <p class="font-mono m-0 break-all">
                 {{ failure.deviceId }}
               </p>
               <pre class="m-0 whitespace-pre-wrap break-all">{{ detailOf(failure.error) }}</pre>
@@ -60,7 +60,7 @@
           </li>
         </ul>
       </div>
-      <div class="row flex-wrap justify-end gap-2">
+      <div class="row flex-wrap gap-2 justify-end">
         <AButton ref="closeButton" :disabled="sending" @click="close">
           {{ messages.plugins.sync.close }}
         </AButton>
@@ -178,12 +178,23 @@ function deviceName(id: string): string {
 }
 
 function failureOf(value: unknown): Failure {
-  const record = value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}
-  return { code: typeof record.code === 'string' ? record.code : 'unknown', message: typeof record.message === 'string' ? record.message : 'error.unknown' }
+  const record = value !== null && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : {}
+  return {
+    code: typeof record.code === 'string'
+      ? record.code
+      : 'unknown',
+    message: typeof record.message === 'string'
+      ? record.message
+      : 'error.unknown'
+  }
 }
 
 function detailOf(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? ''
+  return typeof value === 'string'
+    ? value
+    : JSON.stringify(value, null, 2) ?? ''
 }
 
 defineExpose({ show })

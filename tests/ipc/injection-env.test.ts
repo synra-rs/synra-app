@@ -34,7 +34,11 @@ describe('what the host says about itself', () => {
     expect(onAndroid.env.platform()).toBe('android')
     // ★ And they differ, which is the part that makes the three assertions above a test rather than a transcription of
     // the implementation. A facade that ignored the context and returned one value would fail here.
-    expect(new Set([onLinux.env.platform(), onMac.env.platform(), onAndroid.env.platform()]).size).toBe(3)
+    expect(new Set([
+      onLinux.env.platform(),
+      onMac.env.platform(),
+      onAndroid.env.platform()
+    ]).size).toBe(3)
   })
 
   it('reports the host kind and the app version it was given', () => {
@@ -56,7 +60,9 @@ describe('what the host says about itself', () => {
 
 describe('the three "can"s mean three different things', () => {
   it('can answers about the grant', () => {
-    const synra = createInjection(context({ granted: ['platform:read-clipboard'] }))
+    const synra = createInjection(context({
+      granted: ['platform:read-clipboard']
+    }))
     expect(synra.env.can('platform:read-clipboard')).toBe(true)
     expect(synra.env.can('platform:write-clipboard')).toBe(false)
   })
@@ -65,8 +71,14 @@ describe('the three "can"s mean three different things', () => {
     // ★ Three contexts, and the grant is deliberately the opposite of what a reader might expect: the one that was
     // granted and the one that was refused answer **the same**, and the one whose platform does not support it answers
     // false. A table derived from `granted` would flip the first two.
-    const granted = createInjection(context({ granted: ['platform:read-clipboard'], platformCapabilities: ['clipboard_read'] }))
-    const refused = createInjection(context({ granted: [], platformCapabilities: ['clipboard_read'] }))
+    const granted = createInjection(context({
+      granted: ['platform:read-clipboard'],
+      platformCapabilities: ['clipboard_read']
+    }))
+    const refused = createInjection(context({
+      granted: [],
+      platformCapabilities: ['clipboard_read']
+    }))
     const elsewhere = createInjection(context({ platformCapabilities: [] }))
 
     expect(granted.env.platformSupports('clipboard_read')).toBe(true)

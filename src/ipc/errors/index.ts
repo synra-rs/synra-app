@@ -11,7 +11,11 @@ export function createSynraError(code: ErrorCode, details?: unknown): SynraError
     code,
     message: `error.${code}`,
     retryable: ERROR_RETRYABLE[code],
-    ...(details === undefined ? {} : { details: diagnostic(details) })
+    ...(details === undefined
+      ? {}
+      : {
+          details: diagnostic(details)
+        })
   }
 }
 
@@ -25,35 +29,67 @@ export function asSynraError(reason: unknown): SynraError {
 
 function unknownError(reason: unknown): SynraError {
   const message = data(reason, 'message')
-  const detail = typeof reason === 'string' ? reason : typeof message === 'string' ? message : 'unrecognized bridge failure'
+  const detail = typeof reason === 'string'
+    ? reason
+    : typeof message === 'string'
+      ? message
+      : 'unrecognized bridge failure'
   return createSynraError('internal', { detail })
 }
 
 function fromSnapshot(snapshot: ErrorSnapshot): SynraError {
   const { code, message, retryable, params, details: context, actions, traceId } = snapshot
-  const details = params === undefined ? context : { params, context }
+  const details = params === undefined
+    ? context
+    : { params, context }
   return {
     code,
     message: diagnosticText(message),
     retryable,
-    ...(actions === undefined ? {} : { actions }),
-    ...(traceId === undefined ? {} : { traceId: diagnosticText(traceId) }),
-    ...(details === undefined ? {} : { details: diagnostic(details) })
+    ...(actions === undefined
+      ? {}
+      : { actions }),
+    ...(traceId === undefined
+      ? {}
+      : {
+          traceId: diagnosticText(traceId)
+        }),
+    ...(details === undefined
+      ? {}
+      : {
+          details: diagnostic(details)
+        })
   }
 }
 
 /** Preserve the IPC shape for host readers while using the same validation and diagnostic policy. */
 export function asIpcError(reason: unknown): IpcError {
   const snapshot = errorSnapshot(reason)
-  const normalized = snapshot === undefined ? unknownError(reason) : fromSnapshot(snapshot)
-  const params = snapshot === undefined ? normalized.details : snapshot.params
+  const normalized = snapshot === undefined
+    ? unknownError(reason)
+    : fromSnapshot(snapshot)
+  const params = snapshot === undefined
+    ? normalized.details
+    : snapshot.params
   const details = snapshot?.details
   return {
     code: normalized.code,
-    message: snapshot === undefined ? 'error.bridgeFailed' : normalized.message,
+    message: snapshot === undefined
+      ? 'error.bridgeFailed'
+      : normalized.message,
     retryable: normalized.retryable,
-    ...(normalized.actions === undefined ? {} : { actions: normalized.actions }),
-    ...(params === undefined ? {} : { params: diagnostic(params) }),
-    ...(details === undefined ? {} : { details: diagnostic(details) })
+    ...(normalized.actions === undefined
+      ? {}
+      : { actions: normalized.actions }),
+    ...(params === undefined
+      ? {}
+      : {
+          params: diagnostic(params)
+        }),
+    ...(details === undefined
+      ? {}
+      : {
+          details: diagnostic(details)
+        })
   }
 }

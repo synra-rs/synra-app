@@ -35,7 +35,9 @@ export function createSelfNamespace(context: InjectionContext): SelfNamespace {
       // ★ `args` is omitted rather than sent as `undefined` when the caller gave none: the kernel reads a missing
       // arguments field as `null`, which is what "this action takes nothing" means, and an explicit `undefined` does not
       // survive JSON.
-      return call<Result>('self.invoke', args === undefined ? { action } : { action, args })
+      return call<Result>('self.invoke', args === undefined
+        ? { action }
+        : { action, args })
     },
     actions: async (): Promise<ActionDescriptor[]> => {
       const listed = await call<unknown>('self.actions')

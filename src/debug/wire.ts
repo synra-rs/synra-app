@@ -38,7 +38,9 @@ export function formatWireBytes(bytes: number): string {
 export function shortPeer(peer: string): string {
   if (peer === 'local')
     return 'local'
-  return peer.length > 8 ? `${peer.slice(0, 8)}…` : peer
+  return peer.length > 8
+    ? `${peer.slice(0, 8)}…`
+    : peer
 }
 
 /**
@@ -50,7 +52,9 @@ export function shortPeer(peer: string): string {
 export function formatWireLine(line: WireLine): string {
   const stamp = `${DIM}${formatWireTime(line.atMs)}${RESET}`
   const peer = `${PEER}${shortPeer(line.peer)}${RESET}`
-  const size = line.bytes > 0 ? ` ${DIM}${formatWireBytes(line.bytes)}${RESET}` : ''
+  const size = line.bytes > 0
+    ? ` ${DIM}${formatWireBytes(line.bytes)}${RESET}`
+    : ''
   switch (line.direction) {
     case 'sent':
       return `${stamp} ${SENT}→${RESET} ${peer}  ${WHITE}${line.label}${RESET}${size}`

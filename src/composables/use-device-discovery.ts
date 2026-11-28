@@ -57,7 +57,9 @@ export function useDeviceDiscovery() {
     ? stopAccepted.value ? messages.devices.scanStopping : messages.devices.scanning
     : scanReport.value === 'cached'
       ? messages.devices.scanCached
-      : scanReport.value === 'stopRequested' ? messages.devices.scanStopped : messages.devices.scanFinished)
+      : scanReport.value === 'stopRequested'
+        ? messages.devices.scanStopped
+        : messages.devices.scanFinished)
 
   async function scan(): Promise<void> {
     if (scanning.value)
@@ -146,5 +148,21 @@ export function useDeviceDiscovery() {
     disposed = true
     readRevision += 1
   })
-  return { snapshotError, refreshing, ready, refresh, startingScan, cancellingScan, scanState, scanning, scanReport, scanError, failedCancelId, scanSummary, scan, cancelScan, retryScan }
+  return {
+    snapshotError,
+    refreshing,
+    ready,
+    refresh,
+    startingScan,
+    cancellingScan,
+    scanState,
+    scanning,
+    scanReport,
+    scanError,
+    failedCancelId,
+    scanSummary,
+    scan,
+    cancelScan,
+    retryScan
+  }
 }

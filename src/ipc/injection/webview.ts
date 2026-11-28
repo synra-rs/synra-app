@@ -36,9 +36,15 @@ function capture(text: string, pattern: RegExp): string | null {
 export function detectWebview(userAgent: string, platform: Platform): WebviewInfo {
   switch (platform) {
     case 'windows':
-      return { kind: 'webview2', version: capture(userAgent, /Edg\/(\d+(?:\.\d+)*)/) }
+      return {
+        kind: 'webview2',
+        version: capture(userAgent, /Edg\/(\d+(?:\.\d+)*)/)
+      }
     case 'macos':
-      return { kind: 'wkwebview', version: capture(userAgent, /Version\/(\d+(?:\.\d+)*)/) }
+      return {
+        kind: 'wkwebview',
+        version: capture(userAgent, /Version\/(\d+(?:\.\d+)*)/)
+      }
     case 'ios': {
       // iOS writes its version with underscores (`OS 17_0`), and a dotted version is what a comparison expects.
       const version = capture(userAgent, /OS (\d+(?:_\d+)*)/)?.replaceAll('_', '.') ?? null
@@ -47,7 +53,10 @@ export function detectWebview(userAgent: string, platform: Platform): WebviewInf
     case 'linux':
       return { kind: 'webkitgtk', version: null }
     case 'android':
-      return { kind: 'android-webview', version: capture(userAgent, /Chrome\/(\d+(?:\.\d+)*)/) }
+      return {
+        kind: 'android-webview',
+        version: capture(userAgent, /Chrome\/(\d+(?:\.\d+)*)/)
+      }
     default:
       // A platform this build does not know — a future OS, or a test. `unknown` is the only honest answer, and a plugin
       // that treats it as "modern" is one the design already warns about.

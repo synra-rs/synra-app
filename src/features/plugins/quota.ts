@@ -9,7 +9,9 @@ function quotaNumber(health: PluginSnapshot['health'], key: string): number | un
   if (typeof usage !== 'object' || usage === null)
     return undefined
   const value = (usage as Record<string, unknown>)[key]
-  return typeof value === 'number' ? value : undefined
+  return typeof value === 'number'
+    ? value
+    : undefined
 }
 
 /** Every quota field the report carries, for the disclosure under the summary row. */
@@ -18,7 +20,10 @@ export function quotaRows(health: PluginSnapshot['health']): { label: string, va
   const add = (key: string, label: string, format: (value: number) => string = String): void => {
     const value = quotaNumber(health, key)
     if (value) {
-      rows.push({ label, value: format(value) })
+      rows.push({
+        label,
+        value: format(value)
+      })
     }
   }
   add('maxMemoryBytes', messages.plugins.limitMemory, formatBytes)

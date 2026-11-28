@@ -14,6 +14,9 @@ export function checkPluginEventContract(): void {
     notes.push('plugin-event-contract: Rust projection and event patterns match the shared fixture')
   }
   catch (cause) {
-    failures.push({ check: 'plugin-event-contract', detail: String(cause) })
+    failures.push({
+      check: 'plugin-event-contract',
+      detail: String(cause)
+    })
   }
 }

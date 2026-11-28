@@ -35,17 +35,32 @@ export function decodeDevices(raw: unknown): PluginDeviceTarget[] {
     const online = data(target, 'online')
     if (typeof deviceId !== 'string' || typeof displayName !== 'string' || !isPlatform(platform) || typeof online !== 'boolean')
       return invalid('invalid plugin device target')
-    return { deviceId, displayName, platform, online }
+    return {
+      deviceId,
+      displayName,
+      platform,
+      online
+    }
   })
 }
 
 function decodeEvent(raw: unknown): PluginEvent {
   const name = data(raw, 'name')
   const payload = data(raw, 'payload')
-  if (name === DEVICE_TOPIC)
-    return { name, payload: { devices: decodeDevices(data(payload, 'devices')) } }
-  if (name === TRANSFER_TOPIC)
-    return { name, payload: decodeTransferStatus(payload) }
+  if (name === DEVICE_TOPIC) {
+    return {
+      name,
+      payload: {
+        devices: decodeDevices(data(payload, 'devices'))
+      }
+    }
+  }
+  if (name === TRANSFER_TOPIC) {
+    return {
+      name,
+      payload: decodeTransferStatus(payload)
+    }
+  }
   if (typeof name === 'string' && isCustomEventName(name) && payload !== null && typeof payload === 'object' && !Array.isArray(payload))
     return { name, payload: payload as Record<string, unknown> }
   return invalid('invalid plugin event topic')
@@ -60,7 +75,11 @@ export function decodePoll(raw: unknown): PluginEventPoll {
     || typeof at !== 'number' || !Number.isSafeInteger(at)) {
     return invalid('invalid plugin event envelope')
   }
-  return { ...decodeEvent(raw), seq, at }
+  return {
+    ...decodeEvent(raw),
+    seq,
+    at
+  }
 }
 
 export function decodeRecovery(raw: unknown): PluginEventRecovery {

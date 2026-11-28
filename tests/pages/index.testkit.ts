@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn(),
   subscribe: vi.fn()
 }))
-vi.mock('@/app/kernel', () => ({ kernel: { call: mocks.call, subscribe: mocks.subscribe } }))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call: mocks.call, subscribe: mocks.subscribe }
+}))
 const HomePage = (await import('@/pages/index.vue')).default
 const { useIntentsStore } = await import('@/stores/intents')
 const { useDevicesStore } = await import('@/stores/devices')
@@ -20,13 +22,19 @@ const { INTENT, DEVICES, IDENTITY } = await import('@/ipc/fake-kernel-fixtures')
 const { messages } = await import('@/messages')
 
 function router(): ReturnType<typeof createRouter> {
-  return createRouter({ history: createMemoryHistory(), routes: [] })
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: []
+  })
 }
 function answer(byCommand: Record<string, unknown>) {
   const answers: Record<string, unknown> = { transfer_list: [], transfer_received: [], ...byCommand }
   mocks.call.mockImplementation(async (command: string) => command in answers
     ? { ok: true, value: answers[command] }
-    : { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } })
+    : {
+        ok: false,
+        error: { code: 'internal', message: 'error.internal', retryable: false }
+      })
 }
 beforeEach(() => {
   installBrowserApis()

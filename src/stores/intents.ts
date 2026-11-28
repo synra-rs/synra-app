@@ -74,7 +74,14 @@ export const useIntentsStore = defineStore('intents', () => {
     return intents.value.find(intent => intent.intentId === intentId)
   }
 
-  return { apply, applySnapshot, readTransfers, intent, intents, transfers }
+  return {
+    apply,
+    applySnapshot,
+    readTransfers,
+    intent,
+    intents,
+    transfers
+  }
 })
 
 /**
@@ -87,5 +94,7 @@ function upsert<T>(items: readonly T[], next: T, key: (item: T) => string): read
   const at = items.findIndex(item => key(item) === key(next))
   if (at < 0)
     return [...items, next]
-  return items.map((item, index) => (index === at ? next : item))
+  return items.map((item, index) => (index === at
+    ? next
+    : item))
 }

@@ -74,7 +74,9 @@ export function createStorageNamespace(context: InjectionContext): StorageNamesp
       await call<null>('storage.delete', { key })
     },
     keys: (prefix?: string): Promise<string[]> =>
-      call<string[]>('storage.keys', prefix === undefined ? {} : { prefix }),
+      call<string[]>('storage.keys', prefix === undefined
+        ? {}
+        : { prefix }),
     quota: (): Promise<{ usedBytes: number, maxBytes: number }> =>
       call<{ usedBytes: number, maxBytes: number }>('storage.quota')
   }

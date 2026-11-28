@@ -14,7 +14,9 @@ const mocks = vi.hoisted(() => ({
   call: vi.fn()
 }))
 
-vi.mock('@/app/kernel', () => ({ kernel: { call: mocks.call } }))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call: mocks.call }
+}))
 
 const CrashNotice = (await import('@/components/CrashNotice.vue')).default
 const { messages } = await import('@/messages')
@@ -58,7 +60,9 @@ describe('the crash notice', () => {
     // ★ The cut is `atMs >= now - window`, with no upper bound. A report stamped in the future means the clock moved
     //   backwards between the write and this read — the kernel makes the same choice in `CrashReport::is_recent`. An
     //   upper bound would hide exactly the crash someone is looking for. The list above tests the old side only.
-    mocks.call.mockResolvedValueOnce(report([{ ...RECENT, atMs: Date.now() + 60 * 60 * 1000 }]))
+    mocks.call.mockResolvedValueOnce(report([
+      { ...RECENT, atMs: Date.now() + 60 * 60 * 1000 }
+    ]))
 
     const wrapper = mount(CrashNotice)
     await flushPromises()
@@ -146,7 +150,11 @@ describe('the crash notice', () => {
     // The other direction: an empty `excluded` must not draw a "Left out:" line with nothing after it.
     mocks.call
       .mockResolvedValueOnce(report([RECENT]))
-      .mockResolvedValueOnce(report({ path: 'C:/data/synra-diagnostics.json', included: ['system'], excluded: [] }))
+      .mockResolvedValueOnce(report({
+        path: 'C:/data/synra-diagnostics.json',
+        included: ['system'],
+        excluded: []
+      }))
 
     const wrapper = mount(CrashNotice)
     await flushPromises()

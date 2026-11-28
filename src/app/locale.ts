@@ -4,7 +4,9 @@ export type Locale = 'en' | 'zh-CN'
 export type LocalePreference = Locale | 'system'
 
 export function normalizePreference(value: unknown): LocalePreference {
-  return value === 'en' || value === 'zh-CN' ? value : 'system'
+  return value === 'en' || value === 'zh-CN'
+    ? value
+    : 'system'
 }
 
 export function resolveLocale(preference: LocalePreference, languages: readonly string[]): Locale {
@@ -21,7 +23,11 @@ export function resolveLocale(preference: LocalePreference, languages: readonly 
 }
 
 function systemLanguages(): readonly string[] {
-  return typeof navigator === 'undefined' ? [] : navigator.languages.length ? navigator.languages : [navigator.language]
+  return typeof navigator === 'undefined'
+    ? []
+    : navigator.languages.length
+      ? navigator.languages
+      : [navigator.language]
 }
 
 export const localePreference = ref<LocalePreference>('system')

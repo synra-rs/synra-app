@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { kernel } from '../app/kernel'
 import { useSettingsDraft } from '../components/settings/use-settings-draft'
+import { usePluginPreferences } from '../features/settings/use-plugin-preferences'
 import { useSettingsWrites } from '../features/settings/writes'
 import { messages } from '../messages'
 import { useDevicesStore } from '../stores/devices'
@@ -13,12 +14,14 @@ export function useSettingsPage() {
   type Category = 'general' | 'security' | 'plugins' | 'diagnostics' | 'about'
 
   const category = ref<Category>('general')
-  const categories = computed(() => (['general', 'security', 'plugins', 'diagnostics', 'about'] as const).map(value => ({ value, label: messages.settings.categories[value] })))
+  const categories = computed(() => ([
+    'general',
+    'security',
+    'plugins',
+    'diagnostics',
+    'about'
+  ] as const).map(value => ({ value, label: messages.settings.categories[value] })))
   const route = useRoute()
-  function categoryFromQuery(): Category | undefined {
-    const asked = route.query.category
-    return categories.value.find(item => item.value === asked)?.value
-  }
   const categoryHeading = ref<HTMLElement>()
   function setCategoryHeading(element: unknown): void {
     categoryHeading.value = element as HTMLElement | undefined
@@ -26,7 +29,7 @@ export function useSettingsPage() {
   const diagnosticsVisited = ref(false)
   const router = useRouter()
   watch(() => route.query.category, () => {
-    const asked = categoryFromQuery()
+    const asked = categories.value.find(item => item.value === route.query.category)?.value
     if (!asked)
       return
     category.value = asked
@@ -54,7 +57,12 @@ export function useSettingsPage() {
   const readError = ref<IpcError>()
   const loading = ref(false)
   let disposed = false
-  const { errors, busy, saved, needsRead, anyBusy, configReady, checkSetting, writeSetting } = useSettingsWrites(() => disposed, resetDrafts)
+  const writes = useSettingsWrites(() => disposed, resetPluginDrafts)
+  const { errors, busy, saved, needsRead, anyBusy, configReady, writeSetting } = writes
+  const { resetDrafts, ...pluginPreferences } = usePluginPreferences(writes)
+  function resetPluginDrafts(operation: Operation): void {
+    resetDrafts(operation)
+  }
   const { value: nameDraft, dirty: nameDirty, conflict: nameConflict, reset: resetName } = useSettingsDraft(() => identity.value?.displayName ?? '')
   const renaming = ref(false)
   function startRename(): void {
@@ -116,60 +124,18 @@ export function useSettingsPage() {
     { value: 'zh-CN', label: messages.settings.language.chinese },
     { value: 'en', label: messages.settings.language.english }
   ])
-  const updatePolicyOptions = computed(() => [
-    { value: 'never', label: messages.settings.updates.never },
-    { value: 'notify-only', label: messages.settings.updates.notifyOnly },
-    { value: 'auto-minor', label: messages.settings.updates.autoMinor },
-    { value: 'auto-all', label: messages.settings.updates.autoAll }
-  ])
-  const updatePolicy = computed(() => {
-    const value = settings.value('plugins.auto_update')
-    return typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value) ? value : 'notify-only'
-  })
   async function saveLanguage(value: unknown): Promise<void> {
-    if (value === 'system' || value === 'en' || value === 'zh-CN')
-      await writeSetting('language', { set: { 'ui.locale': value } })
-  }
-  async function saveUpdatePolicy(value: unknown): Promise<void> {
-    if (typeof value === 'string' && updatePolicyOptions.value.some(option => option.value === value))
-      await writeSetting('policy', { set: { 'plugins.auto_update': value } })
-  }
-  function registrySource(): string[] {
-    const raw = settings.value('plugins.registry')
-    const display = (item: unknown): string => typeof item === 'string' ? item : JSON.stringify(item) ?? ''
-    const urls = raw === undefined ? [] : Array.isArray(raw) ? raw.map(display) : [display(raw)]
-    return urls.length ? urls : ['']
-  }
-  const { value: registryUrls, dirty: registryDirty, conflict: registryConflict, reset: resetRegistry } = useSettingsDraft(registrySource)
-  const { value: retentionDays, dirty: retentionDirty, conflict: retentionConflict, reset: resetRetention } = useSettingsDraft(() => {
-    const raw = settings.value('audit.retentionDays')
-    return typeof raw === 'number' && Number.isFinite(raw) ? raw : 7
-  })
-  function updateRegistry(index: number, value: string): void {
-    registryUrls.value = registryUrls.value.map((url, at) => index === at ? value : url)
-    saved.registry = false
-  }
-  function resetDrafts(operation: Operation): void {
-    if (operation === 'registry')
-      resetRegistry()
-    if (operation === 'retention')
-      resetRetention()
-  }
-  async function saveRegistry(): Promise<boolean> {
-    if (!registryDirty.value && !needsRead.registry)
-      return true
-    const urls = registryUrls.value.map(url => url.trim())
-    const empty = urls.length === 0 || (urls.length === 1 && urls[0] === '')
-    return await writeSetting('registry', empty ? { unset: ['plugins.registry'] } : { set: { 'plugins.registry': urls.length === 1 ? urls[0]! : urls } })
-  }
-  async function saveRetention(): Promise<boolean> {
-    if (!retentionDirty.value && !needsRead.retention)
-      return true
-    return await writeSetting('retention', { set: { 'audit.retentionDays': Math.min(3650, Math.max(1, Math.trunc(retentionDays.value))) } })
+    if (value === 'system' || value === 'en' || value === 'zh-CN') {
+      await writeSetting('language', {
+        set: { 'ui.locale': value }
+      })
+    }
   }
   const trusted = computed(() => {
     const raw = settings.value('transfers.acceptFrom')
-    return (Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : []).map(id => ({ id, name: devices.get(id)?.displayName ?? id }))
+    return (Array.isArray(raw)
+      ? raw.filter((id): id is string => typeof id === 'string')
+      : []).map(id => ({ id, name: devices.get(id)?.displayName ?? id }))
   })
   const removingId = ref<string>()
   async function forgetTrusted(id: string): Promise<void> {
@@ -177,7 +143,13 @@ export function useSettingsPage() {
       return
     removingId.value = id
     const remaining = trusted.value.filter(device => device.id !== id).map(device => device.id)
-    await writeSetting('trusted', remaining.length ? { set: { 'transfers.acceptFrom': remaining } } : { unset: ['transfers.acceptFrom'] })
+    await writeSetting('trusted', remaining.length
+      ? {
+          set: { 'transfers.acceptFrom': remaining }
+        }
+      : {
+          unset: ['transfers.acceptFrom']
+        })
   }
   const launchAtLogin = ref(false)
   const launchAtLoginUnavailable = ref(false)
@@ -212,8 +184,7 @@ export function useSettingsPage() {
       busy.startup = false
     }
   }
-  const pluginDrafts = computed(() => registryDirty.value || retentionDirty.value || needsRead.registry || needsRead.retention)
-  const hasDrafts = computed(() => (renaming.value && (nameDirty.value || needsRead.name)) || pluginDrafts.value)
+  const hasDrafts = computed(() => (renaming.value && (nameDirty.value || needsRead.name)) || pluginPreferences.pluginDrafts.value)
   const leaveOpen = ref(false)
   let leaveResolve: ((leave: boolean) => void) | undefined
   function resolveLeave(leave: boolean): void {
@@ -234,7 +205,7 @@ export function useSettingsPage() {
   async function saveAndLeave(): Promise<void> {
     if (anyBusy.value)
       return
-    if (nameConflict.value || registryConflict.value || retentionConflict.value) {
+    if (nameConflict.value || pluginPreferences.registryConflict.value || pluginPreferences.retentionConflict.value) {
       category.value = nameConflict.value ? 'general' : 'plugins'
       resolveLeave(false)
       return
@@ -244,7 +215,7 @@ export function useSettingsPage() {
       resolveLeave(false)
       return
     }
-    if (!await saveRegistry() || !await saveRetention()) {
+    if (!await pluginPreferences.saveRegistry() || !await pluginPreferences.saveRetention()) {
       category.value = 'plugins'
       resolveLeave(false)
       return
@@ -261,11 +232,18 @@ export function useSettingsPage() {
     if (loading.value)
       return
     loading.value = true
-    const [config, name] = await Promise.all([settings.read(kernel), devices.readIdentity(kernel)])
+    const [config, name] = await Promise.all([
+      settings.read(kernel),
+      devices.readIdentity(kernel)
+    ])
     if (!disposed) {
       if (config.ok)
         configReady.value = true
-      readError.value = !config.ok ? config.error : !name.ok ? name.error : undefined
+      readError.value = !config.ok
+        ? config.error
+        : !name.ok
+            ? name.error
+            : undefined
     }
     loading.value = false
   }
@@ -279,5 +257,41 @@ export function useSettingsPage() {
     resolveLeave(false)
     window.removeEventListener('beforeunload', beforeUnload)
   })
-  return { category, categories, setCategoryHeading, diagnosticsVisited, selectCategory, identity, readError, loading, renaming, startRename, cancelRename, checkName, saveName, askCancel, debugConsole, notifyOnReceive, languageOptions, updatePolicyOptions, updatePolicy, saveLanguage, saveUpdatePolicy, updateRegistry, saveRegistry, saveRetention, trusted, removingId, forgetTrusted, launchAtLogin, launchAtLoginUnavailable, saveLaunchAtLogin, pluginDrafts, hasDrafts, resolveLeave, saveAndLeave, load, errors, busy, saved, needsRead, anyBusy, configReady, checkSetting, writeSetting, nameDraft, nameDirty, nameConflict, registryUrls, registryDirty, registryConflict, retentionDays, retentionDirty, retentionConflict, resetName, resetRegistry, resetRetention, leaveOpen }
+  return {
+    category,
+    categories,
+    setCategoryHeading,
+    diagnosticsVisited,
+    selectCategory,
+    identity,
+    readError,
+    loading,
+    renaming,
+    startRename,
+    cancelRename,
+    checkName,
+    saveName,
+    askCancel,
+    debugConsole,
+    notifyOnReceive,
+    languageOptions,
+    saveLanguage,
+    ...pluginPreferences,
+    trusted,
+    removingId,
+    forgetTrusted,
+    launchAtLogin,
+    launchAtLoginUnavailable,
+    saveLaunchAtLogin,
+    hasDrafts,
+    resolveLeave,
+    saveAndLeave,
+    load,
+    ...writes,
+    nameDraft,
+    nameDirty,
+    nameConflict,
+    resetName,
+    leaveOpen
+  }
 }

@@ -12,7 +12,12 @@ export default antfu({
   // `src-tauri/inject/facade.js` is the plugin-page façade: `pnpm run build:facade` writes it, the shell embeds it with
   // `include_str!`, and `scripts/check-shapes.ts` rebuilds it to prove the committed copy is current. It is minified
   // output, so linting it can only report the minifier's style.
-  ignores: ['dist', 'src-tauri/target', 'src-tauri/gen', 'src-tauri/inject'],
+  ignores: [
+    'dist',
+    'src-tauri/target',
+    'src-tauri/gen',
+    'src-tauri/inject'
+  ],
 
   rules: {
     'style/comma-dangle': ['warn', 'never']
@@ -39,9 +44,12 @@ export default antfu({
 
   vue: {
     overrides: {
-      'vue/block-order': ['error', {
-        order: ['style', 'template', 'script']
-      }],
+      'vue/block-order': [
+        'error',
+        {
+          order: ['style', 'template', 'script']
+        }
+      ],
       'vue/comma-dangle': ['warn', 'never']
     }
   },

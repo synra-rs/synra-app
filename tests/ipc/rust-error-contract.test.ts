@@ -24,9 +24,11 @@ describe('real Rust error serialization', () => {
   })
 
   it('preserves real suggested actions through a namespace rejection and the host client', async () => {
-    const seam = bridge({ invoke: vi.fn(async () => {
-      throw fixture.ipc
-    }) })
+    const seam = bridge({
+      invoke: vi.fn(async () => {
+        throw fixture.ipc
+      })
+    })
     const expected = {
       code: fixture.ipc.code,
       retryable: fixture.ipc.retryable,

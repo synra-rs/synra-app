@@ -7,9 +7,21 @@ import { answer, card, click, ErrorNotice, LocalInstallDialog, messages, mocks, 
 describe('local installation', () => {
   it('opens one all-or-nothing permission confirmation after installation', async () => {
     answer({
-      plugins_list: [card({ enabled: false, state: 'disabled', granted: [], denied: [] })],
+      plugins_list: [
+        card({
+          enabled: false,
+          state: 'disabled',
+          granted: [],
+          denied: []
+        })
+      ],
       plugins_install: { pluginId: '@acme/reader', version: '1.0', enabled: false },
-      plugins_consent_respond: card({ enabled: false, state: 'disabled', granted: ['log:*', 'net:fetch:example.com'], denied: [] })
+      plugins_consent_respond: card({
+        enabled: false,
+        state: 'disabled',
+        granted: ['log:*', 'net:fetch:example.com'],
+        denied: []
+      })
     })
     mocks.open.mockResolvedValue('D:/reader.synra')
     const { wrapper } = await mountPage()
@@ -21,12 +33,22 @@ describe('local installation', () => {
     expect(document.body.textContent).toContain(messages.plugins.workflow.installConsentTitle)
     expect(document.body.textContent).toContain('log:*')
     await click(consent, messages.plugins.workflow.acceptInstall)
-    expect(mocks.call).toHaveBeenCalledWith('plugins_consent_respond', { pluginId: '@acme/reader', granted: ['log:*', 'net:fetch:example.com'] })
+    expect(mocks.call).toHaveBeenCalledWith('plugins_consent_respond', {
+      pluginId: '@acme/reader',
+      granted: ['log:*', 'net:fetch:example.com']
+    })
   })
 
   it('removes the newly installed plugin when permission is rejected', async () => {
     answer({
-      plugins_list: [card({ enabled: false, state: 'disabled', granted: [], denied: [] })],
+      plugins_list: [
+        card({
+          enabled: false,
+          state: 'disabled',
+          granted: [],
+          denied: []
+        })
+      ],
       plugins_install: { pluginId: '@acme/reader', version: '1.0', enabled: false },
       plugins_uninstall: { bytesFreed: 0, dataKept: true, leftovers: [] }
     })
@@ -49,7 +71,9 @@ describe('local installation', () => {
   })
 
   it.each([true, false])('chooses a native source and installs its path with directory=%s', async (directory) => {
-    answer({ plugins_install: { pluginId: '@acme/reader', version: '1.0', enabled: false } })
+    answer({
+      plugins_install: { pluginId: '@acme/reader', version: '1.0', enabled: false }
+    })
     mocks.open.mockResolvedValue('D:/plugins/reader.synra')
     const { wrapper } = await mountPage()
     await click(wrapper, messages.plugins.workflow.localInstall)
@@ -57,13 +81,20 @@ describe('local installation', () => {
     await click(dialog, directory ? messages.plugins.chooseDirectory : messages.plugins.choosePackage)
     expect(mocks.open).toHaveBeenCalledWith(expect.objectContaining({ directory, multiple: false }))
     await click(dialog, messages.plugins.installAction)
-    expect(mocks.call).toHaveBeenCalledWith('plugins_install', { source: { source: 'path', path: 'D:/plugins/reader.synra' } })
+    expect(mocks.call).toHaveBeenCalledWith('plugins_install', {
+      source: { source: 'path', path: 'D:/plugins/reader.synra' }
+    })
     expect(wrapper.findComponent(LocalInstallDialog).exists()).toBe(false)
     expect(wrapper.findComponent(PluginInstallConsent).exists()).toBe(true)
   })
 
   it('retains a rejected path and a picker cancellation leaves it intact', async () => {
-    answer({ plugins_install: () => ({ ok: false, error: { code: 'invalid_argument', message: 'error.invalid' } }) })
+    answer({
+      plugins_install: () => ({
+        ok: false,
+        error: { code: 'invalid_argument', message: 'error.invalid' }
+      })
+    })
     mocks.open.mockResolvedValueOnce('D:/chosen').mockResolvedValueOnce(null)
     const { wrapper } = await mountPage()
     await click(wrapper, messages.plugins.workflow.localInstall)

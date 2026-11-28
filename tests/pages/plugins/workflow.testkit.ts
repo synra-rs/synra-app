@@ -8,9 +8,14 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { setLocalePreference } from '@/app/locale'
 import { installBrowserApis } from '@/testing/browser'
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), open: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(),
+  open: vi.fn()
+}))
 export { mocks }
-vi.mock('@/app/kernel', () => ({ kernel: { call: mocks.call } }))
+vi.mock('@/app/kernel', () => ({
+  kernel: { call: mocks.call }
+}))
 vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 export const PluginsPage = (await import('@/pages/plugins.vue')).default
 export const PluginRow = (await import('@/components/plugins/plugin-row.vue')).default
@@ -29,15 +34,43 @@ export const { usePluginsStore } = await import('@/stores/plugins')
 export const { messages } = await import('@/messages')
 
 export function card(overrides: Partial<PluginSnapshot> = {}): PluginSnapshot {
-  return { pluginId: '@acme/reader', dataPath: 'data/reader', title: 'Reader', description: 'A plugin with a page', version: '1.0.0', localSource: false, publisher: '@acme', enabled: true, state: 'active', hasUi: true, hybrid: false, requested: ['log:*', 'net:fetch:example.com'], granted: ['log:*'], denied: ['net:fetch:example.com'], ...overrides }
+  return {
+    pluginId: '@acme/reader',
+    dataPath: 'data/reader',
+    title: 'Reader',
+    description: 'A plugin with a page',
+    version: '1.0.0',
+    localSource: false,
+    publisher: '@acme',
+    enabled: true,
+    state: 'active',
+    hasUi: true,
+    hybrid: false,
+    requested: ['log:*', 'net:fetch:example.com'],
+    granted: ['log:*'],
+    denied: ['net:fetch:example.com'],
+    ...overrides
+  }
 }
 export function answer(byCommand: Record<string, unknown> = {}): void {
   mocks.call.mockImplementation(async (command: string, args: unknown) => {
-    const defaults: Record<string, unknown> = { plugins_list: [card()], plugins_publishers: [], plugins_catalog_search: [], plugins_audit: [], plugins_check_update: null }
-    const value = command in byCommand ? byCommand[command] : defaults[command]
+    const defaults: Record<string, unknown> = {
+      plugins_list: [
+        card()
+      ],
+      plugins_publishers: [],
+      plugins_catalog_search: [],
+      plugins_audit: [],
+      plugins_check_update: null
+    }
+    const value = command in byCommand
+      ? byCommand[command]
+      : defaults[command]
     if (!(command in byCommand) && !(command in defaults))
       throw new Error(`Unexpected command: ${command}`)
-    return typeof value === 'function' ? value(args) : { ok: true, value }
+    return typeof value === 'function'
+      ? value(args)
+      : { ok: true, value }
   })
 }
 const mounted: VueWrapper[] = []
@@ -56,9 +89,23 @@ afterEach(() => {
   setLocalePreference('system')
 })
 export async function mountPage(path = '/plugins') {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/plugins', component: PluginsPage }, { path: '/settings', component: { template: '<div />' } }] })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/plugins', component: PluginsPage },
+      {
+        path: '/settings',
+        component: { template: '<div />' }
+      }
+    ]
+  })
   await router.push(path)
-  const wrapper = mount(PluginsPage, { attachTo: document.body, global: { plugins: [router] } })
+  const wrapper = mount(PluginsPage, {
+    attachTo: document.body,
+    global: {
+      plugins: [router]
+    }
+  })
   mounted.push(wrapper)
   await flushPromises()
   return { wrapper, router }
@@ -74,7 +121,11 @@ export async function click(wrapper: Pick<VueWrapper, 'findAllComponents'>, text
   await flushPromises()
 }
 export async function clickBody(text: string, role = 'button'): Promise<void> {
-  const node = [...document.querySelectorAll<HTMLElement>(role === 'button' ? 'button' : `[role="${role}"]`)].find(node => node.textContent?.replace(/\s/g, '') === text.replace(/\s/g, ''))
+  const node = [
+    ...document.querySelectorAll<HTMLElement>(role === 'button'
+      ? 'button'
+      : `[role="${role}"]`)
+  ].find(node => node.textContent?.replace(/\s/g, '') === text.replace(/\s/g, ''))
   if (!node)
     throw new Error(`Visible control not found: ${text}`)
   node.click()

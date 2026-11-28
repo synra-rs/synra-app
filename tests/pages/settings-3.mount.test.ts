@@ -6,7 +6,10 @@ import { answer, IDENTITY, messages, mocks, mountPage, openCategory, openDiagnos
 describe('the settings page', () => {
   it('shows the audit retention and writes a new window', async () => {
     answer({
-      config_get: { values: { 'audit.retentionDays': 30 }, overridden: ['audit.retentionDays'] },
+      config_get: {
+        values: { 'audit.retentionDays': 30 },
+        overridden: ['audit.retentionDays']
+      },
       identity_get: IDENTITY,
       config_set: null
     })
@@ -23,7 +26,9 @@ describe('the settings page', () => {
     button?.click()
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('config_set', {
-      patch: { set: { 'audit.retentionDays': 90 } }
+      patch: {
+        set: { 'audit.retentionDays': 90 }
+      }
     })
     wrapper.unmount()
   })
@@ -126,7 +131,12 @@ describe('the settings page', () => {
       diag_probes: {
         results: [
           { name: 'tcp_port_available', status: 'ok', detail: 'a free port was found' },
-          { name: 'wasm_backend', status: 'warn', detail: 'this host did not read the runtime', suggestion: 'include this report' }
+          {
+            name: 'wasm_backend',
+            status: 'warn',
+            detail: 'this host did not read the runtime',
+            suggestion: 'include this report'
+          }
         ]
       }
     })
@@ -155,7 +165,11 @@ describe('the settings page', () => {
     answer({
       config_get: { values: {}, overridden: [] },
       identity_get: IDENTITY,
-      diag_probes: { results: [{ name: 'skipped_by_policy', status: 'skipped', detail: 'policy' }] }
+      diag_probes: {
+        results: [
+          { name: 'skipped_by_policy', status: 'skipped', detail: 'policy' }
+        ]
+      }
     })
     const wrapper = await mountPage()
     await flushPromises()
@@ -171,7 +185,10 @@ describe('the settings page', () => {
     wrapper.unmount()
   })
   it('drops the section from the url once a column is chosen by hand', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     const wrapper = await mountPage('/settings?category=security')
     try {
       await flushPromises()
@@ -184,7 +201,14 @@ describe('the settings page', () => {
     }
   })
   it('keeps drafts across categories and exposes external changes without replacing them', async () => {
-    answer({ config_get: { values: { 'plugins.registry': 'https://a.example' }, overridden: ['plugins.registry'] }, identity_get: IDENTITY, config_set: null })
+    answer({
+      config_get: {
+        values: { 'plugins.registry': 'https://a.example' },
+        overridden: ['plugins.registry']
+      },
+      identity_get: IDENTITY,
+      config_set: null
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()
@@ -193,7 +217,10 @@ describe('the settings page', () => {
       await openCategory(wrapper, 'general')
       expect(wrapper.get('[data-testid="settings-plugins"]').isVisible()).toBe(false)
       const { useSettingsStore } = await import('@/stores/settings')
-      useSettingsStore().applySnapshot({ values: { 'plugins.registry': 'https://external.example' }, overridden: ['plugins.registry'] })
+      useSettingsStore().applySnapshot({
+        values: { 'plugins.registry': 'https://external.example' },
+        overridden: ['plugins.registry']
+      })
       await openCategory(wrapper, 'plugins')
       expect((wrapper.get('#registry-0').element as HTMLInputElement).value).toBe('https://draft.example')
       expect(wrapper.text()).toContain(messages.settings.edit.conflict)

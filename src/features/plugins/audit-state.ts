@@ -50,14 +50,21 @@ export function usePluginAudit(client: KernelClient, pluginId: Ref<string>, acti
       return
     const id = pluginId.value
     const current = revision
-    const offset = more ? rows.value?.length ?? 0 : 0
+    const offset = more
+      ? rows.value?.length ?? 0
+      : 0
     busy.value = more ? 'more' : 'first'
     retryOperation.value = more ? 'more' : 'first'
     error.value = undefined
     const outcome = await audit(client, id, AUDIT_PAGE, offset)
     if (alive && revision === current && expanded.value && active.value) {
       if (outcome.ok) {
-        rows.value = more ? [...(rows.value ?? []), ...outcome.value] : [...outcome.value]
+        rows.value = more
+          ? [
+              ...(rows.value ?? []),
+              ...outcome.value
+            ]
+          : [...outcome.value]
         done.value = outcome.value.length < AUDIT_PAGE
       }
       else {
@@ -119,7 +126,9 @@ export function usePluginAudit(client: KernelClient, pluginId: Ref<string>, acti
     setExpanded,
     retryOperation: computed(() => retryOperation.value),
     loadMore: () => read(true),
-    retry: () => retryOperation.value === 'clear' ? clear() : read(retryOperation.value === 'more'),
+    retry: () => retryOperation.value === 'clear'
+      ? clear()
+      : read(retryOperation.value === 'more'),
     clear
   }
 }

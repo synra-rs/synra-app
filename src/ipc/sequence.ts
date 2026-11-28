@@ -92,7 +92,9 @@ export class SequenceTracker {
     this.stale = true
     // A jump of several thousand would be a number nobody reads, and subtracting from an externally-supplied value can
     // overflow — so the count is reported only when it is one worth counting.
-    return missed <= MAX_COUNTED_GAP ? { kind: 'refreshSnapshot', missed } : { kind: 'refreshSnapshot' }
+    return missed <= MAX_COUNTED_GAP
+      ? { kind: 'refreshSnapshot', missed }
+      : { kind: 'refreshSnapshot' }
   }
 
   /** Records that a snapshot was taken, so the picture is trustworthy again. */

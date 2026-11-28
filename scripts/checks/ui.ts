@@ -33,7 +33,9 @@ export async function checkTerminalTouchPath(): Promise<void> {
 export async function checkDevServerContract(): Promise<void> {
   const tauri = JSON.parse(await readFile(join(here, 'src-tauri', 'tauri.conf.json'), 'utf8')) as { build?: { devUrl?: string } }
   const devUrl = tauri.build?.devUrl
-  const port = devUrl ? new URL(devUrl).port : ''
+  const port = devUrl
+    ? new URL(devUrl).port
+    : ''
   const vite = await readFile(join(here, 'vite.config.ts'), 'utf8')
   if (!port || !new RegExp(`port:\\s*${port}\\b`).test(vite) || !/strictPort:\s*true/.test(vite))
     failures.push({ check: 'dev-server-contract', detail: 'Tauri devUrl and Vite strict port must remain aligned' })
@@ -55,8 +57,12 @@ export async function checkDialogNames(): Promise<void> {
       //   dialog to put an arrow ahead of its title would have been reported as unnamed while being named.
       const after = text.slice(index)
       const end = /^(?:"[^"]*"|'[^']*'|[^>"'])*>/.exec(after)
-      const close = end ? index + end[0].length - 1 : -1
-      const tag = text.slice(index, close === -1 ? undefined : close)
+      const close = end
+        ? index + end[0].length - 1
+        : -1
+      const tag = text.slice(index, close === -1
+        ? undefined
+        : close)
       counted += 1
       if (!/:title=|:wrap-props=/.test(tag)) {
         const line = text.slice(0, index).split('\n').length
@@ -183,7 +189,9 @@ export async function checkNativeButtons(): Promise<void> {
       }
     }
   }
-  notes.push(`native-buttons: ${counted.toString()} native \`<button>\`${counted === 1 ? '' : 's'} clear the user agent look`)
+  notes.push(`native-buttons: ${counted.toString()} native \`<button>\`${counted === 1
+    ? ''
+    : 's'} clear the user agent look`)
 }
 
 export async function checkFocusableNames(): Promise<void> {

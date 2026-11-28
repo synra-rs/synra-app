@@ -30,7 +30,9 @@ import { hasTauriInternals, TauriKernel } from '../ipc/tauri'
  * Takes the candidate rather than reading the global, so a test can ask for both answers without touching `window`.
  */
 export function bridgeFor(candidate: unknown = globalThis) {
-  return hasTauriInternals(candidate) ? new TauriKernel() : new FakeKernel()
+  return hasTauriInternals(candidate)
+    ? new TauriKernel()
+    : new FakeKernel()
 }
 
 /** The one client the whole interface shares. */

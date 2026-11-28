@@ -12,7 +12,15 @@ export function rustContract(appRoot: string, example: 'error_contract' | 'regis
       throw new Error('could not locate the Rust workspace owning the IPC contract')
     core = parent
   }
-  const output = execFileSync('cargo', ['run', '--locked', '--quiet', '-p', 'synra-ipc', '--example', example], {
+  const output = execFileSync('cargo', [
+    'run',
+    '--locked',
+    '--quiet',
+    '-p',
+    'synra-ipc',
+    '--example',
+    example
+  ], {
     cwd: core,
     encoding: 'utf8',
     windowsHide: true,

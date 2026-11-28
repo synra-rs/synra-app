@@ -11,6 +11,9 @@ export function checkErrorContract(): void {
     notes.push('error-contract: actual Rust serde output matches the frontend conformance fixture')
   }
   catch (cause) {
-    failures.push({ check: 'error-contract', detail: String(cause) })
+    failures.push({
+      check: 'error-contract',
+      detail: String(cause)
+    })
   }
 }

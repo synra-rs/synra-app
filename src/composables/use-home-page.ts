@@ -48,7 +48,9 @@ export function useHomePage() {
       .replace('{total}', formatBytes(transfer.totalBytes))
   }
   function directionOf(transfer: TransferSnapshot): string {
-    return transfer.direction === 'receive' ? messages.home.inFlight.receiving : messages.home.inFlight.sending
+    return transfer.direction === 'receive'
+      ? messages.home.inFlight.receiving
+      : messages.home.inFlight.sending
   }
   function stateLabel(transfer: TransferSnapshot): string {
     return messages.home.inFlight.states[transfer.state as keyof typeof messages.home.inFlight.states] ?? transfer.state
@@ -63,8 +65,12 @@ export function useHomePage() {
   }
   const wire = computed(() => {
     const transfer = transfers.value[0]
-    if (transfer)
-      return { state: 'transferring' as const, device: devices.cards.find(card => card.deviceId === transfer.peerDevice) }
+    if (transfer) {
+      return {
+        state: 'transferring' as const,
+        device: devices.cards.find(card => card.deviceId === transfer.peerDevice)
+      }
+    }
     const reachable = devices.cards.find(card => card.paired && card.online)
     if (reachable)
       return { state: 'connected' as const, device: reachable }
@@ -112,7 +118,9 @@ export function useHomePage() {
   const copiedTrace = ref<string | undefined>(undefined)
   const selectedTrace = ref<string | undefined>(undefined)
   function toggleExpanded(intentId: string): void {
-    expanded.value = expanded.value === intentId ? undefined : intentId
+    expanded.value = expanded.value === intentId
+      ? undefined
+      : intentId
   }
   async function copyTrace(intentId: string, traceId: string): Promise<void> {
     try {
@@ -165,7 +173,14 @@ export function useHomePage() {
     await decide(intent, { decision: 'decline', reason: null })
   }
   function canDecline(intent: IntentSnapshot): boolean {
-    return !['succeeded', 'failed', 'noHandler', 'timedOut', 'refused', 'cancelled'].includes(intent.state)
+    return ![
+      'succeeded',
+      'failed',
+      'noHandler',
+      'timedOut',
+      'refused',
+      'cancelled'
+    ].includes(intent.state)
   }
   function deviceName(deviceId: string): string {
     return devices.byId.get(deviceId)?.displayName ?? deviceId
@@ -193,7 +208,9 @@ export function useHomePage() {
     return template
       .replace('{attempts}', String(retry.attempts))
       .replace('{max}', String(retry.maxAttempts))
-      .replace('{time}', retry.nextAtMs === undefined ? '' : formatClock(retry.nextAtMs))
+      .replace('{time}', retry.nextAtMs === undefined
+        ? ''
+        : formatClock(retry.nextAtMs))
   }
   function formatClock(at: number): string {
     return formatTime(at, true)
@@ -205,5 +222,40 @@ export function useHomePage() {
     return errorSentence(error.code)
   }
   onMounted(load)
-  return { router, devices, askBeforeCancel, error, received, cancelling, percentOf, progressLabel, directionOf, stateLabel, cancelTransfer, wire, state, wirePeerName, wireWidth, wireLive, load, expanded, copiedTrace, selectedTrace, toggleExpanded, copyTrace, deciding, accept, decline, canDecline, deviceName, intentStateLabel, intentStateColor, retryLabel, formatClock, intentError, intents, transfers }
+  return {
+    router,
+    devices,
+    askBeforeCancel,
+    error,
+    received,
+    cancelling,
+    percentOf,
+    progressLabel,
+    directionOf,
+    stateLabel,
+    cancelTransfer,
+    wire,
+    state,
+    wirePeerName,
+    wireWidth,
+    wireLive,
+    load,
+    expanded,
+    copiedTrace,
+    selectedTrace,
+    toggleExpanded,
+    copyTrace,
+    deciding,
+    accept,
+    decline,
+    canDecline,
+    deviceName,
+    intentStateLabel,
+    intentStateColor,
+    retryLabel,
+    formatClock,
+    intentError,
+    intents,
+    transfers
+  }
 }

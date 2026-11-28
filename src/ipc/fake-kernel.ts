@@ -71,7 +71,12 @@ export class FakeKernel implements Bridge {
       case 'diag_export':
         return {
           path: 'synra-diagnostics.json',
-          included: ['environment', 'config', 'devices', 'plugins'],
+          included: [
+            'environment',
+            'config',
+            'devices',
+            'plugins'
+          ],
           excluded: []
         }
       case 'diag_logs_tail':
@@ -126,8 +131,17 @@ export class FakeKernel implements Bridge {
             return parsed.error
         }
         const result = this.#config.apply(args?.patch)
-        if (typeof result === 'string')
-          return { code: result === 'invalid' ? 'invalid_argument' : 'internal', message: result === 'invalid' ? 'error.badArgument' : 'error.storeUnavailable', retryable: false }
+        if (typeof result === 'string') {
+          return {
+            code: result === 'invalid'
+              ? 'invalid_argument'
+              : 'internal',
+            message: result === 'invalid'
+              ? 'error.badArgument'
+              : 'error.storeUnavailable',
+            retryable: false
+          }
+        }
         this.#emit('configUpdated', result)
         return null
       }
@@ -155,7 +169,12 @@ export class FakeKernel implements Bridge {
 
   #emit(type: SequencedKernelEvent['type'], payload: unknown): void {
     this.#seq += 1
-    const event = { type, payload, seq: this.#seq, at: Date.now() }
+    const event = {
+      type,
+      payload,
+      seq: this.#seq,
+      at: Date.now()
+    }
     for (const handler of this.#handlers.get(KERNEL_EVENT_CHANNEL) ?? []) {
       handler(event)
     }

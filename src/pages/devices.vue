@@ -6,7 +6,7 @@
     warns against. The workspace width is therefore capped at 896px — wider than the reading measure, because the rows
     hold a name and an action set on one line, and narrower than a full workspace, because nothing here fills it.
   -->
-  <section class="mx-auto max-w-4xl min-w-0 pb-4" data-page-width="narrow-workspace">
+  <section class="mx-auto pb-4 max-w-4xl min-w-0" data-page-width="narrow-workspace">
     <div class="stack gap-6">
       <PageHeader :title="messages.devices.title">
         <AButton v-if="scanState" :loading="cancellingScan" :disabled="cancellingScan" @click="cancelScan">
@@ -19,7 +19,7 @@
 
       <div v-if="snapshotError" class="stack gap-2">
         <ErrorNotice :code="snapshotError.code" :params="snapshotError.params" :actions="snapshotError.actions?.filter(action => action.kind !== 'retry')" />
-        <p v-if="devices.cards.length" class="m-0 text-sm text-ink-dim">
+        <p v-if="devices.cards.length" class="text-sm text-ink-dim m-0">
           {{ messages.devices.knownOnly }}
         </p>
         <div>
@@ -28,14 +28,14 @@
           </AButton>
         </div>
       </div>
-      <p v-if="notice" class="m-0 text-base" role="status">
+      <p v-if="notice" class="text-base m-0" role="status">
         {{ notice }}
       </p>
 
       <div v-if="scanning || scanReport || scanError" class="stack gap-2" aria-live="polite">
         <div v-if="scanError" class="stack gap-2">
           <ErrorNotice :code="scanError.code" :params="scanError.params" :actions="scanError.actions?.filter(action => action.kind !== 'retry')" />
-          <p v-if="devices.cards.length" class="m-0 text-sm text-ink-dim">
+          <p v-if="devices.cards.length" class="text-sm text-ink-dim m-0">
             {{ messages.devices.scanFailedKnown }}
           </p>
           <div v-if="scanError.retryable">
@@ -44,17 +44,17 @@
             </AButton>
           </div>
         </div>
-        <p v-else class="m-0 row flex-wrap gap-2 text-base text-ink-dim">
+        <p v-else class="text-base text-ink-dim m-0 row flex-wrap gap-2">
           <span v-if="scanning" class="i-carbon-circle-dash animate-spin" aria-hidden="true" />
           <span>{{ scanSummary }}</span>
           <span v-if="scanState">{{ messages.devices.scanProgress }} {{ scanState.found }}</span>
         </p>
         <details v-if="scanState" class="text-sm text-ink-dim">
-          <summary class="synra-choice min-h-8 row cursor-pointer">
+          <summary class="synra-choice row min-h-8 cursor-pointer">
             {{ messages.devices.scanDetails }}
           </summary>
-          <dl class="grid m-0 gap-2 py-2">
-            <dt>{{ messages.devices.scanId }}</dt><dd class="m-0 break-all font-mono">
+          <dl class="m-0 py-2 gap-2 grid">
+            <dt>{{ messages.devices.scanId }}</dt><dd class="font-mono m-0 break-all">
               {{ scanState.scanId }}
             </dd>
             <dt>{{ messages.devices.scanElapsed }}</dt><dd class="m-0">
@@ -67,7 +67,7 @@
         </details>
       </div>
 
-      <p v-if="refreshing && !ready && !devices.cards.length" class="m-0 text-base text-ink-dim" role="status">
+      <p v-if="refreshing && !ready && !devices.cards.length" class="text-base text-ink-dim m-0" role="status">
         {{ messages.devices.loading }}
       </p>
       <AEmpty v-else-if="ready && !snapshotError && !devices.cards.length && !scanning" :description="scanReport === 'finished' ? messages.devices.scanEmpty : messages.devices.empty">
@@ -79,20 +79,20 @@
         </AButton>
       </AEmpty>
 
-      <section v-if="devices.paired.length" :aria-label="messages.devices.paired" class="min-w-0 stack gap-0">
-        <h2 ref="pairedHeading" class="m-0 text-base font-medium" tabindex="-1">
+      <section v-if="devices.paired.length" :aria-label="messages.devices.paired" class="stack gap-0 min-w-0">
+        <h2 ref="pairedHeading" class="text-base font-medium m-0" tabindex="-1">
           {{ messages.devices.paired }}
         </h2>
         <DeviceRow v-for="card in devices.paired" :key="card.deviceId" :card="card" @forget="askForget" />
       </section>
-      <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="min-w-0 stack gap-0">
-        <h2 class="m-0 text-base font-medium">
+      <section v-if="nearby.length" :aria-label="messages.devices.nearby" class="stack gap-0 min-w-0">
+        <h2 class="text-base font-medium m-0">
           {{ messages.devices.nearby }}
         </h2>
         <DeviceRow v-for="card in nearby" :key="card.deviceId" :card="card" @pair="startPair" @forget="askForget" />
       </section>
-      <section v-if="blocked.length" :aria-label="messages.devices.blockedDevices" class="min-w-0 stack gap-0">
-        <h2 class="m-0 text-base font-medium">
+      <section v-if="blocked.length" :aria-label="messages.devices.blockedDevices" class="stack gap-0 min-w-0">
+        <h2 class="text-base font-medium m-0">
           {{ messages.devices.blockedDevices }}
         </h2>
         <DeviceRow v-for="card in blocked" :key="card.deviceId" :card="card" @forget="askForget" />
@@ -101,14 +101,14 @@
 
     <AModal v-if="forgetTarget" :open="forgetVisible" :title="forgetTarget.blocked ? messages.devices.unblockTitle(forgetTarget.displayName) : messages.devices.forgetTitle(forgetTarget.displayName)" :footer="null" :closable="false" :mask-closable="!forgetting" :keyboard="!forgetting" @cancel="closeForget">
       <div class="stack gap-4">
-        <p class="m-0 text-base">
+        <p class="text-base m-0">
           {{ forgetTarget.blocked ? messages.devices.unblockHelp : messages.devices.forgetHelp }}
         </p>
-        <p class="m-0 break-all text-sm text-ink-dim font-mono">
+        <p class="text-sm text-ink-dim font-mono m-0 break-all">
           {{ forgetTarget.deviceId }}
         </p>
         <ErrorNotice v-if="forgetError" :code="forgetError.code" :params="forgetError.params" :actions="forgetError.actions?.filter(action => action.kind !== 'retry')" />
-        <div class="row justify-end gap-2">
+        <div class="row gap-2 justify-end">
           <AButton ref="keepButton" :disabled="forgetting" @click="closeForget">
             {{ messages.devices.forgetCancel }}
           </AButton>
@@ -155,7 +155,9 @@ let forgetTrigger: HTMLElement | null = null
 async function askForget(card: DeviceCard): Promise<void> {
   if (forgetting.value || !(devices.get(card.deviceId)?.paired || devices.get(card.deviceId)?.blocked))
     return
-  forgetTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  forgetTrigger = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null
   forgetTarget.value = card
   forgetError.value = undefined
   await nextTick()
@@ -189,7 +191,9 @@ async function forget(): Promise<void> {
     }
     // The command has removed the relationship even when a subsequent read fails.
     devices.remove(target.deviceId)
-    notice.value = target.blocked ? messages.devices.unblocked(target.displayName) : messages.devices.forgotten(target.displayName)
+    notice.value = target.blocked
+      ? messages.devices.unblocked(target.displayName)
+      : messages.devices.forgotten(target.displayName)
     forgetTarget.value = undefined
     await refresh()
     await nextTick()

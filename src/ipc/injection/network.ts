@@ -86,7 +86,10 @@ export function createNetworkNamespace(context: InjectionContext): NetworkNamesp
         .invoke('plugin_ui_rpc', {
           token: context.token,
           method: 'network.fetch',
-          args: { input, init: { method: init.method, headers: init.headers, body } }
+          args: {
+            input,
+            init: { method: init.method, headers: init.headers, body }
+          }
         })
         .catch((reason: unknown) => {
           throw asSynraError(reason)

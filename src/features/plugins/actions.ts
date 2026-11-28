@@ -62,10 +62,18 @@ export function failureOf(error: {
     message: error.message,
     actions: error.actions,
     detail: detailOf(error.params) ?? registryDetail(problem),
-    ...(error.retryable === undefined ? {} : { retryable: error.retryable }),
-    ...(error.params === undefined ? {} : { params: error.params }),
-    ...(error.details === undefined ? {} : { details: error.details }),
-    ...(problem === undefined ? {} : { registryProblem: problem })
+    ...(error.retryable === undefined
+      ? {}
+      : { retryable: error.retryable }),
+    ...(error.params === undefined
+      ? {}
+      : { params: error.params }),
+    ...(error.details === undefined
+      ? {}
+      : { details: error.details }),
+    ...(problem === undefined
+      ? {}
+      : { registryProblem: problem })
   }
 }
 
@@ -80,7 +88,12 @@ export async function installFrom(client: KernelClient, path: string): Promise<O
   const answer = await client.call<InstallReport>('plugins_install', {
     source: { source: 'path', path }
   })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** How many recorded calls one page of the audit section asks for. */
@@ -97,13 +110,23 @@ export async function audit(
   // ★ No reversal: the command reads `plugin_audit` with `ORDER BY at_ms DESC, id DESC`, so its answer is already the
   // order a reader wants. The old copy was reversed because it was a tail of the in-memory ring, which reports oldest
   // first — a copy is still there, but nothing reads it.
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** Forgets one plugin's audit history. */
 export async function clearAudit(kernel: KernelClient, pluginId: string): Promise<Outcome<null>> {
   const answer = await kernel.call<null>('plugins_audit_clear', { pluginId })
-  return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: null }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** Searches the registry's index, scoped by the kernel to packages that declare the plugin keyword. */
@@ -115,11 +138,20 @@ export async function searchCatalog(
   const answer = await client.call<readonly CatalogItem[]>('plugins_catalog_search', {
     query: {
       query,
-      ...(options.offset === undefined ? {} : { offset: options.offset }),
-      ...(options.sort === undefined ? {} : { sort: options.sort })
+      ...(options.offset === undefined
+        ? {}
+        : { offset: options.offset }),
+      ...(options.sort === undefined
+        ? {}
+        : { sort: options.sort })
     }
   })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** Reads a registry package's own description, so the dialog can show what it asks for. */
@@ -128,7 +160,12 @@ export async function previewInstall(
   pluginId: string
 ): Promise<Outcome<InstallPreviewDto>> {
   const answer = await client.call<InstallPreviewDto>('plugins_preview', { pluginId })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** Installs a package the configured registry serves, by its plugin id. */
@@ -139,7 +176,12 @@ export async function installFromRegistry(
   const answer = await client.call<InstallReport>('plugins_install', {
     source: { source: 'registry', pluginId }
   })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /**
@@ -158,7 +200,12 @@ export async function decide(
     pluginId,
     granted: [...granted]
   })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /**
@@ -169,7 +216,12 @@ export async function decide(
  */
 export async function setEnabled(client: KernelClient, pluginId: string, enabled: boolean): Promise<Outcome<null>> {
   const answer = await client.call<null>(enabled ? 'plugins_enable' : 'plugins_disable', { pluginId })
-  return answer.ok ? { ok: true, value: null } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: null }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /**
@@ -186,7 +238,12 @@ export async function uninstall(client: KernelClient, pluginId: string, removeDa
     pluginId,
     removeData
   })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /**
@@ -198,11 +255,21 @@ export async function uninstall(client: KernelClient, pluginId: string, removeDa
  */
 export async function planSync(client: KernelClient, pluginId: string): Promise<Outcome<SyncPlanDto>> {
   const answer = await client.call<SyncPlanDto>('plugins_sync_plan', { pluginId })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }
 
 /** Sends the artifact the plan marked as needed, and answers what each device did. */
 export async function runSync(client: KernelClient, plan: SyncPlanDto): Promise<Outcome<SyncReport>> {
   const answer = await client.call<SyncReport>('plugins_sync_run', { plan })
-  return answer.ok ? { ok: true, value: answer.value } : { ok: false, failure: failureOf(answer.error) }
+  return answer.ok
+    ? { ok: true, value: answer.value }
+    : {
+        ok: false,
+        failure: failureOf(answer.error)
+      }
 }

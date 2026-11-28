@@ -6,7 +6,9 @@ import { answer, card, click, clickBody, ErrorNotice, messages, mocks, mountPage
 
 describe('the plugin workspace', () => {
   it('renders several compact summaries without loading every detail', async () => {
-    answer({ plugins_list: Array.from({ length: 5 }, (_, index) => card({ pluginId: `@acme/${index}`, title: `Reader ${index}` })) })
+    answer({
+      plugins_list: Array.from({ length: 5 }, (_, index) => card({ pluginId: `@acme/${index}`, title: `Reader ${index}` }))
+    })
     const { wrapper } = await mountPage()
     expect(wrapper.findAllComponents(PluginRow)).toHaveLength(5)
     expect(wrapper.findComponent(PluginDetail).exists()).toBe(false)
@@ -31,7 +33,12 @@ describe('the plugin workspace', () => {
     expect(wrapper.findComponent(PluginDetail).exists()).toBe(false)
   })
   it('keeps a failed switch beside the plugin that owns it', async () => {
-    answer({ plugins_disable: () => ({ ok: false, error: { code: 'unavailable', message: 'error.unavailable' } }) })
+    answer({
+      plugins_disable: () => ({
+        ok: false,
+        error: { code: 'unavailable', message: 'error.unavailable' }
+      })
+    })
     const { wrapper } = await mountPage()
     const row = wrapper.getComponent(PluginRow)
     await row.getComponent(Switch).vm.$emit('change', false)
@@ -40,7 +47,13 @@ describe('the plugin workspace', () => {
     expect(row.getComponent(Switch).props('checked')).toBe(true)
   })
   it('opens only plugins that declare an interface', async () => {
-    answer({ plugin_ui_open: null, plugins_list: [card(), card({ pluginId: '@acme/headless', title: 'Headless', hasUi: false })] })
+    answer({
+      plugin_ui_open: null,
+      plugins_list: [
+        card(),
+        card({ pluginId: '@acme/headless', title: 'Headless', hasUi: false })
+      ]
+    })
     const { wrapper } = await mountPage()
     await click(wrapper.getComponent(PluginRow), messages.plugins.openAction)
     expect(mocks.call).toHaveBeenCalledWith('plugin_ui_open', { pluginId: '@acme/reader' })
@@ -48,7 +61,15 @@ describe('the plugin workspace', () => {
   })
   it('draws updates delivered by events without background update checks', async () => {
     await mountPage('/plugins?plugin=%40acme%2Freader')
-    usePluginsStore().upsert(card({ update: { pluginId: '@acme/reader', version: '2.0.0', needsNewConsent: true, addedCapabilities: ['fs:read'] }, stateReason: 'Paused by the host' }))
+    usePluginsStore().upsert(card({
+      update: {
+        pluginId: '@acme/reader',
+        version: '2.0.0',
+        needsNewConsent: true,
+        addedCapabilities: ['fs:read']
+      },
+      stateReason: 'Paused by the host'
+    }))
     await flushPromises()
     const detail = document.querySelector('.ant-drawer-body')!
     expect(detail.textContent).toContain('2.0.0')
@@ -64,7 +85,12 @@ describe('the plugin workspace', () => {
     expect(usePluginsStore().plugin('@acme/reader')?.update).toBeUndefined()
   })
   it('shows a failed list read as an error', async () => {
-    answer({ plugins_list: () => ({ ok: false, error: { code: 'unavailable', message: 'error.unavailable' } }) })
+    answer({
+      plugins_list: () => ({
+        ok: false,
+        error: { code: 'unavailable', message: 'error.unavailable' }
+      })
+    })
     const { wrapper } = await mountPage()
     expect(wrapper.getComponent(ErrorNotice).props('code')).toBe('unavailable')
   })

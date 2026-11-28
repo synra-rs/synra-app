@@ -37,7 +37,9 @@ export function createHostBackHandler(controls: BackControls, nowMs: () => numbe
     let transition: () => Promise<unknown>
     const { path, query, hash } = controls.currentRoute()
     if (!isPrimaryRoute(path, query, hash)) {
-      const destination = isPrimaryRoute(path, {}, '') ? path : '/'
+      const destination = isPrimaryRoute(path, {}, '')
+        ? path
+        : '/'
       transition = () => controls.replace(destination)
     }
     else {

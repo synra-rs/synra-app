@@ -24,10 +24,15 @@ function channel(answers: Readonly<Record<string, unknown>>) {
       if (!(method in answers))
         throw Object.assign(new Error(`no answer for ${method}`), { code: 'unsupported', message: 'error.unsupported' })
       const answer = answers[method]
-      return typeof answer === 'function' ? answer(payload?.args) : answer
+      return typeof answer === 'function'
+        ? answer(payload?.args)
+        : answer
     }
   )
-  return { bridge: bridge({ invoke }), invoke }
+  return {
+    bridge: bridge({ invoke }),
+    invoke
+  }
 }
 
 describe('transfer', () => {
@@ -36,10 +41,22 @@ describe('transfer', () => {
       'transfer.begin': { uploadId: 'UPLOAD1', chunkBytes: 3 },
       'transfer.chunk': ({ offset, data }: { offset: number, data: string }) => ({ written: offset + atob(data).length, totalBytes: 5 }),
       'transfer.finish': { transferId: ID },
-      'transfer.status': { transferId: ID, state: 'transferring', receivedBytes: 2, totalBytes: 5, blocksDone: 1, blocksTotal: 2, revision: 2, endedAtMs: undefined as number | undefined }
+      'transfer.status': {
+        transferId: ID,
+        state: 'transferring',
+        receivedBytes: 2,
+        totalBytes: 5,
+        blocksDone: 1,
+        blocksTotal: 2,
+        revision: 2,
+        endedAtMs: undefined as number | undefined
+      }
     }
     const { bridge: seam, invoke } = channel(answers)
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
 
     const id = await synra.transfer.send({
       to: '11111111-1111-4111-8111-111111111111',
@@ -79,7 +96,16 @@ describe('transfer', () => {
       receivedBytes: 2,
       totalBytes: 5
     })
-    answers['transfer.status'] = { transferId: ID, state: 'completed', receivedBytes: 5, totalBytes: 5, blocksDone: 2, blocksTotal: 2, revision: 4, endedAtMs: 100 }
+    answers['transfer.status'] = {
+      transferId: ID,
+      state: 'completed',
+      receivedBytes: 5,
+      totalBytes: 5,
+      blocksDone: 2,
+      blocksTotal: 2,
+      revision: 4,
+      endedAtMs: 100
+    }
     await expect(synra.transfer.status(id)).resolves.toMatchObject({ state: 'completed', receivedBytes: 5 })
     expect(invoke).toHaveBeenNthCalledWith(6, 'plugin_ui_rpc', expect.objectContaining({
       method: 'transfer.status',
@@ -92,7 +118,11 @@ describe('transfer', () => {
     const synra = createInjection(context({ bridge: seam, granted: [] }))
 
     await expect(
-      synra.transfer.send({ to: 'peer', file: new Blob(['x']), fileName: 'a.txt' })
+      synra.transfer.send({
+        to: 'peer',
+        file: new Blob(['x']),
+        fileName: 'a.txt'
+      })
     ).rejects.toMatchObject({ code: 'capability_denied' })
     expect(invoke).not.toHaveBeenCalled()
   })
@@ -101,7 +131,10 @@ describe('transfer', () => {
     const { bridge: seam, invoke } = channel({
       'transfer.begin': () => { throw createSynraError('payload_too_large', { maxBytes: 40 }) }
     })
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
     const slice = vi.fn()
     const huge = { size: 41, slice } as unknown as Blob
 
@@ -114,10 +147,18 @@ describe('transfer', () => {
 
   it('refuses the grouping id this channel does not carry', async () => {
     const { bridge: seam } = channel({})
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
 
     await expect(
-      synra.transfer.send({ to: 'peer', file: new Blob(['x']), fileName: 'a.txt', contextId: 'c1' })
+      synra.transfer.send({
+        to: 'peer',
+        file: new Blob(['x']),
+        fileName: 'a.txt',
+        contextId: 'c1'
+      })
     ).rejects.toMatchObject({ code: 'unsupported' })
   })
 
@@ -127,9 +168,19 @@ describe('transfer', () => {
       'transfer.chunk': { written: 1, totalBytes: 3 },
       'transfer.abort': { aborted: true }
     })
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
-    const sending = synra.transfer.send({ to: 'peer', file: new Blob(['abc']), fileName: 'a.txt' })
-    await expect(sending).rejects.toMatchObject({ code: 'internal', details: { reason: 'invalid_upload_acknowledgement' } })
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
+    const sending = synra.transfer.send({
+      to: 'peer',
+      file: new Blob(['abc']),
+      fileName: 'a.txt'
+    })
+    await expect(sending).rejects.toMatchObject({
+      code: 'internal',
+      details: { reason: 'invalid_upload_acknowledgement' }
+    })
     expect(invoke.mock.calls.map(([, payload]) => payload?.method)).toEqual(['transfer.begin', 'transfer.chunk', 'transfer.abort'])
   })
 
@@ -145,7 +196,10 @@ describe('transfer', () => {
         revision: 4
       }
     })
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
 
     await expect(synra.transfer.status(ID as TransferId)).resolves.toMatchObject({
       state: 'transferring',
@@ -163,16 +217,42 @@ describe('transfer', () => {
       'event.subscribe': 'stream',
       'event.unsubscribe': null,
       'event.poll': () => new Promise(resolve => finishPoll = resolve),
-      'transfer.status': { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, blocksDone: 1, blocksTotal: 1, revision: 3, endedAtMs: 100 }
+      'transfer.status': {
+        transferId: ID,
+        state: 'completed',
+        receivedBytes: 2,
+        totalBytes: 2,
+        blocksDone: 1,
+        blocksTotal: 1,
+        revision: 3,
+        endedAtMs: 100
+      }
     })
-    const synra = createInjection(context({ bridge: seam, granted: ['file:transfer:send'] }))
+    const synra = createInjection(context({
+      bridge: seam,
+      granted: ['file:transfer:send']
+    }))
 
-    await synra.transfer.send({ to: 'peer', file: new Blob(['hi']), fileName: 'a.txt' })
+    await synra.transfer.send({
+      to: 'peer',
+      file: new Blob(['hi']),
+      fileName: 'a.txt'
+    })
     const seen: unknown[] = []
     const off = synra.transfer.onProgress(ID as TransferId, progress => seen.push(progress))
     await vi.waitFor(() => {
       expect(seen).toEqual([
-        { transferId: ID, state: 'completed', receivedBytes: 2, totalBytes: 2, blocksDone: 1, blocksTotal: 1, revision: 3, endedAtMs: 100, ratio: 1 }
+        {
+          transferId: ID,
+          state: 'completed',
+          receivedBytes: 2,
+          totalBytes: 2,
+          blocksDone: 1,
+          blocksTotal: 1,
+          revision: 3,
+          endedAtMs: 100,
+          ratio: 1
+        }
       ])
     })
     off()

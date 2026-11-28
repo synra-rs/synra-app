@@ -1,17 +1,17 @@
 <template>
   <AModal v-if="pending" :open="visible" :title="messages.input.title" :footer="null" :closable="false" :mask-closable="false" :width="420">
     <div class="stack gap-4">
-      <p class="m-0 text-base">
+      <p class="text-base m-0">
         {{ messages.input.request(session!.displayName) }}
       </p>
-      <p class="m-0 text-sm text-ink-dim">
+      <p class="text-sm text-ink-dim m-0">
         {{ messages.input.help }}
       </p>
-      <p class="m-0 break-all text-sm text-ink-dim">
+      <p class="text-sm text-ink-dim m-0 break-all">
         {{ messages.input.plugin }} · {{ session!.pluginId }}
       </p>
       <ErrorNotice v-if="input.error" :code="input.error.code" :params="input.error.params" />
-      <div class="row justify-end gap-2">
+      <div class="row gap-2 justify-end">
         <AButton :disabled="input.busy" @click="input.decide(false)">
           {{ messages.input.refuse }}
         </AButton>
@@ -21,8 +21,8 @@
       </div>
     </div>
   </AModal>
-  <aside v-if="session?.phase === 'active' || session?.phase === 'starting'" role="status" :aria-label="messages.input.indicator" class="fixed bottom-20 left-4 right-4 z-90 border border-line rounded-surface bg-raised p-3 shadow-lg md:bottom-4 md:left-auto md:max-w-md">
-    <div class="row flex-wrap justify-between gap-3">
+  <aside v-if="session?.phase === 'active' || session?.phase === 'starting'" role="status" :aria-label="messages.input.indicator" class="p-3 border border-line rounded-surface bg-raised shadow-lg bottom-20 left-4 right-4 fixed z-90 md:max-w-md md:bottom-4 md:left-auto">
+    <div class="row flex-wrap gap-3 justify-between">
       <span class="text-sm">{{ session.phase === 'active' ? messages.input.active(session.displayName) : messages.input.starting }}</span>
       <AButton danger size="small" :loading="input.busy" @click="input.stop">
         {{ messages.input.stop }}

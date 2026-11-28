@@ -2,11 +2,11 @@
   <AModal v-if="pairing.visible" :open="visible" :width="420" :title="messages.devices.pairingWith(pairing.peerName)" :footer="null" :closable="!pairing.busy" :mask-closable="false" @cancel="pairing.close">
     <div class="stack gap-4" aria-live="polite">
       <template v-if="pairing.snapshot.phase === 'asked' && pairing.snapshot.ask">
-        <p class="m-0 text-base">
+        <p class="text-base m-0">
           {{ messages.devices.pairingAsk(pairing.snapshot.ask.displayName) }}
         </p>
-        <output class="m-0 py-2 text-center text-xl font-mono" :aria-label="messages.devices.pairingCode">{{ pairing.snapshot.ask.code }}</output>
-        <div class="row flex-wrap justify-end gap-2">
+        <output class="text-xl font-mono m-0 py-2 text-center" :aria-label="messages.devices.pairingCode">{{ pairing.snapshot.ask.code }}</output>
+        <div class="row flex-wrap gap-2 justify-end">
           <AButton type="text" danger class="me-auto" :disabled="pairing.busy" @click="pairing.respond(false, true)">
             {{ messages.devices.pairingBlock }}
           </AButton>
@@ -19,22 +19,22 @@
         </div>
       </template>
       <template v-else-if="pairing.snapshot.phase === 'waiting' && pairing.snapshot.offer">
-        <p class="m-0 text-base">
+        <p class="text-base m-0">
           {{ messages.devices.pairingWaiting(pairing.snapshot.offer.displayName) }}
         </p>
-        <output class="m-0 py-2 text-center text-xl font-mono" :aria-label="messages.devices.pairingCode">{{ pairing.snapshot.offer.code }}</output>
-        <p class="m-0 text-sm text-ink-dim">
+        <output class="text-xl font-mono m-0 py-2 text-center" :aria-label="messages.devices.pairingCode">{{ pairing.snapshot.offer.code }}</output>
+        <p class="text-sm text-ink-dim m-0">
           {{ messages.devices.pairingWaitingHelp }}
         </p>
       </template>
-      <p v-else-if="outcomeText" class="m-0 text-base">
+      <p v-else-if="outcomeText" class="text-base m-0">
         {{ outcomeText }}
       </p>
-      <p v-if="pairing.unreachable" class="m-0 text-base">
+      <p v-if="pairing.unreachable" class="text-base m-0">
         {{ messages.devices.pairingUnreachable }}
       </p>
       <ErrorNotice v-if="pairing.error" :code="pairing.error.code" :params="pairing.error.params" :actions="pairing.error.actions?.filter(action => action.kind !== 'retry')" />
-      <div v-if="pairing.snapshot.phase !== 'asked'" class="row justify-end gap-2">
+      <div v-if="pairing.snapshot.phase !== 'asked'" class="row gap-2 justify-end">
         <AButton v-if="pairing.snapshot.phase === 'waiting'" :loading="pairing.busy" :disabled="pairing.busy" @click="pairing.cancel">
           {{ messages.devices.pairingWithdraw }}
         </AButton>

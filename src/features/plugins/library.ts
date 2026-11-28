@@ -77,7 +77,9 @@ export function usePluginLibrary(onRemoved?: (id: string) => void) {
     const current = store.plugin(plugin.pluginId)
     if (current) {
       const { update: _update, ...rest } = current
-      store.upsert(answer.value ? { ...rest, update: answer.value } : rest)
+      store.upsert(answer.value
+        ? { ...rest, update: answer.value }
+        : rest)
     }
   }
 
@@ -123,12 +125,30 @@ export function usePluginLibrary(onRemoved?: (id: string) => void) {
     onRemoved?.(plugin.pluginId)
     leftovers.value = answer.value.leftovers ?? []
     const freed = formatBytes(answer.value.bytesFreed)
-    note.value = answer.value.dataKept ? messages.plugins.removedKept(plugin.title, freed) : messages.plugins.removedDeleted(plugin.title, freed)
+    note.value = answer.value.dataKept
+      ? messages.plugins.removedKept(plugin.title, freed)
+      : messages.plugins.removedDeleted(plugin.title, freed)
     await load()
     return true
   }
 
-  return reactive({ operations, errors, error, loading, note, warnings, leftovers, load, toggle, open, retry, checkUpdate, update, reloadLocal, remove })
+  return reactive({
+    operations,
+    errors,
+    error,
+    loading,
+    note,
+    warnings,
+    leftovers,
+    load,
+    toggle,
+    open,
+    retry,
+    checkUpdate,
+    update,
+    reloadLocal,
+    remove
+  })
 }
 
 export type PluginLibrary = ReturnType<typeof usePluginLibrary>

@@ -34,8 +34,13 @@ function answering(answers: Record<string, (args: Readonly<Record<string, unknow
 
 describe('platform', () => {
   it('opens a URL through the channel', async () => {
-    const invoke = answering({ 'platform.openUrl': () => null })
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:open-url'] }))
+    const invoke = answering({
+      'platform.openUrl': () => null
+    })
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:open-url']
+    }))
 
     await synra.platform.openUrl('https://example.com')
 
@@ -47,8 +52,13 @@ describe('platform', () => {
   })
 
   it('notifies through the channel', async () => {
-    const invoke = answering({ 'platform.notify': () => null })
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:notify'] }))
+    const invoke = answering({
+      'platform.notify': () => null
+    })
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:notify']
+    }))
 
     await synra.platform.notify({ title: 'Build', body: 'it finished' })
 
@@ -63,7 +73,10 @@ describe('platform', () => {
     // ★ The refusal is local and synchronous, so a page does not need a round trip to discover what it may not do. The
     // kernel checks the same capability again — this one is for the author's `catch`, not for the authority.
     const invoke = answering({})
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: [] }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: []
+    }))
 
     await expect(synra.platform.openUrl('https://example.com')).rejects.toMatchObject({
       code: 'capability_denied',
@@ -79,7 +92,10 @@ describe('platform', () => {
         message: 'error.internal'
       })
     })
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:open-url'] }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:open-url']
+    }))
 
     await expect(synra.platform.openUrl('https://example.com')).rejects.toMatchObject({ code: 'internal' })
   })
@@ -87,8 +103,13 @@ describe('platform', () => {
 
 describe('clipboard', () => {
   it('reads the text the kernel answered with', async () => {
-    const invoke = answering({ 'clipboard.read': () => 'from the clipboard' })
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:read-clipboard'] }))
+    const invoke = answering({
+      'clipboard.read': () => 'from the clipboard'
+    })
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:read-clipboard']
+    }))
 
     await expect(synra.clipboard.read()).resolves.toBe('from the clipboard')
   })
@@ -97,15 +118,27 @@ describe('clipboard', () => {
     // The contract says `read(): Promise<string>`; `null` is "nothing is copied", which is an ordinary answer rather
     // than the error a `catch` would make it.
     const synra = createInjection(
-      context({ bridge: bridge({ invoke: answering({ 'clipboard.read': () => null }) }), granted: ['platform:read-clipboard'] })
+      context({
+        bridge: bridge({
+          invoke: answering({
+            'clipboard.read': () => null
+          })
+        }),
+        granted: ['platform:read-clipboard']
+      })
     )
 
     await expect(synra.clipboard.read()).resolves.toBe('')
   })
 
   it('writes the text through the channel', async () => {
-    const invoke = answering({ 'clipboard.write': () => null })
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:write-clipboard'] }))
+    const invoke = answering({
+      'clipboard.write': () => null
+    })
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:write-clipboard']
+    }))
 
     await synra.clipboard.write('hello')
 
@@ -118,7 +151,10 @@ describe('clipboard', () => {
 
   it('refuses a read without the read capability', async () => {
     const invoke = answering({})
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: [] }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: []
+    }))
 
     await expect(synra.clipboard.read()).rejects.toMatchObject({
       code: 'capability_denied',
@@ -129,7 +165,10 @@ describe('clipboard', () => {
 
   it('refuses a write without the write capability', async () => {
     const invoke = answering({})
-    const synra = createInjection(context({ bridge: bridge({ invoke }), granted: ['platform:read-clipboard'] }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke }),
+      granted: ['platform:read-clipboard']
+    }))
 
     await expect(synra.clipboard.write('hello')).rejects.toMatchObject({
       code: 'capability_denied',

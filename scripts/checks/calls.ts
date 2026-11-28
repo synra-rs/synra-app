@@ -46,8 +46,12 @@ export function shellWrappers(source: string): Map<string, Wrapper> {
     const required: string[] = []
     for (const parameter of splitParameters(parameters)) {
       const colon = parameter.indexOf(':')
-      const field = colon === -1 ? '' : parameter.slice(0, colon).trim()
-      const type = colon === -1 ? '' : parameter.slice(colon + 1).trim()
+      const field = colon === -1
+        ? ''
+        : parameter.slice(0, colon).trim()
+      const type = colon === -1
+        ? ''
+        : parameter.slice(colon + 1).trim()
       if (!/^\w+$/.test(field) || type.length === 0)
         continue
 
@@ -161,7 +165,11 @@ export function callSites(text: string, where: string): { readonly sites: CallSi
       unreadable += 1
       continue
     }
-    sites.push({ command, keys: topLevelKeys(text.slice(index, end)), where: `${where}:${line.toString()}` })
+    sites.push({
+      command,
+      keys: topLevelKeys(text.slice(index, end)),
+      where: `${where}:${line.toString()}`
+    })
   }
   return { sites, unreadable }
 }
@@ -172,7 +180,9 @@ export function withoutCommentLines(text: string): string {
     .map((line) => {
       const trimmed = line.trimStart()
       const comment = trimmed.startsWith('*') || trimmed.startsWith('//') || trimmed.startsWith('/*')
-      return comment ? ' '.repeat(line.length) : line
+      return comment
+        ? ' '.repeat(line.length)
+        : line
     })
     .join('\n')
 }

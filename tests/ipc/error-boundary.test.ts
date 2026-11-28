@@ -6,7 +6,15 @@ import { asSynraError, isSynraErrorValue } from '@/ipc/injection/errors'
 import { bridge, context } from './injection-test-helpers'
 
 describe('untrusted error boundary', () => {
-  it.each([null, undefined, false, 42, 'failure', [], new Error('failure')])('safely rejects %j', (value) => {
+  it.each([
+    null,
+    undefined,
+    false,
+    42,
+    'failure',
+    [],
+    new Error('failure')
+  ])('safely rejects %j', (value) => {
     expect(isSynraErrorValue(value)).toBe(false)
     expect(asSynraError(value)).toMatchObject({ code: 'internal', retryable: true })
   })
@@ -16,7 +24,12 @@ describe('untrusted error boundary', () => {
     { code: 'timeout', message: 'error.timeout' },
     { code: 'future_code', message: 'error.future', retryable: true },
     { code: 'timeout', message: 'error.timeout', retryable: 'true' },
-    { code: 'timeout', message: 'error.timeout', retryable: true, actions: ['retry'] }
+    {
+      code: 'timeout',
+      message: 'error.timeout',
+      retryable: true,
+      actions: ['retry']
+    }
   ])('refuses malformed structured errors %j', (value) => {
     expect(isSynraErrorValue(value)).toBe(false)
     expect(asSynraError(value).code).toBe('internal')
@@ -75,15 +88,22 @@ describe('untrusted error boundary', () => {
       retryable: false,
       params: { field: 'capability' },
       details: { code: 'internal', capability: 'device:list', token: 'private-token' },
-      actions: [{ kind: 'requestCapability', capability: 'device:list' }],
+      actions: [
+        { kind: 'requestCapability', capability: 'device:list' }
+      ],
       traceId: 'trace-1'
     })
     expect(result).toMatchObject({
       code: 'capability_denied',
       retryable: false,
       traceId: 'trace-1',
-      actions: [{ kind: 'requestCapability', capability: 'device:list' }],
-      details: { params: { field: 'capability' }, context: { code: 'internal', capability: 'device:list', token: '[REDACTED]' } }
+      actions: [
+        { kind: 'requestCapability', capability: 'device:list' }
+      ],
+      details: {
+        params: { field: 'capability' },
+        context: { code: 'internal', capability: 'device:list', token: '[REDACTED]' }
+      }
     })
     expect(JSON.stringify(result)).not.toContain('private-token')
   })
@@ -92,7 +112,12 @@ describe('untrusted error boundary', () => {
     const cyclic: Record<string, unknown> = { url: 'https://user:pass@example.test/path?token=private#private' }
     cyclic.self = cyclic
     cyclic.description = 'x'.repeat(10000)
-    const result = asSynraError({ code: 'internal', message: 'error.internal', retryable: true, details: cyclic })
+    const result = asSynraError({
+      code: 'internal',
+      message: 'error.internal',
+      retryable: true,
+      details: cyclic
+    })
     const encoded = JSON.stringify(result)
     expect(encoded.length).toBeLessThan(5000)
     expect(encoded).toContain('https://example.test/path')
@@ -115,16 +140,21 @@ describe('untrusted error boundary', () => {
   })
 
   it('classifies a real namespace rejection and the host client consistently', async () => {
-    const seam = bridge({ invoke: vi.fn(async () => {
-      throw new Error('transport failed')
-    }) })
+    const seam = bridge({
+      invoke: vi.fn(async () => {
+        throw new Error('transport failed')
+      })
+    })
     await expect(createInjection(context({ bridge: seam })).device.list()).rejects.toMatchObject({
       code: 'internal',
       retryable: true,
       details: { detail: 'transport failed' }
     })
     const answer = await new KernelClient(seam).call('devices_snapshot')
-    expect(answer).toMatchObject({ ok: false, error: { code: 'internal', retryable: true } })
+    expect(answer).toMatchObject({
+      ok: false,
+      error: { code: 'internal', retryable: true }
+    })
   })
 
   it('keeps valid error classifications and a canonical denial key', async () => {
@@ -137,7 +167,9 @@ describe('untrusted error boundary', () => {
   })
 
   it('does not treat an unknown resolved error code as a successful command answer', async () => {
-    const seam = bridge({ invoke: vi.fn(async () => ({ code: 'future_error', message: 'error.future', retryable: true })) })
+    const seam = bridge({
+      invoke: vi.fn(async () => ({ code: 'future_error', message: 'error.future', retryable: true }))
+    })
     await expect(new KernelClient(seam).call('devices_snapshot')).resolves.toMatchObject({
       ok: false,
       error: { code: 'internal', retryable: true }

@@ -20,7 +20,10 @@ function setup(invoke: (command: string, args?: unknown) => Promise<unknown>) {
   const scope = effectScope()
   const id = ref('@acme/one')
   const active = ref(true)
-  const client = new KernelClient({ invoke, listen: async () => () => {} })
+  const client = new KernelClient({
+    invoke,
+    listen: async () => () => {}
+  })
   const audit = scope.run(() => usePluginAudit(client, id, active))!
   return { scope, id, active, audit }
 }

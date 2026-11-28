@@ -4,11 +4,19 @@ import { Input, Modal } from 'ant-design-vue'
 import { describe, expect, it } from 'vitest'
 import { answer, click, LocalInstallDialog, messages, mocks, mountPage, PairingPrompt, usePairingStore } from './workflow.testkit'
 
-const peer = { code: '813642', deviceId: 'peer', displayName: 'Android', platform: 'android' }
+const peer = {
+  code: '813642',
+  deviceId: 'peer',
+  displayName: 'Android',
+  platform: 'android'
+}
 describe('pairing presentation', () => {
   it('keeps the initiator waiting with a code and only a cancel action', async () => {
     const pairing = usePairingStore()
-    pairing.apply({ type: 'pairingUpdated', payload: { phase: 'waiting', offer: peer } })
+    pairing.apply({
+      type: 'pairingUpdated',
+      payload: { phase: 'waiting', offer: peer }
+    })
     const wrapper = mount(PairingPrompt, { attachTo: document.body })
     try {
       await flushPromises()
@@ -19,23 +27,45 @@ describe('pairing presentation', () => {
     }
     finally { wrapper.unmount() }
   })
-  it.each([[true, false], [false, false], [false, true]])('waits for the receiver decision accepted=%s block=%s', async (accepted, block) => {
-    answer({ devices_pairing_respond: () => ({ ok: true, value: { phase: 'done', outcome: accepted ? 'paired' : 'refused' } }) })
+  it.each([
+    [true, false],
+    [false, false],
+    [false, true]
+  ])('waits for the receiver decision accepted=%s block=%s', async (accepted, block) => {
+    answer({
+      devices_pairing_respond: () => ({
+        ok: true,
+        value: {
+          phase: 'done',
+          outcome: accepted ? 'paired' : 'refused'
+        }
+      })
+    })
     const pairing = usePairingStore()
-    pairing.apply({ type: 'pairingUpdated', payload: { phase: 'asked', ask: peer } })
+    pairing.apply({
+      type: 'pairingUpdated',
+      payload: { phase: 'asked', ask: peer }
+    })
     const wrapper = mount(PairingPrompt, { attachTo: document.body })
     try {
       await flushPromises()
       expect(new DOMWrapper(document.body).get('output').text()).toBe(peer.code)
       expect(mocks.call).not.toHaveBeenCalled()
-      await click(wrapper, accepted ? messages.devices.pairingAccept : block ? messages.devices.pairingBlock : messages.devices.pairingRefuse)
+      await click(wrapper, accepted
+        ? messages.devices.pairingAccept
+        : block ? messages.devices.pairingBlock : messages.devices.pairingRefuse)
       expect(mocks.call).toHaveBeenCalledWith('devices_pairing_respond', { accepted, block })
       expect(pairing.snapshot.outcome).toBe(accepted ? 'paired' : 'refused')
     }
     finally { wrapper.unmount() }
   })
   it('restores a local install draft after a received pairing request is handled', async () => {
-    answer({ devices_pairing_respond: () => ({ ok: true, value: { phase: 'done', outcome: 'refused' } }) })
+    answer({
+      devices_pairing_respond: () => ({
+        ok: true,
+        value: { phase: 'done', outcome: 'refused' }
+      })
+    })
     const { wrapper: page } = await mountPage()
     await click(page, messages.plugins.workflow.localInstall)
     const editor = page.getComponent(LocalInstallDialog)
@@ -43,7 +73,10 @@ describe('pairing presentation', () => {
     const prompt = mount(PairingPrompt, { attachTo: document.body })
     try {
       const pairing = usePairingStore()
-      pairing.apply({ type: 'pairingUpdated', payload: { phase: 'asked', ask: peer } })
+      pairing.apply({
+        type: 'pairingUpdated',
+        payload: { phase: 'asked', ask: peer }
+      })
       await flushPromises()
       expect(editor.getComponent(Modal).props('open')).toBe(false)
       expect(prompt.getComponent(Modal).props('open')).toBe(true)

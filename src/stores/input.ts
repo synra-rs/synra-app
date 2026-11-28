@@ -54,5 +54,13 @@ export const useInputStore = defineStore('input', () => {
     finally { busy.value = false }
   }
 
-  return { snapshot, busy, error, apply, read, decide, stop }
+  return {
+    snapshot,
+    busy,
+    error,
+    apply,
+    read,
+    decide,
+    stop
+  }
 })

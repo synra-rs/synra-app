@@ -14,7 +14,9 @@ import { uploadFile } from './transfer-upload'
 function progressOf(status: TransferStatus): TransferProgress {
   return {
     ...status,
-    ratio: status.totalBytes === 0 ? 0 : Math.min(1, status.receivedBytes / status.totalBytes)
+    ratio: status.totalBytes === 0
+      ? 0
+      : Math.min(1, status.receivedBytes / status.totalBytes)
   }
 }
 

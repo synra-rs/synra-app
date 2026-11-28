@@ -44,7 +44,10 @@ it('previews synchronization through the client without contacting real devices'
     throw new Error('preview plan failed')
   expect(planned.value.pluginId).toBe('@synra-plugin/github')
   expect(planned.value.targets).not.toHaveLength(0)
-  const plan = { ...planned.value, targets: planned.value.targets.map(target => ({ ...target, online: false })) }
+  const plan = {
+    ...planned.value,
+    targets: planned.value.targets.map(target => ({ ...target, online: false }))
+  }
   const sent = await client.call<SyncReport>('plugins_sync_run', { plan })
   expect(sent.ok).toBe(true)
   if (!sent.ok)
@@ -117,7 +120,9 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   // The command takes an `opts`, and `REQUIRED_ARGS` in `fake-kernel.ts` is where the fake says so: a table that omitted
   // it would be asserting the shape of an answer to a call the shell refuses. `cachedOnly` keeps the suite free of a
   // running interval — the shape of the answer is the same either way.
-  devices_scan_start: { opts: { includePaired: false, cachedOnly: true } },
+  devices_scan_start: {
+    opts: { includePaired: false, cachedOnly: true }
+  },
   devices_scan_cancel: { scanId: '01HQ00000000000000000SCAN01' },
   plugins_list: undefined,
   // The command is `One` **and takes an `intent_id`**: it answers about one intent rather than listing them.
@@ -135,12 +140,18 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   transfer_discard: { path: 'C:/inbox/notes.txt' },
   transfer_respond: { transferId: '01HQ00000000000000000XFER1', accept: true },
   // `One`: the transfer's identifier. The fake requires the request bag the wrapper takes, not its fields.
-  transfer_send_text: { request: { to: '11111111-1111-4111-8111-111111111111', text: 'hi', fileName: 'message.txt' } },
-  transfer_send_file: { request: { to: '11111111-1111-4111-8111-111111111111', path: 'C:/files/notes.txt' } },
+  transfer_send_text: {
+    request: { to: '11111111-1111-4111-8111-111111111111', text: 'hi', fileName: 'message.txt' }
+  },
+  transfer_send_file: {
+    request: { to: '11111111-1111-4111-8111-111111111111', path: 'C:/files/notes.txt' }
+  },
   plugins_publishers: undefined,
   // `One`, with the option bag the wrapper requires: the page builds it, and a fake that ignored it would answer a shape
   // the page could not have produced.
-  diag_export: { options: { includeAudit: false, includeDebugLogs: false } },
+  diag_export: {
+    options: { includeAudit: false, includeDebugLogs: false }
+  },
   // `Many`: a bare array, which is what the arity says the payload is.
   diag_logs_tail: { lines: 100 },
   diag_probes: undefined,
@@ -155,7 +166,9 @@ const ANSWERED: Readonly<Record<string, Readonly<Record<string, unknown>> | unde
   plugins_reload: { pluginId: '@acme/hello' },
   plugins_publisher_decide: { publisherId: '@acme', fingerprint: 'AB12 CD34 EF56 7890', trust: 'trusted' },
   plugins_preview: { pluginId: '@acme/hello' },
-  plugins_catalog_search: { query: { query: 'hello' } },
+  plugins_catalog_search: {
+    query: { query: 'hello' }
+  },
   config_get: undefined
 }
 
@@ -175,12 +188,18 @@ describe('every answer the fake gives, against the arity the kernel declares', (
       expect(declared, `${command} is not declared by ${CONTRACT_RS}`).toBeDefined()
 
       const kernel = new FakeKernel()
-      await kernel.invoke('config_set', { patch: { set: { 'plugins.registry': 'https://registry.example' } } })
+      await kernel.invoke('config_set', {
+        patch: {
+          set: { 'plugins.registry': 'https://registry.example' }
+        }
+      })
       let answer: unknown
       if (command === 'devices_scan_cancel') {
         vi.useFakeTimers()
         try {
-          const scanId = await kernel.invoke('devices_scan_start', { opts: { cachedOnly: false } })
+          const scanId = await kernel.invoke('devices_scan_start', {
+            opts: { cachedOnly: false }
+          })
           answer = await kernel.invoke(command, { scanId })
           vi.advanceTimersByTime(300)
         }

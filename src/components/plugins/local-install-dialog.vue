@@ -1,7 +1,7 @@
 <template>
   <AModal :open="visible" :width="580" :title="messages.plugins.workflow.localInstall" :footer="null" :closable="!installing && !choosing" :mask-closable="!installing && !choosing" :keyboard="!installing && !choosing" @cancel="$emit('close')">
     <div class="stack gap-4">
-      <p class="m-0 text-base text-ink-dim">
+      <p class="text-base text-ink-dim m-0">
         {{ messages.plugins.workflow.localHelp }}
       </p>
       <div class="row flex-wrap gap-2">
@@ -12,17 +12,17 @@
           {{ messages.plugins.chooseDirectory }}
         </AButton>
       </div>
-      <p v-if="path" class="m-0 break-all text-base font-mono">
+      <p v-if="path" class="text-base font-mono m-0 break-all">
         {{ path }}
       </p>
       <details>
-        <summary class="synra-choice min-h-8 cursor-pointer text-sm text-ink-dim">
+        <summary class="synra-choice text-sm text-ink-dim min-h-8 cursor-pointer">
           {{ messages.plugins.workflow.manualPath }}
         </summary>
         <AInput v-model:value="path" class="mt-2" :aria-label="messages.plugins.installPath" :placeholder="messages.plugins.installPath" :disabled="installing || choosing" @keydown="guardCompositionEscape" @press-enter="submit" />
       </details>
       <ErrorNotice v-if="error" :code="error.code" :detail="error.detail" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
-      <div class="row justify-end gap-2">
+      <div class="row gap-2 justify-end">
         <AButton :disabled="installing || choosing" @click="$emit('close')">
           {{ messages.plugins.workflow.cancel }}
         </AButton>
@@ -64,7 +64,21 @@ async function choose(directory: boolean): Promise<void> {
   error.value = undefined
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory, multiple: false, title: directory ? messages.plugins.chooseDirectory : messages.plugins.choosePackage, ...(!directory ? { filters: [{ name: 'Synra', extensions: ['synra'] }] } : {}) })
+    const selected = await open({
+      directory,
+      multiple: false,
+      title: directory ? messages.plugins.chooseDirectory : messages.plugins.choosePackage,
+      ...(!directory
+        ? {
+            filters: [
+              {
+                name: 'Synra',
+                extensions: ['synra']
+              }
+            ]
+          }
+        : {})
+    })
     if (alive && typeof selected === 'string')
       path.value = selected
   }

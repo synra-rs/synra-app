@@ -1,5 +1,5 @@
 <template>
-  <p class="m-0 text-sm text-ink-dim leading-relaxed">
+  <p class="text-sm text-ink-dim leading-relaxed m-0">
     <slot />
   </p>
 </template>

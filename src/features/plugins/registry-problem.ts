@@ -16,12 +16,21 @@ export function registryProblem(details: unknown): RegistryProblem | undefined {
     || (index !== undefined && (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0))) {
     return undefined
   }
-  return { kind, field, reason, ...(index === undefined ? {} : { index }) }
+  return {
+    kind,
+    field,
+    reason,
+    ...(index === undefined
+      ? {}
+      : { index })
+  }
 }
 
 export function registryDetail(problem: RegistryProblem | undefined): string | undefined {
   if (problem?.kind !== 'invalidConfiguration')
     return undefined
-  const field = problem.index === undefined ? problem.field : `${problem.field}[${problem.index}]`
+  const field = problem.index === undefined
+    ? problem.field
+    : `${problem.field}[${problem.index}]`
   return `${field}: ${problem.reason}`
 }

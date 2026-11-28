@@ -7,21 +7,41 @@ import { useSettingsStore } from '@/stores/settings'
 import { registryFixture } from '../../ipc/registry-fixture'
 import { answer, click, ErrorNotice, messages, mocks, mountPage, RegistryDiscover, RegistryInstallDialog } from './workflow.testkit'
 
-const item = { pluginId: '@acme/article-reader', title: 'Article reader', publisher: '@acme', version: '1.0', capabilityCount: 1, installed: false }
-const preview = { ...item, hasUi: true, headless: false, capabilities: ['fs:read'] }
+const item = {
+  pluginId: '@acme/article-reader',
+  title: 'Article reader',
+  publisher: '@acme',
+  version: '1.0',
+  capabilityCount: 1,
+  installed: false
+}
+const preview = {
+  ...item,
+  hasUi: true,
+  headless: false,
+  capabilities: ['fs:read']
+}
 async function discover() {
   const page = await mountPage()
   await page.wrapper.getComponent(Segmented).vm.$emit('update:value', 'discover')
   await flushPromises()
-  return { ...page, discover: page.wrapper.getComponent(RegistryDiscover) }
+  return {
+    ...page,
+    discover: page.wrapper.getComponent(RegistryDiscover)
+  }
 }
 it('submits registry queries explicitly and opens the result without another id field', async () => {
-  answer({ plugins_catalog_search: [item], plugins_preview: preview })
+  answer({
+    plugins_catalog_search: [item],
+    plugins_preview: preview
+  })
   const { discover: view } = await discover()
   expect(mocks.call.mock.calls.some(([name]) => name === 'plugins_catalog_search')).toBe(false)
   await view.get('input').setValue('article')
   await click(view, messages.plugins.catalog.action)
-  expect(mocks.call).toHaveBeenCalledWith('plugins_catalog_search', { query: { query: 'article', offset: 0, sort: 'relevance' } })
+  expect(mocks.call).toHaveBeenCalledWith('plugins_catalog_search', {
+    query: { query: 'article', offset: 0, sort: 'relevance' }
+  })
   await click(view, messages.plugins.workflow.details)
   expect(mocks.call).toHaveBeenCalledWith('plugins_preview', { pluginId: item.pluginId })
   expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
@@ -29,21 +49,36 @@ it('submits registry queries explicitly and opens the result without another id 
 it('discards a pending search when a configuration event changes the registry', async () => {
   const settings = useSettingsStore()
   const source = 'plugins.registry'
-  settings.applySnapshot({ values: { [source]: 'https://old.example' }, overridden: [source] })
+  settings.applySnapshot({
+    values: { [source]: 'https://old.example' },
+    overridden: [source]
+  })
   let finish!: (value: unknown) => void
   const pending = new Promise(resolve => finish = resolve)
   const fresh = { ...item, pluginId: '@acme/current-reader', title: 'Current reader' }
   answer({
     plugins_catalog_search: () => settings.value(source) === 'https://old.example'
       ? pending
-      : { ok: true, value: [fresh] }
+      : {
+          ok: true,
+          value: [fresh]
+        }
   })
   const { discover: view } = await discover()
   await view.get('input').setValue('reader')
   await click(view, messages.plugins.catalog.action)
 
-  settings.apply({ type: 'configUpdated', payload: { values: { [source]: 'https://current.example' }, overridden: [source] } })
-  finish({ ok: true, value: [item] })
+  settings.apply({
+    type: 'configUpdated',
+    payload: {
+      values: { [source]: 'https://current.example' },
+      overridden: [source]
+    }
+  })
+  finish({
+    ok: true,
+    value: [item]
+  })
   await flushPromises()
   expect(view.findAll('article')).toHaveLength(0)
 
@@ -53,7 +88,11 @@ it('discards a pending search when a configuration event changes the registry', 
 })
 it('keeps a preview after failed installation and sends only one pending install', async () => {
   let finish!: (value: unknown) => void
-  answer({ plugins_catalog_search: [item], plugins_preview: preview, plugins_install: () => new Promise(resolve => finish = resolve) })
+  answer({
+    plugins_catalog_search: [item],
+    plugins_preview: preview,
+    plugins_install: () => new Promise(resolve => finish = resolve)
+  })
   const { discover: view } = await discover()
   await view.get('input').setValue(item.pluginId)
   await click(view, messages.plugins.catalog.action)
@@ -69,7 +108,12 @@ it('keeps a preview after failed installation and sends only one pending install
 })
 it.each(['en', 'zh-CN'] as const)('offers registry settings in %s for an unconfigured source', async (locale) => {
   setLocalePreference(locale)
-  answer({ plugins_catalog_search: () => ({ ok: false, error: { ...registryFixture.notConfigured, message: 'future.translation' } }) })
+  answer({
+    plugins_catalog_search: () => ({
+      ok: false,
+      error: { ...registryFixture.notConfigured, message: 'future.translation' }
+    })
+  })
   const { discover: view, router } = await discover()
   await view.get('input').setValue('reader')
   await click(view, messages.plugins.catalog.action)
@@ -77,7 +121,10 @@ it.each(['en', 'zh-CN'] as const)('offers registry settings in %s for an unconfi
   expect(router.currentRoute.value.query.category).toBe('plugins')
 })
 it('offers a real preview by ID when the configured source has no search endpoint', async () => {
-  answer({ plugins_catalog_search: () => ({ ok: false, error: registryFixture.searchUnsupported }), plugins_preview: preview })
+  answer({
+    plugins_catalog_search: () => ({ ok: false, error: registryFixture.searchUnsupported }),
+    plugins_preview: preview
+  })
   const { discover: view } = await discover()
   await view.get('input').setValue(item.pluginId)
   await click(view, messages.plugins.catalog.action)
@@ -88,7 +135,9 @@ it('offers a real preview by ID when the configured source has no search endpoin
   expect(document.querySelector('.ant-modal')?.textContent).toContain(item.title)
 })
 it('shows a malformed mirror as a configuration error with its source position', async () => {
-  answer({ plugins_catalog_search: () => ({ ok: false, error: registryFixture.invalidConfiguration }) })
+  answer({
+    plugins_catalog_search: () => ({ ok: false, error: registryFixture.invalidConfiguration })
+  })
   const { discover: view } = await discover()
   await view.get('input').setValue('reader')
   await click(view, messages.plugins.catalog.action)

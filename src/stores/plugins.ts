@@ -45,7 +45,9 @@ export const usePluginsStore = defineStore('plugins', () => {
     const at = plugins.value.findIndex(plugin => plugin.pluginId === card.pluginId)
     plugins.value = at < 0
       ? [...plugins.value, card]
-      : plugins.value.map((plugin, index) => (index === at ? card : plugin))
+      : plugins.value.map((plugin, index) => (index === at
+          ? card
+          : plugin))
   }
 
   /** Drops a card, for the one path with no event — a successful uninstall. */
@@ -80,13 +82,25 @@ export const usePluginsStore = defineStore('plugins', () => {
         return plugin
       const changed: PluginSnapshot = {
         ...plugin,
-        ...(report === undefined ? {} : { health: report }),
-        ...(health === 'faulted' ? { state: 'faulted', stateReason: explanation } : {})
+        ...(report === undefined
+          ? {}
+          : { health: report }),
+        ...(health === 'faulted'
+          ? { state: 'faulted', stateReason: explanation }
+          : {})
       }
       return changed
     })
     return true
   }
 
-  return { apply, applySnapshot, forget, markHealth, plugin, plugins, upsert }
+  return {
+    apply,
+    applySnapshot,
+    forget,
+    markHealth,
+    plugin,
+    plugins,
+    upsert
+  }
 })

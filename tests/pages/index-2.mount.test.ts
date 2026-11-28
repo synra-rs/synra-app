@@ -20,8 +20,17 @@ describe('the home page', () => {
       blocksTotal: 1,
       startedAtMs: 1
     }
-    answer({ intent_list: [], transfer_list: [transfer] })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    answer({
+      intent_list: [],
+      transfer_list: [transfer]
+    })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('transfer_list')
     expect(wrapper.text()).toContain('Study PC')
@@ -48,8 +57,17 @@ describe('the home page', () => {
       blocksTotal: 1,
       startedAtMs: 1
     }
-    answer({ intent_list: [], transfer_list: [transfer] })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    answer({
+      intent_list: [],
+      transfer_list: [transfer]
+    })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     expect(wrapper.text()).toContain('paused')
     expect(wrapper.text()).not.toContain(messages.home.inFlight.states.active)
@@ -59,11 +77,27 @@ describe('the home page', () => {
     answer({
       intent_list: [],
       transfer_received: [
-        { fileName: 'notes.txt', path: 'C:/inbox/notes.txt', bytes: 12, receivedAtMs: 2 },
-        { fileName: 'photo.png', path: 'C:/inbox/photo.png', bytes: 2048, receivedAtMs: 1 }
+        {
+          fileName: 'notes.txt',
+          path: 'C:/inbox/notes.txt',
+          bytes: 12,
+          receivedAtMs: 2
+        },
+        {
+          fileName: 'photo.png',
+          path: 'C:/inbox/photo.png',
+          bytes: 2048,
+          receivedAtMs: 1
+        }
       ]
     })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     expect(mocks.call).toHaveBeenCalledWith('transfer_received')
     expect(wrapper.text()).toContain(messages.home.receivedFiles.title)
@@ -86,17 +120,36 @@ describe('the home page', () => {
           ok: true,
           value: reads === 1
             ? []
-            : [{ fileName: 'arrived.txt', path: 'C:/inbox/arrived.txt', bytes: 7, receivedAtMs: 3 }]
+            : [
+                {
+                  fileName: 'arrived.txt',
+                  path: 'C:/inbox/arrived.txt',
+                  bytes: 7,
+                  receivedAtMs: 3
+                }
+              ]
         }
       }
-      return { ok: false, error: { code: 'internal', message: 'error.internal', retryable: false } }
+      return {
+        ok: false,
+        error: { code: 'internal', message: 'error.internal', retryable: false }
+      }
     })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     expect(wrapper.text()).not.toContain('arrived.txt')
     useNoticesStore().apply({
       type: 'notice',
-      payload: { message: 'notice.received', params: { name: 'arrived.txt', path: 'C:/inbox/arrived.txt' } }
+      payload: {
+        message: 'notice.received',
+        params: { name: 'arrived.txt', path: 'C:/inbox/arrived.txt' }
+      }
     } as never)
     await flushPromises()
     expect(reads).toBe(2)
@@ -119,7 +172,13 @@ describe('the home page', () => {
       startedAtMs: 1
     }
     answer({ intent_list: [], transfer_cancel: null })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
     useDevicesStore().applySnapshot({ identity: IDENTITY, devices: DEVICES })
@@ -163,8 +222,17 @@ describe('the home page', () => {
     }
     answer({ intent_list: [], transfer_cancel: null })
     const { useSettingsStore } = await import('@/stores/settings')
-    useSettingsStore().applySnapshot({ values: { 'transfers.confirmCancel': false }, overridden: [] })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    useSettingsStore().applySnapshot({
+      values: { 'transfers.confirmCancel': false },
+      overridden: []
+    })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     useIntentsStore().apply({ type: 'transferUpdated', payload: transfer })
     await flushPromises()
@@ -177,7 +245,13 @@ describe('the home page', () => {
   })
   it('draws an intent the store received', async () => {
     answer({ intent_list: [] })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     useIntentsStore().apply({ type: 'intentUpdated', payload: INTENT })
     await flushPromises()
@@ -190,13 +264,22 @@ describe('the home page', () => {
   })
   it('drops an intent the kernel says is over', async () => {
     answer({ intent_list: [] })
-    const wrapper = mount(HomePage, { global: { plugins: [router()] } })
+    const wrapper = mount(HomePage, {
+      global: {
+        plugins: [
+          router()
+        ]
+      }
+    })
     await flushPromises()
     const store = useIntentsStore()
     store.apply({ type: 'intentUpdated', payload: INTENT })
     await flushPromises()
     expect(wrapper.text()).toContain(INTENT.pluginId)
-    store.apply({ type: 'intentFinished', payload: { intentId: INTENT.intentId } })
+    store.apply({
+      type: 'intentFinished',
+      payload: { intentId: INTENT.intentId }
+    })
     await flushPromises()
     expect(wrapper.text()).not.toContain(INTENT.pluginId)
     wrapper.unmount()

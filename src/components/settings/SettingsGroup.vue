@@ -1,9 +1,9 @@
 <template>
-  <section class="min-w-0 stack gap-3">
-    <h3 class="m-0 text-base text-ink-dim font-medium">
+  <section class="stack gap-3 min-w-0">
+    <h3 class="text-base text-ink-dim font-medium m-0">
       {{ title }}
     </h3>
-    <div class="min-w-0 stack gap-0 divide-y divide-line">
+    <div class="stack gap-0 min-w-0 divide-line divide-y">
       <slot />
     </div>
   </section>

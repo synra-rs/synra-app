@@ -14,11 +14,22 @@ import { KernelClient } from '@/ipc/client'
 import { useIntentsStore } from '@/stores/intents'
 
 function intent(intentId: string, overrides: Partial<IntentSnapshot> = {}): IntentSnapshot {
-  return { intentId, summary: '', state: 'awaiting-choice', candidates: [], ...overrides } as IntentSnapshot
+  return {
+    intentId,
+    summary: '',
+    state: 'awaiting-choice',
+    candidates: [],
+    ...overrides
+  } as IntentSnapshot
 }
 
 function transfer(transferId: string, overrides: Partial<TransferSnapshot> = {}): TransferSnapshot {
-  return { transferId, direction: 'send', state: 'active', ...overrides } as TransferSnapshot
+  return {
+    transferId,
+    direction: 'send',
+    state: 'active',
+    ...overrides
+  } as TransferSnapshot
 }
 
 beforeEach(() => {
@@ -29,9 +40,18 @@ describe('the intents store', () => {
   it('applies an arrival and then a replacement in place', async () => {
     const store = useIntentsStore()
 
-    expect(store.apply({ type: 'intentUpdated', payload: intent('a') })).toBe(true)
-    expect(store.apply({ type: 'intentUpdated', payload: intent('b') })).toBe(true)
-    expect(store.apply({ type: 'intentUpdated', payload: intent('a', { state: 'delivering' }) })).toBe(true)
+    expect(store.apply({
+      type: 'intentUpdated',
+      payload: intent('a')
+    })).toBe(true)
+    expect(store.apply({
+      type: 'intentUpdated',
+      payload: intent('b')
+    })).toBe(true)
+    expect(store.apply({
+      type: 'intentUpdated',
+      payload: intent('a', { state: 'delivering' })
+    })).toBe(true)
 
     expect(store.intents.map(i => i.intentId)).toEqual(['a', 'b'])
     expect(store.intent('a')?.state).toBe('delivering')
@@ -39,10 +59,19 @@ describe('the intents store', () => {
 
   it('removes a finished intent', async () => {
     const store = useIntentsStore()
-    store.apply({ type: 'intentUpdated', payload: intent('a') })
-    store.apply({ type: 'intentUpdated', payload: intent('b') })
+    store.apply({
+      type: 'intentUpdated',
+      payload: intent('a')
+    })
+    store.apply({
+      type: 'intentUpdated',
+      payload: intent('b')
+    })
 
-    store.apply({ type: 'intentFinished', payload: { intentId: 'a' } })
+    store.apply({
+      type: 'intentFinished',
+      payload: { intentId: 'a' }
+    })
 
     expect(store.intents.map(i => i.intentId)).toEqual(['b'])
   })
@@ -50,7 +79,10 @@ describe('the intents store', () => {
   it('keeps transfers apart from intents', async () => {
     const store = useIntentsStore()
 
-    store.apply({ type: 'transferUpdated', payload: transfer('t1') })
+    store.apply({
+      type: 'transferUpdated',
+      payload: transfer('t1')
+    })
 
     expect(store.transfers.map(t => t.transferId)).toEqual(['t1'])
     expect(store.intents).toHaveLength(0)
@@ -58,9 +90,15 @@ describe('the intents store', () => {
 
   it('drops a finished transfer', async () => {
     const store = useIntentsStore()
-    store.apply({ type: 'transferUpdated', payload: transfer('t1') })
+    store.apply({
+      type: 'transferUpdated',
+      payload: transfer('t1')
+    })
 
-    store.apply({ type: 'transferFinished', payload: { transferId: 't1' } })
+    store.apply({
+      type: 'transferFinished',
+      payload: { transferId: 't1' }
+    })
 
     expect(store.transfers).toHaveLength(0)
   })
@@ -75,14 +113,22 @@ describe('the intents store', () => {
   it('does not restore a completed transfer from a delayed recovery read', async () => {
     const store = useIntentsStore()
     const row = transfer('first')
-    store.applySnapshot({ intents: [intent('task')], transfers: [row] })
+    store.applySnapshot({
+      intents: [
+        intent('task')
+      ],
+      transfers: [row]
+    })
     let finish!: (value: unknown) => void
     const client = new KernelClient({
       invoke: () => new Promise((resolve) => { finish = resolve }),
       listen: async () => () => {}
     })
     const read = store.readTransfers(client)
-    store.apply({ type: 'transferFinished', payload: { transferId: 'first' } })
+    store.apply({
+      type: 'transferFinished',
+      payload: { transferId: 'first' }
+    })
     finish([row])
     await read
     expect(store.transfers).toEqual([])
@@ -98,9 +144,13 @@ describe('the intents store', () => {
     })
     const first = store.readTransfers(client)
     const second = store.readTransfers(client)
-    finishes[1]!([transfer('new')])
+    finishes[1]!([
+      transfer('new')
+    ])
     await second
-    finishes[0]!([transfer('old')])
+    finishes[0]!([
+      transfer('old')
+    ])
     await first
     expect(store.transfers.map(entry => entry.transferId)).toEqual(['new'])
     const refused = store.readTransfers(client)

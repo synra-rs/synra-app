@@ -2,30 +2,30 @@
   <AModal :open="visible" :width="560" :title="messages.plugins.workflow.installConsentTitle" :closable="!busy" :mask-closable="!busy" :keyboard="!busy" :footer="null" @cancel="$emit('close')">
     <div class="stack gap-4">
       <div class="stack gap-1">
-        <h3 class="m-0 text-lg font-semibold">
+        <h3 class="text-lg font-semibold m-0">
           {{ plugin.title }}
         </h3>
-        <p v-if="plugin.description" class="m-0 text-base">
+        <p v-if="plugin.description" class="text-base m-0">
           {{ plugin.description }}
         </p>
-        <p class="m-0 break-all text-sm text-ink-dim font-mono">
+        <p class="text-sm text-ink-dim font-mono m-0 break-all">
           {{ plugin.pluginId }} · {{ plugin.version }} · {{ plugin.publisher }}
         </p>
       </div>
       <div class="stack gap-2">
-        <h4 class="m-0 text-base font-medium">
+        <h4 class="text-base font-medium m-0">
           {{ messages.plugins.workflow.requestedPermissions }}
         </h4>
-        <div v-for="capability in capabilities" :key="capability" class="stack gap-1 border-b border-line pb-2">
+        <div v-for="capability in capabilities" :key="capability" class="pb-2 border-b border-line stack gap-1">
           <span class="text-base">{{ capabilityPurpose(capability) }}</span>
-          <code class="break-all text-sm text-ink-dim">{{ capability }}</code>
+          <code class="text-sm text-ink-dim break-all">{{ capability }}</code>
         </div>
-        <p v-if="!capabilities.length" class="m-0 text-base text-ink-dim">
+        <p v-if="!capabilities.length" class="text-base text-ink-dim m-0">
           {{ messages.plugins.preview.none }}
         </p>
       </div>
       <ErrorNotice v-if="error" :code="error.code" :detail="error.detail" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
-      <div class="row justify-end gap-2">
+      <div class="row gap-2 justify-end">
         <AButton danger :disabled="busy" @click="reject">
           {{ messages.plugins.workflow.rejectInstall }}
         </AButton>
@@ -54,7 +54,9 @@ import { usePluginsStore } from '../../stores/plugins'
 const props = defineProps<{ plugin: PluginSnapshot, library: PluginLibrary }>()
 const emit = defineEmits<{ close: [] }>()
 const store = usePluginsStore()
-const capabilities = computed(() => [...new Set(props.plugin.requested ?? [])])
+const capabilities = computed(() => [
+  ...new Set(props.plugin.requested ?? [])
+])
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
 const error = ref<Failure>()
 const visible = useDialogVisibility(ref(true), 80, () => {

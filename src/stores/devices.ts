@@ -109,7 +109,9 @@ export const useDevicesStore = defineStore('devices', () => {
     const existing = next[at]
     if (!existing)
       return
-    next[at] = transfer === undefined ? withoutTransfer(existing) : { ...existing, transfer }
+    next[at] = transfer === undefined
+      ? withoutTransfer(existing)
+      : { ...existing, transfer }
     cards.value = next
   }
 

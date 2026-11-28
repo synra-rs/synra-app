@@ -17,7 +17,9 @@ import { detectWebview } from './webview'
 export function createEnvNamespace(context: InjectionContext, can: GrantCheck): EnvNamespace {
   const supported = new Set(context.platformCapabilities)
   // ★ Resolved once, at injection: the engine cannot change under a page, and a plugin may ask on every render.
-  const webview = detectWebview(typeof navigator === 'undefined' ? '' : navigator.userAgent, context.platform)
+  const webview = detectWebview(typeof navigator === 'undefined'
+    ? ''
+    : navigator.userAgent, context.platform)
 
   return {
     // ★ These three read the context rather than naming a value. They used to be the literals `'desktop'`, `'windows'`

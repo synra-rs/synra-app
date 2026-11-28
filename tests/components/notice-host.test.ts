@@ -17,7 +17,10 @@ const { useNoticesStore } = await import('@/stores/notices')
 const { messages } = await import('@/messages')
 
 function notice(message: string, params: Record<string, unknown>): KernelEvent {
-  return { type: 'notice', payload: { message, params } } as KernelEvent
+  return {
+    type: 'notice',
+    payload: { message, params }
+  } as KernelEvent
 }
 
 /** The host reads the router for its one action, so every mount needs one. */
@@ -25,11 +28,25 @@ function mountHost() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/plugins', component: { template: '<div />' } },
-      { path: '/:pathMatch(.*)*', component: { template: '<div />' } }
+      {
+        path: '/plugins',
+        component: { template: '<div />' }
+      },
+      {
+        path: '/:pathMatch(.*)*',
+        component: { template: '<div />' }
+      }
     ]
   })
-  return { router, wrapper: mount(NoticeHost, { attachTo: document.body, global: { plugins: [router] } }) }
+  return {
+    router,
+    wrapper: mount(NoticeHost, {
+      attachTo: document.body,
+      global: {
+        plugins: [router]
+      }
+    })
+  }
 }
 
 function bodyText(): string {
@@ -104,7 +121,10 @@ describe('the notice host', () => {
   it('says how many updates the daily check found', async () => {
     // ★ One banner for the pass, not one per plugin: the next step is the same for all of them, and a stack of identical
     // notices is what a person learns to close without reading.
-    useNoticesStore().apply(notice('notice.updates', { count: 2, plugins: ['@acme/one', '@acme/two'] }))
+    useNoticesStore().apply(notice('notice.updates', {
+      count: 2,
+      plugins: ['@acme/one', '@acme/two']
+    }))
 
     const { wrapper } = mountHost()
     await flushPromises()
@@ -147,7 +167,9 @@ describe('the notice host', () => {
     const { router, wrapper } = mountHost()
     await flushPromises()
 
-    const action = [...document.body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === messages.notices.review)
+    const action = [
+      ...document.body.querySelectorAll<HTMLButtonElement>('button')
+    ].find(button => button.textContent === messages.notices.review)
     expect(action, 'the package notice has no way to the plugins page').toBeDefined()
     action?.click()
     await flushPromises()

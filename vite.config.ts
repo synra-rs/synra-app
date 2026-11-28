@@ -22,7 +22,9 @@ const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synr
  */
 export default defineConfig({
   plugins: [
-    buildStamp({ include: [buildStampModule] }),
+    buildStamp({
+      include: [buildStampModule]
+    }),
     buildStamp({
       cwd: coreRoot,
       include: [buildStampModule],
@@ -43,7 +45,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    watch: { ignored: ['**/src-tauri/target/**'] }
+    watch: {
+      ignored: ['**/src-tauri/target/**']
+    }
   },
   build: {
     outDir: 'dist',

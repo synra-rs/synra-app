@@ -14,6 +14,9 @@ export function checkCapabilityContract(): void {
     notes.push('capability-contract: Core authorization decisions match the shared conformance fixture')
   }
   catch (cause) {
-    failures.push({ check: 'capability-contract', detail: String(cause) })
+    failures.push({
+      check: 'capability-contract',
+      detail: String(cause)
+    })
   }
 }

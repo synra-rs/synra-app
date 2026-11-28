@@ -8,16 +8,35 @@ async function removal() {
   const page = await mountPage('/plugins?plugin=%40acme%2Freader')
   await click(page.wrapper, messages.plugins.workflow.more)
   await clickBody(messages.plugins.removeAction, 'menuitem')
-  return { ...page, dialog: page.wrapper.getComponent(PluginRemoval) }
+  return {
+    ...page,
+    dialog: page.wrapper.getComponent(PluginRemoval)
+  }
 }
 it('opens routine update details when addedCapabilities is omitted', async () => {
-  answer({ plugins_list: [card({ update: { pluginId: '@acme/reader', version: '2.0', needsNewConsent: false } })] })
+  answer({
+    plugins_list: [
+      card({
+        update: { pluginId: '@acme/reader', version: '2.0', needsNewConsent: false }
+      })
+    ]
+  })
   await mountPage('/plugins?plugin=%40acme%2Freader')
   expect(document.body.textContent).toContain(messages.plugins.updateNoNewPermissions)
   expect(document.body.textContent).toContain('2.0')
 })
 it('replaces update checks with a confirmed local reload', async () => {
-  answer({ plugins_list: [card({ localSource: true })], plugins_update: { pluginId: '@acme/reader', version: '1.0', enabled: false, warnings: [] } })
+  answer({
+    plugins_list: [
+      card({ localSource: true })
+    ],
+    plugins_update: {
+      pluginId: '@acme/reader',
+      version: '1.0',
+      enabled: false,
+      warnings: []
+    }
+  })
   const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
   await click(wrapper, messages.plugins.workflow.more)
   await clickBody(messages.plugins.workflow.reloadAction, 'menuitem')
@@ -37,23 +56,53 @@ it('asks about data and resets the destructive choice after cancellation', async
   expect(mocks.call.mock.calls.some(([command]) => command === 'plugins_uninstall')).toBe(false)
 })
 it('removes the selected plugin and returns to its list with data kept by default', async () => {
-  answer({ plugins_uninstall: { bytesFreed: 0, dataKept: true }, plugins_list: [card()] })
+  answer({
+    plugins_uninstall: { bytesFreed: 0, dataKept: true },
+    plugins_list: [
+      card()
+    ]
+  })
   const { dialog, router } = await removal()
-  answer({ plugins_uninstall: { bytesFreed: 0, dataKept: true }, plugins_list: [] })
+  answer({
+    plugins_uninstall: { bytesFreed: 0, dataKept: true },
+    plugins_list: []
+  })
   await click(dialog, messages.plugins.removeAction)
   expect(mocks.call).toHaveBeenCalledWith('plugins_uninstall', { pluginId: '@acme/reader', removeData: false })
   expect(usePluginsStore().plugin('@acme/reader')).toBeUndefined()
   expect(router.currentRoute.value.query.plugin).toBeUndefined()
 })
 it('keeps a failed removal in its confirmation', async () => {
-  answer({ plugins_uninstall: () => ({ ok: false, error: { code: 'unavailable', message: 'error.unavailable' } }) })
+  answer({
+    plugins_uninstall: () => ({
+      ok: false,
+      error: { code: 'unavailable', message: 'error.unavailable' }
+    })
+  })
   const { dialog } = await removal()
   await click(dialog, messages.plugins.removeAction)
   expect(dialog.getComponent(ErrorNotice).props('code')).toBe('unavailable')
   expect(usePluginsStore().plugin('@acme/reader')).toBeDefined()
 })
 it('keeps the report from an update and its new permission request', async () => {
-  answer({ plugins_list: [card({ update: { pluginId: '@acme/reader', version: '2.0', needsNewConsent: true, addedCapabilities: ['fs:read'] } })], plugins_update: { pluginId: '@acme/reader', version: '2.0', enabled: false, warnings: ['Review the changed permissions'] } })
+  answer({
+    plugins_list: [
+      card({
+        update: {
+          pluginId: '@acme/reader',
+          version: '2.0',
+          needsNewConsent: true,
+          addedCapabilities: ['fs:read']
+        }
+      })
+    ],
+    plugins_update: {
+      pluginId: '@acme/reader',
+      version: '2.0',
+      enabled: false,
+      warnings: ['Review the changed permissions']
+    }
+  })
   const { wrapper } = await mountPage('/plugins?plugin=%40acme%2Freader')
   await click(wrapper, messages.plugins.workflow.more)
   await clickBody(messages.plugins.updateAction, 'menuitem')
@@ -62,7 +111,13 @@ it('keeps the report from an update and its new permission request', async () =>
 })
 it('binds publisher trust to the full fingerprint and preserves failed decisions', async () => {
   const publisher = { publisherId: '@acme', fingerprint: 'full-fingerprint-from-the-kernel', trust: 'seen' }
-  answer({ plugins_publishers: [publisher], plugins_publisher_decide: () => ({ ok: false, error: { code: 'invalid_argument', message: 'error.stale' } }) })
+  answer({
+    plugins_publishers: [publisher],
+    plugins_publisher_decide: () => ({
+      ok: false,
+      error: { code: 'invalid_argument', message: 'error.stale' }
+    })
+  })
   const { wrapper } = await mountPage()
   await wrapper.get('[data-testid="plugins-more"]').trigger('click')
   await clickBody(messages.plugins.publishers.manage(1), 'menuitem')

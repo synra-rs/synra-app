@@ -146,5 +146,8 @@ export async function startEvents(client: KernelClient = kernel): Promise<Starte
   await pairing.read(client)
   await input.read(client)
 
-  return { dispatcher, stop: async () => stop() }
+  return {
+    dispatcher,
+    stop: async () => stop()
+  }
 }

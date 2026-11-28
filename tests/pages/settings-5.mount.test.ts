@@ -5,7 +5,10 @@ import { answer, IDENTITY, messages, mountPage, openDiagnostic, testRouter } fro
 
 describe('the settings page', () => {
   it('changes section when the query changes on the page already open', async () => {
-    answer({ identity_get: IDENTITY, config_get: { values: {}, overridden: [] } })
+    answer({
+      identity_get: IDENTITY,
+      config_get: { values: {}, overridden: [] }
+    })
     const wrapper = await mountPage('/settings')
     try {
       await flushPromises()
@@ -20,7 +23,10 @@ describe('the settings page', () => {
     }
   })
   it('names the log line count box', async () => {
-    answer({ config_get: { values: {}, overridden: [] }, identity_get: IDENTITY })
+    answer({
+      config_get: { values: {}, overridden: [] },
+      identity_get: IDENTITY
+    })
     const wrapper = await mountPage()
     try {
       await flushPromises()

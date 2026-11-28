@@ -1,17 +1,17 @@
 <template>
   <AModal :open="visible" :width="440" :title="messages.plugins.workflow.reloadTitle" :closable="!busy" :mask-closable="!busy" :keyboard="!busy" :footer="null" @cancel="$emit('close')">
     <div class="stack gap-4">
-      <p class="m-0 text-base">
+      <p class="text-base m-0">
         {{ messages.plugins.workflow.reloadDetail(plugin.title) }}
       </p>
-      <p class="m-0 break-all text-sm text-ink-dim font-mono">
+      <p class="text-sm text-ink-dim font-mono m-0 break-all">
         {{ messages.plugins.workflow.reloadSource(plugin.pluginId) }}
       </p>
       <ACheckbox v-model:checked="removeData" :disabled="busy">
         {{ messages.plugins.removeDeleteData }}
       </ACheckbox>
       <ErrorNotice v-if="error" :code="error.code" :detail="error.detail" :actions="error.actions?.filter(action => action.kind !== 'retry')" />
-      <div class="row justify-end gap-2">
+      <div class="row gap-2 justify-end">
         <AButton :disabled="busy" @click="$emit('close')">
           {{ messages.plugins.workflow.cancel }}
         </AButton>

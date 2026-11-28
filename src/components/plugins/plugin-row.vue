@@ -40,11 +40,11 @@
 </style>
 
 <template>
-  <article class="plugin-row min-w-0 stack gap-2 border-b border-line py-3" :data-plugin="plugin.pluginId">
-    <div class="plugin-row-main min-w-0 row flex-wrap items-start gap-3">
-      <button type="button" class="synra-choice min-w-0 flex-1 border-0 rounded-control bg-transparent p-0 text-start text-ink focusable" @click="$emit('details')">
-        <span class="block truncate text-base font-medium">{{ plugin.title }}</span>
-        <span class="block truncate text-sm text-ink-dim">{{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }} · {{ summary }}</span>
+  <article class="plugin-row py-3 border-b border-line stack gap-2 min-w-0" :data-plugin="plugin.pluginId">
+    <div class="plugin-row-main row flex-wrap gap-3 min-w-0 items-start">
+      <button type="button" class="synra-choice text-ink p-0 text-start focusable border-0 rounded-control bg-transparent flex-1 min-w-0" @click="$emit('details')">
+        <span class="text-base font-medium block truncate">{{ plugin.title }}</span>
+        <span class="text-sm text-ink-dim block truncate">{{ messages.plugins.states[plugin.state as keyof typeof messages.plugins.states] ?? plugin.state }} · {{ summary }}</span>
       </button>
       <div class="plugin-actions" :class="{ 'plugin-actions-attention': plugin.state === 'awaiting_consent' || plugin.state === 'faulted' }">
         <AButton v-if="plugin.state === 'awaiting_consent'" size="small" @click="$emit('details', 'permissions')">
@@ -62,10 +62,10 @@
         <PluginActionMenu compact :plugin="plugin" :disabled="busy" @action="action => $emit('action', action)" />
       </div>
     </div>
-    <p v-if="plugin.update && !plugin.localSource" class="m-0 text-sm text-primary-ink">
+    <p v-if="plugin.update && !plugin.localSource" class="text-sm text-primary-ink m-0">
       {{ plugin.update.needsNewConsent ? messages.plugins.updateNeedsConsent : messages.plugins.updateAvailable }}
     </p>
-    <p v-if="attention" class="m-0 text-sm text-warn">
+    <p v-if="attention" class="text-sm text-warn m-0">
       {{ messages.plugins.publishers.untrusted }}
     </p>
     <ErrorNotice v-if="library.errors[plugin.pluginId]" :code="library.errors[plugin.pluginId]!.code" :detail="library.errors[plugin.pluginId]!.detail" :actions="library.errors[plugin.pluginId]!.actions" />
@@ -85,5 +85,7 @@ import PluginActionMenu from './plugin-action-menu.vue'
 const props = defineProps<{ plugin: PluginSnapshot, library: PluginLibrary, attention?: boolean }>()
 defineEmits<{ details: [tab?: 'permissions'], action: [action: PluginMenuAction] }>()
 const busy = computed(() => props.library.operations.busy.has(props.plugin.pluginId))
-const summary = computed(() => props.plugin.stateReason || (props.plugin.health && props.plugin.health.health !== 'good' ? messages.plugins.healthLabel(props.plugin.health.health) : props.plugin.description || props.plugin.pluginId))
+const summary = computed(() => props.plugin.stateReason || (props.plugin.health && props.plugin.health.health !== 'good'
+  ? messages.plugins.healthLabel(props.plugin.health.health)
+  : props.plugin.description || props.plugin.pluginId))
 </script>

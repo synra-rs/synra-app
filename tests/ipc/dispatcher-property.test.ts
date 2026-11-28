@@ -37,7 +37,16 @@ describe('a run of events in every order', () => {
     // That is the design rather than an accident: asking for a fresh picture is the interface deciding where it stands,
     // and an interface that treated every event after a gap as another gap would be one that could not make progress
     // without a round trip per event.
-    expect(decisions).toEqual(['applied', 'applied', 'ignored', 'stale', 'ignored', 'applied', 'ignored', 'applied'])
+    expect(decisions).toEqual([
+      'applied',
+      'applied',
+      'ignored',
+      'stale',
+      'ignored',
+      'applied',
+      'ignored',
+      'applied'
+    ])
 
     // The picture is announced as whole once the snapshot answers, and the stream continues.
     dispatcher.snapshotTaken()

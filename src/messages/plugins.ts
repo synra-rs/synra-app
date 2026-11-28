@@ -167,7 +167,9 @@ export const plugins = {
      * become invisible just because a manager is collapsed: the kernel keeps a plugin running after its key is revoked,
      * so "nothing here needs you" would be the wrong thing for this button to say.
      */
-    manage: (needsDecision: number) => needsDecision > 0 ? `Publishers · ${needsDecision} need a decision` : 'Publishers'
+    manage: (needsDecision: number) => needsDecision > 0
+      ? `Publishers · ${needsDecision} need a decision`
+      : 'Publishers'
   },
   /** The question an install of a signed package asks next. */
   publisherPrompt: {

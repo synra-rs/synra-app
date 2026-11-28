@@ -40,7 +40,9 @@ describe('the install call', () => {
       code: 'invalid_argument',
       message: 'error.invalidArgument',
       retryable: false,
-      actions: [{ kind: 'retry' }]
+      actions: [
+        { kind: 'retry' }
+      ]
     })
 
     const outcome = await installFrom(kernel, '/tmp/package')
@@ -81,7 +83,9 @@ describe('the enable call', () => {
 
 describe('the audit call', () => {
   it('asks for one plugin and a page', async () => {
-    const { client: kernel, invoke } = client([{ atMs: 1, capability: 'log:*', allowed: true }])
+    const { client: kernel, invoke } = client([
+      { atMs: 1, capability: 'log:*', allowed: true }
+    ])
 
     const outcome = await audit(kernel, '@acme/hello')
 
@@ -91,7 +95,9 @@ describe('the audit call', () => {
 
   it('asks for the next page by offset, not by a different query', async () => {
     // ★ The page appends; a command that ignored the offset would make "Show more" redraw the rows already on screen.
-    const { client: kernel, invoke } = client([{ atMs: 41, capability: 'log:*', allowed: true }])
+    const { client: kernel, invoke } = client([
+      { atMs: 41, capability: 'log:*', allowed: true }
+    ])
 
     await audit(kernel, '@acme/hello', 20, 40)
 
@@ -115,7 +121,12 @@ describe('the audit call', () => {
     // be reversed in the page because the ring answered oldest first; keeping that flip would now show the oldest call of
     // the page at the top.
     const { client: kernel } = client([
-      { atMs: 2, capability: 'network:fetch', allowed: false, reason: 'denied' },
+      {
+        atMs: 2,
+        capability: 'network:fetch',
+        allowed: false,
+        reason: 'denied'
+      },
       { atMs: 1, capability: 'log:*', allowed: true }
     ])
 
@@ -190,7 +201,14 @@ describe('the sync calls', () => {
     const { client: kernel, invoke } = client({ updated: 1, unchanged: 0 })
     const plan = {
       pluginId: '@acme/hello',
-      targets: [{ deviceId: '11111111-1111-4111-8111-111111111111', displayName: 'Laptop', needsArtifact: true, online: true }]
+      targets: [
+        {
+          deviceId: '11111111-1111-4111-8111-111111111111',
+          displayName: 'Laptop',
+          needsArtifact: true,
+          online: true
+        }
+      ]
     }
 
     const outcome = await runSync(kernel, plan)

@@ -29,10 +29,15 @@ describe('recording a snapshot', () => {
     // a device the user removed until the interface restarted — and the user would see it come back after every
     // reconnect.
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a'), card('dev_b')]))
+    store.applySnapshot(snapshot([
+      card('dev_a'),
+      card('dev_b')
+    ]))
     expect(store.cards).toHaveLength(2)
 
-    store.applySnapshot(snapshot([card('dev_a')]))
+    store.applySnapshot(snapshot([
+      card('dev_a')
+    ]))
     expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a'])
   })
 
@@ -51,7 +56,10 @@ describe('recording a snapshot', () => {
       finish = resolve
     }))
     const reading = store.readIdentity({ call } as Parameters<typeof store.readIdentity>[0])
-    store.applySnapshot({ ...snapshot([]), identity: { ...previous, displayName: 'Current device' } })
+    store.applySnapshot({
+      ...snapshot([]),
+      identity: { ...previous, displayName: 'Current device' }
+    })
     finish!({ ok: true, value: previous })
     await reading
     expect(store.identity?.displayName).toBe('Current device')
@@ -65,7 +73,10 @@ describe('recording a snapshot', () => {
       .mockImplementationOnce(() => new Promise((resolve) => {
         finish = resolve
       }))
-      .mockResolvedValueOnce({ ok: true, value: { ...previous, displayName: 'New name' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { ...previous, displayName: 'New name' }
+      })
     const reading = store.readIdentity({ call })
     await store.readIdentity({ call })
     finish!({ ok: true, value: previous })
@@ -78,7 +89,12 @@ describe('recording a snapshot', () => {
     // answer lives, and the day they disagree the interface shows "scanning" with a stale percentage.
     const store = useDevicesStore()
     store.applySnapshot(
-      snapshot([], { scanId: 'scan_1', elapsedMs: 500, totalMs: 3_000, found: 2 })
+      snapshot([], {
+        scanId: 'scan_1',
+        elapsedMs: 500,
+        totalMs: 3_000,
+        found: 2
+      })
     )
     expect(store.scanning).toBe(true)
     expect(store.scan?.found).toBe(2)
@@ -93,7 +109,10 @@ describe('recording a snapshot', () => {
     // The pairing dialog looks up on every incoming request, which arrives at the peer's rate rather than the user's,
     // so the index is maintained rather than derived per read.
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a'), card('dev_b')]))
+    store.applySnapshot(snapshot([
+      card('dev_a'),
+      card('dev_b')
+    ]))
     expect(store.get('dev_b')?.deviceId).toBe('dev_b')
     expect(store.get('dev_missing')).toBeUndefined()
   })
@@ -107,7 +126,10 @@ describe('applying one event', () => {
   it('adds a device it has not seen', () => {
     const store = useDevicesStore()
     store.applySnapshot(snapshot([]))
-    expect(store.apply({ type: 'deviceCardUpdated', payload: card('dev_new') })).toBe(true)
+    expect(store.apply({
+      type: 'deviceCardUpdated',
+      payload: card('dev_new')
+    })).toBe(true)
     expect(store.get('dev_new')?.deviceId).toBe('dev_new')
   })
 
@@ -115,7 +137,11 @@ describe('applying one event', () => {
     // ★ The property that makes an incremental event worth having: a store that rebuilt the list from the event would
     // lose every device the event did not mention, which is all of them but one.
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a'), card('dev_b'), card('dev_c')]))
+    store.applySnapshot(snapshot([
+      card('dev_a'),
+      card('dev_b'),
+      card('dev_c')
+    ]))
 
     store.apply({
       type: 'deviceCardUpdated',
@@ -130,8 +156,14 @@ describe('applying one event', () => {
 
   it('removes a device the kernel stopped mentioning', () => {
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a'), card('dev_b')]))
-    expect(store.apply({ type: 'deviceRemoved', payload: { deviceId: 'dev_a' } })).toBe(true)
+    store.applySnapshot(snapshot([
+      card('dev_a'),
+      card('dev_b')
+    ]))
+    expect(store.apply({
+      type: 'deviceRemoved',
+      payload: { deviceId: 'dev_a' }
+    })).toBe(true)
     expect(store.cards.map(each => each.deviceId)).toEqual(['dev_b'])
     expect(store.get('dev_a')).toBeUndefined()
   })
@@ -144,7 +176,12 @@ describe('applying one event', () => {
     expect(
       store.apply({
         type: 'scanUpdated',
-        payload: { scanId: 'scan_1', elapsedMs: 100, totalMs: 3_000, found: 1 }
+        payload: {
+          scanId: 'scan_1',
+          elapsedMs: 100,
+          totalMs: 3_000,
+          found: 1
+        }
       })
     ).toBe(true)
     expect(store.scanning).toBe(true)
@@ -155,7 +192,10 @@ describe('applying one event', () => {
     // So a caller wiring the dispatcher can tell a routed event from an unhandled one without a second lookup.
     const store = useDevicesStore()
     expect(
-      store.apply({ type: 'transferUpdated', payload: transferSnapshot('t1') })
+      store.apply({
+        type: 'transferUpdated',
+        payload: transferSnapshot('t1')
+      })
     ).toBe(false)
   })
 })
@@ -167,7 +207,10 @@ describe('a transfer on a device', () => {
 
   it('attaches to the card it belongs to', () => {
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a'), card('dev_b')]))
+    store.applySnapshot(snapshot([
+      card('dev_a'),
+      card('dev_b')
+    ]))
     store.setTransfer('dev_a', { transferId: 't1', direction: 'send', progress: 0.5 })
 
     expect(store.get('dev_a')?.transfer?.transferId).toBe('t1')
@@ -176,7 +219,9 @@ describe('a transfer on a device', () => {
 
   it('clears the transfer without disturbing the rest of the card', () => {
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a', { displayName: 'Laptop', address: '10.0.0.5' })]))
+    store.applySnapshot(snapshot([
+      card('dev_a', { displayName: 'Laptop', address: '10.0.0.5' })
+    ]))
     store.setTransfer('dev_a', { transferId: 't1', direction: 'send', progress: 0.5 })
     store.setTransfer('dev_a', undefined)
 
@@ -192,7 +237,9 @@ describe('a transfer on a device', () => {
     // Rather than inventing a card: a card with no name or platform renders as a blank row, and the snapshot that
     // answers the gap will carry both.
     const store = useDevicesStore()
-    store.applySnapshot(snapshot([card('dev_a')]))
+    store.applySnapshot(snapshot([
+      card('dev_a')
+    ]))
     store.setTransfer('dev_unknown', { transferId: 't1', direction: 'send', progress: 0.5 })
     expect(store.cards.map(each => each.deviceId)).toEqual(['dev_a'])
   })

@@ -22,12 +22,20 @@ export function refresher(): {
   reasons: () => string[]
 } {
   const refresh = vi.fn<(reason: string) => void>()
-  return { refresh, reasons: () => refresh.mock.calls.map(([reason]) => reason) }
+  return {
+    refresh,
+    reasons: () => refresh.mock.calls.map(([reason]) => reason)
+  }
 }
 
 /** A log event with a sequence number. */
 export function logLine(seq: number, line = 'x'): SequencedKernelEvent {
-  return { seq, at: seq, type: 'logLine', payload: { level: 'info', line } }
+  return {
+    seq,
+    at: seq,
+    type: 'logLine',
+    payload: { level: 'info', line }
+  }
 }
 
 /** A device card event with a sequence number. */

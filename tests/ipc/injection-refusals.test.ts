@@ -25,14 +25,25 @@ import { bridge, context } from './injection-test-helpers'
 
 describe('what the host cannot do yet', () => {
   const cases: readonly { readonly name: string, readonly call: (synra: SynraClient) => Promise<unknown> }[] = [
-    { name: 'device.send', call: async synra => synra.device.send({ to: 'peer', event: 'thing' }) },
-    { name: 'device.broadcast', call: async synra => synra.device.broadcast({ event: 'thing' }) },
-    { name: 'event.emit', call: async synra => synra.event.emit('_plugin.@com-example/notes.thing') }
+    {
+      name: 'device.send',
+      call: async synra => synra.device.send({ to: 'peer', event: 'thing' })
+    },
+    {
+      name: 'device.broadcast',
+      call: async synra => synra.device.broadcast({ event: 'thing' })
+    },
+    {
+      name: 'event.emit',
+      call: async synra => synra.event.emit('_plugin.@com-example/notes.thing')
+    }
   ]
 
   for (const { name, call } of cases) {
     it(`${name} refuses with \`unsupported\``, async () => {
-      const synra = createInjection(context({ granted: ['*'] }))
+      const synra = createInjection(context({
+        granted: ['*']
+      }))
       await expect(call(synra)).rejects.toMatchObject({ code: 'unsupported' })
     })
   }
@@ -97,15 +108,37 @@ describe('device.list', () => {
     // ★ The channel, not just the answer. `devices_snapshot` is a *host* command; a plugin page reaching it would be the
     // separation the two interfaces exist to prevent. The method, the token and the empty args are the whole call.
     const invoke = vi.fn(async () => [
-      { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true },
-      { deviceId: 'b', displayName: 'Laptop', platform: 'windows', online: false }
+      {
+        deviceId: 'a',
+        displayName: 'Phone',
+        platform: 'android',
+        online: true
+      },
+      {
+        deviceId: 'b',
+        displayName: 'Laptop',
+        platform: 'windows',
+        online: false
+      }
     ])
-    const ctx = context({ bridge: bridge({ invoke }) })
+    const ctx = context({
+      bridge: bridge({ invoke })
+    })
     const synra = createInjection(ctx)
 
     await expect(synra.device.list()).resolves.toEqual([
-      { deviceId: 'a', displayName: 'Phone', platform: 'android', online: true },
-      { deviceId: 'b', displayName: 'Laptop', platform: 'windows', online: false }
+      {
+        deviceId: 'a',
+        displayName: 'Phone',
+        platform: 'android',
+        online: true
+      },
+      {
+        deviceId: 'b',
+        displayName: 'Laptop',
+        platform: 'windows',
+        online: false
+      }
     ])
     expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
       token: ctx.token,

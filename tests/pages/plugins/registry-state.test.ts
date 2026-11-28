@@ -28,7 +28,10 @@ describe('registry workflow through the real IPC client', () => {
     ['invalidConfiguration', registryFixture.invalidConfiguration],
     ['searchUnsupported', registryFixture.searchUnsupported],
     ['failed', registryFixture.network],
-    ['failed', { code: 'unsupported', message: 'no registry is configured', retryable: false } satisfies IpcError]
+    [
+      'failed',
+{ code: 'unsupported', message: 'no registry is configured', retryable: false } satisfies IpcError
+    ]
   ] as const)('distinguishes %s from a missing configuration', async (state, error) => {
     const scope = effectScope()
     const client = new KernelClient({
@@ -55,10 +58,15 @@ describe('registry workflow through the real IPC client', () => {
     const observed: string[] = []
     const invoke = vi.fn(() => {
       observed.push(source.value)
-      return observed.length === 1 ? new Promise(resolve => finish = resolve) : Promise.resolve([])
+      return observed.length === 1
+        ? new Promise(resolve => finish = resolve)
+        : Promise.resolve([])
     })
     const scope = effectScope()
-    const client = new KernelClient({ invoke, listen: async () => () => {} })
+    const client = new KernelClient({
+      invoke,
+      listen: async () => () => {}
+    })
     const catalog = scope.run(() => useCatalog(client, () => source.value))!
     try {
       catalog.text.value = 'reader'

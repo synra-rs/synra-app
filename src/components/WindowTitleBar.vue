@@ -1,8 +1,8 @@
 <template>
-  <header class="h-11 min-h-11 flex shrink-0 items-center border-b border-line bg-glass px-3" data-tauri-drag-region @dblclick="toggleMaximize">
-    <div class="min-w-0 row flex-1 gap-2" data-tauri-drag-region>
+  <header class="px-3 border-b border-line bg-glass flex shrink-0 h-11 min-h-11 items-center" data-tauri-drag-region @dblclick="toggleMaximize">
+    <div class="row flex-1 gap-2 min-w-0" data-tauri-drag-region>
       <span class="i-carbon-connect text-lg text-primary" aria-hidden="true" />
-      <span class="truncate text-sm font-semibold">{{ messages.app.name }}</span>
+      <span class="text-sm font-semibold truncate">{{ messages.app.name }}</span>
     </div>
     <div class="row gap-1" @mousedown.stop @dblclick.stop>
       <AButton ghost type="default" size="small" :aria-label="messages.window.minimize" @click="minimize">

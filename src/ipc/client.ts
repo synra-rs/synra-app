@@ -92,14 +92,21 @@ export class KernelClient {
       //
       // A rejection that is already an error is passed through, since some bridges reject with the error rather than
       // resolving with it, and re-wrapping it would lose the code.
-      return { ok: false, error: asIpcError(thrown) }
+      return {
+        ok: false,
+        error: asIpcError(thrown)
+      }
     }
 
     // The host's convention: a command returning a value *is* the success, and its refusal is a value that looks like
     // an error. Checking the shape rather than a wrapper means a command whose return type is itself an object with a
     // `code` field is still handled correctly — because the check needs all three fields.
-    if (hasErrorFields(raw))
-      return { ok: false, error: asIpcError(raw) }
+    if (hasErrorFields(raw)) {
+      return {
+        ok: false,
+        error: asIpcError(raw)
+      }
+    }
     return { ok: true, value: raw as T }
   }
 

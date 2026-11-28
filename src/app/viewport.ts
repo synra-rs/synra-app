@@ -19,7 +19,10 @@ export function useViewportLayout() {
     const refresh = (): void => {
       layout.value = wide.matches
         ? { size: 'wide', navigation: 'sidebar' }
-        : { size: 'compact', navigation: sidebar.matches ? 'rail' : 'bottom' }
+        : {
+            size: 'compact',
+            navigation: sidebar.matches ? 'rail' : 'bottom'
+          }
     }
     refresh()
     sidebar.addEventListener('change', refresh)

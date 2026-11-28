@@ -36,7 +36,10 @@ describe('what the host advertises and what it does', () => {
           default: throw new Error('unexpected command')
         }
       })
-      const synra = createInjection(context({ granted: ['platform:read-clipboard', 'device:list', 'file:transfer:send'], bridge: bridge({ invoke }) }))
+      const synra = createInjection(context({
+        granted: ['platform:read-clipboard', 'device:list', 'file:transfer:send'],
+        bridge: bridge({ invoke })
+      }))
       const advertised = synra.env.hostSupports(feature)
 
       const failure = await CALLS[feature](synra).then(
@@ -72,7 +75,9 @@ describe('capabilities the plugin was refused', () => {
   it('clipboard.read names the capability, not the method', async () => {
     // ★ The spelling the manifest declares. The old check said `clipboard_read`, which appears in no manifest and no
     // capability table — a page that declared the real capability was still denied.
-    const synra = createInjection(context({ granted: ['platform:write-clipboard'] }))
+    const synra = createInjection(context({
+      granted: ['platform:write-clipboard']
+    }))
     await expect(synra.clipboard.read()).rejects.toMatchObject({
       code: 'capability_denied',
       details: { capability: 'platform:read-clipboard' }

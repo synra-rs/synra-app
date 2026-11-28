@@ -48,7 +48,9 @@ describe('self', () => {
     const invoke = vi.fn(async () => {
       throw refusal
     })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.self.invoke('send')).rejects.toMatchObject({
       code: refusal.code,
@@ -65,14 +67,24 @@ describe('self', () => {
   it('lists the actions the kernel says this plugin declared', async () => {
     const invoke = answering({
       'self.actions': [
-        { name: 'send', args: { type: 'object' }, description: 'Send a message' },
+        {
+          name: 'send',
+          args: { type: 'object' },
+          description: 'Send a message'
+        },
         { name: 'clear' }
       ]
     })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.self.actions()).resolves.toEqual([
-      { name: 'send', args: { type: 'object' }, description: 'Send a message' },
+      {
+        name: 'send',
+        args: { type: 'object' },
+        description: 'Send a message'
+      },
       { name: 'clear' }
     ])
     expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
@@ -83,15 +95,22 @@ describe('self', () => {
   })
 
   it('passes the action and its arguments', async () => {
-    const invoke = answering({ 'self.invoke': { sent: true } })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const invoke = answering({
+      'self.invoke': { sent: true }
+    })
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.self.invoke('send', { to: 'bob' })).resolves.toEqual({ sent: true })
 
     expect(invoke).toHaveBeenCalledWith('plugin_ui_rpc', {
       token: '123456789012345678901234567890',
       method: 'self.invoke',
-      args: { action: 'send', args: { to: 'bob' } }
+      args: {
+        action: 'send',
+        args: { to: 'bob' }
+      }
     })
   })
 
@@ -99,7 +118,9 @@ describe('self', () => {
     // ★ Omitted rather than `undefined`: JSON drops an undefined value, and the kernel's missing field means `null` —
     // "this action takes nothing". Sending the key with `undefined` would make the wire shape depend on serialisation.
     const invoke = answering({ 'self.invoke': null })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await synra.self.invoke('clear')
 
@@ -113,7 +134,13 @@ describe('self', () => {
   it('refuses a list that is not a list', async () => {
     // The kernel's contract is an array. A page that received an object and called `.map` on it would reach a
     // `TypeError` with no code; this names the host as the thing that broke its promise.
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering({ 'self.actions': { not: 'a list' } }) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering({
+          'self.actions': { not: 'a list' }
+        })
+      })
+    }))
 
     await expect(synra.self.actions()).rejects.toMatchObject({ code: 'internal' })
   })
@@ -126,7 +153,9 @@ describe('self', () => {
         retryable: false
       })
     })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.self.invoke('not-mine')).rejects.toMatchObject({ code: 'invalid_argument' })
   })

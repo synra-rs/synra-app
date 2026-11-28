@@ -20,8 +20,17 @@ const coreVersion = /version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../synr
  */
 export default defineConfig({
   plugins: [
-    buildStamp({ include: [buildStampModule], log: false }),
-    buildStamp({ cwd: coreRoot, include: [buildStampModule], name: '__CORE_BUILD_STAMP__', log: false, extra: { name: 'synra-core', version: coreVersion } }),
+    buildStamp({
+      include: [buildStampModule],
+      log: false
+    }),
+    buildStamp({
+      cwd: coreRoot,
+      include: [buildStampModule],
+      name: '__CORE_BUILD_STAMP__',
+      log: false,
+      extra: { name: 'synra-core', version: coreVersion }
+    }),
     vue()
   ],
   resolve: {

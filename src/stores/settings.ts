@@ -61,5 +61,12 @@ export const useSettingsStore = defineStore('settings', () => {
     return values.value[key]
   }
 
-  return { apply, applySnapshot, overridden, read, value, values }
+  return {
+    apply,
+    applySnapshot,
+    overridden,
+    read,
+    value,
+    values
+  }
 })

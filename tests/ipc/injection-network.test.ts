@@ -40,7 +40,9 @@ function answering(value: unknown) {
 describe('network.fetch', () => {
   it('carries the input and the initialiser over the channel', async () => {
     const invoke = answering(answer())
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await synra.network.fetch('https://api.example.com/v1', {
       method: 'POST',
@@ -53,13 +55,21 @@ describe('network.fetch', () => {
       method: 'network.fetch',
       args: {
         input: 'https://api.example.com/v1',
-        init: { method: 'POST', headers: { accept: 'application/json' }, body: '{}' }
+        init: {
+          method: 'POST',
+          headers: { accept: 'application/json' },
+          body: '{}'
+        }
       }
     })
   })
 
   it('answers a response with the contract fields', async () => {
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering(answer()) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering(answer())
+      })
+    }))
 
     const response = await synra.network.fetch('https://api.example.com/v1')
 
@@ -75,7 +85,11 @@ describe('network.fetch', () => {
   it('reads a non-2xx answer as a response rather than an error', async () => {
     // ★ `ok` is false and the call still resolves: a plugin asking about something that is not there has to read the
     // status and the body, and a rejection would make "no such thing" indistinguishable from "the network is down".
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering(answer({ status: 404, statusText: 'Not Found', body: 'missing' })) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering(answer({ status: 404, statusText: 'Not Found', body: 'missing' }))
+      })
+    }))
 
     const response = await synra.network.fetch('https://api.example.com/missing')
 
@@ -85,7 +99,11 @@ describe('network.fetch', () => {
   })
 
   it('reports a redirect chain as the address it ended on', async () => {
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering(answer({ url: 'https://api.example.com/final', redirected: true })) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering(answer({ url: 'https://api.example.com/final', redirected: true }))
+      })
+    }))
 
     const response = await synra.network.fetch('https://api.example.com/start')
 
@@ -94,7 +112,11 @@ describe('network.fetch', () => {
   })
 
   it('reads bytes out of the text body', async () => {
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering(answer({ body: 'hi' })) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering(answer({ body: 'hi' }))
+      })
+    }))
 
     const response = await synra.network.fetch('https://api.example.com/v1')
 
@@ -102,7 +124,11 @@ describe('network.fetch', () => {
   })
 
   it('rejects a second read and a body that is not JSON', async () => {
-    const synra = createInjection(context({ bridge: bridge({ invoke: answering(answer({ body: 'not json' })) }) }))
+    const synra = createInjection(context({
+      bridge: bridge({
+        invoke: answering(answer({ body: 'not json' }))
+      })
+    }))
 
     const response = await synra.network.fetch('https://api.example.com/v1')
 
@@ -112,9 +138,13 @@ describe('network.fetch', () => {
 
   it('refuses a byte body before the call', async () => {
     const invoke = answering(answer())
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
-    await expect(synra.network.fetch('https://api.example.com', { body: new Uint8Array([1, 2]) }))
+    await expect(synra.network.fetch('https://api.example.com', {
+      body: new Uint8Array([1, 2])
+    }))
       .rejects
       .toMatchObject({ code: 'unsupported' })
     expect(invoke).not.toHaveBeenCalled()
@@ -122,7 +152,9 @@ describe('network.fetch', () => {
 
   it('refuses a per-request timeout before the call', async () => {
     const invoke = answering(answer())
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.network.fetch('https://api.example.com', { timeoutMs: 500 }))
       .rejects
@@ -138,7 +170,9 @@ describe('network.fetch', () => {
         retryable: false
       })
     })
-    const synra = createInjection(context({ bridge: bridge({ invoke }) }))
+    const synra = createInjection(context({
+      bridge: bridge({ invoke })
+    }))
 
     await expect(synra.network.fetch('https://blocked.example.com')).rejects.toMatchObject({
       code: 'host_not_allowed'
